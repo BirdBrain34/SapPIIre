@@ -11,6 +11,7 @@ class QrScannerScreen extends StatefulWidget {
 
 class _QrScannerScreenState extends State<QrScannerScreen> {
   final MobileScannerController controller = MobileScannerController();
+  bool isPopping = false; // Add this flag
 
   @override
   Widget build(BuildContext context) {
@@ -33,11 +34,15 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
           MobileScanner(
             controller: controller,
             onDetect: (capture) {
+              if (isPopping) return; // Ignore additional scans
+              
               final List<Barcode> barcodes = capture.barcodes;
-              for (final barcode in barcodes) {
-                final String? code = barcode.rawValue;
+              if (barcodes.isNotEmpty) {
+                final String? code = barcodes.first.rawValue;
                 if (code != null) {
+                  isPopping = true; // Lock the scanner
                   debugPrint('QR Code Detected: $code');
+                  Navigator.pop(context, code); // Return the ID
                 }
               }
             },
@@ -55,15 +60,10 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
           ),
         ],
       ),
-      // --- HERE IS YOUR CUSTOM CALL ---
       bottomNavigationBar: CustomBottomNav(
         currentIndex: 1, 
         onTap: (index) {
-          if (index == 0) {
-            Navigator.pop(context); // Go back to Manage Information
-          } else if (index == 2) {
-            // Logic for History screen
-          }
+          if (index == 0) Navigator.pop(context);
         },
       ),
     );

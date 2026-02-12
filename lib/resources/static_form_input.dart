@@ -38,7 +38,9 @@ class SectionHeader extends StatelessWidget {
 // --- A. CLIENT'S INFORMATION SECTION ---
 class ClientInfoSection extends StatefulWidget {
   final bool selectAll;
-  const ClientInfoSection({super.key, required this.selectAll});
+  final Map<String, TextEditingController>? controllers; 
+
+  const ClientInfoSection({super.key, required this.selectAll, this.controllers});
 
   @override
   State<ClientInfoSection> createState() => _ClientInfoSectionState();
@@ -95,6 +97,7 @@ class _ClientInfoSectionState extends State<ClientInfoSection> {
   Widget _buildField(String label) {
     return InfoInputField(
       label: label,
+      controller: widget.controllers?[label], // Link to shared controller
       isChecked: widget.selectAll || _sectionChecked,
       onCheckboxChanged: (v) {},
       onTextChanged: (v) {},
@@ -135,7 +138,9 @@ class _ClientInfoSectionState extends State<ClientInfoSection> {
 // --- B. FAMILY COMPOSITION TABLE ---
 class FamilyTable extends StatefulWidget {
   final bool selectAll;
-  const FamilyTable({super.key, required this.selectAll});
+  final Map<String, TextEditingController>? controllers; // Added for handshake
+
+  const FamilyTable({super.key, required this.selectAll, this.controllers});
   @override
   State<FamilyTable> createState() => _FamilyTableState();
 }
@@ -202,7 +207,14 @@ class _FamilyTableState extends State<FamilyTable> {
 // --- C. SOCIO-ECONOMIC SECTION ---
 class SocioEconomicSection extends StatefulWidget {
   final bool selectAll;
-  const SocioEconomicSection({super.key, required this.selectAll});
+  final Map<String, TextEditingController>? controllers; // FIXED: Added to class
+
+  const SocioEconomicSection({
+    super.key, 
+    required this.selectAll, 
+    this.controllers, // FIXED: Added to constructor
+  });
+
   @override
   State<SocioEconomicSection> createState() => _SocioEconomicSectionState();
 }
@@ -315,6 +327,7 @@ class _SocioEconomicSectionState extends State<SocioEconomicSection> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: TextField(
+        controller: widget.controllers?[label], // FIXED: Using the controller
         style: const TextStyle(color: Colors.white, fontSize: 13),
         decoration: InputDecoration(
           labelText: label,
@@ -329,7 +342,9 @@ class _SocioEconomicSectionState extends State<SocioEconomicSection> {
 
 // --- SIGNATURE SECTION ---
 class SignatureSection extends StatelessWidget {
-  const SignatureSection({super.key});
+  final Map<String, TextEditingController>? controllers; // Added
+  const SignatureSection({super.key, this.controllers});
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -349,7 +364,6 @@ class SignatureSection extends StatelessWidget {
     );
   }
 }
-
 class SignatureDialog extends StatefulWidget {
   const SignatureDialog({super.key});
   @override State<SignatureDialog> createState() => _SignatureDialogState();
