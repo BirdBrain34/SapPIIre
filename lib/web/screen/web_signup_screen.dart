@@ -30,6 +30,8 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
   final TextEditingController _confirmPasswordController = TextEditingController();
 
   bool _isLoading = false;
+  String _selectedRole = 'viewer';
+  final List<String> _roles = ['viewer', 'form_editor', 'admin'];
   final SupabaseClient _supabase = Supabase.instance.client;
 
   String _hashPassword(String password) {
@@ -38,34 +40,31 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
     return digest.toString();
   }
 
+  void _showSnackBar(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message),
+      backgroundColor: isError ? Colors.red : Colors.green,
+    ));
+  }
+
   Future<void> _handleSignUp() async {
     // Basic validation
-    if (_cswdIdController.text.trim().isEmpty ||
-        _firstNameController.text.trim().isEmpty ||
+    if (_firstNameController.text.trim().isEmpty ||
         _lastNameController.text.trim().isEmpty ||
         _emailController.text.trim().isEmpty ||
         _usernameController.text.trim().isEmpty ||
         _passwordController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Please fill in all required fields.'),
-        backgroundColor: Colors.red,
-      ));
+      _showSnackBar('Please fill in all required fields.', isError: true);
       return;
     }
 
     if (_passwordController.text != _confirmPasswordController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Passwords do not match.'),
-        backgroundColor: Colors.red,
-      ));
+      _showSnackBar('Passwords do not match.', isError: true);
       return;
     }
 
     if (_passwordController.text.length < 8) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Password must be at least 8 characters.'),
-        backgroundColor: Colors.red,
-      ));
+      _showSnackBar('Password must be at least 8 characters.', isError: true);
       return;
     }
 
@@ -80,31 +79,40 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
           .maybeSingle();
 
       if (existing != null) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Username already exists.'),
-          backgroundColor: Colors.red,
-        ));
+        _showSnackBar('Username already exists.', isError: true);
         setState(() => _isLoading = false);
         return;
       }
 
-      // 2. Insert into staff_accounts — DO NOT pass cswd_id
+      // 2. Insert into staff_accounts and get back cswd_id
       final accountResponse = await _supabase
           .from('staff_accounts')
           .insert({
-            'employee_id': _cswdIdController.text.trim(),
+            'employee_id': _cswdIdController.text.trim().isEmpty
+                ? null
+                : _cswdIdController.text.trim(),
             'email': _emailController.text.trim(),
             'username': _usernameController.text.trim(),
             'password_hash': _hashPassword(_passwordController.text),
-            'role': 'staff',
+            'role': _selectedRole,
             'is_active': true,
           })
           .select('cswd_id')
           .single();
 
-      final String cswdId = accountResponse['cswd_id'].toString();
+      // 3. Guard — make sure we actually got the cswd_id back
+      final String? cswdId = accountResponse['cswd_id']?.toString();
 
-      // 3. Insert into staff_profiles using returned cswd_id
+      if (cswdId == null || cswdId.isEmpty) {
+        _showSnackBar(
+          'Account created but failed to get ID. Contact developer.',
+          isError: true,
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      // 4. Insert into staff_profiles using the cswd_id
       await _supabase.from('staff_profiles').insert({
         'cswd_id': cswdId,
         'first_name': _firstNameController.text.trim(),
@@ -120,22 +128,16 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
         'phone_number': _phoneController.text.trim().isEmpty
             ? null
             : _phoneController.text.trim(),
-        'email': _emailController.text.trim(),
       });
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Account created successfully!'),
-        backgroundColor: Colors.green,
-      ));
+      _showSnackBar('Account created successfully!', isError: false);
 
       await Future.delayed(const Duration(seconds: 1));
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Error: ${e.toString()}'),
-        backgroundColor: Colors.red,
-      ));
+      // Show the FULL error so you can see exactly what failed
+      _showSnackBar('Error: ${e.toString()}', isError: true);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -253,6 +255,33 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
                 CustomTextField(
                   hintText: 'Username',
                   controller: _usernameController,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: _selectedRole,
+                  decoration: InputDecoration(
+                    labelText: 'Role',
+                    labelStyle: const TextStyle(color: AppColors.grey),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: AppColors.grey),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: AppColors.grey),
+                    ),
+                  ),
+                  items: _roles.map((role) {
+                    return DropdownMenuItem<String>(
+                      value: role,
+                      child: Text(role),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() => _selectedRole = value);
+                    }
+                  },
                 ),
                 const SizedBox(height: 12),
                 CustomTextField(
