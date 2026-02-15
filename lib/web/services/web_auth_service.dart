@@ -21,7 +21,7 @@ class WebAuthService {
       // Query staff_accounts — NOT user_accounts
       final accountResponse = await _supabase
           .from('staff_accounts')
-          .select('cswd_id, username, email, role, is_active')
+          .select('cswd_id, username, email, is_active')
           .eq('username', username)
           .eq('password_hash', hashedPassword)   // column is password_hash
           .maybeSingle();
@@ -64,7 +64,6 @@ class WebAuthService {
         'cswd_id': cswdId,
         'username': accountResponse['username'],
         'email': accountResponse['email'],
-        'role': accountResponse['role'],
         'profile': profileResponse,
       };
     } catch (e) {
