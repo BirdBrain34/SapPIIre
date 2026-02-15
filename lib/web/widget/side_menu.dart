@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
+import 'logout_confirmation_dialog.dart';
 
 class SideMenu extends StatelessWidget {
   final String activePath;
@@ -22,8 +23,18 @@ class SideMenu extends StatelessWidget {
           const Spacer(),
           ListTile(
             leading: const Icon(Icons.logout, color: AppColors.white),
-            title: const Text("Log Out", style: TextStyle(color: AppColors.white)),
-            onTap: onLogout,
+            title: const Text(
+              "Log Out",
+              style: TextStyle(color: AppColors.white),
+            ),
+            onTap: () {
+              if (onLogout != null) {
+                LogoutConfirmationDialog.show(
+                  context: context,
+                  onConfirm: onLogout!,
+                );
+              }
+            },
           ),
           const SizedBox(height: 20),
         ],
@@ -40,7 +51,13 @@ class SideMenu extends StatelessWidget {
       ),
       child: ListTile(
         leading: Icon(icon, color: AppColors.white),
-        title: Text(title, style: const TextStyle(color: AppColors.white, fontWeight: FontWeight.bold)),
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: AppColors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         onTap: () {},
       ),
     );
