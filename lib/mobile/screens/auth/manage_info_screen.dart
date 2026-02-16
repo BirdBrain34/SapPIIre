@@ -4,6 +4,7 @@ import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/mobile/widgets/bottom_navbar.dart';
 import 'package:sappiire/mobile/widgets/selectall_button.dart';
 import 'package:sappiire/mobile/widgets/dropdown.dart';
+import 'package:sappiire/mobile/widgets/save_button.dart';
 import 'package:sappiire/resources/static_form_input.dart';
 import 'package:sappiire/mobile/screens/auth/qr_scanner_screen.dart';
 import 'package:sappiire/mobile/screens/auth/login_screen.dart';
@@ -21,6 +22,7 @@ class ManageInfoScreen extends StatefulWidget {
 class _ManageInfoScreenState extends State<ManageInfoScreen> {
   int _currentIndex = 0;
   bool _selectAll = false;
+  bool _isEdited = false; // Tracks if user has changed anything
   String _selectedForm = "General Intake Sheet";
   String? _activeSessionId;
   Timer? _debounce;
@@ -52,13 +54,30 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
     for (final label in _allLabels) {
       _controllers[label] = TextEditingController();
-      _controllers[label]!.addListener(_onFieldChanged);
+      // Listen for changes to show the Save Button
+      _controllers[label]!.addListener(_handleTextChange);
       _fieldChecks[label] = false;
     }
 
     if (widget.userId != null) {
       _loadUserProfile(widget.userId!);
     }
+  }
+
+  // Detects typing and triggers the Save Button appearance
+  void _handleTextChange() {
+    if (!_isEdited) {
+      setState(() => _isEdited = true);
+    }
+    
+    // Original sync logic
+    if (_activeSessionId == null) return;
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      if (_activeSessionId != null) {
+        syncDataToWeb(_activeSessionId!);
+      }
+    });
   }
 
   Future<void> _loadUserProfile(String userId) async {
@@ -76,22 +95,13 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           _controllers["Last Name"]?.text = response['lastname'] ?? '';
           _controllers["Email Address"]?.text = response['email'] ?? '';
           _controllers["CP Number"]?.text = response['cellphone_number'] ?? '';
+          // Reset edited state after initial load
+          _isEdited = false; 
         });
       }
     } catch (e) {
       debugPrint('Error loading profile: $e');
     }
-  }
-
-  void _onFieldChanged() {
-    if (_activeSessionId == null) return;
-
-    if (_debounce?.isActive ?? false) _debounce!.cancel();
-    _debounce = Timer(const Duration(milliseconds: 500), () {
-      if (_activeSessionId != null) {
-        syncDataToWeb(_activeSessionId!);
-      }
-    });
   }
 
   Future<void> syncDataToWeb(String sessionId) async {
@@ -112,7 +122,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
   Future<void> _logout() async {
     setState(() => _activeSessionId = null);
-
     if (mounted) {
       Navigator.pushReplacement(
         context,
@@ -125,6 +134,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   void dispose() {
     _debounce?.cancel();
     for (final controller in _controllers.values) {
+      controller.removeListener(_handleTextChange);
       controller.dispose();
     }
     super.dispose();
@@ -164,7 +174,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     children: [
-                      // --- Section A ---
                       _buildSectionCard(
                         child: ClientInfoSection(
                           selectAll: _selectAll,
@@ -173,61 +182,70 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                           onCheckChanged: (key, val) {
                             setState(() {
                               _fieldChecks[key] = val;
+                              _isEdited = true;
                             });
                           },
                         ),
                       ),
-
-                      const SizedBox(height: 20),
-
-                      // --- Section B ---
                       _buildSectionCard(
-                        
                         child: FamilyTable(
                           selectAll: _selectAll,
                           controllers: _controllers,
                         ),
                       ),
-
-                      const SizedBox(height: 20),
-
-                      // --- Section C ---
                       _buildSectionCard(
-                        
                         child: SocioEconomicSection(
                           selectAll: _selectAll,
                           controllers: _controllers,
                         ),
                       ),
-
-                      const SizedBox(height: 20),
-
-                      // --- Signature ---
                       _buildSectionCard(
-                        
                         child: SignatureSection(
                           controllers: _controllers,
                         ),
                       ),
-
-                      const SizedBox(height: 80), 
+                      const SizedBox(height: 100), // Space for floating buttons
                     ],
                   ),
                 ),
               ),
-            ], // 🔹 ADDED: Closes the outer Column children
-          ), // 🔹 ADDED: Closes the outer Column
+            ],
+          ),
+          
+          // 🔹 FLOATING BUTTON LAYER
           Positioned(
             bottom: 25,
             right: 16,
-            child: SelectAllButton(
-              isSelected: _selectAll,
-              onChanged: (v) {
-                setState(() {
-                  _selectAll = v ?? false;
-                  _fieldChecks.updateAll((key, value) => _selectAll);
-                });
-              },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_isEdited) ...[
+                  SaveButton(
+                    onTap: () {
+                      // No function for now as requested
+                      setState(() => _isEdited = false);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Changes recognized (Functionality pending)"),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                SelectAllButton(
+                  isSelected: _selectAll,
+                  onChanged: (v) {
+                    setState(() {
+                      _selectAll = v ?? false;
+                      _fieldChecks.updateAll((key, value) => _selectAll);
+                      _isEdited = true; 
+                    });
+                  },
+                ),
+              ],
             ),
           ),
         ],
@@ -238,20 +256,12 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           if (index == 1) {
             final String? sessionId = await Navigator.push<String>(
               context,
-              MaterialPageRoute(
-                  builder: (_) => const QrScannerScreen()),
+              MaterialPageRoute(builder: (_) => const QrScannerScreen()),
             );
 
             if (sessionId != null) {
               setState(() => _activeSessionId = sessionId);
               await syncDataToWeb(sessionId);
-
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text("Connected to Web Session!")),
-                );
-              }
             }
           } else {
             setState(() => _currentIndex = index);
@@ -262,22 +272,22 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   }
 
   Widget _buildSectionCard({required Widget child}) {
-  return Container(
-    width: double.infinity,
-    padding: const EdgeInsets.all(16),
-    margin: const EdgeInsets.only(bottom: 20), // Added margin here instead of SizedBox
-    decoration: BoxDecoration(
-      color: AppColors.cardWhite,
-      borderRadius: BorderRadius.circular(15),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.05),
-          blurRadius: 10,
-          offset: const Offset(0, 4),
-        ),
-      ],
-    ),
-    child: child, // Just return the child, title is now inside the child widget
-  );
-}
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: AppColors.cardWhite,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
 }
