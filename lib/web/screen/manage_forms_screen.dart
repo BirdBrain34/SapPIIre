@@ -47,7 +47,6 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     }
   }
 
-  // 🔹 FIX: Clear UI when starting a new session
   void _clearAllFields() {
     for (var controller in _webControllers.values) {
       controller.clear();
@@ -65,7 +64,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
 
   Future<void> _createNewSession() async {
     try {
-      _clearAllFields(); // 🔹 Clear the screen for the new client
+      _clearAllFields(); 
       
       final response = await Supabase.instance.client
           .from('form_sessions')
@@ -143,21 +142,14 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
 
   Future<void> _handleLogout() async {
     try {
-      // Cancel any active subscriptions
       _formSubscription?.cancel();
-      
-      // Mark current session as closed
       if (_currentSessionId != "WAITING-FOR-SESSION") {
         await Supabase.instance.client
             .from('form_sessions')
             .update({'status': 'closed'})
             .eq('id', _currentSessionId);
       }
-      
-      // Sign out from Supabase
       await Supabase.instance.client.auth.signOut();
-      
-      // Navigate to login screen
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => const WorkerLoginScreen()),
@@ -166,18 +158,13 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       }
     } catch (e) {
       debugPrint("Logout Error: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Logout Error: $e")),
-        );
-      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FE),
+      backgroundColor: const Color(0xFFF4F7FE), // Light background
       body: Row(
         children: [
           SideMenu(activePath: "Forms", onLogout: _handleLogout),
@@ -207,7 +194,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                   Expanded(
                     child: Container(
                       decoration: BoxDecoration(
-                        color: AppColors.accentBlue,
+                        color: AppColors.accentBlue, // Dark sidebar for QR
                         borderRadius: BorderRadius.circular(24),
                         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20)],
                       ),
@@ -217,22 +204,28 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                           Expanded(
                             child: Container(
                               margin: const EdgeInsets.all(20),
-                              padding: const EdgeInsets.symmetric(horizontal: 20),
-                              decoration: BoxDecoration(
-                                color: AppColors.primaryBlue.withOpacity(0.3),
-                                borderRadius: BorderRadius.circular(15),
-                              ),
                               child: SingleChildScrollView(
-                                padding: const EdgeInsets.symmetric(vertical: 30),
+                                padding: const EdgeInsets.only(right: 10),
                                 child: Column(
                                   children: [
-                                    ClientInfoSection(selectAll: false, controllers: _webControllers),
-                                    const SizedBox(height: 40),
-                                    FamilyTable(selectAll: false, controllers: _webControllers),
-                                    const SizedBox(height: 40),
-                                    SocioEconomicSection(selectAll: false, controllers: _webControllers),
-                                    const SizedBox(height: 40),
-                                    const SignatureSection(),
+                                    // 🔹 Sections wrapped in White Cards to match Mobile
+                                    _buildWebSectionCard(
+                                      child: ClientInfoSection(
+                                        selectAll: false, 
+                                        controllers: _webControllers,
+                                        fieldChecks: const {}, 
+                                        onCheckChanged: (key, val) {}, 
+                                      ),
+                                    ),
+                                    _buildWebSectionCard(
+                                      child: FamilyTable(selectAll: false, controllers: _webControllers),
+                                    ),
+                                    _buildWebSectionCard(
+                                      child: SocioEconomicSection(selectAll: false, controllers: _webControllers),
+                                    ),
+                                    _buildWebSectionCard(
+                                      child: const SignatureSection(),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -246,7 +239,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                   Align(
                     alignment: Alignment.bottomRight,
                     child: ElevatedButton(
-                      onPressed: _finalizeEntry, // 🔹 FIXED: Connected the logic
+                      onPressed: _finalizeEntry, 
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.buttonPurple,
                         padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 20),
@@ -262,6 +255,27 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  // 🔹 Helper to create the Mobile-like White Card style
+  Widget _buildWebSectionCard({required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(25),
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: child,
     );
   }
 
@@ -308,8 +322,6 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
               .toList(),
           onChanged: (val) async {
             setState(() => selectedForm = val!);
-            
-            // 🔹 FIX: Update session in database so Mobile knows form type changed
             if (_currentSessionId != "WAITING-FOR-SESSION") {
                await Supabase.instance.client
                   .from('form_sessions')
