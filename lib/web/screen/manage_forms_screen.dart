@@ -8,7 +8,14 @@ import 'package:sappiire/web/screen/web_login_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ManageFormsScreen extends StatefulWidget {
-  const ManageFormsScreen({super.key});
+  final String cswd_id;
+  final String role;
+
+  const ManageFormsScreen({
+    super.key,
+    required this.cswd_id,
+    required this.role,
+  });
 
   @override
   State<ManageFormsScreen> createState() => _ManageFormsScreenState();
@@ -180,7 +187,11 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       backgroundColor: const Color(0xFFF4F7FE),
       body: Row(
         children: [
-          SideMenu(activePath: "Forms", onLogout: _handleLogout),
+          SideMenu(
+            activePath: "Forms",
+            role: widget.role,
+            onLogout: _handleLogout,
+          ),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(35.0),

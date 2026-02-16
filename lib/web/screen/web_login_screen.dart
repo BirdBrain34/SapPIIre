@@ -61,10 +61,14 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
           backgroundColor: Colors.green,
         ),
       );
-      // ManageFormsScreen takes NO constructor args — keep it exactly as it was
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => const ManageFormsScreen()),
+        MaterialPageRoute(
+          builder: (context) => ManageFormsScreen(
+            cswd_id: result['cswd_id'],
+            role: result['role'] ?? 'viewer',
+          ),
+        ),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(

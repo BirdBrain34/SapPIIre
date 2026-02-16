@@ -30,8 +30,8 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
   final TextEditingController _confirmPasswordController = TextEditingController();
 
   bool _isLoading = false;
-  String _selectedRole = 'viewer';
-  final List<String> _roles = ['viewer', 'form_editor', 'admin'];
+  String _selectedRequestedRole = 'viewer';
+  final List<String> _requestedRoles = ['viewer', 'form_editor'];
   final SupabaseClient _supabase = Supabase.instance.client;
 
   String _hashPassword(String password) {
@@ -94,8 +94,10 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
             'email': _emailController.text.trim(),
             'username': _usernameController.text.trim(),
             'password_hash': _hashPassword(_passwordController.text),
-            'role': _selectedRole,
-            'is_active': true,
+            'role': 'viewer',           // always starts as viewer, never admin
+            'requested_role': _selectedRequestedRole, // what they want
+            'account_status': 'pending', // admin must approve
+            'is_active': false,          // cannot log in until approved
           })
           .select('cswd_id')
           .single();
@@ -258,9 +260,9 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: _selectedRole,
+                  value: _selectedRequestedRole,
                   decoration: InputDecoration(
-                    labelText: 'Role',
+                    labelText: 'Requested Role',
                     labelStyle: const TextStyle(color: AppColors.grey),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -271,7 +273,7 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
                       borderSide: const BorderSide(color: AppColors.grey),
                     ),
                   ),
-                  items: _roles.map((role) {
+                  items: _requestedRoles.map((role) {
                     return DropdownMenuItem<String>(
                       value: role,
                       child: Text(role),
@@ -279,7 +281,7 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
                   }).toList(),
                   onChanged: (value) {
                     if (value != null) {
-                      setState(() => _selectedRole = value);
+                      setState(() => _selectedRequestedRole = value);
                     }
                   },
                 ),
