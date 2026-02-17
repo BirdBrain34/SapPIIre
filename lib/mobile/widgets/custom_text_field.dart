@@ -5,8 +5,9 @@ class CustomTextField extends StatelessWidget {
   final String hintText;
   final bool obscureText;
   final TextEditingController? controller;
-  final Icon? prefixIcon; // Optional icon for the text field
-  final FormFieldValidator<String>? validator; // new validator field
+  final Icon? prefixIcon;
+  final FormFieldValidator<String>? validator;
+  final bool isDarkBackground; // 🔹 Added this toggle
 
   const CustomTextField({
     super.key,
@@ -15,34 +16,43 @@ class CustomTextField extends StatelessWidget {
     this.controller,
     this.prefixIcon,
     this.validator,
+    this.isDarkBackground = true, // 🔹 Default to true for Login Screen
   });
 
   @override
   Widget build(BuildContext context) {
+    // Determine colors based on the background
+    final Color contentColor = isDarkBackground ? Colors.white : AppColors.primaryBlue;
+    final Color fillColor = isDarkBackground 
+        ? Colors.white.withOpacity(0.15) 
+        : const Color.fromARGB(255, 255, 255, 255).withOpacity(0.1);
+
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.white.withOpacity(0.1), // Semi-transparent white
+        color: fillColor,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: AppColors.buttonOutlineBlue,
-          width: 2,
-        ), // Blue border
+          color: contentColor.withOpacity(0.3),
+          width: 1,
+        ),
       ),
       child: TextFormField(
         controller: controller,
         obscureText: obscureText,
         validator: validator,
-        style: const TextStyle(color: AppColors.white), // Text color
+        style: TextStyle(color: contentColor, fontSize: 14), 
         decoration: InputDecoration(
           hintText: hintText,
           hintStyle: TextStyle(
-            color: AppColors.white.withOpacity(0.6),
-          ), // Hint text color
-          prefixIcon: prefixIcon,
-          border: InputBorder.none, // Remove default border
+            color: contentColor.withOpacity(0.5),
+          ),
+          prefixIcon: prefixIcon != null 
+              ? Icon(prefixIcon!.icon, color: contentColor.withOpacity(0.7)) 
+              : null,
+          border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 15,
+            horizontal: 15,
+            vertical: 12,
           ),
         ),
       ),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:sappiire/mobile/widgets/info_input_field.dart';
+import 'package:sappiire/constants/app_colors.dart';
 
+// --- SHARED SECTION HEADER WITH CHECKBOX ---
 // --- SHARED SECTION HEADER WITH CHECKBOX ---
 class SectionHeader extends StatelessWidget {
   final String title;
@@ -16,19 +18,34 @@ class SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Text(
-            title,
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  color: AppColors.primaryBlue,
+                  fontWeight: FontWeight.bold, 
+                  fontSize: 16
+                ),
+              ),
+            ),
+            Checkbox(
+              value: isChecked,
+              onChanged: onChecked,
+              side: const BorderSide(color: AppColors.primaryBlue, width: 2),
+              activeColor: AppColors.primaryBlue,
+            ),
+          ],
         ),
-        Checkbox(
-          value: isChecked,
-          onChanged: onChecked,
-          side: const BorderSide(color: Colors.white, width: 2),
-          activeColor: const Color(0xFF4A69D4),
+        // 🔹 This is the fix: Adding a divider to separate the header from fields
+        const Divider(
+          color: Colors.black12, 
+          thickness: 1, 
+          height: 20, // This adds spacing above and below the line
         ),
       ],
     );
@@ -38,9 +55,17 @@ class SectionHeader extends StatelessWidget {
 // --- A. CLIENT'S INFORMATION SECTION ---
 class ClientInfoSection extends StatefulWidget {
   final bool selectAll;
-  final Map<String, TextEditingController>? controllers; 
+  final Map<String, TextEditingController>? controllers;
+  final Map<String, bool> fieldChecks;
+  final Function(String, bool) onCheckChanged;
 
-  const ClientInfoSection({super.key, required this.selectAll, this.controllers});
+  const ClientInfoSection({
+    super.key,
+    required this.selectAll,
+    this.controllers,
+    required this.fieldChecks,
+    required this.onCheckChanged,
+  });
 
   @override
   State<ClientInfoSection> createState() => _ClientInfoSectionState();
@@ -48,7 +73,7 @@ class ClientInfoSection extends StatefulWidget {
 
 class _ClientInfoSectionState extends State<ClientInfoSection> {
   bool _sectionChecked = false;
-  
+
   Map<String, String> membership = {
     'Solo Parent': 'Hindi',
     'PWD': 'Hindi',
@@ -64,9 +89,15 @@ class _ClientInfoSectionState extends State<ClientInfoSection> {
         SectionHeader(
           title: "A. CLIENT'S INFORMATION",
           isChecked: widget.selectAll || _sectionChecked,
-          onChecked: (v) => setState(() => _sectionChecked = v!),
+          onChecked: (v) {
+            setState(() => _sectionChecked = v!);
+            widget.fieldChecks.forEach((key, value) {
+              widget.onCheckChanged(key, v!);
+            });
+          },
         ),
         const SizedBox(height: 10),
+
         _buildField("Last Name"),
         _buildField("First Name"),
         _buildField("Middle Name"),
@@ -83,12 +114,14 @@ class _ClientInfoSectionState extends State<ClientInfoSection> {
         _buildField("Trabaho/Pinagkakakitaan"),
         _buildField("Kumpanyang Pinagtratrabuhan"),
         _buildField("Buwanang Kita (A)"),
-        
+
         const SizedBox(height: 20),
-        const Text("Ikaw ba ay miyembro ng pamilya na:", 
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+        const Text(
+          "Ikaw ba ay miyembro ng pamilya na:",
+          style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.w500),
+        ),
         const SizedBox(height: 10),
-        
+
         ...membership.keys.map((key) => _buildMembershipRow(key)).toList(),
       ],
     );
@@ -97,9 +130,11 @@ class _ClientInfoSectionState extends State<ClientInfoSection> {
   Widget _buildField(String label) {
     return InfoInputField(
       label: label,
-      controller: widget.controllers?[label], // Link to shared controller
-      isChecked: widget.selectAll || _sectionChecked,
-      onCheckboxChanged: (v) {},
+      controller: widget.controllers?[label],
+      isChecked: widget.selectAll ? true : (widget.fieldChecks[label] ?? false), 
+      onCheckboxChanged: (v) {
+        widget.onCheckChanged(label, v ?? false);
+      },
       onTextChanged: (v) {},
     );
   }
@@ -109,9 +144,16 @@ class _ClientInfoSectionState extends State<ClientInfoSection> {
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
         children: [
-          Expanded(flex: 2, child: Text(title, style: const TextStyle(color: Colors.white, fontSize: 13))),
-          Expanded(child: _miniRadio(title, "Oo")),
-          Expanded(child: _miniRadio(title, "Hindi")),
+          Expanded(
+            flex: 2,
+            child: Text(
+              title,
+              style: const TextStyle(color: Colors.black87, fontSize: 13),
+            ),
+          ),
+          // We don't wrap individual radios in Expanded so they stay grouped
+          _miniRadio(title, "Oo"),
+          _miniRadio(title, "Hindi"),
         ],
       ),
     );
@@ -125,11 +167,9 @@ class _ClientInfoSectionState extends State<ClientInfoSection> {
           value: value,
           groupValue: membership[key],
           onChanged: (v) => setState(() => membership[key] = v!),
-          fillColor: WidgetStateProperty.resolveWith<Color>((states) {
-            return states.contains(WidgetState.selected) ? Colors.white : Colors.white.withOpacity(0.8);
-          }),
+          activeColor: AppColors.primaryBlue,
         ),
-        Text(value, style: const TextStyle(color: Colors.white, fontSize: 12)),
+        Text(value, style: const TextStyle(color: Colors.black87, fontSize: 12)),
       ],
     );
   }
@@ -138,7 +178,7 @@ class _ClientInfoSectionState extends State<ClientInfoSection> {
 // --- B. FAMILY COMPOSITION TABLE ---
 class FamilyTable extends StatefulWidget {
   final bool selectAll;
-  final Map<String, TextEditingController>? controllers; // Added for handshake
+  final Map<String, TextEditingController>? controllers;
 
   const FamilyTable({super.key, required this.selectAll, this.controllers});
   @override
@@ -164,17 +204,17 @@ class _FamilyTableState extends State<FamilyTable> {
           scrollDirection: Axis.horizontal,
           child: Table(
             defaultColumnWidth: const FixedColumnWidth(130),
-            border: TableBorder.all(color: Colors.white.withOpacity(0.5)),
+            border: TableBorder.all(color: Colors.grey.withOpacity(0.3)),
             children: [
               _buildHeader(),
-              ...rows.map((_) => _buildInputRow()),
+              ...rows.map((index) => _buildInputRow(index)),
             ],
           ),
         ),
         TextButton.icon(
           onPressed: () => setState(() => rows.add(rows.length)),
-          icon: const Icon(Icons.add_circle, color: Colors.greenAccent),
-          label: const Text("Add Member", style: TextStyle(color: Colors.white)),
+          icon: const Icon(Icons.add_circle, color: Colors.green),
+          label: const Text("Add Member", style: TextStyle(color: AppColors.primaryBlue)),
         ),
       ],
     );
@@ -183,21 +223,25 @@ class _FamilyTableState extends State<FamilyTable> {
   TableRow _buildHeader() {
     final headers = ["Pangalan", "Relasyon", "Birthdate", "Edad", "Kasarian", "Sibil Status", "Edukasyon", "Trabaho", "Kita"];
     return TableRow(
-      decoration: const BoxDecoration(color: Color(0xFF0A1E5E)),
+      decoration: BoxDecoration(color: AppColors.primaryBlue.withOpacity(0.1)),
       children: headers.map((h) => Padding(
         padding: const EdgeInsets.all(8.0),
-        child: Text(h, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+        child: Text(h, style: const TextStyle(color: AppColors.primaryBlue, fontSize: 11, fontWeight: FontWeight.bold)),
       )).toList(),
     );
   }
 
-  TableRow _buildInputRow() {
+  TableRow _buildInputRow(int rowIndex) {
     return TableRow(
-      children: List.generate(9, (index) => const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 4),
+      children: List.generate(9, (index) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
         child: TextField(
-          style: TextStyle(color: Colors.white, fontSize: 12),
-          decoration: InputDecoration(border: InputBorder.none, hintText: "..."),
+          style: const TextStyle(color: Colors.black, fontSize: 12),
+          decoration: const InputDecoration(
+            border: InputBorder.none, 
+            hintText: "...",
+            hintStyle: TextStyle(color: Colors.grey)
+          ),
         ),
       )),
     );
@@ -207,12 +251,12 @@ class _FamilyTableState extends State<FamilyTable> {
 // --- C. SOCIO-ECONOMIC SECTION ---
 class SocioEconomicSection extends StatefulWidget {
   final bool selectAll;
-  final Map<String, TextEditingController>? controllers; // FIXED: Added to class
+  final Map<String, TextEditingController>? controllers;
 
   const SocioEconomicSection({
     super.key, 
     required this.selectAll, 
-    this.controllers, // FIXED: Added to constructor
+    this.controllers, 
   });
 
   @override
@@ -236,7 +280,7 @@ class _SocioEconomicSectionState extends State<SocioEconomicSection> {
           onChecked: (v) => setState(() => _sectionChecked = v!),
         ),
         const SizedBox(height: 15),
-        const Text("May ibang kaanak na sumusuporta sa pamilya?", style: TextStyle(color: Colors.white)),
+        const Text("May ibang kaanak na sumusuporta sa pamilya?", style: TextStyle(color: Colors.black87)),
         Row(
           children: [
             _radioOption("Meron"),
@@ -248,13 +292,13 @@ class _SocioEconomicSectionState extends State<SocioEconomicSection> {
           _buildSupportTable(),
           TextButton.icon(
             onPressed: () => setState(() => _supportRows.add(_supportRows.length)),
-            icon: const Icon(Icons.add_circle, color: Colors.greenAccent),
-            label: const Text("Add Support Member", style: TextStyle(color: Colors.white, fontSize: 12)),
+            icon: const Icon(Icons.add_circle, color: Colors.green),
+            label: const Text("Add Support Member", style: TextStyle(color: AppColors.primaryBlue, fontSize: 12)),
           ),
           _buildFormInput("Kabuuang Tulong/Sustento kada Buwan (C)"),
         ],
         const SizedBox(height: 20),
-        const Text("Ikaw ba ay?", style: TextStyle(color: Colors.white)),
+        const Text("Ikaw ba ay?", style: TextStyle(color: Colors.black87)),
         Wrap(
           children: [
             "Nagmamay-ari ng bahay", "Hinuhulugan pa ang bahay", "Nakikitira", 
@@ -268,7 +312,7 @@ class _SocioEconomicSectionState extends State<SocioEconomicSection> {
         _buildFormInput("Total Monthly Expense (F)"),
         _buildFormInput("Net Monthly Income (D-F)"),
         const SizedBox(height: 25),
-        const Text("Mga gastusin sa bahay:", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        const Text("Mga gastusin sa bahay:", style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
         ...["Bayad sa bahay", "Food items", "Non-food items", "Utility bills", "Baby's needs", "School needs", "Medical needs", "Transpo expense", "Loans", "Gasul"].map((e) => _buildFormInput(e)).toList(),
       ],
     );
@@ -277,11 +321,11 @@ class _SocioEconomicSectionState extends State<SocioEconomicSection> {
   Widget _radioOption(String val) {
     return Expanded(
       child: RadioListTile<String>(
-        title: Text(val, style: const TextStyle(color: Colors.white, fontSize: 14)),
+        title: Text(val, style: const TextStyle(color: Colors.black87, fontSize: 14)),
         value: val,
         groupValue: _hasSupport,
         onChanged: (v) => setState(() => _hasSupport = v),
-        fillColor: WidgetStateProperty.resolveWith<Color>((states) => states.contains(WidgetState.selected) ? Colors.white : Colors.white.withOpacity(0.8)),
+        activeColor: AppColors.primaryBlue,
         contentPadding: EdgeInsets.zero,
       ),
     );
@@ -291,11 +335,11 @@ class _SocioEconomicSectionState extends State<SocioEconomicSection> {
     return SizedBox(
       width: MediaQuery.of(context).size.width * 0.45,
       child: RadioListTile<String>(
-        title: Text(val, style: const TextStyle(color: Colors.white, fontSize: 11)),
+        title: Text(val, style: const TextStyle(color: Colors.black87, fontSize: 11)),
         value: val,
         groupValue: _housingStatus,
         onChanged: (v) => setState(() => _housingStatus = v),
-        fillColor: WidgetStateProperty.resolveWith<Color>((states) => states.contains(WidgetState.selected) ? Colors.white : Colors.white.withOpacity(0.8)),
+        activeColor: AppColors.primaryBlue,
         contentPadding: EdgeInsets.zero,
       ),
     );
@@ -303,20 +347,20 @@ class _SocioEconomicSectionState extends State<SocioEconomicSection> {
 
   Widget _buildSupportTable() {
     return Table(
-      border: TableBorder.all(color: Colors.white.withOpacity(0.5)),
+      border: TableBorder.all(color: Colors.grey.withOpacity(0.3)),
       children: [
-        const TableRow(
-          decoration: BoxDecoration(color: Color(0xFF0A1E5E)),
-          children: [
-            Padding(padding: EdgeInsets.all(8), child: Text("Pangalan", style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))),
-            Padding(padding: EdgeInsets.all(8), child: Text("Relasyon", style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))),
-            Padding(padding: EdgeInsets.all(8), child: Text("Sustento", style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))),
+        TableRow(
+          decoration: BoxDecoration(color: AppColors.primaryBlue.withOpacity(0.1)),
+          children: const [
+            Padding(padding: EdgeInsets.all(8), child: Text("Pangalan", style: TextStyle(color: AppColors.primaryBlue, fontSize: 10, fontWeight: FontWeight.bold))),
+            Padding(padding: EdgeInsets.all(8), child: Text("Relasyon", style: TextStyle(color: AppColors.primaryBlue, fontSize: 10, fontWeight: FontWeight.bold))),
+            Padding(padding: EdgeInsets.all(8), child: Text("Sustento", style: TextStyle(color: AppColors.primaryBlue, fontSize: 10, fontWeight: FontWeight.bold))),
           ],
         ),
         ..._supportRows.map((_) => TableRow(
           children: List.generate(3, (i) => const Padding(
             padding: EdgeInsets.symmetric(horizontal: 4),
-            child: TextField(style: TextStyle(color: Colors.white, fontSize: 12), decoration: InputDecoration(border: InputBorder.none, hintText: "...")),
+            child: TextField(style: TextStyle(color: Colors.black, fontSize: 12), decoration: InputDecoration(border: InputBorder.none, hintText: "...")),
           )),
         )),
       ],
@@ -327,13 +371,13 @@ class _SocioEconomicSectionState extends State<SocioEconomicSection> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: TextField(
-        controller: widget.controllers?[label], // FIXED: Using the controller
-        style: const TextStyle(color: Colors.white, fontSize: 13),
+        controller: widget.controllers?[label], 
+        style: const TextStyle(color: Colors.black, fontSize: 13),
         decoration: InputDecoration(
           labelText: label,
-          labelStyle: const TextStyle(color: Colors.white70, fontSize: 12),
-          enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white38)),
-          focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white)),
+          labelStyle: const TextStyle(color: Colors.black54, fontSize: 12),
+          enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.black26)),
+          focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AppColors.primaryBlue)),
         ),
       ),
     );
@@ -342,7 +386,7 @@ class _SocioEconomicSectionState extends State<SocioEconomicSection> {
 
 // --- SIGNATURE SECTION ---
 class SignatureSection extends StatelessWidget {
-  final Map<String, TextEditingController>? controllers; // Added
+  final Map<String, TextEditingController>? controllers; 
   const SignatureSection({super.key, this.controllers});
 
   @override
@@ -350,20 +394,26 @@ class SignatureSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text("Signature", style: TextStyle(color: Colors.white)),
+        const Text("Signature", style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
         const SizedBox(height: 10),
         GestureDetector(
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SignatureDialog())),
           child: Container(
             height: 120, width: double.infinity,
-            decoration: BoxDecoration(border: Border.all(color: Colors.white), borderRadius: BorderRadius.circular(8), color: Colors.white.withOpacity(0.05)),
-            child: const Center(child: Text("Tap to provide digital signature", style: TextStyle(color: Colors.white54, fontSize: 12))),
+            decoration: BoxDecoration(
+              border: Border.all(color: AppColors.primaryBlue.withOpacity(0.5)), 
+              borderRadius: BorderRadius.circular(8), 
+              color: Colors.grey.withOpacity(0.05)
+            ),
+            child: const Center(child: Text("Tap to provide digital signature", style: TextStyle(color: Colors.black54, fontSize: 12))),
           ),
         ),
       ],
     );
   }
 }
+
+// ... (SignatureDialog and SignaturePainter remain the same as they use Scaffold background)
 class SignatureDialog extends StatefulWidget {
   const SignatureDialog({super.key});
   @override State<SignatureDialog> createState() => _SignatureDialogState();
@@ -376,10 +426,10 @@ class _SignatureDialogState extends State<SignatureDialog> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0A1E5E), title: const Text("Digital Signature"),
+        backgroundColor: AppColors.primaryBlue, title: const Text("Digital Signature", style: TextStyle(color: Colors.white)),
         actions: [
-          IconButton(icon: const Icon(Icons.undo), onPressed: () => setState(() => points.clear())),
-          IconButton(icon: const Icon(Icons.check), onPressed: () => Navigator.pop(context)),
+          IconButton(icon: const Icon(Icons.undo, color: Colors.white), onPressed: () => setState(() => points.clear())),
+          IconButton(icon: const Icon(Icons.check, color: Colors.white), onPressed: () => Navigator.pop(context)),
         ],
       ),
       body: GestureDetector(
