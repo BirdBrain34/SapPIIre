@@ -128,13 +128,13 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         "Trabaho/Pinagkakakitaan": "occupation", "Kumpanyang Pinagtratrabuhan": "workplace"
       };
 
-      // Only add fields that are checked
+      // Save all fields that have content
       profileMap.forEach((label, column) {
-        if (_fieldChecks[label] == true) profileUpdate[column] = _controllers[label]?.text.trim();
+        final value = _controllers[label]?.text.trim() ?? '';
+        if (value.isNotEmpty) profileUpdate[column] = value;
       });
 
       // --- SAVE PROFILE ---
-      // Requirement: user_id must be UNIQUE in Supabase for this upsert to work
       final profileRes = await supabase
           .from('user_profiles')
           .upsert(profileUpdate, onConflict: 'user_id')
@@ -152,19 +152,16 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
       bool saveAddress = false;
       addressMap.forEach((label, column) {
-        if (_fieldChecks[label] == true) {
-          addressUpdate[column] = _controllers[label]?.text.trim();
+        final value = _controllers[label]?.text.trim() ?? '';
+        if (value.isNotEmpty) {
+          addressUpdate[column] = value;
           saveAddress = true;
         }
       });
 
       if (saveAddress) {
-        // Requirement: profile_id must be UNIQUE in user_addresses table
         await supabase.from('user_addresses').upsert(addressUpdate, onConflict: 'profile_id');
       }
-
-      // --- NOTE: Family & Socio-Economic saving is temporarily disabled ---
-      // We will re-enable this once Profile & Address saving is 100% stable.
 
       if (mounted) {
         setState(() { _isEdited = false; _isSaving = false; });
@@ -176,7 +173,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       debugPrint("FULL DB ERROR: $e");
 
       String msg = e.toString();
-      // Simplify error messages for the UI
       if (msg.contains("unique constraint")) {
         msg = "Database Error: Duplicate entry conflict. Check 'user_id' uniqueness.";
       } else if (msg.contains("value too long")) {
