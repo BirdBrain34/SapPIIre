@@ -170,6 +170,14 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
         title: const Text('Staff Registration'),
         backgroundColor: AppColors.primaryBlue,
         elevation: 0,
+        titleTextStyle: const TextStyle(
+          color:AppColors.white,
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
+        ),
+        iconTheme: const IconThemeData(
+          color: AppColors.white,
+        )
       ),
       body: Center(
         child: SingleChildScrollView(
