@@ -84,6 +84,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
           SideMenu(
             activePath: "Staff",
             role: 'admin',
+            cswd_id: 'admin',
             onLogout: () => Navigator.pop(context),
           ),
           Expanded(

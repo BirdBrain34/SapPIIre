@@ -177,6 +177,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           SideMenu(
             activePath: "Forms",
             role: widget.role,
+            cswd_id: widget.cswd_id,
             onLogout: _handleLogout,
           ),
           Expanded(
