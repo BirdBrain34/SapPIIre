@@ -61,10 +61,14 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
           backgroundColor: Colors.green,
         ),
       );
-      // ManageFormsScreen takes NO constructor args — keep it exactly as it was
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => const ManageFormsScreen()),
+        MaterialPageRoute(
+          builder: (context) => ManageFormsScreen(
+            cswd_id: result['cswd_id'],
+            role: result['role'] ?? 'viewer',
+          ),
+        ),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -100,17 +104,7 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
                 height: 200,
                 fit: BoxFit.contain,
               ),
-              const SizedBox(height: 10),
-              const Text(
-                'WORKER PORTAL',
-                style: TextStyle(
-                  color: AppColors.white,
-                  fontSize: 18,
-                  letterSpacing: 4,
-                  fontWeight: FontWeight.w300,
-                ),
-              ),
-              const SizedBox(height: 40),
+              
 
               // Login Card
               Container(
