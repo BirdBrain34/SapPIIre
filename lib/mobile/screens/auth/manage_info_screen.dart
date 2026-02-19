@@ -30,6 +30,15 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
   final Map<String, TextEditingController> _controllers = {};
   final Map<String, bool> _fieldChecks = {};
+  final Map<String, bool> _membershipData = {
+    'solo_parent': false,
+    'pwd': false,
+    'four_ps_member': false,
+    'phic_member': false,
+  };
+  bool _hasSupport = false;
+  String? _housingStatus;
+  List<Map<String, dynamic>> _supportingFamily = [];
 
   // All labels for UI Sections
   final List<String> _allLabels = [
@@ -37,12 +46,28 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     "Last Name", "First Name", "Middle Name", "Kasarian", "Estadong Sibil", 
     "Relihiyon", "CP Number", "Email Address", "Natapos o naabot sa pag-aaral", 
     "Lugar ng Kapanganakan", "Trabaho/Pinagkakakitaan", "Kumpanyang Pinagtratrabuhan",
+    "Buwanang Kita (A)",
     
     // Address
     "House number, street name, phase/purok", "Subdivision", "Barangay",
 
-    // Socio-Economic (Kept for UI, but not saving yet)
-    "Household Size", "Monthly Expenses", "Net Monthly Income", "Gross Family Income"
+    // Socio-Economic
+    "Kabuuang Tulong/Sustento kada Buwan (C)",
+    "Total Gross Family Income (A+B+C)=(D)",
+    "Household Size (E)",
+    "Monthly Per Capita Income (D/E)",
+    "Total Monthly Expense (F)",
+    "Net Monthly Income (D-F)",
+    "Bayad sa bahay",
+    "Food items",
+    "Non-food items",
+    "Utility bills",
+    "Baby's needs",
+    "School needs",
+    "Medical needs",
+    "Transpo expense",
+    "Loans",
+    "Gasul"
   ];
 
   @override
@@ -66,10 +91,10 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
   Future<void> _loadUserProfile(String userId) async {
     try {
-      // We only strictly need profile + address for now
+      // Load profile + address + socio_economic_data
       final response = await Supabase.instance.client
           .from('user_profiles')
-          .select('*, user_addresses(*)') 
+          .select('*, user_addresses(*), socio_economic_data(*)') 
           .eq('user_id', userId)
           .maybeSingle();
 
@@ -88,14 +113,49 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           _controllers["Lugar ng Kapanganakan"]?.text = response['birthplace'] ?? '';
           _controllers["Trabaho/Pinagkakakitaan"]?.text = response['occupation'] ?? '';
           _controllers["Kumpanyang Pinagtratrabuhan"]?.text = response['workplace'] ?? '';
+          _controllers["Buwanang Kita (A)"]?.text = response['monthly_allowance']?.toString() ?? '';
+
+          // --- Load Membership Data ---
+          _membershipData['solo_parent'] = response['solo_parent'] ?? false;
+          _membershipData['pwd'] = response['pwd'] ?? false;
+          _membershipData['four_ps_member'] = response['four_ps_member'] ?? false;
+          _membershipData['phic_member'] = response['phic_member'] ?? false;
 
           // --- Load Address ---
-          final addrList = response['user_addresses'] as List?;
-          if (addrList != null && addrList.isNotEmpty) {
-            final addr = addrList[0];
-            _controllers["House number, street name, phase/purok"]?.text = addr['house_number'] ?? '';
-            _controllers["Subdivision"]?.text = addr['subdivision'] ?? '';
-            _controllers["Barangay"]?.text = addr['barangay'] ?? '';
+          final addrData = response['user_addresses'];
+          if (addrData != null && addrData is Map) {
+            _controllers["House number, street name, phase/purok"]?.text = addrData['house_number'] ?? '';
+            _controllers["Subdivision"]?.text = addrData['subdivision'] ?? '';
+            _controllers["Barangay"]?.text = addrData['barangay'] ?? '';
+          }
+
+          // --- Load Socio-Economic Data ---
+          final socioData = response['socio_economic_data'];
+          if (socioData != null && socioData is Map) {
+            _hasSupport = socioData['has_support'] ?? false;
+            _housingStatus = socioData['housing_status'];
+            
+            _controllers["Total Gross Family Income (A+B+C)=(D)"]?.text = socioData['gross_family_income']?.toString() ?? '';
+            _controllers["Household Size (E)"]?.text = socioData['household_size']?.toString() ?? '';
+            _controllers["Monthly Per Capita Income (D/E)"]?.text = socioData['monthly_per_capita']?.toString() ?? '';
+            _controllers["Total Monthly Expense (F)"]?.text = socioData['monthly_expenses']?.toString() ?? '';
+            _controllers["Net Monthly Income (D-F)"]?.text = socioData['net_monthly_income']?.toString() ?? '';
+            _controllers["Bayad sa bahay"]?.text = socioData['house_rent']?.toString() ?? '';
+            _controllers["Food items"]?.text = socioData['food_items']?.toString() ?? '';
+            _controllers["Non-food items"]?.text = socioData['non_food_items']?.toString() ?? '';
+            _controllers["Utility bills"]?.text = socioData['utility_bills']?.toString() ?? '';
+            _controllers["Baby's needs"]?.text = socioData['baby_needs']?.toString() ?? '';
+            _controllers["School needs"]?.text = socioData['school_needs']?.toString() ?? '';
+            _controllers["Medical needs"]?.text = socioData['medical_needs']?.toString() ?? '';
+            _controllers["Transpo expense"]?.text = socioData['transport_expenses']?.toString() ?? '';
+            _controllers["Loans"]?.text = socioData['loans']?.toString() ?? '';
+            _controllers["Gasul"]?.text = socioData['gas']?.toString() ?? '';
+            
+            // Load supporting family
+            final socioEconomicId = socioData['socio_economic_id'];
+            if (socioEconomicId != null) {
+              _loadSupportingFamily(socioEconomicId);
+            }
           }
           
           _isEdited = false; 
@@ -103,6 +163,29 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       }
     } catch (e) {
       debugPrint('Load Error: $e');
+    }
+  }
+
+  Future<void> _loadSupportingFamily(String socioEconomicId) async {
+    try {
+      final response = await Supabase.instance.client
+          .from('supporting_family')
+          .select()
+          .eq('socio_economic_id', socioEconomicId)
+          .order('sort_order');
+      
+      if (mounted) {
+        setState(() {
+          _supportingFamily = List<Map<String, dynamic>>.from(response);
+          // Load monthly alimony from first record if exists
+          if (_supportingFamily.isNotEmpty && _supportingFamily[0]['monthly_alimony'] != null) {
+            _controllers["Kabuuang Tulong/Sustento kada Buwan (C)"]?.text = 
+              _supportingFamily[0]['monthly_alimony'].toString();
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Load Supporting Family Error: $e');
     }
   }
 
@@ -125,7 +208,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         "Kasarian": "gender", "Estadong Sibil": "civil_status", "Relihiyon": "religion",
         "CP Number": "cellphone_number", "Email Address": "email",
         "Natapos o naabot sa pag-aaral": "education", "Lugar ng Kapanganakan": "birthplace",
-        "Trabaho/Pinagkakakitaan": "occupation", "Kumpanyang Pinagtratrabuhan": "workplace"
+        "Trabaho/Pinagkakakitaan": "occupation", "Kumpanyang Pinagtratrabuhan": "workplace",
+        "Buwanang Kita (A)": "monthly_allowance"
       };
 
       // Save all fields that have content
@@ -133,6 +217,12 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         final value = _controllers[label]?.text.trim() ?? '';
         if (value.isNotEmpty) profileUpdate[column] = value;
       });
+
+      // Save membership data
+      profileUpdate['solo_parent'] = _membershipData['solo_parent'];
+      profileUpdate['pwd'] = _membershipData['pwd'];
+      profileUpdate['four_ps_member'] = _membershipData['four_ps_member'];
+      profileUpdate['phic_member'] = _membershipData['phic_member'];
 
       // --- SAVE PROFILE ---
       final profileRes = await supabase
@@ -161,6 +251,70 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
       if (saveAddress) {
         await supabase.from('user_addresses').upsert(addressUpdate, onConflict: 'profile_id');
+      }
+
+      // --- 3. PREPARE SOCIO-ECONOMIC DATA ---
+      final Map<String, dynamic> socioUpdate = {
+        'profile_id': profileId,
+        'has_support': _hasSupport,
+        'housing_status': _housingStatus,
+      };
+
+      final socioMap = {
+        "Total Gross Family Income (A+B+C)=(D)": "gross_family_income",
+        "Household Size (E)": "household_size",
+        "Monthly Per Capita Income (D/E)": "monthly_per_capita",
+        "Total Monthly Expense (F)": "monthly_expenses",
+        "Net Monthly Income (D-F)": "net_monthly_income",
+        "Bayad sa bahay": "house_rent",
+        "Food items": "food_items",
+        "Non-food items": "non_food_items",
+        "Utility bills": "utility_bills",
+        "Baby's needs": "baby_needs",
+        "School needs": "school_needs",
+        "Medical needs": "medical_needs",
+        "Transpo expense": "transport_expenses",
+        "Loans": "loans",
+        "Gasul": "gas"
+      };
+
+      socioMap.forEach((label, column) {
+        final value = _controllers[label]?.text.trim() ?? '';
+        if (value.isNotEmpty) {
+          if (column == 'household_size') {
+            socioUpdate[column] = int.tryParse(value) ?? 1;
+          } else {
+            socioUpdate[column] = double.tryParse(value) ?? 0;
+          }
+        }
+      });
+
+      final socioRes = await supabase.from('socio_economic_data').upsert(socioUpdate, onConflict: 'profile_id').select('socio_economic_id').single();
+      final String socioEconomicId = socioRes['socio_economic_id'];
+
+      // --- 4. SAVE SUPPORTING FAMILY ---
+      if (_hasSupport) {
+        final currentData = _supportingFamily.isNotEmpty ? _supportingFamily : [];
+        final monthlyAlimony = double.tryParse(_controllers["Kabuuang Tulong/Sustento kada Buwan (C)"]?.text.trim() ?? '') ?? 0;
+        
+        if (currentData.isNotEmpty) {
+          await supabase.from('supporting_family').delete().eq('socio_economic_id', socioEconomicId);
+          
+          final supportList = currentData.asMap().entries.map((entry) {
+            return {
+              'socio_economic_id': socioEconomicId,
+              'name': entry.value['name'],
+              'relationship': entry.value['relationship'],
+              'regular_sustento': entry.value['regular_sustento'],
+              'monthly_alimony': monthlyAlimony,
+              'sort_order': entry.key,
+            };
+          }).where((item) => item['name'].toString().isNotEmpty).toList();
+          
+          if (supportList.isNotEmpty) {
+            await supabase.from('supporting_family').insert(supportList);
+          }
+        }
       }
 
       if (mounted) {
@@ -240,8 +394,13 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                     selectAll: _selectAll,
                     controllers: _controllers,
                     fieldChecks: _fieldChecks,
+                    membershipData: _membershipData,
                     onCheckChanged: (key, val) => setState(() {
                       _fieldChecks[key] = val;
+                      _isEdited = true;
+                    }),
+                    onMembershipChanged: (key, val) => setState(() {
+                      _membershipData[key] = val;
                       _isEdited = true;
                     }),
                   )),
@@ -249,10 +408,30 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                   // KEEPING UI VISIBLE - But data won't save yet
                   _buildSectionCard(child: FamilyTable(selectAll: _selectAll, controllers: _controllers)),
                   
-                  // KEEPING UI VISIBLE - But data won't save yet
                   _buildSectionCard(child: SocioEconomicSection(
                     selectAll: _selectAll, 
                     controllers: _controllers,
+                    hasSupport: _hasSupport,
+                    housingStatus: _housingStatus,
+                    supportingFamily: _supportingFamily,
+                    onHasSupportChanged: (val) => setState(() {
+                      _hasSupport = val;
+                      if (!val) _supportingFamily.clear();
+                      _isEdited = true;
+                    }),
+                    onHousingStatusChanged: (val) => setState(() {
+                      _housingStatus = val;
+                      _isEdited = true;
+                    }),
+                    onSupportingFamilyChanged: (list) {
+                      if (mounted) {
+                        setState(() {
+                          _supportingFamily = list;
+                          _isEdited = true;
+                        });
+                      }
+                    },
+                    onAddMember: () => setState(() => _isEdited = true),
                   )),
                   
                   _buildSectionCard(child: SignatureSection(controllers: _controllers)),
