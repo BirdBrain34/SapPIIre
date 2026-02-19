@@ -9,11 +9,22 @@ import 'package:sappiire/resources/static_form_input.dart';
 import 'package:sappiire/mobile/screens/auth/qr_scanner_screen.dart';
 import 'package:sappiire/mobile/screens/auth/login_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:sappiire/mobile/widgets/InfoScannerButton.dart';
+import 'package:sappiire/mobile/screens/auth/InfoScannerScreen.dart';
+import 'package:sappiire/models/id_information.dart';
+
+
+
 
 class ManageInfoScreen extends StatefulWidget {
   final String? userId;
+  final IdInformation? initialData; // ✅ Added support for scanner data
 
-  const ManageInfoScreen({super.key, this.userId});
+  const ManageInfoScreen({
+    super.key,
+    this.userId,
+    this.initialData,
+  });
 
   @override
   State<ManageInfoScreen> createState() => _ManageInfoScreenState();
@@ -22,7 +33,7 @@ class ManageInfoScreen extends StatefulWidget {
 class _ManageInfoScreenState extends State<ManageInfoScreen> {
   int _currentIndex = 0;
   bool _selectAll = false;
-  bool _isEdited = false; // Tracks if user has changed anything
+  bool _isEdited = false;
   String _selectedForm = "General Intake Sheet";
   String? _activeSessionId;
   Timer? _debounce;
@@ -54,9 +65,17 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
     for (final label in _allLabels) {
       _controllers[label] = TextEditingController();
-      // Listen for changes to show the Save Button
       _controllers[label]!.addListener(_handleTextChange);
       _fieldChecks[label] = false;
+    }
+
+    // ✅ Autofill from Scanner if available
+    if (widget.initialData != null) {
+      _controllers["Last Name"]?.text = widget.initialData!.lastName;
+      _controllers["First Name"]?.text = widget.initialData!.firstName;
+      _controllers["Middle Name"]?.text = widget.initialData!.middleName;
+      _controllers["House number, street name, phase/purok"]?.text =
+          widget.initialData!.address;
     }
 
     if (widget.userId != null) {
@@ -64,15 +83,15 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     }
   }
 
-  // Detects typing and triggers the Save Button appearance
   void _handleTextChange() {
     if (!_isEdited) {
       setState(() => _isEdited = true);
     }
-    
-    // Original sync logic
+
     if (_activeSessionId == null) return;
+
     if (_debounce?.isActive ?? false) _debounce!.cancel();
+
     _debounce = Timer(const Duration(milliseconds: 500), () {
       if (_activeSessionId != null) {
         syncDataToWeb(_activeSessionId!);
@@ -94,9 +113,9 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           _controllers["Middle Name"]?.text = response['middle_name'] ?? '';
           _controllers["Last Name"]?.text = response['lastname'] ?? '';
           _controllers["Email Address"]?.text = response['email'] ?? '';
-          _controllers["CP Number"]?.text = response['cellphone_number'] ?? '';
-          // Reset edited state after initial load
-          _isEdited = false; 
+          _controllers["CP Number"]?.text =
+              response['cellphone_number'] ?? '';
+          _isEdited = false;
         });
       }
     } catch (e) {
@@ -153,7 +172,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         ),
         title: const Text(
           "Manage Information",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style:
+              TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
       body: Stack(
@@ -165,8 +185,12 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                 padding: const EdgeInsets.all(16),
                 child: FormDropdown(
                   selectedForm: _selectedForm,
-                  items: const ["General Intake Sheet", "Senior Citizen ID"],
-                  onChanged: (val) => setState(() => _selectedForm = val!),
+                  items: const [
+                    "General Intake Sheet",
+                    "Senior Citizen ID"
+                  ],
+                  onChanged: (val) =>
+                      setState(() => _selectedForm = val!),
                 ),
               ),
               Expanded(
@@ -204,46 +228,71 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                           controllers: _controllers,
                         ),
                       ),
-                      const SizedBox(height: 100), // Space for floating buttons
+                      const SizedBox(height: 100),
                     ],
                   ),
                 ),
               ),
             ],
           ),
-          
-          // 🔹 FLOATING BUTTON LAYER
+
+          /// 🔹 UPDATED FLOATING BUTTON LAYOUT
           Positioned(
             bottom: 25,
+            left: 16,
             right: 16,
-            child: Column(
+            child: Row(
+              mainAxisAlignment:
+                  MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
               children: [
-                if (_isEdited) ...[
-                  SaveButton(
-                    onTap: () {
-                      // No function for now as requested
-                      setState(() => _isEdited = false);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Changes recognized (Functionality pending)"),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                SelectAllButton(
-                  isSelected: _selectAll,
-                  onChanged: (v) {
-                    setState(() {
-                      _selectAll = v ?? false;
-                      _fieldChecks.updateAll((key, value) => _selectAll);
-                      _isEdited = true; 
-                    });
+                InfoScannerButton(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const InfoScannerScreen(),
+                      ),
+                    );
                   },
+                ),
+                Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_isEdited) ...[
+                      SaveButton(
+                        onTap: () {
+                          setState(() =>
+                              _isEdited = false);
+                          ScaffoldMessenger.of(context)
+                              .showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                  "Changes recognized (Functionality pending)"),
+                              backgroundColor:
+                                  Colors.green,
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    SelectAllButton(
+                      isSelected: _selectAll,
+                      onChanged: (v) {
+                        setState(() {
+                          _selectAll = v ?? false;
+                          _fieldChecks.updateAll(
+                              (key, value) =>
+                                  _selectAll);
+                          _isEdited = true;
+                        });
+                      },
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -254,17 +303,22 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         currentIndex: _currentIndex,
         onTap: (index) async {
           if (index == 1) {
-            final String? sessionId = await Navigator.push<String>(
+            final String? sessionId =
+                await Navigator.push<String>(
               context,
-              MaterialPageRoute(builder: (_) => const QrScannerScreen()),
+              MaterialPageRoute(
+                  builder: (_) =>
+                      const QrScannerScreen()),
             );
 
             if (sessionId != null) {
-              setState(() => _activeSessionId = sessionId);
+              setState(
+                  () => _activeSessionId = sessionId);
               await syncDataToWeb(sessionId);
             }
           } else {
-            setState(() => _currentIndex = index);
+            setState(() =>
+                _currentIndex = index);
           }
         },
       ),
@@ -275,15 +329,19 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
-      margin: const EdgeInsets.only(bottom: 20),
+      margin:
+          const EdgeInsets.only(bottom: 20),
       decoration: BoxDecoration(
         color: AppColors.cardWhite,
-        borderRadius: BorderRadius.circular(15),
+        borderRadius:
+            BorderRadius.circular(15),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color:
+                Colors.black.withOpacity(0.05),
             blurRadius: 10,
-            offset: const Offset(0, 4),
+            offset:
+                const Offset(0, 4),
           ),
         ],
       ),
