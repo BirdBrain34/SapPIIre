@@ -104,17 +104,7 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
                 height: 200,
                 fit: BoxFit.contain,
               ),
-              const SizedBox(height: 10),
-              const Text(
-                'WORKER PORTAL',
-                style: TextStyle(
-                  color: AppColors.white,
-                  fontSize: 18,
-                  letterSpacing: 4,
-                  fontWeight: FontWeight.w300,
-                ),
-              ),
-              const SizedBox(height: 40),
+              
 
               // Login Card
               Container(
