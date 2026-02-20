@@ -8,6 +8,8 @@ import 'package:sappiire/mobile/widgets/custom_text_field.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/services/web_auth_service.dart';
 import 'package:sappiire/web/screen/web_signup_screen.dart';
+import 'package:sappiire/web/screen/dashboard_screen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class WorkerLoginScreen extends StatefulWidget {
   const WorkerLoginScreen({super.key});
@@ -61,10 +63,15 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
           backgroundColor: Colors.green,
         ),
       );
-      // ManageFormsScreen takes NO constructor args — keep it exactly as it was
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => const ManageFormsScreen()),
+        MaterialPageRoute(
+          builder: (context) => DashboardScreen(
+            cswd_id: result['cswd_id'],
+            role: result['role'] ?? 'viewer',
+            onLogout: _handleLogout,
+          ),
+        ),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -100,17 +107,7 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
                 height: 200,
                 fit: BoxFit.contain,
               ),
-              const SizedBox(height: 10),
-              const Text(
-                'WORKER PORTAL',
-                style: TextStyle(
-                  color: AppColors.white,
-                  fontSize: 18,
-                  letterSpacing: 4,
-                  fontWeight: FontWeight.w300,
-                ),
-              ),
-              const SizedBox(height: 40),
+              
 
               // Login Card
               Container(
@@ -234,5 +231,15 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
         ),
       ),
     );
+  }
+
+  void _handleLogout() async {
+    await Supabase.instance.client.auth.signOut();
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const WorkerLoginScreen()),
+      );
+    }
   }
 }
