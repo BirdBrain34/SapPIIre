@@ -8,6 +8,8 @@ import 'package:sappiire/mobile/widgets/custom_text_field.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/services/web_auth_service.dart';
 import 'package:sappiire/web/screen/web_signup_screen.dart';
+import 'package:sappiire/web/screen/dashboard_screen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class WorkerLoginScreen extends StatefulWidget {
   const WorkerLoginScreen({super.key});
@@ -64,9 +66,10 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => ManageFormsScreen(
+          builder: (context) => DashboardScreen(
             cswd_id: result['cswd_id'],
             role: result['role'] ?? 'viewer',
+            onLogout: _handleLogout,
           ),
         ),
       );
@@ -228,5 +231,15 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
         ),
       ),
     );
+  }
+
+  void _handleLogout() async {
+    await Supabase.instance.client.auth.signOut();
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const WorkerLoginScreen()),
+      );
+    }
   }
 }

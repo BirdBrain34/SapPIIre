@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
+import 'package:sappiire/web/screen/dashboard_screen.dart';
 import 'logout_confirmation_dialog.dart';
 
 class SideMenu extends StatelessWidget {
@@ -28,7 +29,7 @@ class SideMenu extends StatelessWidget {
           const SizedBox(height: 50),
           Image.asset('lib/Logo/sappiire_logo.png', height: 120),
           const SizedBox(height: 40),
-          _menuItem(context, Icons.dashboard, "Dashboard", activePath == "Dashboard"),
+          _menuItem(context, Icons.dashboard, "Dashboard", activePath == "Dashboard", "Dashboard"),
           _menuItem(context, Icons.description, "Manage Forms", activePath == "Forms", "Forms"),
           _menuItem(context, Icons.people, "Applicants", activePath == "Applicants"),
           if (role == 'admin')
@@ -72,7 +73,18 @@ class SideMenu extends StatelessWidget {
           ),
         ),
         onTap: () {
-          if (route == "Manage Forms" || route == "Forms") {
+          if (route == "Dashboard") {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => DashboardScreen(
+                  cswd_id: cswd_id,
+                  role: role,
+                  onLogout: () {},
+                ),
+              ),
+            );
+          } else if (route == "Forms") {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
