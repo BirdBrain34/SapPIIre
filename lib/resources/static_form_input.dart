@@ -195,9 +195,38 @@ class FamilyTable extends StatefulWidget {
   State<FamilyTable> createState() => _FamilyTableState();
 }
 
+class _FamilyMemberData {
+  TextEditingController nameController = TextEditingController();
+  TextEditingController relationController = TextEditingController();
+  TextEditingController birthdateController = TextEditingController();
+  TextEditingController ageController = TextEditingController();
+  String? gender;
+  String? civilStatus;
+  String? education;
+  TextEditingController occupationController = TextEditingController();
+  TextEditingController incomeController = TextEditingController();
+
+  void dispose() {
+    nameController.dispose();
+    relationController.dispose();
+    birthdateController.dispose();
+    ageController.dispose();
+    occupationController.dispose();
+    incomeController.dispose();
+  }
+}
+
 class _FamilyTableState extends State<FamilyTable> {
-  List<int> rows = [0];
+  List<_FamilyMemberData> _members = [_FamilyMemberData()];
   bool _sectionChecked = false;
+
+  @override
+  void dispose() {
+    for (var member in _members) {
+      member.dispose();
+    }
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -210,19 +239,9 @@ class _FamilyTableState extends State<FamilyTable> {
           onChecked: (v) => setState(() => _sectionChecked = v!),
         ),
         const SizedBox(height: 10),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Table(
-            defaultColumnWidth: const FixedColumnWidth(130),
-            border: TableBorder.all(color: Colors.grey.withOpacity(0.3)),
-            children: [
-              _buildHeader(),
-              ...rows.map((index) => _buildInputRow(index)),
-            ],
-          ),
-        ),
+        ..._members.asMap().entries.map((entry) => _buildMemberCard(entry.key)),
         TextButton.icon(
-          onPressed: () => setState(() => rows.add(rows.length)),
+          onPressed: () => setState(() => _members.add(_FamilyMemberData())),
           icon: const Icon(Icons.add_circle, color: Colors.green),
           label: const Text("Add Member", style: TextStyle(color: AppColors.primaryBlue)),
         ),
@@ -230,30 +249,122 @@ class _FamilyTableState extends State<FamilyTable> {
     );
   }
 
-  TableRow _buildHeader() {
-    final headers = ["Pangalan", "Relasyon", "Birthdate", "Edad", "Kasarian", "Sibil Status", "Edukasyon", "Trabaho", "Kita"];
-    return TableRow(
-      decoration: BoxDecoration(color: AppColors.primaryBlue.withOpacity(0.1)),
-      children: headers.map((h) => Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: Text(h, style: const TextStyle(color: AppColors.primaryBlue, fontSize: 11, fontWeight: FontWeight.bold)),
-      )).toList(),
+  Widget _buildMemberCard(int index) {
+    final member = _members[index];
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text("Member ${index + 1}", style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryBlue)),
+                ),
+                if (_members.length > 1)
+                  IconButton(
+                    icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                    onPressed: () => setState(() {
+                      _members[index].dispose();
+                      _members.removeAt(index);
+                    }),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            _buildTextField("Pangalan", member.nameController),
+            _buildTextField("Relasyon", member.relationController),
+            _buildDateField("Birthdate", member.birthdateController, index),
+            _buildTextField("Edad", member.ageController, readOnly: true),
+            _buildRadioGroup("Kasarian", ["M - Lalaki", "F - Babae"], member.gender, (v) => setState(() => member.gender = v)),
+            _buildRadioGroup("Sibil Status", ["M - Kasal", "S - Single", "W - Balo", "H - Hiwalay", "C - Minor"], member.civilStatus, (v) => setState(() => member.civilStatus = v)),
+            _buildRadioGroup("Edukasyon", ["UG - Undergrad", "G - Graduated", "HS - HS Grad", "OS - Hindi nag-aral", "NS - Walang Aral"], member.education, (v) => setState(() => member.education = v)),
+            _buildTextField("Trabaho", member.occupationController),
+            _buildTextField("Kita", member.incomeController, keyboardType: TextInputType.number),
+          ],
+        ),
+      ),
     );
   }
 
-  TableRow _buildInputRow(int rowIndex) {
-    return TableRow(
-      children: List.generate(9, (index) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: TextField(
-          style: const TextStyle(color: Colors.black, fontSize: 12),
-          decoration: const InputDecoration(
-            border: InputBorder.none, 
-            hintText: "...",
-            hintStyle: TextStyle(color: Colors.grey)
-          ),
+  Widget _buildTextField(String label, TextEditingController controller, {bool readOnly = false, TextInputType? keyboardType}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: TextField(
+        controller: controller,
+        readOnly: readOnly,
+        keyboardType: keyboardType,
+        style: const TextStyle(color: Colors.black, fontSize: 13),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(color: Colors.black54, fontSize: 12),
+          enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.black26)),
+          focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AppColors.primaryBlue)),
         ),
-      )),
+      ),
+    );
+  }
+
+  Widget _buildDateField(String label, TextEditingController controller, int memberIndex) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: TextField(
+        controller: controller,
+        readOnly: true,
+        style: const TextStyle(color: Colors.black, fontSize: 13),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(color: Colors.black54, fontSize: 12),
+          suffixIcon: const Icon(Icons.calendar_today, size: 18),
+          enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.black26)),
+          focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AppColors.primaryBlue)),
+        ),
+        onTap: () async {
+          final date = await showDatePicker(
+            context: context,
+            initialDate: DateTime.now(),
+            firstDate: DateTime(1900),
+            lastDate: DateTime.now(),
+          );
+          if (date != null) {
+            setState(() {
+              controller.text = "${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}-${date.year}";
+              final age = DateTime.now().year - date.year;
+              _members[memberIndex].ageController.text = age.toString();
+            });
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildRadioGroup(String label, List<String> options, String? groupValue, Function(String?) onChanged) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.black54, fontSize: 12)),
+          Wrap(
+            spacing: 8,
+            children: options.map((option) => Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Radio<String>(
+                  value: option,
+                  groupValue: groupValue,
+                  onChanged: onChanged,
+                  activeColor: AppColors.primaryBlue,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                Text(option, style: const TextStyle(fontSize: 11)),
+              ],
+            )).toList(),
+          ),
+        ],
+      ),
     );
   }
 }
