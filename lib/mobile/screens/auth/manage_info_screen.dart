@@ -12,7 +12,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sappiire/mobile/widgets/InfoScannerButton.dart';
 import 'package:sappiire/mobile/screens/auth/InfoScannerScreen.dart';
 import 'package:sappiire/models/id_information.dart';
-import 'package:sappiire/resources/static_form_input.dart';
+import 'package:sappiire/resources/GIS.dart';
+import 'package:sappiire/resources/PersonalInfo.dart';
+
 
 class ManageInfoScreen extends StatefulWidget {
   final String? userId;
@@ -51,7 +53,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   // All labels for UI Sections
   final List<String> _allLabels = [
     // PII
-    "Last Name", "First Name", "Middle Name", "Kasarian", "Estadong Sibil",
+    "Last Name", "First Name", "Middle Name", "Date of Birth","Kasarian", "Estadong Sibil",
     "Relihiyon", "CP Number", "Email Address", "Natapos o naabot sa pag-aaral",
     "Lugar ng Kapanganakan", "Trabaho/Pinagkakakitaan", "Kumpanyang Pinagtratrabuhan",
     "Buwanang Kita (A)",
@@ -404,7 +406,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
             padding: const EdgeInsets.all(16),
             child: FormDropdown(
               selectedForm: _selectedForm,
-              items: const ["General Intake Sheet", "Senior Citizen ID"],
+              items: const ["Personal Info","General Intake Sheet", "Senior Citizen ID"],
               onChanged: (val) => setState(() => _selectedForm = val!),
             ),
           ),
@@ -413,6 +415,19 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
+                  if (_selectedForm == "Personal Info")
+                  _buildSectionCard(
+                    child: PersonalInfoSection(
+                      selectAll: _selectAll,
+                      controllers: _controllers,
+                      fieldChecks: _fieldChecks,
+                      onCheckChanged: (key, val) => setState(() {
+                        _fieldChecks[key] = val;
+                        _isEdited = true;
+                      }),
+                    ),
+                  )
+                  else ...[
                   _buildSectionCard(
                     child: ClientInfoSection(
                       selectAll: _selectAll,
@@ -441,6 +456,9 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                       onAddMember: () => setState(() => _isEdited = true),
                     ),
                   ),
+                  _buildSectionCard(child: SignatureSection(controllers: _controllers)),
+                  const SizedBox(height: 120),
+                  ],
                   _buildSectionCard(child: SignatureSection(controllers: _controllers)),
                   const SizedBox(height: 120),
                 ],
