@@ -85,6 +85,35 @@ class _ClientInfoSectionState extends State<ClientInfoSection> {
     'PHIC': (widget.membershipData?['phic_member'] ?? false) ? 'Oo' : 'Hindi',
   };
 
+  // Inside _ClientInfoSectionState
+Future<void> _selectDate(TextEditingController controller) async {
+  final DateTime? pickedDate = await showDatePicker(
+    context: context,
+    initialDate: DateTime.now(),
+    firstDate: DateTime(1900),
+    lastDate: DateTime.now(),
+    builder: (context, child) {
+      return Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: AppColors.primaryBlue, // Using your constant
+            onPrimary: Colors.white,
+            onSurface: Colors.black,
+          ),
+        ),
+        child: child!,
+      );
+    },
+  );
+
+  if (pickedDate != null) {
+    setState(() {
+      // Formats as YYYY-MM-DD
+      controller.text = "${pickedDate.toLocal()}".split(' ')[0];
+    });
+  }
+}
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -105,7 +134,7 @@ class _ClientInfoSectionState extends State<ClientInfoSection> {
         _buildField("Last Name"),
         _buildField("First Name"),
         _buildField("Middle Name"),
-        _buildField("Date of Birth"),
+        _buildField("Date of Birth", isDate: true),
         _buildField("House number, street name, phase/purok"),
         _buildField("Subdivision"),
         _buildField("Barangay"),
@@ -132,17 +161,19 @@ class _ClientInfoSectionState extends State<ClientInfoSection> {
     );
   }
 
-  Widget _buildField(String label) {
-    return InfoInputField(
-      label: label,
-      controller: widget.controllers?[label],
-      isChecked: widget.selectAll ? true : (widget.fieldChecks[label] ?? false), 
-      onCheckboxChanged: (v) {
-        widget.onCheckChanged(label, v ?? false);
-      },
-      onTextChanged: (v) {},
-    );
-  }
+Widget _buildField(String label, {bool isDate = false}) {
+  final controller = widget.controllers?[label];
+  return InfoInputField(
+    label: label,
+    controller: controller,
+    isChecked: widget.selectAll ? true : (widget.fieldChecks[label] ?? false), 
+    onCheckboxChanged: (v) => widget.onCheckChanged(label, v ?? false),
+    onTextChanged: (v) {},
+    // Pass date logic to the InfoInputField
+    readOnly: isDate,
+    onTap: isDate && controller != null ? () => _selectDate(controller) : null,
+  );
+}
 
   Widget _buildMembershipRow(String title) {
     return Padding(
@@ -196,9 +227,38 @@ class FamilyTable extends StatefulWidget {
   State<FamilyTable> createState() => _FamilyTableState();
 }
 
+class _FamilyMemberData {
+  TextEditingController nameController = TextEditingController();
+  TextEditingController relationController = TextEditingController();
+  TextEditingController birthdateController = TextEditingController();
+  TextEditingController ageController = TextEditingController();
+  String? gender;
+  String? civilStatus;
+  String? education;
+  TextEditingController occupationController = TextEditingController();
+  TextEditingController incomeController = TextEditingController();
+
+  void dispose() {
+    nameController.dispose();
+    relationController.dispose();
+    birthdateController.dispose();
+    ageController.dispose();
+    occupationController.dispose();
+    incomeController.dispose();
+  }
+}
+
 class _FamilyTableState extends State<FamilyTable> {
-  List<int> rows = [0];
+  List<_FamilyMemberData> _members = [_FamilyMemberData()];
   bool _sectionChecked = false;
+
+  @override
+  void dispose() {
+    for (var member in _members) {
+      member.dispose();
+    }
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -211,19 +271,9 @@ class _FamilyTableState extends State<FamilyTable> {
           onChecked: (v) => setState(() => _sectionChecked = v!),
         ),
         const SizedBox(height: 10),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Table(
-            defaultColumnWidth: const FixedColumnWidth(130),
-            border: TableBorder.all(color: Colors.grey.withOpacity(0.3)),
-            children: [
-              _buildHeader(),
-              ...rows.map((index) => _buildInputRow(index)),
-            ],
-          ),
-        ),
+        ..._members.asMap().entries.map((entry) => _buildMemberCard(entry.key)),
         TextButton.icon(
-          onPressed: () => setState(() => rows.add(rows.length)),
+          onPressed: () => setState(() => _members.add(_FamilyMemberData())),
           icon: const Icon(Icons.add_circle, color: Colors.green),
           label: const Text("Add Member", style: TextStyle(color: AppColors.primaryBlue)),
         ),
@@ -231,30 +281,122 @@ class _FamilyTableState extends State<FamilyTable> {
     );
   }
 
-  TableRow _buildHeader() {
-    final headers = ["Pangalan", "Relasyon", "Birthdate", "Edad", "Kasarian", "Sibil Status", "Edukasyon", "Trabaho", "Kita"];
-    return TableRow(
-      decoration: BoxDecoration(color: AppColors.primaryBlue.withOpacity(0.1)),
-      children: headers.map((h) => Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: Text(h, style: const TextStyle(color: AppColors.primaryBlue, fontSize: 11, fontWeight: FontWeight.bold)),
-      )).toList(),
+  Widget _buildMemberCard(int index) {
+    final member = _members[index];
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text("Member ${index + 1}", style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryBlue)),
+                ),
+                if (_members.length > 1)
+                  IconButton(
+                    icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                    onPressed: () => setState(() {
+                      _members[index].dispose();
+                      _members.removeAt(index);
+                    }),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            _buildTextField("Pangalan", member.nameController),
+            _buildTextField("Relasyon", member.relationController),
+            _buildDateField("Birthdate", member.birthdateController, index),
+            _buildTextField("Edad", member.ageController, readOnly: true),
+            _buildRadioGroup("Kasarian", ["M - Lalaki", "F - Babae"], member.gender, (v) => setState(() => member.gender = v)),
+            _buildRadioGroup("Sibil Status", ["M - Kasal", "S - Single", "W - Balo", "H - Hiwalay", "C - Minor"], member.civilStatus, (v) => setState(() => member.civilStatus = v)),
+            _buildRadioGroup("Edukasyon", ["UG - Undergrad", "G - Graduated", "HS - HS Grad", "OS - Hindi nag-aral", "NS - Walang Aral"], member.education, (v) => setState(() => member.education = v)),
+            _buildTextField("Trabaho", member.occupationController),
+            _buildTextField("Kita", member.incomeController, keyboardType: TextInputType.number),
+          ],
+        ),
+      ),
     );
   }
 
-  TableRow _buildInputRow(int rowIndex) {
-    return TableRow(
-      children: List.generate(9, (index) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: TextField(
-          style: const TextStyle(color: Colors.black, fontSize: 12),
-          decoration: const InputDecoration(
-            border: InputBorder.none, 
-            hintText: "...",
-            hintStyle: TextStyle(color: Colors.grey)
-          ),
+  Widget _buildTextField(String label, TextEditingController controller, {bool readOnly = false, TextInputType? keyboardType}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: TextField(
+        controller: controller,
+        readOnly: readOnly,
+        keyboardType: keyboardType,
+        style: const TextStyle(color: Colors.black, fontSize: 13),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(color: Colors.black54, fontSize: 12),
+          enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.black26)),
+          focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AppColors.primaryBlue)),
         ),
-      )),
+      ),
+    );
+  }
+
+  Widget _buildDateField(String label, TextEditingController controller, int memberIndex) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: TextField(
+        controller: controller,
+        readOnly: true,
+        style: const TextStyle(color: Colors.black, fontSize: 13),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(color: Colors.black54, fontSize: 12),
+          suffixIcon: const Icon(Icons.calendar_today, size: 18),
+          enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.black26)),
+          focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AppColors.primaryBlue)),
+        ),
+        onTap: () async {
+          final date = await showDatePicker(
+            context: context,
+            initialDate: DateTime.now(),
+            firstDate: DateTime(1900),
+            lastDate: DateTime.now(),
+          );
+          if (date != null) {
+            setState(() {
+              controller.text = "${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}-${date.year}";
+              final age = DateTime.now().year - date.year;
+              _members[memberIndex].ageController.text = age.toString();
+            });
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildRadioGroup(String label, List<String> options, String? groupValue, Function(String?) onChanged) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.black54, fontSize: 12)),
+          Wrap(
+            spacing: 8,
+            children: options.map((option) => Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Radio<String>(
+                  value: option,
+                  groupValue: groupValue,
+                  onChanged: onChanged,
+                  activeColor: AppColors.primaryBlue,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                Text(option, style: const TextStyle(fontSize: 11)),
+              ],
+            )).toList(),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -545,72 +687,6 @@ class _SocioEconomicSectionState extends State<SocioEconomicSection> {
   }
 }
 
-// --- SIGNATURE SECTION ---
-class SignatureSection extends StatelessWidget {
-  final Map<String, TextEditingController>? controllers; 
-  const SignatureSection({super.key, this.controllers});
 
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text("Signature", style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 10),
-        GestureDetector(
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SignatureDialog())),
-          child: Container(
-            height: 120, width: double.infinity,
-            decoration: BoxDecoration(
-              border: Border.all(color: AppColors.primaryBlue.withOpacity(0.5)), 
-              borderRadius: BorderRadius.circular(8), 
-              color: Colors.grey.withOpacity(0.05)
-            ),
-            child: const Center(child: Text("Tap to provide digital signature", style: TextStyle(color: Colors.black54, fontSize: 12))),
-          ),
-        ),
-      ],
-    );
-  }
-}
 
-// ... (SignatureDialog and SignaturePainter remain the same as they use Scaffold background)
-class SignatureDialog extends StatefulWidget {
-  const SignatureDialog({super.key});
-  @override State<SignatureDialog> createState() => _SignatureDialogState();
-}
 
-class _SignatureDialogState extends State<SignatureDialog> {
-  List<Offset?> points = [];
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: AppColors.primaryBlue, title: const Text("Digital Signature", style: TextStyle(color: Colors.white)),
-        actions: [
-          IconButton(icon: const Icon(Icons.undo, color: Colors.white), onPressed: () => setState(() => points.clear())),
-          IconButton(icon: const Icon(Icons.check, color: Colors.white), onPressed: () => Navigator.pop(context)),
-        ],
-      ),
-      body: GestureDetector(
-        onPanUpdate: (details) => setState(() => points.add(details.localPosition)),
-        onPanEnd: (details) => points.add(null),
-        child: CustomPaint(painter: SignaturePainter(points), size: Size.infinite),
-      ),
-    );
-  }
-}
-
-class SignaturePainter extends CustomPainter {
-  final List<Offset?> points;
-  SignaturePainter(this.points);
-  @override
-  void paint(Canvas canvas, Size size) {
-    Paint paint = Paint()..color = Colors.black..strokeWidth = 3.0..strokeCap = StrokeCap.round;
-    for (int i = 0; i < points.length - 1; i++) {
-      if (points[i] != null && points[i + 1] != null) canvas.drawLine(points[i]!, points[i + 1]!, paint);
-    }
-  }
-  @override bool shouldRepaint(SignaturePainter oldDelegate) => true;
-}

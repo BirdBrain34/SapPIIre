@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
-
 class InfoInputField extends StatelessWidget {
   final String label;
   final TextEditingController? controller;
-  final IconData? icon; // Changed to IconData for easier usage
+  final IconData? icon; 
   final bool isChecked;
   final Function(bool?) onCheckboxChanged;
   final Function(String) onTextChanged;
+  final bool readOnly;       
+  final VoidCallback? onTap; // 1. Declared here
 
   const InfoInputField({
     super.key,
@@ -17,6 +18,8 @@ class InfoInputField extends StatelessWidget {
     required this.isChecked,
     required this.onCheckboxChanged,
     required this.onTextChanged,
+    this.readOnly = false,
+    this.onTap, // 2. ADD THIS LINE to initialize it
   });
 
   @override
@@ -28,12 +31,11 @@ class InfoInputField extends StatelessWidget {
         children: [
           Row(
             children: [
-              // 🔹 FIX 1: Wrap label in Expanded so long text doesn't cause overflow
               Expanded(
                 child: Text(
                   label,
                   style: const TextStyle(
-                    color: Colors.black87, // Changed from white
+                    color: Colors.black87,
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
@@ -47,7 +49,6 @@ class InfoInputField extends StatelessWidget {
                   value: isChecked,
                   onChanged: onCheckboxChanged,
                   activeColor: AppColors.primaryBlue,
-                  // 🔹 FIX 2: Dark border for the checkbox
                   side: const BorderSide(color: AppColors.primaryBlue, width: 1.5),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                 ),
@@ -58,14 +59,14 @@ class InfoInputField extends StatelessWidget {
           TextFormField(
             controller: controller,
             onChanged: onTextChanged,
-            // 🔹 FIX 3: Dark text color for typing
+            readOnly: readOnly, // 3. Use the property here
+            onTap: onTap,       // 4. Use the property here
             style: const TextStyle(color: Colors.black, fontSize: 15), 
             decoration: InputDecoration(
               isDense: true,
               filled: true,
               fillColor: Colors.grey.withOpacity(0.05),
               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-              // 🔹 FIX 4: Darker borders for visibility
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
                 borderSide: BorderSide(color: Colors.grey.withOpacity(0.3), width: 1.2),

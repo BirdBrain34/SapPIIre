@@ -92,15 +92,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 3),
 
-              const Text(
-                'Secured autofill application of\nPersonally Identifiable Information',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AppColors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+              
               const SizedBox(height: 10),
               const Text(
                 'The efficient way to fill forms, and data safe.',
