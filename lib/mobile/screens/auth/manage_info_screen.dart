@@ -12,8 +12,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sappiire/mobile/widgets/InfoScannerButton.dart';
 import 'package:sappiire/mobile/screens/auth/InfoScannerScreen.dart';
 import 'package:sappiire/models/id_information.dart';
-import 'package:sappiire/resources/static_form_input.dart';
-import 'package:sappiire/services/supabase_service.dart';
+import 'package:sappiire/resources/GIS.dart';
+import 'package:sappiire/resources/PersonalInfo.dart';
+import 'package:sappiire/resources/signature_field.dart';
+
 
 class ManageInfoScreen extends StatefulWidget {
   final String? userId;
@@ -35,6 +37,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   bool _selectAll = false;
   bool _isEdited = false;
   bool _isSaving = false;
+  List<Offset?>? _capturedSignaturePoints;
   String _selectedForm = "General Intake Sheet";
   List<Map<String, dynamic>> _familyMembers = [];
   final GlobalKey<FamilyTableState> _familyTableKey = GlobalKey<FamilyTableState>();
@@ -53,7 +56,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   String? _socioEconomicId;
 
   final List<String> _allLabels = [
-    "Last Name", "First Name", "Middle Name", "Kasarian", "Estadong Sibil",
+    // PII
+    "Last Name", "First Name", "Middle Name", "Date of Birth","Kasarian", "Estadong Sibil",
     "Relihiyon", "CP Number", "Email Address", "Natapos o naabot sa pag-aaral",
     "Lugar ng Kapanganakan", "Trabaho/Pinagkakakitaan", "Kumpanyang Pinagtratrabuhan",
     "Buwanang Kita (A)",
@@ -76,6 +80,38 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     "Gasul"
   ];
 
+  // Add this function inside _ManageInfoScreenState
+Future<void> _selectDate() async {
+  final DateTime? pickedDate = await showDatePicker(
+    context: context,
+    initialDate: DateTime.now(),
+    firstDate: DateTime(1900),
+    lastDate: DateTime.now(),
+    builder: (context, child) {
+      return Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: Color(0xFF1A237E),
+            onPrimary: Colors.white,
+            surface: Colors.white,
+            onSurface: Colors.black,
+          ),
+        ),
+        child: child!,
+      );
+    },
+  );
+
+  if (pickedDate != null) {
+    setState(() {
+      // This updates the specific controller you defined in _allLabels
+      _controllers["Date of Birth"]?.text = 
+          "${pickedDate.year}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')}";
+      _isEdited = true;
+    });
+  }
+}
+
   @override
   void initState() {
     super.initState();
@@ -91,10 +127,16 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
     // Autofill from ID scanner if data was scanned
     if (widget.initialData != null) {
-      _controllers["Last Name"]?.text = widget.initialData!.lastName;
-      _controllers["First Name"]?.text = widget.initialData!.firstName;
-      _controllers["Middle Name"]?.text = widget.initialData!.middleName;
-      _controllers["House number, street name, phase/purok"]?.text = widget.initialData!.address;
+      final data = widget.initialData!;
+
+      _controllers["Last Name"]?.text = data.lastName;
+      _controllers["First Name"]?.text = data.firstName;
+      _controllers["Middle Name"]?.text = data.middleName;
+      _controllers["Date of Birth"]?.text = data.dateOfBirth;
+      _controllers["Kasarian"]?.text = data.sex;
+      _controllers["Estadong Sibil"]?.text = data.maritalStatus;
+      _controllers["Lugar ng Kapanganakan"]?.text = data.placeOfBirth;
+      _controllers["House number, street name, phase/purok"]?.text = data.address;
     }
 
     // Load existing profile data from database
@@ -406,7 +448,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
             padding: const EdgeInsets.all(16),
             child: FormDropdown(
               selectedForm: _selectedForm,
-              items: const ["General Intake Sheet", "Senior Citizen ID"],
+              items: const ["Personal Info","General Intake Sheet", "Senior Citizen ID"],
               onChanged: (val) => setState(() => _selectedForm = val!),
             ),
           ),
@@ -415,6 +457,33 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
+                  if (_selectedForm == "Personal Info")...[
+                  _buildSectionCard(
+                    child: PersonalInfoSection(
+                      selectAll: _selectAll,
+                      controllers: _controllers,
+                      fieldChecks: _fieldChecks,
+                      onCheckChanged: (key, val) => setState(() {
+                        _fieldChecks[key] = val;
+                        _isEdited = true;
+                      }),
+                      onDateTap: _selectDate,
+                    ),
+                  ),
+                  _buildSectionCard(
+                    child: SignatureField(
+                      points: _capturedSignaturePoints,
+                      label: "Digital Signature",
+                      onCaptured: (points) {
+                        setState(() {
+                          _capturedSignaturePoints = points;
+                          _isEdited = true;
+                        });
+                      },
+                    ),
+                  ),
+                  ]
+                  else ...[
                   _buildSectionCard(
                     child: ClientInfoSection(
                       selectAll: _selectAll,
@@ -454,8 +523,20 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                       onAddMember: () => setState(() => _isEdited = true),
                     ),
                   ),
-                  _buildSectionCard(child: SignatureSection(controllers: _controllers)),
-                  const SizedBox(height: 120),
+                  // ADD THIS
+                    _buildSectionCard(
+                      child: SignatureField(
+                        points: _capturedSignaturePoints,
+                        label: "Digital Signature", // Optional custom label
+                        onCaptured: (points) {
+                          setState(() {
+                            _capturedSignaturePoints = points;
+                            _isEdited = true;
+                          });
+                        },
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

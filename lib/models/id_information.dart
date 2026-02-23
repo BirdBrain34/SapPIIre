@@ -1,17 +1,24 @@
 class IdInformation {
-  final String firstName;
-  final String middleName;
-  final String lastName;
-  final String address;
-  final String dateOfBirth;
+  String lastName;
+  String firstName;
+  String middleName;
+  String address;
+  String dateOfBirth;
+  String sex;
+  String bloodType;
+  String maritalStatus;
+  String placeOfBirth;
 
   IdInformation({
-    this.firstName = '',
-    this.middleName = '',
-    this.lastName = '',
-    this.address = '',
-    this.dateOfBirth = '',
+    required this.lastName,
+    required this.firstName,
+    required this.middleName,
+    required this.address,
+    required this.dateOfBirth,
+    required this.sex,
+    required this.bloodType,
+    required this.maritalStatus,
+    required this.placeOfBirth,
   });
-
-  bool get hasValidName => firstName.isNotEmpty && lastName.isNotEmpty;
 }
+

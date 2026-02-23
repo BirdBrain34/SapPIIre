@@ -3,19 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/mobile/screens/auth/manage_info_screen.dart';
-import 'package:flutter/services.dart'; // For HapticFeedback
-import 'package:sappiire/models/id_information.dart'; // Adjust path based on your folder structure
+import 'package:flutter/services.dart';
+import 'package:sappiire/models/id_information.dart';
 
-// -------------------
-// Model Class
-// -------------------
-
-
-
-
-// -------------------
-// Scanner Screen
-// -------------------
 class InfoScannerScreen extends StatefulWidget {
   const InfoScannerScreen({super.key});
 
@@ -24,6 +14,19 @@ class InfoScannerScreen extends StatefulWidget {
 }
 
 class _InfoScannerScreenState extends State<InfoScannerScreen> {
+  bool _isProcessing = false;
+  IdInformation accumulatedData = IdInformation(
+    lastName: '',
+    firstName: '',
+    middleName: '',
+    address: '',
+    dateOfBirth: '',
+    sex: '',
+    bloodType: '',
+    maritalStatus: '',
+    placeOfBirth: '',
+  );
+
   CameraController? _controller;
   bool _isInitialized = false;
   final TextRecognizer _textRecognizer = TextRecognizer();
@@ -39,7 +42,7 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
     if (cameras.isEmpty) return;
 
     _controller = CameraController(
-      cameras[0],
+      cameras.first,
       ResolutionPreset.high,
       enableAudio: false,
     );
@@ -73,9 +76,29 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
         children: [
           CameraPreview(_controller!),
 
-          // -------------------
-          // Overlay with Cutout
-          // -------------------
+          // ================= STATUS PANEL =================
+          Positioned(
+            top: 100,
+            left: 20,
+            right: 20,
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                "Captured:\n"
+                "Name: ${accumulatedData.firstName} ${accumulatedData.lastName}\n"
+                "Sex: ${accumulatedData.sex.isEmpty ? 'Not Yet' : accumulatedData.sex}\n"
+                "Address: ${accumulatedData.address.isNotEmpty ? '✔ Captured' : 'Not Yet'}",
+                style:
+                    const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ),
+          ),
+
+          // ================= OVERLAY CUTOUT =================
           ColorFiltered(
             colorFilter: ColorFilter.mode(
               Colors.black.withOpacity(0.5),
@@ -109,18 +132,19 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
             top: 50,
             left: 20,
             child: IconButton(
-              icon: const Icon(Icons.close, color: Colors.white, size: 30),
+              icon: const Icon(Icons.close,
+                  color: Colors.white, size: 30),
               onPressed: () => Navigator.pop(context),
             ),
           ),
 
-          // Instruction Text
+          // Instruction
           const Positioned(
-            bottom: 100,
+            bottom: 110,
             left: 0,
             right: 0,
             child: Text(
-              "Align your ID inside the box",
+              "Scan FRONT then flip and scan BACK",
               textAlign: TextAlign.center,
               style: TextStyle(
                   color: Colors.white,
@@ -137,185 +161,179 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
             child: Center(
               child: FloatingActionButton(
                 backgroundColor: AppColors.primaryBlue,
-                child: const Icon(Icons.search, color: Colors.white),
-                onPressed: () => _scanImage(),
+                onPressed:
+                    _isProcessing ? null : () => _scanImage(),
+                child: _isProcessing
+                    ? const CircularProgressIndicator(
+                        color: Colors.white)
+                    : const Icon(Icons.search,
+                        color: Colors.white),
               ),
             ),
           ),
+
+          // Confirm Button
+          if (accumulatedData.lastName.isNotEmpty)
+            Positioned(
+              bottom: 30,
+              right: 30,
+              child: FloatingActionButton.extended(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ManageInfoScreen(
+                        initialData: accumulatedData),
+                  ),
+                ),
+                label: const Text("Confirm Info"),
+                icon: const Icon(Icons.check),
+                backgroundColor: Colors.green,
+              ),
+            ),
         ],
       ),
     );
   }
 
-  // -------------------
-  // Scan Logic
-  // -------------------
-  Future<void> _scanImage() async {
-    try {
-      // Capture image
-      final XFile imageFile = await _controller!.takePicture();
-      final inputImage = InputImage.fromFilePath(imageFile.path);
-      final RecognizedText recognizedText =
-          await _textRecognizer.processImage(inputImage);
+  // ================= OCR LOGIC =================
 
-      // Flatten OCR lines
-      List<String> lines = recognizedText.blocks
-          .expand((b) => b.lines.map((l) => l.text.trim()))
-          .where((l) => l.isNotEmpty)
-          .toList();
+Future<void> _scanImage() async {
+  if (_isProcessing) return;
 
-      print("OCR LINES: $lines");
+  try {
+    setState(() => _isProcessing = true);
 
-      // -------------------
-      // Helper Functions
-      // -------------------
-      bool isLabel(String text) {
-        final lower = text.toLowerCase();
-        return lower.contains('pangalan') ||
-            lower.contains('given') ||
-            lower.contains('apelyido') ||
-            lower.contains('surname') ||
-            lower.contains('middle') ||
-            lower.contains('birth') ||
-            lower.contains('kapanganakan') ||
-            lower.contains('address') ||
-            lower.contains('purok') ||
-            lower.contains('residence') ||
-            lower.contains('/');
-      }
+    final XFile imageFile = await _controller!.takePicture();
+    final inputImage = InputImage.fromFilePath(imageFile.path);
+    final RecognizedText recognizedText =
+        await _textRecognizer.processImage(inputImage);
 
-      bool isJunk(String text) {
-        final junkKeywords = [
-          'republic',
-          'pilipinas',
-          'identity',
-          'card',
-          'pambansang',
-          'authority',
-          'official',
-          'signature',
-          'national',
-          'sex'
-        ];
+    List<String> lines = recognizedText.blocks
+        .expand((b) => b.lines.map((l) => l.text.trim()))
+        .where((l) => l.isNotEmpty)
+        .toList();
 
-        final lower = text.toLowerCase();
-        if (text.length < 2 || text.length > 40) return true;
-        return junkKeywords.any((junk) => lower.contains(junk));
-      }
+    // ---------------------------
+    // Helpers
+    // ---------------------------
 
-      bool looksLikeName(String text) {
-        return text == text.toUpperCase() &&
-            text.length > 2 &&
-            !text.contains(RegExp(r'\d'));
-      }
-
-      bool looksLikeDate(String text) {
-        final numericDate = RegExp(r'\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}');
-        final monthNames =
-            RegExp(r'jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec',
-                caseSensitive: false);
-        return numericDate.hasMatch(text) || monthNames.hasMatch(text);
-      }
-
-      // -------------------
-      // Smart Parsing
-      // -------------------
-      String? extractedLast;
-      String? extractedFirst;
-      String? extractedMiddle;
-      String? extractedAddress;
-      String? extractedDob;
-
-      for (int i = 0; i < lines.length; i++) {
-        String current = lines[i];
-        String lower = current.toLowerCase();
-
-        // LAST NAME
-        if (lower.contains('apelyido') ||
-            lower.contains('surname') ||
-            lower.contains('last name')) {
-          extractedLast = lines.skip(i + 1).firstWhere(
-                (l) => !isLabel(l) && !isJunk(l) && looksLikeName(l),
-                orElse: () => extractedLast ?? '',
-              );
-        }
-
-        // FIRST NAME
-        if (lower.contains('pangalan') || lower.contains('given')) {
-          extractedFirst = lines.skip(i + 1).firstWhere(
-                (l) => !isLabel(l) && !isJunk(l) && looksLikeName(l),
-                orElse: () => extractedFirst ?? '',
-              );
-        }
-
-        // MIDDLE NAME
-        if (lower.contains('middle')) {
-          extractedMiddle = lines.skip(i + 1).firstWhere(
-                (l) => !isLabel(l) && !isJunk(l) && looksLikeName(l),
-                orElse: () => extractedMiddle ?? '',
-              );
-        }
-
-        // DATE OF BIRTH
-        if (lower.contains('birth') ||
-            lower.contains('kapanganakan') ||
-            lower.contains('date')) {
-          extractedDob = lines.skip(i + 1).firstWhere(
-                (l) => !isLabel(l) && !isJunk(l) && looksLikeDate(l),
-                orElse: () => extractedDob ?? '',
-              );
-        }
-
-        // ADDRESS
-        if (lower.contains('address') ||
-            lower.contains('purok') ||
-            lower.contains('residence')) {
-          extractedAddress = lines.skip(i + 1).firstWhere(
-                (l) => !isLabel(l) && !isJunk(l),
-                orElse: () => extractedAddress ?? '',
-              );
-        }
-      }
-
-      // Create model
-      IdInformation extractedData = IdInformation(
-        lastName: extractedLast ?? '',
-        firstName: extractedFirst ?? '',
-        middleName: extractedMiddle ?? '',
-        address: extractedAddress ?? '',
-        dateOfBirth: extractedDob ?? '',
-      );
-
-      // Haptic feedback on success
-      HapticFeedback.mediumImpact();
-
-      // Validate name
-      if (!extractedData.hasValidName) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                "Could not detect name. Please align the ID and try again."),
-            backgroundColor: Colors.orange,
-          ),
-        );
-        return;
-      }
-
-      // Navigate to ManageInfoScreen
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ManageInfoScreen(initialData: extractedData),
-        ),
-      );
-    } catch (e) {
-      print("Scan error: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Failed to scan ID. Try again."),
-          backgroundColor: Colors.red,
-        ),
-      );
+    bool isJunk(String text) {
+      final junk = [
+        'republic',
+        'pilipinas',
+        'identity',
+        'card',
+        'authority',
+        'national',
+        'phl',
+        'official'
+      ];
+      return junk.any((j) => text.toLowerCase().contains(j));
     }
+
+    bool isLabel(String text) {
+      final l = text.toLowerCase();
+      return l.contains('apelyido') ||
+          l.contains('surname') ||
+          l.contains('pangalan') ||
+          l.contains('given') ||
+          l.contains('middle') ||
+          l.contains('birth') ||
+          l.contains('kapanganakan') ||
+          l.contains('address') ||
+          l.contains('tirahan') ||
+          l.contains('sex') ||
+          l.contains('kasarian') ||
+          l.contains('blood') ||
+          l.contains('sibil') ||
+          l.contains('marital') ||
+          l.contains('lugar') ||
+          l.contains('place');
+    }
+
+    // Collect multi-line value until next label
+    String collectValue(int index) {
+      List<String> found = [];
+
+      String originalLine = lines[index];
+
+      // Handle "Sex: FEMALE" or "Birth: Jan 1 1990"
+      if (originalLine.contains(':')) {
+        String afterColon = originalLine.split(':').last.trim();
+        if (afterColon.length > 2 && !isLabel(afterColon)) {
+          found.add(afterColon);
+        }
+      }
+
+      for (int j = index + 1; j < lines.length; j++) {
+        if (isLabel(lines[j]) || isJunk(lines[j])) break;
+        found.add(lines[j]);
+      }
+
+      return found.join(" ").trim();
+    }
+
+    // ---------------------------
+    // Main Parsing Loop
+    // ---------------------------
+
+    for (int i = 0; i < lines.length; i++) {
+      final String line = lines[i];
+      final String lower = line.toLowerCase();
+
+      // -------- NAMES --------
+      if (lower.contains('apelyido') || lower.contains('surname')) {
+        accumulatedData.lastName = collectValue(i);
+      } 
+      else if (lower.contains('pangalan') || lower.contains('given')) {
+        accumulatedData.firstName = collectValue(i);
+      } 
+      else if (lower.contains('middle')) {
+        accumulatedData.middleName = collectValue(i);
+      }
+
+      // -------- DATE OF BIRTH --------
+      if (lower.contains('birth') || lower.contains('kapanganakan')) {
+        String rawDob = collectValue(i);
+
+        accumulatedData.dateOfBirth = rawDob
+            .replaceAll(RegExp(
+                r'Date of Birth|Birth|Petsa|ng|Kapanganakan',
+                caseSensitive: false),
+                '')
+            .trim();
+      }
+
+      // -------- ADDRESS --------
+      if (lower.contains('Tirahan') || lower.contains('Address')) {
+        accumulatedData.address = collectValue(i);
+      }
+
+      // -------- BACK SIDE --------
+      if (lower.contains('kasarian') || lower.contains('sex')) {
+        accumulatedData.sex = collectValue(i);
+      } 
+      else if (lower.contains('sibil') || lower.contains('marital')) {
+        accumulatedData.maritalStatus = collectValue(i);
+      } 
+      else if (lower.contains('lugar') || lower.contains('place of birth')) {
+        accumulatedData.placeOfBirth = collectValue(i);
+      }
+    }
+
+    setState(() {});
+    HapticFeedback.mediumImpact();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Scan complete. Flip the ID if needed."),
+        backgroundColor: Colors.blue,
+      ),
+    );
+  } catch (e) {
+    debugPrint("Scan Error: $e");
+  } finally {
+    setState(() => _isProcessing = false);
   }
+}
 }

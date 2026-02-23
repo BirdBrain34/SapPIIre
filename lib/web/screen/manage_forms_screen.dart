@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/web/widget/side_menu.dart';
-import 'package:sappiire/resources/static_form_input.dart';
+import 'package:sappiire/resources/GIS.dart';
 import 'package:sappiire/web/screen/web_login_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:sappiire/resources/signature_field.dart';
 
 class ManageFormsScreen extends StatefulWidget {
   final String cswd_id;
@@ -22,6 +23,7 @@ class ManageFormsScreen extends StatefulWidget {
 }
 
 class _ManageFormsScreenState extends State<ManageFormsScreen> {
+  List<Offset?>? _capturedSignaturePoints;
   String selectedForm = "General Intake Sheet";
   final Map<String, TextEditingController> _webControllers = {};
   String _currentSessionId = "WAITING-FOR-SESSION";
@@ -236,7 +238,15 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                                       child: SocioEconomicSection(selectAll: false, controllers: _webControllers),
                                     ),
                                     _buildWebSectionCard(
-                                      child: const SignatureSection(),
+                                      child: SignatureField(
+                                        points: _capturedSignaturePoints,
+                                        label: "Digital Signature", // Optional custom label
+                                        onCaptured: (points) {
+                                          setState(() {
+                                            _capturedSignaturePoints = points;
+                                          });
+                                        },
+                                      ),
                                     ),
                                   ],
                                 ),
