@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
+import 'dart:convert';
 
 class SignatureField extends StatelessWidget {
   final List<Offset?>? points;
   final Function(List<Offset?>) onCaptured;
   final String label;
+  final String? signatureImageBase64;
 
   const SignatureField({
     super.key,
     required this.points,
     required this.onCaptured,
     this.label = "Signature",
+    this.signatureImageBase64,
   });
 
   @override
@@ -39,7 +42,12 @@ class SignatureField extends StatelessWidget {
               color: Colors.white,
             ),
             child: points == null || points!.isEmpty
-                ? const Center(child: Text("Tap to sign", style: TextStyle(color: Colors.black54, fontSize: 12)))
+                ? (signatureImageBase64 != null 
+                    ? Image.memory(
+                        base64Decode(signatureImageBase64!.split(',').last),
+                        fit: BoxFit.contain,
+                      )
+                    : const Center(child: Text("Tap to sign", style: TextStyle(color: Colors.black54, fontSize: 12))))
                 : Padding(
                     padding: const EdgeInsets.all(8.0),
                     child: FittedBox(

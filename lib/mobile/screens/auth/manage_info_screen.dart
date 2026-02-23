@@ -17,6 +17,7 @@ import 'package:sappiire/resources/PersonalInfo.dart';
 import 'package:sappiire/resources/signature_field.dart';
 import 'package:sappiire/services/supabase_service.dart';
 import 'package:sappiire/mobile/widgets/date_picker_helper.dart';
+import 'package:sappiire/mobile/widgets/signature_helper.dart';
 
 
 class ManageInfoScreen extends StatefulWidget {
@@ -40,6 +41,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   bool _isEdited = false;
   bool _isSaving = false;
   List<Offset?>? _capturedSignaturePoints;
+  String? _savedSignatureBase64;
   String _selectedForm = "General Intake Sheet";
   List<Map<String, dynamic>> _familyMembers = [];
   final GlobalKey<FamilyTableState> _familyTableKey = GlobalKey<FamilyTableState>();
@@ -198,6 +200,13 @@ Future<void> _selectDate() async {
           _isEdited = false;
         });
 
+        // Load signature if exists
+        if (response['signature_data'] != null) {
+          _savedSignatureBase64 = response['signature_data'];
+          _capturedSignaturePoints = [];
+          debugPrint('Signature loaded from database');
+        }
+
         final String? profileId = response['profile_id'];
         if (profileId != null) {
           _loadFamilyComposition(profileId);
@@ -354,6 +363,24 @@ Future<void> _selectDate() async {
         await _supabaseService.saveSupportingFamily(_socioEconomicId!, _supportingFamily, monthlyAlimony);
       }
 
+      // Save signature
+      try {
+        if (_capturedSignaturePoints != null && _capturedSignaturePoints!.isNotEmpty) {
+          final signatureBase64 = await SignatureHelper.convertToBase64(_capturedSignaturePoints!);
+          
+          if (signatureBase64 != null) {
+            await Supabase.instance.client
+                .from('user_profiles')
+                .update({'signature_data': signatureBase64})
+                .eq('profile_id', profileId);
+            
+            debugPrint('Signature saved successfully');
+          }
+        }
+      } catch (e) {
+        debugPrint('Signature save error: $e');
+      }
+
       if (mounted) {
         setState(() { _isEdited = false; _isSaving = false; });
         _showFeedback("Profile saved successfully!", Colors.green);
@@ -463,9 +490,11 @@ Future<void> _selectDate() async {
                     child: SignatureField(
                       points: _capturedSignaturePoints,
                       label: "Digital Signature",
+                      signatureImageBase64: _savedSignatureBase64,
                       onCaptured: (points) {
                         setState(() {
                           _capturedSignaturePoints = points;
+                          _savedSignatureBase64 = null;
                           _isEdited = true;
                         });
                       },
@@ -512,14 +541,16 @@ Future<void> _selectDate() async {
                       onAddMember: () => setState(() => _isEdited = true),
                     ),
                   ),
-                  // ADD THIS
+                  // Signature section
                     _buildSectionCard(
                       child: SignatureField(
                         points: _capturedSignaturePoints,
-                        label: "Digital Signature", // Optional custom label
+                        label: "Digital Signature",
+                        signatureImageBase64: _savedSignatureBase64,
                         onCaptured: (points) {
                           setState(() {
                             _capturedSignaturePoints = points;
+                            _savedSignatureBase64 = null;
                             _isEdited = true;
                           });
                         },
