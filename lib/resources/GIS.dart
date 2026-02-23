@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:sappiire/mobile/widgets/info_input_field.dart';
 import 'package:sappiire/constants/app_colors.dart';
+import 'package:sappiire/mobile/widgets/date_picker_helper.dart';
+import 'package:sappiire/mobile/widgets/editable_text_field.dart';
+import 'package:sappiire/mobile/widgets/editable_radio_group.dart';
 
-// --- SHARED SECTION HEADER WITH CHECKBOX ---
-// --- SHARED SECTION HEADER WITH CHECKBOX ---
+// Reusable section header widget with checkbox
+// Used across all form sections (Client Info, Family Composition, Socio-Economic)
 class SectionHeader extends StatelessWidget {
   final String title;
   final bool isChecked;
@@ -41,18 +44,18 @@ class SectionHeader extends StatelessWidget {
             ),
           ],
         ),
-        // 🔹 This is the fix: Adding a divider to separate the header from fields
         const Divider(
           color: Colors.black12, 
           thickness: 1, 
-          height: 20, // This adds spacing above and below the line
+          height: 20,
         ),
       ],
     );
   }
 }
 
-// --- A. CLIENT'S INFORMATION SECTION ---
+// Section A: Client's Information
+// Displays basic client details like name, address, contact info, and membership status
 class ClientInfoSection extends StatefulWidget {
   final bool selectAll;
   final Map<String, TextEditingController>? controllers;
@@ -78,6 +81,7 @@ class ClientInfoSection extends StatefulWidget {
 class _ClientInfoSectionState extends State<ClientInfoSection> {
   bool _sectionChecked = false;
 
+  // Convert membership boolean data to Filipino Yes/No format
   Map<String, String> get membership => {
     'Solo Parent': (widget.membershipData?['solo_parent'] ?? false) ? 'Oo' : 'Hindi',
     'PWD': (widget.membershipData?['pwd'] ?? false) ? 'Oo' : 'Hindi',
@@ -85,33 +89,13 @@ class _ClientInfoSectionState extends State<ClientInfoSection> {
     'PHIC': (widget.membershipData?['phic_member'] ?? false) ? 'Oo' : 'Hindi',
   };
 
-  // Inside _ClientInfoSectionState
-Future<void> _selectDate(TextEditingController controller) async {
-  final DateTime? pickedDate = await showDatePicker(
+  Future<void> _selectDate(TextEditingController controller) async {
+  await DatePickerHelper.selectDate(
     context: context,
-    initialDate: DateTime.now(),
-    firstDate: DateTime(1900),
-    lastDate: DateTime.now(),
-    builder: (context, child) {
-      return Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.light(
-            primary: AppColors.primaryBlue, // Using your constant
-            onPrimary: Colors.white,
-            onSurface: Colors.black,
-          ),
-        ),
-        child: child!,
-      );
-    },
+    dateController: controller,
+    ageController: widget.controllers?["Age"],
   );
-
-  if (pickedDate != null) {
-    setState(() {
-      // Formats as YYYY-MM-DD
-      controller.text = "${pickedDate.toLocal()}".split(' ')[0];
-    });
-  }
+  setState(() {});
 }
 
   @override
@@ -135,6 +119,7 @@ Future<void> _selectDate(TextEditingController controller) async {
         _buildField("First Name"),
         _buildField("Middle Name"),
         _buildField("Date of Birth", isDate: true),
+        _buildField("Age", readOnly: true),
         _buildField("House number, street name, phase/purok"),
         _buildField("Subdivision"),
         _buildField("Barangay"),
@@ -161,7 +146,7 @@ Future<void> _selectDate(TextEditingController controller) async {
     );
   }
 
-Widget _buildField(String label, {bool isDate = false}) {
+Widget _buildField(String label, {bool isDate = false, bool readOnly = false}) {
   final controller = widget.controllers?[label];
   return InfoInputField(
     label: label,
@@ -169,8 +154,7 @@ Widget _buildField(String label, {bool isDate = false}) {
     isChecked: widget.selectAll ? true : (widget.fieldChecks[label] ?? false), 
     onCheckboxChanged: (v) => widget.onCheckChanged(label, v ?? false),
     onTextChanged: (v) {},
-    // Pass date logic to the InfoInputField
-    readOnly: isDate,
+    readOnly: isDate || readOnly,
     onTap: isDate && controller != null ? () => _selectDate(controller) : null,
   );
 }
@@ -187,7 +171,6 @@ Widget _buildField(String label, {bool isDate = false}) {
               style: const TextStyle(color: Colors.black87, fontSize: 13),
             ),
           ),
-          // We don't wrap individual radios in Expanded so they stay grouped
           _miniRadio(title, "Oo"),
           _miniRadio(title, "Hindi"),
         ],
@@ -195,6 +178,7 @@ Widget _buildField(String label, {bool isDate = false}) {
     );
   }
 
+  // Helper to build individual radio button for membership questions
   Widget _miniRadio(String key, String value) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -203,6 +187,7 @@ Widget _buildField(String label, {bool isDate = false}) {
           value: value,
           groupValue: membership[key],
           onChanged: (v) {
+            // Map UI label to database column name
             final dbKey = key == 'Solo Parent' ? 'solo_parent' 
                 : key == 'PWD' ? 'pwd'
                 : key == '4Ps' ? 'four_ps_member'
@@ -217,16 +202,28 @@ Widget _buildField(String label, {bool isDate = false}) {
   }
 }
 
-// --- B. FAMILY COMPOSITION TABLE ---
+// Section B: Family Composition
+// Manages list of family members with edit mode functionality
+// Each member can be edited individually using pencil/check icons
 class FamilyTable extends StatefulWidget {
   final bool selectAll;
   final Map<String, TextEditingController>? controllers;
+  final List<Map<String, dynamic>>? familyMembers;
+  final Function(List<Map<String, dynamic>>)? onFamilyChanged;
 
-  const FamilyTable({super.key, required this.selectAll, this.controllers});
+  const FamilyTable({
+    super.key, 
+    required this.selectAll, 
+    this.controllers,
+    this.familyMembers,
+    this.onFamilyChanged,
+  });
   @override
-  State<FamilyTable> createState() => _FamilyTableState();
+  State<FamilyTable> createState() => FamilyTableState();
 }
 
+// Data model for a single family member
+// Contains all fields and controllers needed for family member information
 class _FamilyMemberData {
   TextEditingController nameController = TextEditingController();
   TextEditingController relationController = TextEditingController();
@@ -237,6 +234,7 @@ class _FamilyMemberData {
   String? education;
   TextEditingController occupationController = TextEditingController();
   TextEditingController incomeController = TextEditingController();
+  bool isEditing = false; // Controls whether fields are editable
 
   void dispose() {
     nameController.dispose();
@@ -248,9 +246,71 @@ class _FamilyMemberData {
   }
 }
 
-class _FamilyTableState extends State<FamilyTable> {
-  List<_FamilyMemberData> _members = [_FamilyMemberData()];
+class FamilyTableState extends State<FamilyTable> {
+  List<_FamilyMemberData> _members = [];
   bool _sectionChecked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeMembers();
+  }
+
+  @override
+  void didUpdateWidget(FamilyTable oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.familyMembers != widget.familyMembers) {
+      _initializeMembers();
+    }
+  }
+
+  // Initialize family members from database data or create empty member
+  // Existing members start in read-only mode, new members start in edit mode
+  void _initializeMembers() {
+    if (widget.familyMembers != null && widget.familyMembers!.isNotEmpty) {
+      _members = widget.familyMembers!.map((data) {
+        final member = _FamilyMemberData();
+        member.nameController.text = data['name']?.toString() ?? '';
+        member.relationController.text = data['relationship_of_relative']?.toString() ?? '';
+        member.birthdateController.text = data['birthdate']?.toString() ?? '';
+        member.ageController.text = data['age']?.toString() ?? '';
+        member.gender = data['gender']?.toString();
+        member.civilStatus = data['civil_status']?.toString();
+        member.education = data['education']?.toString();
+        member.occupationController.text = data['occupation']?.toString() ?? '';
+        member.incomeController.text = data['allowance']?.toString() ?? '';
+        member.isEditing = false; // Existing members are read-only by default
+        return member;
+      }).toList();
+    } else {
+      // Create first member in edit mode for new users
+      final newMember = _FamilyMemberData();
+      newMember.isEditing = true;
+      _members = [newMember];
+    }
+  }
+
+  // Convert member data to format expected by database
+  // Called when saving to collect all family member information
+  List<Map<String, dynamic>> getFamilyData() {
+    return _members.map((member) {
+      return {
+        'name': member.nameController.text.trim(),
+        'relationship_of_relative': member.relationController.text.trim(),
+        'birthdate': member.birthdateController.text.trim(),
+        'age': int.tryParse(member.ageController.text) ?? 0,
+        'gender': member.gender ?? '',
+        'civil_status': member.civilStatus ?? '',
+        'education': member.education ?? '',
+        'occupation': member.occupationController.text.trim(),
+        'allowance': double.tryParse(member.incomeController.text.replaceAll(',', '')) ?? 0,
+      };
+    }).toList();
+  }
+
+  void _notifyParent() {
+    widget.onFamilyChanged?.call(getFamilyData());
+  }
 
   @override
   void dispose() {
@@ -273,7 +333,13 @@ class _FamilyTableState extends State<FamilyTable> {
         const SizedBox(height: 10),
         ..._members.asMap().entries.map((entry) => _buildMemberCard(entry.key)),
         TextButton.icon(
-          onPressed: () => setState(() => _members.add(_FamilyMemberData())),
+          onPressed: () {
+            // Create new member in edit mode and notify parent to show save button
+            final newMember = _FamilyMemberData();
+            newMember.isEditing = true;
+            setState(() => _members.add(newMember));
+            widget.onFamilyChanged?.call(getFamilyData());
+          },
           icon: const Icon(Icons.add_circle, color: Colors.green),
           label: const Text("Add Member", style: TextStyle(color: AppColors.primaryBlue)),
         ),
@@ -281,6 +347,7 @@ class _FamilyTableState extends State<FamilyTable> {
     );
   }
 
+  // Build card for individual family member with edit/check/delete buttons
   Widget _buildMemberCard(int index) {
     final member = _members[index];
     return Card(
@@ -295,65 +362,112 @@ class _FamilyTableState extends State<FamilyTable> {
                 Expanded(
                   child: Text("Member ${index + 1}", style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryBlue)),
                 ),
+                // Show pencil icon when not editing, check icon when editing
+                if (!member.isEditing)
+                  IconButton(
+                    icon: const Icon(Icons.edit, color: AppColors.primaryBlue, size: 20),
+                    onPressed: () {
+                      setState(() => member.isEditing = true);
+                    },
+                  ),
+                if (member.isEditing)
+                  IconButton(
+                    icon: const Icon(Icons.check, color: Colors.green, size: 20),
+                    onPressed: () {
+                      // Exit edit mode and trigger save button to appear
+                      setState(() => member.isEditing = false);
+                      widget.onFamilyChanged?.call(getFamilyData());
+                    },
+                  ),
                 if (_members.length > 1)
                   IconButton(
                     icon: const Icon(Icons.delete, color: Colors.red, size: 20),
-                    onPressed: () => setState(() {
-                      _members[index].dispose();
-                      _members.removeAt(index);
-                    }),
+                    onPressed: () {
+                      setState(() {
+                        _members[index].dispose();
+                        _members.removeAt(index);
+                      });
+                      widget.onFamilyChanged?.call(getFamilyData());
+                    },
                   ),
               ],
             ),
             const SizedBox(height: 8),
-            _buildTextField("Pangalan", member.nameController),
-            _buildTextField("Relasyon", member.relationController),
-            _buildDateField("Birthdate", member.birthdateController, index),
-            _buildTextField("Edad", member.ageController, readOnly: true),
-            _buildRadioGroup("Kasarian", ["M - Lalaki", "F - Babae"], member.gender, (v) => setState(() => member.gender = v)),
-            _buildRadioGroup("Sibil Status", ["M - Kasal", "S - Single", "W - Balo", "H - Hiwalay", "C - Minor"], member.civilStatus, (v) => setState(() => member.civilStatus = v)),
-            _buildRadioGroup("Edukasyon", ["UG - Undergrad", "G - Graduated", "HS - HS Grad", "OS - Hindi nag-aral", "NS - Walang Aral"], member.education, (v) => setState(() => member.education = v)),
-            _buildTextField("Trabaho", member.occupationController),
-            _buildTextField("Kita", member.incomeController, keyboardType: TextInputType.number),
+            // Use reusable widgets for cleaner code
+            EditableTextField(
+              label: "Pangalan",
+              controller: member.nameController,
+              isEditing: member.isEditing,
+            ),
+            EditableTextField(
+              label: "Relasyon",
+              controller: member.relationController,
+              isEditing: member.isEditing,
+            ),
+            _buildDateField("Birthdate", member.birthdateController, index, member.isEditing),
+            EditableTextField(
+              label: "Edad",
+              controller: member.ageController,
+              isEditing: member.isEditing,
+              readOnly: true,
+            ),
+            EditableRadioGroup(
+              label: "Kasarian",
+              options: ["M - Lalaki", "F - Babae"],
+              groupValue: member.gender,
+              isEditing: member.isEditing,
+              onChanged: (v) => setState(() => member.gender = v),
+            ),
+            EditableRadioGroup(
+              label: "Sibil Status",
+              options: ["M - Kasal", "S - Single", "W - Balo", "H - Hiwalay", "C - Minor"],
+              groupValue: member.civilStatus,
+              isEditing: member.isEditing,
+              onChanged: (v) => setState(() => member.civilStatus = v),
+            ),
+            EditableRadioGroup(
+              label: "Edukasyon",
+              options: ["UG - Undergrad", "G - Graduated", "HS - HS Grad", "OS - Hindi nag-aral", "NS - Walang Aral"],
+              groupValue: member.education,
+              isEditing: member.isEditing,
+              onChanged: (v) => setState(() => member.education = v),
+            ),
+            EditableTextField(
+              label: "Trabaho",
+              controller: member.occupationController,
+              isEditing: member.isEditing,
+            ),
+            EditableTextField(
+              label: "Kita",
+              controller: member.incomeController,
+              isEditing: member.isEditing,
+              keyboardType: TextInputType.number,
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildTextField(String label, TextEditingController controller, {bool readOnly = false, TextInputType? keyboardType}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: TextField(
-        controller: controller,
-        readOnly: readOnly,
-        keyboardType: keyboardType,
-        style: const TextStyle(color: Colors.black, fontSize: 13),
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: const TextStyle(color: Colors.black54, fontSize: 12),
-          enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.black26)),
-          focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AppColors.primaryBlue)),
-        ),
-      ),
-    );
-  }
+  // Date picker field with calendar icon
+  // Only allows date selection when in edit mode
 
-  Widget _buildDateField(String label, TextEditingController controller, int memberIndex) {
+  Widget _buildDateField(String label, TextEditingController controller, int memberIndex, bool isEditing) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: TextField(
         controller: controller,
         readOnly: true,
-        style: const TextStyle(color: Colors.black, fontSize: 13),
+        style: TextStyle(color: isEditing ? Colors.black : Colors.black54, fontSize: 13),
         decoration: InputDecoration(
           labelText: label,
           labelStyle: const TextStyle(color: Colors.black54, fontSize: 12),
-          suffixIcon: const Icon(Icons.calendar_today, size: 18),
-          enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.black26)),
+          suffixIcon: isEditing ? const Icon(Icons.calendar_today, size: 18) : null,
+          enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: isEditing ? Colors.black26 : Colors.transparent)),
           focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AppColors.primaryBlue)),
+          disabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.transparent)),
         ),
-        onTap: () async {
+        onTap: !isEditing ? null : () async {
           final date = await showDatePicker(
             context: context,
             initialDate: DateTime.now(),
@@ -361,47 +475,21 @@ class _FamilyTableState extends State<FamilyTable> {
             lastDate: DateTime.now(),
           );
           if (date != null) {
-            setState(() {
-              controller.text = "${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}-${date.year}";
-              final age = DateTime.now().year - date.year;
-              _members[memberIndex].ageController.text = age.toString();
-            });
+            // Format date and auto-calculate age
+            controller.text = "${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}-${date.year}";
+            final age = DateTime.now().year - date.year;
+            _members[memberIndex].ageController.text = age.toString();
           }
         },
       ),
     );
   }
 
-  Widget _buildRadioGroup(String label, List<String> options, String? groupValue, Function(String?) onChanged) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(color: Colors.black54, fontSize: 12)),
-          Wrap(
-            spacing: 8,
-            children: options.map((option) => Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Radio<String>(
-                  value: option,
-                  groupValue: groupValue,
-                  onChanged: onChanged,
-                  activeColor: AppColors.primaryBlue,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                Text(option, style: const TextStyle(fontSize: 11)),
-              ],
-            )).toList(),
-          ),
-        ],
-      ),
-    );
-  }
+
 }
 
-// --- C. SOCIO-ECONOMIC SECTION ---
+// Section C: Socio-Economic Data
+// Manages household income, expenses, housing status, and supporting family members
 class SocioEconomicSection extends StatefulWidget {
   final bool selectAll;
   final Map<String, TextEditingController>? controllers;
@@ -452,6 +540,7 @@ class _SocioEconomicSectionState extends State<SocioEconomicSection> {
     }
   }
 
+  // Initialize controllers for supporting family members from database
   void _initializeSupportControllers() {
     _removeListeners();
     _supportControllers.clear();
@@ -529,7 +618,7 @@ class _SocioEconomicSectionState extends State<SocioEconomicSection> {
     super.dispose();
   }
 
-  // Computed getters that read from widget properties on every build
+  // Convert boolean to Filipino Yes/No for UI display
   String get hasSupportValue => (widget.hasSupport ?? false) ? "Meron" : "Wala";
   String? get housingStatusValue => widget.housingStatus; 
 
