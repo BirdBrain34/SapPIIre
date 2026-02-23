@@ -5,7 +5,14 @@ import 'package:sappiire/web/widget/side_menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ManageStaffScreen extends StatefulWidget {
-  const ManageStaffScreen({super.key});
+  final String role;
+  final String cswd_id;
+
+  const ManageStaffScreen({
+    super.key,
+    required this.role,
+    required this.cswd_id,
+  });
 
   @override
   State<ManageStaffScreen> createState() => _ManageStaffScreenState();
@@ -76,6 +83,11 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
   }
 
   @override
+  void dispose() {
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7FE),
@@ -83,8 +95,8 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
         children: [
           SideMenu(
             activePath: "Staff",
-            role: 'admin',
-            cswd_id: 'admin',
+            role: widget.role,
+            cswd_id: widget.cswd_id,
             onLogout: () => Navigator.pop(context),
           ),
           Expanded(
@@ -175,7 +187,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                                   subtitle: Text(acc['email'] ?? ''),
                                   trailing: DropdownButton<String>(
                                     value: acc['role'] ?? 'viewer',
-                                    items: ['viewer', 'form_editor', 'admin']
+                                    items: ['viewer', 'form_editor', 'admin', 'superadmin']
                                         .map((r) => DropdownMenuItem(
                                               value: r,
                                               child: Text(r),

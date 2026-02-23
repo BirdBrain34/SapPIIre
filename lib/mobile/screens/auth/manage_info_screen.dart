@@ -32,12 +32,15 @@ class ManageInfoScreen extends StatefulWidget {
 }
 
 class _ManageInfoScreenState extends State<ManageInfoScreen> {
+  final SupabaseService _supabaseService = SupabaseService();
   int _currentIndex = 0;
   bool _selectAll = false;
   bool _isEdited = false;
   bool _isSaving = false;
   List<Offset?>? _capturedSignaturePoints;
   String _selectedForm = "General Intake Sheet";
+  List<Map<String, dynamic>> _familyMembers = [];
+  final GlobalKey<FamilyTableState> _familyTableKey = GlobalKey<FamilyTableState>();
 
   final Map<String, TextEditingController> _controllers = {};
   final Map<String, bool> _fieldChecks = {};
@@ -52,18 +55,13 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   List<Map<String, dynamic>> _supportingFamily = [];
   String? _socioEconomicId;
 
-  // All labels for UI Sections
   final List<String> _allLabels = [
     // PII
     "Last Name", "First Name", "Middle Name", "Date of Birth","Kasarian", "Estadong Sibil",
     "Relihiyon", "CP Number", "Email Address", "Natapos o naabot sa pag-aaral",
     "Lugar ng Kapanganakan", "Trabaho/Pinagkakakitaan", "Kumpanyang Pinagtratrabuhan",
     "Buwanang Kita (A)",
-
-    // Address
     "House number, street name, phase/purok", "Subdivision", "Barangay",
-
-    // Socio-Economic
     "Kabuuang Tulong/Sustento kada Buwan (C)",
     "Total Gross Family Income (A+B+C)=(D)",
     "Household Size (E)",
@@ -118,7 +116,7 @@ Future<void> _selectDate() async {
   void initState() {
     super.initState();
 
-    // Initialize controllers
+    // Initialize text controllers and listeners for all form fields
     for (final label in _allLabels) {
       _controllers[label] = TextEditingController();
       _controllers[label]!.addListener(() {
@@ -127,7 +125,7 @@ Future<void> _selectDate() async {
       _fieldChecks[label] = false;
     }
 
-    // Autofill from scanner if available
+    // Autofill from ID scanner if data was scanned
     if (widget.initialData != null) {
       final data = widget.initialData!;
 
@@ -141,24 +139,21 @@ Future<void> _selectDate() async {
       _controllers["House number, street name, phase/purok"]?.text = data.address;
     }
 
-    // Load existing user profile if userId exists
+    // Load existing profile data from database
     final String? effectiveId = widget.userId ?? Supabase.instance.client.auth.currentUser?.id;
     if (effectiveId != null) {
       _loadUserProfile(effectiveId);
     }
   }
 
+  // Fetch user profile, address, and socio-economic data from Supabase
   Future<void> _loadUserProfile(String userId) async {
     try {
-      final response = await Supabase.instance.client
-          .from('user_profiles')
-          .select('*, user_addresses(*), socio_economic_data(*)')
-          .eq('user_id', userId)
-          .maybeSingle();
+      final response = await _supabaseService.loadUserProfile(userId);
 
       if (response != null && mounted) {
         setState(() {
-          // --- Profile ---
+          // Populate profile fields
           _controllers["First Name"]?.text = response['firstname'] ?? '';
           _controllers["Middle Name"]?.text = response['middle_name'] ?? '';
           _controllers["Last Name"]?.text = response['lastname'] ?? '';
@@ -173,13 +168,13 @@ Future<void> _selectDate() async {
           _controllers["Kumpanyang Pinagtratrabuhan"]?.text = response['workplace'] ?? '';
           _controllers["Buwanang Kita (A)"]?.text = response['monthly_allowance']?.toString() ?? '';
 
-          // Membership
+          // Load membership data
           _membershipData['solo_parent'] = response['solo_parent'] ?? false;
           _membershipData['pwd'] = response['pwd'] ?? false;
           _membershipData['four_ps_member'] = response['four_ps_member'] ?? false;
           _membershipData['phic_member'] = response['phic_member'] ?? false;
 
-          // Address
+          // Load address data
           final addrData = response['user_addresses'];
           if (addrData != null && addrData is Map) {
             _controllers["House number, street name, phase/purok"]?.text = addrData['house_number'] ?? '';
@@ -187,7 +182,7 @@ Future<void> _selectDate() async {
             _controllers["Barangay"]?.text = addrData['barangay'] ?? '';
           }
 
-          // Socio-economic
+          // Load socio-economic data
           final socioData = response['socio_economic_data'];
           if (socioData != null && socioData is Map) {
             _hasSupport = socioData['has_support'] ?? false;
@@ -210,13 +205,10 @@ Future<void> _selectDate() async {
             _controllers["Loans"]?.text = socioData['loans']?.toString() ?? '';
             _controllers["Gasul"]?.text = socioData['gas']?.toString() ?? '';
 
-            // 1. Assign the ID to the class field first
+            // Load supporting family if has support
             _socioEconomicId = socioData['socio_economic_id']?.toString();
-
-            // 2. Create the local "shadow" variable for promotion
             final socioId = _socioEconomicId;
 
-            // Load supporting family
             if (socioId != null) {
               _loadSupportingFamily(socioId);
             }
@@ -224,23 +216,41 @@ Future<void> _selectDate() async {
 
           _isEdited = false;
         });
+
+        // Load family composition separately after profile loads
+        final String? profileId = response['profile_id'];
+        if (profileId != null) {
+          _loadFamilyComposition(profileId);
+        }
       }
     } catch (e) {
       debugPrint('Load Error: $e');
     }
   }
 
-  Future<void> _loadSupportingFamily(String socioEconomicId) async {
+  // Fetch family members from family_composition table
+  Future<void> _loadFamilyComposition(String profileId) async {
     try {
-      final response = await Supabase.instance.client
-          .from('supporting_family')
-          .select()
-          .eq('socio_economic_id', socioEconomicId)
-          .order('sort_order');
+      final response = await _supabaseService.loadFamilyComposition(profileId);
 
       if (mounted) {
         setState(() {
-          _supportingFamily = List<Map<String, dynamic>>.from(response);
+          _familyMembers = response;
+        });
+      }
+    } catch (e) {
+      debugPrint('Load Family Composition Error: $e');
+    }
+  }
+
+  // Fetch supporting family members from supporting_family table
+  Future<void> _loadSupportingFamily(String socioEconomicId) async {
+    try {
+      final response = await _supabaseService.loadSupportingFamily(socioEconomicId);
+
+      if (mounted) {
+        setState(() {
+          _supportingFamily = response;
           if (_supportingFamily.isNotEmpty && _supportingFamily[0]['monthly_alimony'] != null) {
             _controllers["Kabuuang Tulong/Sustento kada Buwan (C)"]?.text =
                 _supportingFamily[0]['monthly_alimony'].toString();
@@ -252,9 +262,9 @@ Future<void> _selectDate() async {
     }
   }
 
+  // Save all form data to Supabase (profile, address, family, socio-economic)
   Future<void> _handleSave() async {
-    final supabase = Supabase.instance.client;
-    final String? currentUserId = widget.userId ?? supabase.auth.currentUser?.id;
+    final String? currentUserId = widget.userId ?? Supabase.instance.client.auth.currentUser?.id;
 
     if (currentUserId == null) {
       _showFeedback("Error: User session lost. Please login.", Colors.red);
@@ -264,8 +274,7 @@ Future<void> _selectDate() async {
     setState(() => _isSaving = true);
 
     try {
-      // --- PROFILE ---
-      final Map<String, dynamic> profileUpdate = {'user_id': currentUserId};
+      // Prepare profile data
       final profileMap = {
         "Last Name": "lastname", "First Name": "firstname", "Middle Name": "middle_name",
         "Kasarian": "gender", "Estadong Sibil": "civil_status", "Relihiyon": "religion",
@@ -274,44 +283,60 @@ Future<void> _selectDate() async {
         "Trabaho/Pinagkakakitaan": "occupation", "Kumpanyang Pinagtratrabuhan": "workplace",
         "Buwanang Kita (A)": "monthly_allowance"
       };
+      final Map<String, dynamic> profileData = {};
       profileMap.forEach((label, column) {
         final value = _controllers[label]?.text.trim() ?? '';
-        if (value.isNotEmpty) profileUpdate[column] = value;
+        if (value.isNotEmpty) profileData[column] = value;
       });
-      profileUpdate.addAll(_membershipData);
 
-      final profileRes = await supabase
-          .from('user_profiles')
-          .upsert(profileUpdate, onConflict: 'user_id')
-          .select('profile_id')
-          .single();
+      // Save profile
+      final String profileId = await _supabaseService.saveUserProfile(
+        userId: currentUserId,
+        profileData: profileData,
+        membershipData: _membershipData,
+      );
 
-      final String profileId = profileRes['profile_id'];
-
-      // --- ADDRESS ---
-      final Map<String, dynamic> addressUpdate = {'profile_id': profileId};
+      // Prepare and save address
       final addressMap = {
         "House number, street name, phase/purok": "house_number",
         "Subdivision": "subdivision", "Barangay": "barangay"
       };
-      bool saveAddress = false;
+      final Map<String, dynamic> addressData = {};
       addressMap.forEach((label, column) {
         final value = _controllers[label]?.text.trim() ?? '';
-        if (value.isNotEmpty) {
-          addressUpdate[column] = value;
-          saveAddress = true;
-        }
+        if (value.isNotEmpty) addressData[column] = value;
       });
-      if (saveAddress) {
-        await supabase.from('user_addresses').upsert(addressUpdate, onConflict: 'profile_id');
+      await _supabaseService.saveUserAddress(profileId, addressData);
+
+      // Save family composition
+      try {
+        final familyData = _familyTableKey.currentState?.getFamilyData() ?? _familyMembers;
+        final validFamilyRows = familyData.where((member) {
+          final name = member['name']?.toString().trim() ?? '';
+          final relationship = member['relationship_of_relative']?.toString().trim() ?? '';
+          return name.isNotEmpty || relationship.isNotEmpty;
+        }).toList();
+
+        if (validFamilyRows.isNotEmpty) {
+          final familyPayload = validFamilyRows.map((member) => {
+            'name': member['name']?.toString().trim() ?? '',
+            'relationship_of_relative': member['relationship_of_relative']?.toString().trim() ?? '',
+            'birthdate': member['birthdate']?.toString().trim().isEmpty ?? true ? null : member['birthdate'],
+            'age': member['age'] is int ? member['age'] : int.tryParse(member['age']?.toString() ?? '0') ?? 0,
+            'gender': member['gender']?.toString().trim() ?? '',
+            'civil_status': member['civil_status']?.toString().trim() ?? '',
+            'education': member['education']?.toString().trim() ?? '',
+            'occupation': member['occupation']?.toString().trim() ?? '',
+            'allowance': member['allowance'] is num ? member['allowance'] : double.tryParse(member['allowance']?.toString().replaceAll(',', '') ?? '0') ?? 0,
+          }).toList();
+
+          await _supabaseService.saveFamilyComposition(profileId, familyPayload);
+        }
+      } catch (e) {
+        debugPrint('Family Composition Save Error: $e');
       }
 
-      // --- SOCIO-ECONOMIC ---
-      final Map<String, dynamic> socioUpdate = {
-        'profile_id': profileId,
-        'has_support': _hasSupport,
-        'housing_status': _housingStatus,
-      };
+      // Prepare and save socio-economic data
       final socioMap = {
         "Total Gross Family Income (A+B+C)=(D)": "gross_family_income",
         "Household Size (E)": "household_size",
@@ -329,46 +354,23 @@ Future<void> _selectDate() async {
         "Loans": "loans",
         "Gasul": "gas"
       };
+      final Map<String, dynamic> socioData = {
+        'has_support': _hasSupport,
+        'housing_status': _housingStatus,
+      };
       socioMap.forEach((label, column) {
         final value = _controllers[label]?.text.trim() ?? '';
         if (value.isNotEmpty) {
-          socioUpdate[column] = (column == 'household_size') ? int.tryParse(value) ?? 1 : double.tryParse(value) ?? 0;
+          socioData[column] = (column == 'household_size') ? int.tryParse(value) ?? 1 : double.tryParse(value) ?? 0;
         }
       });
 
-      final socioRes = await supabase
-          .from('socio_economic_data')
-          .upsert(socioUpdate, onConflict: 'profile_id')
-          .select('socio_economic_id')
-          .single();
-      _socioEconomicId = socioRes['socio_economic_id']?.toString();
+      _socioEconomicId = await _supabaseService.saveSocioEconomicData(profileId, socioData);
 
-      // --- SUPPORTING FAMILY ---
-      final currentSocioId = _socioEconomicId;
-      if (currentSocioId != null) {
-        if (_hasSupport && _supportingFamily.isNotEmpty) {
-          // Use 'currentSocioId' instead of '_socioEconomicId'
-          await supabase.from('supporting_family').delete().eq('socio_economic_id', currentSocioId);
-          
-          final monthlyAlimony = double.tryParse(_controllers["Kabuuang Tulong/Sustento kada Buwan (C)"]?.text.trim() ?? '') ?? 0;
-          
-          final supportList = _supportingFamily.asMap().entries.map((entry) {
-            return {
-              'socio_economic_id': currentSocioId, // Use local copy here too
-              'name': entry.value['name'],
-              'relationship': entry.value['relationship'],
-              'regular_sustento': entry.value['regular_sustento'],
-              'monthly_alimony': monthlyAlimony,
-              'sort_order': entry.key,
-            };
-          }).where((item) => item['name'].toString().isNotEmpty).toList();
-
-          if (supportList.isNotEmpty) {
-            await supabase.from('supporting_family').insert(supportList);
-          }
-        } else if (!_hasSupport) {
-          await supabase.from('supporting_family').delete().eq('socio_economic_id', currentSocioId);
-        }
+      // Save supporting family
+      if (_socioEconomicId != null && _hasSupport && _supportingFamily.isNotEmpty) {
+        final monthlyAlimony = double.tryParse(_controllers["Kabuuang Tulong/Sustento kada Buwan (C)"]?.text.trim() ?? '') ?? 0;
+        await _supabaseService.saveSupportingFamily(_socioEconomicId!, _supportingFamily, monthlyAlimony);
       }
 
       if (mounted) {
@@ -492,7 +494,18 @@ Future<void> _selectDate() async {
                       onMembershipChanged: (key, val) => setState(() { _membershipData[key] = val; _isEdited = true; }),
                     ),
                   ),
-                  _buildSectionCard(child: FamilyTable(selectAll: _selectAll, controllers: _controllers)),
+                  _buildSectionCard(
+                    child: FamilyTable(
+                      key: _familyTableKey,
+                      selectAll: _selectAll,
+                      controllers: _controllers,
+                      familyMembers: _familyMembers,
+                      onFamilyChanged: (members) => setState(() {
+                        _familyMembers = members;
+                        _isEdited = true;
+                      }),
+                    ),
+                  ),
                   _buildSectionCard(
                     child: SocioEconomicSection(
                       selectAll: _selectAll,
@@ -536,7 +549,6 @@ Future<void> _selectDate() async {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            // 1. ADD THE SCANNER BUTTON HERE
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: InfoScannerButton(
@@ -580,9 +592,7 @@ Future<void> _selectDate() async {
               context,
               MaterialPageRoute(builder: (_) => const QrScannerScreen()),
             );
-            if (sessionId != null) {
-              // You can call syncDataToWeb(sessionId) here if needed
-            }
+            if (sessionId != null) {}
           } else {
             setState(() => _currentIndex = i);
           }

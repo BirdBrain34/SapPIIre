@@ -14,10 +14,9 @@ class SignUpScreen extends StatefulWidget {
 
 class _SignUpScreenState extends State<SignUpScreen> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  final AuthService _authService = AuthService(); // 🔹 Initialize auth service
-  bool _isLoading = false; // 🔹 Loading state
+  final AuthService _authService = AuthService();
+  bool _isLoading = false;
 
-  // Personal information
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _middleNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
@@ -25,7 +24,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
 
-  // Account credentials
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
@@ -45,7 +43,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     super.dispose();
   }
 
-  // 🔹 UPDATED: Create account with Supabase
+  // Create new user account in Supabase with profile data
   Future<void> _onCreateAccount() async {
     if (_dobController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -60,7 +58,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     if (_formKey.currentState?.validate() ?? false) {
       setState(() => _isLoading = true);
 
-      // 🔹 Call signup service
+      // Call signup service with user data
       final result = await _authService.signUp(
         username: _usernameController.text.trim(),
         password: _passwordController.text,
@@ -68,7 +66,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         firstName: _firstNameController.text.trim(),
         middleName: _middleNameController.text.trim(),
         lastName: _lastNameController.text.trim(),
-        dateOfBirth: _dobController.text, // MM/DD/YYYY format
+        dateOfBirth: _dobController.text,
         phoneNumber: _phoneController.text.trim(),
       );
 
@@ -76,8 +74,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
       if (!mounted) return;
 
+      // Navigate to success screen on successful signup
       if (result['success']) {
-        // 🔹 Success - Show success screen
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(result['message']),
@@ -92,7 +90,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           ),
         );
       } else {
-        // 🔹 Error - Show error message
+        // Show error message on failure
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(result['message']),
@@ -131,6 +129,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     return null;
   }
 
+  // Open date picker and format selected date as MM/DD/YYYY
   Future<void> _selectDate() async {
     final DateTime? pickedDate = await showDatePicker(
       context: context,
@@ -303,7 +302,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 ),
                 const SizedBox(height: 30),
 
-                // 🔹 Show loading indicator
                 _isLoading
                     ? const Center(
                         child: CircularProgressIndicator(color: Colors.white),
@@ -346,7 +344,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 }
 
-// 🔹 UPDATED: Success screen with userId
 class SignUpSuccessScreen extends StatelessWidget {
   final String userId;
 

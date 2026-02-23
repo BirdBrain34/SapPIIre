@@ -21,12 +21,19 @@ class WebAuthService {
       // Query staff_accounts — NOT user_accounts
       final accountResponse = await _supabase
           .from('staff_accounts')
-          .select('cswd_id, username, email, is_active, role, account_status')
+          .select('cswd_id, username, email, is_active, role, account_status, password_hash')
           .eq('username', username)
-          .eq('password_hash', hashedPassword)   // column is password_hash
           .maybeSingle();
 
       if (accountResponse == null) {
+        return {
+          'success': false,
+          'message': 'Invalid username or password',
+        };
+      }
+
+      final storedHash = accountResponse['password_hash'];
+      if (hashedPassword != storedHash) {
         return {
           'success': false,
           'message': 'Invalid username or password',

@@ -17,7 +17,7 @@ class LogoutConfirmationDialog extends StatelessWidget {
       content: const Text("Are you sure you want to log out of your account?"),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context), // Close dialog
+          onPressed: () => Navigator.pop(context),
           child: Text(
             "Cancel",
             style: TextStyle(color: Colors.grey[600]),
@@ -25,8 +25,8 @@ class LogoutConfirmationDialog extends StatelessWidget {
         ),
         ElevatedButton(
           onPressed: () {
-            Navigator.pop(context); // Close dialog first
-            onConfirm(); // Trigger the logout logic
+            Navigator.pop(context);
+            onConfirm();
           },
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.redAccent,

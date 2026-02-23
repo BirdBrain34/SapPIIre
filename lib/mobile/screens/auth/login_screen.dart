@@ -16,8 +16,8 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final AuthService _authService = AuthService(); // 🔹 Initialize auth service
-  bool _isLoading = false; // 🔹 Loading state
+  final AuthService _authService = AuthService();
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -26,7 +26,7 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // 🔹 UPDATED: Login with Supabase
+  // Authenticate user with Supabase and navigate to ManageInfoScreen
   Future<void> _onLoginPressed() async {
     if (_usernameController.text.isEmpty || _passwordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -40,7 +40,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _isLoading = true);
 
-    // 🔹 Call login service
+    // Call authentication service
     final result = await _authService.login(
       username: _usernameController.text.trim(),
       password: _passwordController.text,
@@ -50,8 +50,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (!mounted) return;
 
+    // Navigate to main screen on success
     if (result['success']) {
-      // 🔹 Success - Navigate to ManageInfoScreen with userId
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Welcome back, ${result['username']}!'),
@@ -66,7 +66,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
     } else {
-      // 🔹 Error - Show error message
+      // Show error message on failure
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(result['message']), backgroundColor: Colors.red),
       );
@@ -158,7 +158,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     const SizedBox(height: 20),
 
-                    // 🔹 Show loading indicator
                     _isLoading
                         ? const CircularProgressIndicator(color: Colors.white)
                         : SizedBox(

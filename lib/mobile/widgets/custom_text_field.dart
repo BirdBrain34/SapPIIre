@@ -7,7 +7,7 @@ class CustomTextField extends StatelessWidget {
   final TextEditingController? controller;
   final Icon? prefixIcon;
   final FormFieldValidator<String>? validator;
-  final bool isDarkBackground; // 🔹 Added this toggle
+  final bool isDarkBackground;
 
   const CustomTextField({
     super.key,
@@ -16,12 +16,12 @@ class CustomTextField extends StatelessWidget {
     this.controller,
     this.prefixIcon,
     this.validator,
-    this.isDarkBackground = true, // 🔹 Default to true for Login Screen
+    this.isDarkBackground = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Determine colors based on the background
+    // Adjust colors based on background (dark or light)
     final Color contentColor = isDarkBackground ? Colors.white : AppColors.primaryBlue;
     final Color fillColor = isDarkBackground 
         ? Colors.white.withOpacity(0.15) 
