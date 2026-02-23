@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:sappiire/mobile/widgets/info_input_field.dart';
 import 'package:sappiire/constants/app_colors.dart';
 
+// --- SHARED SECTION HEADER WITH CHECKBOX ---
+// --- SHARED SECTION HEADER WITH CHECKBOX ---
 class SectionHeader extends StatelessWidget {
   final String title;
   final bool isChecked;
@@ -39,12 +41,18 @@ class SectionHeader extends StatelessWidget {
             ),
           ],
         ),
-        const Divider(color: Colors.black12, thickness: 1, height: 20),
+        // 🔹 This is the fix: Adding a divider to separate the header from fields
+        const Divider(
+          color: Colors.black12, 
+          thickness: 1, 
+          height: 20, // This adds spacing above and below the line
+        ),
       ],
     );
   }
 }
 
+// --- A. CLIENT'S INFORMATION SECTION ---
 class ClientInfoSection extends StatefulWidget {
   final bool selectAll;
   final Map<String, TextEditingController>? controllers;
@@ -77,6 +85,35 @@ class _ClientInfoSectionState extends State<ClientInfoSection> {
     'PHIC': (widget.membershipData?['phic_member'] ?? false) ? 'Oo' : 'Hindi',
   };
 
+  // Inside _ClientInfoSectionState
+Future<void> _selectDate(TextEditingController controller) async {
+  final DateTime? pickedDate = await showDatePicker(
+    context: context,
+    initialDate: DateTime.now(),
+    firstDate: DateTime(1900),
+    lastDate: DateTime.now(),
+    builder: (context, child) {
+      return Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: AppColors.primaryBlue, // Using your constant
+            onPrimary: Colors.white,
+            onSurface: Colors.black,
+          ),
+        ),
+        child: child!,
+      );
+    },
+  );
+
+  if (pickedDate != null) {
+    setState(() {
+      // Formats as YYYY-MM-DD
+      controller.text = "${pickedDate.toLocal()}".split(' ')[0];
+    });
+  }
+}
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -97,6 +134,7 @@ class _ClientInfoSectionState extends State<ClientInfoSection> {
         _buildField("Last Name"),
         _buildField("First Name"),
         _buildField("Middle Name"),
+        _buildField("Date of Birth", isDate: true),
         _buildField("House number, street name, phase/purok"),
         _buildField("Subdivision"),
         _buildField("Barangay"),
@@ -123,17 +161,19 @@ class _ClientInfoSectionState extends State<ClientInfoSection> {
     );
   }
 
-  Widget _buildField(String label) {
-    return InfoInputField(
-      label: label,
-      controller: widget.controllers?[label],
-      isChecked: widget.selectAll ? true : (widget.fieldChecks[label] ?? false), 
-      onCheckboxChanged: (v) {
-        widget.onCheckChanged(label, v ?? false);
-      },
-      onTextChanged: (v) {},
-    );
-  }
+Widget _buildField(String label, {bool isDate = false}) {
+  final controller = widget.controllers?[label];
+  return InfoInputField(
+    label: label,
+    controller: controller,
+    isChecked: widget.selectAll ? true : (widget.fieldChecks[label] ?? false), 
+    onCheckboxChanged: (v) => widget.onCheckChanged(label, v ?? false),
+    onTextChanged: (v) {},
+    // Pass date logic to the InfoInputField
+    readOnly: isDate,
+    onTap: isDate && controller != null ? () => _selectDate(controller) : null,
+  );
+}
 
   Widget _buildMembershipRow(String title) {
     return Padding(
@@ -147,6 +187,7 @@ class _ClientInfoSectionState extends State<ClientInfoSection> {
               style: const TextStyle(color: Colors.black87, fontSize: 13),
             ),
           ),
+          // We don't wrap individual radios in Expanded so they stay grouped
           _miniRadio(title, "Oo"),
           _miniRadio(title, "Hindi"),
         ],
@@ -176,21 +217,14 @@ class _ClientInfoSectionState extends State<ClientInfoSection> {
   }
 }
 
+// --- B. FAMILY COMPOSITION TABLE ---
 class FamilyTable extends StatefulWidget {
   final bool selectAll;
   final Map<String, TextEditingController>? controllers;
-  final List<Map<String, dynamic>>? familyMembers;
-  final Function(List<Map<String, dynamic>>)? onFamilyChanged;
 
-  const FamilyTable({
-    super.key, 
-    required this.selectAll, 
-    this.controllers,
-    this.familyMembers,
-    this.onFamilyChanged,
-  });
+  const FamilyTable({super.key, required this.selectAll, this.controllers});
   @override
-  State<FamilyTable> createState() => FamilyTableState();
+  State<FamilyTable> createState() => _FamilyTableState();
 }
 
 class _FamilyMemberData {
@@ -214,63 +248,9 @@ class _FamilyMemberData {
   }
 }
 
-class FamilyTableState extends State<FamilyTable> {
-  List<_FamilyMemberData> _members = [];
+class _FamilyTableState extends State<FamilyTable> {
+  List<_FamilyMemberData> _members = [_FamilyMemberData()];
   bool _sectionChecked = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeMembers();
-  }
-
-  @override
-  void didUpdateWidget(FamilyTable oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.familyMembers != widget.familyMembers) {
-      _initializeMembers();
-    }
-  }
-
-  void _initializeMembers() {
-    if (widget.familyMembers != null && widget.familyMembers!.isNotEmpty) {
-      _members = widget.familyMembers!.map((data) {
-        final member = _FamilyMemberData();
-        member.nameController.text = data['name']?.toString() ?? '';
-        member.relationController.text = data['relationship_of_relative']?.toString() ?? '';
-        member.birthdateController.text = data['birthdate']?.toString() ?? '';
-        member.ageController.text = data['age']?.toString() ?? '';
-        member.gender = data['gender']?.toString();
-        member.civilStatus = data['civil_status']?.toString();
-        member.education = data['education']?.toString();
-        member.occupationController.text = data['occupation']?.toString() ?? '';
-        member.incomeController.text = data['allowance']?.toString() ?? '';
-        return member;
-      }).toList();
-    } else {
-      _members = [_FamilyMemberData()];
-    }
-  }
-
-  List<Map<String, dynamic>> getFamilyData() {
-    return _members.map((member) {
-      return {
-        'name': member.nameController.text.trim(),
-        'relationship_of_relative': member.relationController.text.trim(),
-        'birthdate': member.birthdateController.text.trim(),
-        'age': int.tryParse(member.ageController.text) ?? 0,
-        'gender': member.gender ?? '',
-        'civil_status': member.civilStatus ?? '',
-        'education': member.education ?? '',
-        'occupation': member.occupationController.text.trim(),
-        'allowance': double.tryParse(member.incomeController.text.replaceAll(',', '')) ?? 0,
-      };
-    }).toList();
-  }
-
-  void _notifyParent() {
-    widget.onFamilyChanged?.call(getFamilyData());
-  }
 
   @override
   void dispose() {
@@ -293,10 +273,7 @@ class FamilyTableState extends State<FamilyTable> {
         const SizedBox(height: 10),
         ..._members.asMap().entries.map((entry) => _buildMemberCard(entry.key)),
         TextButton.icon(
-          onPressed: () {
-            setState(() => _members.add(_FamilyMemberData()));
-            _notifyParent();
-          },
+          onPressed: () => setState(() => _members.add(_FamilyMemberData())),
           icon: const Icon(Icons.add_circle, color: Colors.green),
           label: const Text("Add Member", style: TextStyle(color: AppColors.primaryBlue)),
         ),
@@ -321,13 +298,10 @@ class FamilyTableState extends State<FamilyTable> {
                 if (_members.length > 1)
                   IconButton(
                     icon: const Icon(Icons.delete, color: Colors.red, size: 20),
-                    onPressed: () {
-                      setState(() {
-                        _members[index].dispose();
-                        _members.removeAt(index);
-                      });
-                      _notifyParent();
-                    },
+                    onPressed: () => setState(() {
+                      _members[index].dispose();
+                      _members.removeAt(index);
+                    }),
                   ),
               ],
             ),
@@ -336,18 +310,9 @@ class FamilyTableState extends State<FamilyTable> {
             _buildTextField("Relasyon", member.relationController),
             _buildDateField("Birthdate", member.birthdateController, index),
             _buildTextField("Edad", member.ageController, readOnly: true),
-            _buildRadioGroup("Kasarian", ["M - Lalaki", "F - Babae"], member.gender, (v) {
-              setState(() => member.gender = v);
-              _notifyParent();
-            }),
-            _buildRadioGroup("Sibil Status", ["M - Kasal", "S - Single", "W - Balo", "H - Hiwalay", "C - Minor"], member.civilStatus, (v) {
-              setState(() => member.civilStatus = v);
-              _notifyParent();
-            }),
-            _buildRadioGroup("Edukasyon", ["UG - Undergrad", "G - Graduated", "HS - HS Grad", "OS - Hindi nag-aral", "NS - Walang Aral"], member.education, (v) {
-              setState(() => member.education = v);
-              _notifyParent();
-            }),
+            _buildRadioGroup("Kasarian", ["M - Lalaki", "F - Babae"], member.gender, (v) => setState(() => member.gender = v)),
+            _buildRadioGroup("Sibil Status", ["M - Kasal", "S - Single", "W - Balo", "H - Hiwalay", "C - Minor"], member.civilStatus, (v) => setState(() => member.civilStatus = v)),
+            _buildRadioGroup("Edukasyon", ["UG - Undergrad", "G - Graduated", "HS - HS Grad", "OS - Hindi nag-aral", "NS - Walang Aral"], member.education, (v) => setState(() => member.education = v)),
             _buildTextField("Trabaho", member.occupationController),
             _buildTextField("Kita", member.incomeController, keyboardType: TextInputType.number),
           ],
@@ -401,7 +366,6 @@ class FamilyTableState extends State<FamilyTable> {
               final age = DateTime.now().year - date.year;
               _members[memberIndex].ageController.text = age.toString();
             });
-            _notifyParent();
           }
         },
       ),
@@ -437,6 +401,7 @@ class FamilyTableState extends State<FamilyTable> {
   }
 }
 
+// --- C. SOCIO-ECONOMIC SECTION ---
 class SocioEconomicSection extends StatefulWidget {
   final bool selectAll;
   final Map<String, TextEditingController>? controllers;
@@ -564,6 +529,7 @@ class _SocioEconomicSectionState extends State<SocioEconomicSection> {
     super.dispose();
   }
 
+  // Computed getters that read from widget properties on every build
   String get hasSupportValue => (widget.hasSupport ?? false) ? "Meron" : "Wala";
   String? get housingStatusValue => widget.housingStatus; 
 
@@ -719,72 +685,4 @@ class _SocioEconomicSectionState extends State<SocioEconomicSection> {
       ),
     );
   }
-}
-
-class SignatureSection extends StatelessWidget {
-  final Map<String, TextEditingController>? controllers; 
-  const SignatureSection({super.key, this.controllers});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text("Signature", style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 10),
-        GestureDetector(
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SignatureDialog())),
-          child: Container(
-            height: 120, width: double.infinity,
-            decoration: BoxDecoration(
-              border: Border.all(color: AppColors.primaryBlue.withOpacity(0.5)), 
-              borderRadius: BorderRadius.circular(8), 
-              color: Colors.grey.withOpacity(0.05)
-            ),
-            child: const Center(child: Text("Tap to provide digital signature", style: TextStyle(color: Colors.black54, fontSize: 12))),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class SignatureDialog extends StatefulWidget {
-  const SignatureDialog({super.key});
-  @override State<SignatureDialog> createState() => _SignatureDialogState();
-}
-
-class _SignatureDialogState extends State<SignatureDialog> {
-  List<Offset?> points = [];
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: AppColors.primaryBlue, title: const Text("Digital Signature", style: TextStyle(color: Colors.white)),
-        actions: [
-          IconButton(icon: const Icon(Icons.undo, color: Colors.white), onPressed: () => setState(() => points.clear())),
-          IconButton(icon: const Icon(Icons.check, color: Colors.white), onPressed: () => Navigator.pop(context)),
-        ],
-      ),
-      body: GestureDetector(
-        onPanUpdate: (details) => setState(() => points.add(details.localPosition)),
-        onPanEnd: (details) => points.add(null),
-        child: CustomPaint(painter: SignaturePainter(points), size: Size.infinite),
-      ),
-    );
-  }
-}
-
-class SignaturePainter extends CustomPainter {
-  final List<Offset?> points;
-  SignaturePainter(this.points);
-  @override
-  void paint(Canvas canvas, Size size) {
-    Paint paint = Paint()..color = Colors.black..strokeWidth = 3.0..strokeCap = StrokeCap.round;
-    for (int i = 0; i < points.length - 1; i++) {
-      if (points[i] != null && points[i + 1] != null) canvas.drawLine(points[i]!, points[i + 1]!, paint);
-    }
-  }
-  @override bool shouldRepaint(SignaturePainter oldDelegate) => true;
 }
