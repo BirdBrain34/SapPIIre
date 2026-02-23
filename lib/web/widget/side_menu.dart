@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/web/screen/manage_staff_screen.dart';
+import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/screen/dashboard_screen.dart';
 import 'logout_confirmation_dialog.dart';
@@ -33,6 +34,10 @@ class SideMenu extends StatelessWidget {
           _menuItem(context, Icons.description, "Manage Forms", activePath == "Forms", "Forms"),
           _menuItem(context, Icons.people, "Applicants", activePath == "Applicants"),
           if (role == 'admin')
+            _menuItem(context, Icons.manage_accounts, "Manage Staff", activePath == "Staff", "Staff"),
+          if (role == 'superadmin')
+            _menuItem(context, Icons.person_add, "Create Staff", activePath == "CreateStaff", "CreateStaff"),
+          if (role == 'superadmin')
             _menuItem(context, Icons.manage_accounts, "Manage Staff", activePath == "Staff", "Staff"),
           const Spacer(),
           ListTile(
@@ -94,11 +99,24 @@ class SideMenu extends StatelessWidget {
                 ),
               ),
             );
+          } else if (route == "CreateStaff") {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => CreateStaffScreen(
+                  role: role,
+                  cswd_id: cswd_id,
+                ),
+              ),
+            );
           } else if (route == "Staff") {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                builder: (_) => const ManageStaffScreen(),
+                builder: (_) => ManageStaffScreen(
+                  role: role,
+                  cswd_id: cswd_id,
+                ),
               ),
             );
           }
