@@ -14,20 +14,33 @@ class FormDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.colorScheme.surface.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: theme.primaryColor, width: 1.2),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: selectedForm,
           isExpanded: true,
-          items: items.map((val) => DropdownMenuItem(
-            value: val,
-            child: Text(val, style: const TextStyle(color: Color(0xFF0D3299))),
-          )).toList(),
+          dropdownColor: theme.colorScheme.surface,
+          style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 16),
+          iconEnabledColor: theme.primaryColor,
+          items: items
+              .map(
+                (val) => DropdownMenuItem(
+                  value: val,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Text(val),
+                  ),
+                ),
+              )
+              .toList(),
           onChanged: onChanged,
         ),
       ),
