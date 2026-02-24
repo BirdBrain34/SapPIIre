@@ -13,7 +13,7 @@ class CustomButton extends StatelessWidget {
     super.key,
     required this.text,
     required this.onPressed,
-    this.backgroundColor = AppColors.buttonPurple, // Default background
+    this.backgroundColor = AppColors.highlight, // Default background
     this.textColor = AppColors.white, // Default text color
     this.outlineButton = false,
   });

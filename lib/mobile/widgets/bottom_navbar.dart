@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hugeicons/hugeicons.dart';
+import 'package:sappiire/constants/app_colors.dart'; // Ensure this path is correct
 
 class CustomBottomNav extends StatelessWidget {
   final int currentIndex;
@@ -13,44 +14,43 @@ class CustomBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // The total height of the bar area including the "pop out" QR icon
     return Container(
-      height: 110, 
-      color: Colors.transparent, // Background of the screen shows through
+      height: 110,
+      color: Colors.transparent,
       child: Stack(
         alignment: Alignment.bottomCenter,
         children: [
-          // The actual Dark Blue Bar
+          // Main Navigation Bar
           Container(
             height: 85,
             decoration: const BoxDecoration(
-              color: Color(0xFF0A1E5E), // The specific dark navy in your image
+              color: AppColors.primaryBlue, // Updated to your brand Blue
               border: Border(
-                top: BorderSide(color: Color.fromARGB(188, 255, 255, 255), width: 1),
+                top: BorderSide(
+                  color: Colors.white24, // Subtle white border
+                  width: 1,
+                ),
               ),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                // Index 0: Manage Info
                 Expanded(
-                  child: _navItem(0, HugeIcons.strokeRoundedUser, "Manage Information"),
+                  child: _navItem(0, HugeIcons.strokeRoundedUser, "Manage Info"),
                 ),
-                // Space for the QR code in the middle
                 const Expanded(
-                  child: SizedBox(),
+                  child: SizedBox(), // Middle spacer for the QR button
                 ),
-                // Index 2: Fill History
                 Expanded(
                   child: _navItem(2, HugeIcons.strokeRoundedClock01, "Fill History"),
                 ),
               ],
             ),
           ),
-          
-          // The QR Code Button (Positioned to pop out)
+
+          // Pop-out QR Code Button
           Positioned(
-            top: 0, // Moves it up relative to the dark bar
+            top: 0,
             child: _qrNavItem(1),
           ),
         ],
@@ -69,23 +69,23 @@ class CustomBottomNav extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             decoration: BoxDecoration(
-              // The "pill" shape for active state
-              color: isActive ? const Color(0xFF4A69D4) : Colors.transparent,
+              // Active indicator using a lighter blue or white with opacity
+              color: isActive ? Colors.white.withOpacity(0.15) : Colors.transparent,
               borderRadius: BorderRadius.circular(20),
             ),
             child: HugeIcon(
               icon: icon,
-              color: Colors.white,
+              color: isActive ? Colors.white : Colors.white70,
               size: 24,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             label,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: isActive ? Colors.white : Colors.white70,
               fontSize: 10,
-              fontWeight: FontWeight.w400,
+              fontWeight: isActive ? FontWeight.bold : FontWeight.w400,
             ),
             textAlign: TextAlign.center,
           ),
@@ -103,8 +103,9 @@ class CustomBottomNav extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: isActive ? const Color(0xFF4A69D4) : Colors.white,
-              borderRadius: BorderRadius.circular(12),
+              // The QR button remains white unless active, then brand blue
+              color: isActive ? AppColors.primaryBlue : Colors.white,
+              borderRadius: BorderRadius.circular(15),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.2),
@@ -112,10 +113,13 @@ class CustomBottomNav extends StatelessWidget {
                   offset: const Offset(0, 4),
                 ),
               ],
+              border: isActive 
+                ? Border.all(color: Colors.white, width: 2) 
+                : null,
             ),
             child: HugeIcon(
               icon: HugeIcons.strokeRoundedQrCode,
-              color: isActive ? Colors.white : const Color(0xFF1A358F),
+              color: isActive ? Colors.white : AppColors.primaryBlue,
               size: 35,
             ),
           ),
@@ -125,7 +129,7 @@ class CustomBottomNav extends StatelessWidget {
             style: TextStyle(
               color: Colors.white,
               fontSize: 11,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.bold,
             ),
           ),
         ],

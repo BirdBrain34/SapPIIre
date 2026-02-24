@@ -146,7 +146,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         ),
 
         // Index 3 (or the last step): Your existing Signature logic
-Column( 
+        Column( 
           children: [
             SignatureField(
               points: _capturedSignaturePoints,
@@ -196,7 +196,7 @@ Column(
               onTextChanged: (val) {
                 if (!_isEdited) setState(() => _isEdited = true);
               },
-              onBloodTypeChanged: (val) {
+            onBloodTypeChanged: (val) { // <--- This handles the dropdown selection
                 setState(() {
                   _bloodType = val;
                   _isEdited = true;
@@ -211,7 +211,11 @@ Column(
             
             const Text(
               "Signature", 
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)
+              style: TextStyle(
+              color: Colors.white, // Add this line
+              fontWeight: FontWeight.bold, 
+              fontSize: 16,
+            ),
             ),
             const SizedBox(height: 10),
 

@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
-import 'package:sappiire/mobile/widgets/custom_button.dart';
-import 'package:sappiire/mobile/widgets/custom_text_field.dart';
 import 'package:sappiire/mobile/screens/auth/manage_info_screen.dart';
 import 'package:sappiire/mobile/screens/auth/signup_screen.dart';
 import 'package:sappiire/mobile/screens/auth/auth_service.dart';
@@ -26,195 +24,230 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // Authenticate user with Supabase and navigate to ManageInfoScreen
+  void _snack(String msg, {bool error = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg),
+      backgroundColor: error ? AppColors.dangerRed : AppColors.successGreen,
+    ));
+  }
+
   Future<void> _onLoginPressed() async {
     if (_usernameController.text.isEmpty || _passwordController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter username and password'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _snack('Please enter username and password', error: true);
       return;
     }
-
     setState(() => _isLoading = true);
-
-    // Call authentication service
     final result = await _authService.login(
       username: _usernameController.text.trim(),
       password: _passwordController.text,
     );
-
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
-    if (!mounted) return;
-
-    // Navigate to main screen on success
     if (result['success']) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Welcome back, ${result['username']}!'),
-          backgroundColor: Colors.green,
-        ),
-      );
-
+      _snack('Welcome back, ${result['username']}!');
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (_) => ManageInfoScreen(userId: result['user_id']),
-        ),
+        MaterialPageRoute(builder: (_) => ManageInfoScreen(userId: result['user_id'])),
       );
     } else {
-      // Show error message on failure
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result['message']), backgroundColor: Colors.red),
-      );
+      _snack(result['message'], error: true);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.primaryBlue,
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 30.0, vertical: 20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const SizedBox(height: 10),
-              Image.asset(
-                'lib/logo/sappiire_logo.png',
-                height: 250,
-                fit: BoxFit.contain,
-              ),
-
-              const SizedBox(height: 3),
-
-              
-              const SizedBox(height: 10),
-              const Text(
-                'The efficient way to fill forms, and data safe.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AppColors.white,
-                  fontSize: 13,
-                  fontStyle: FontStyle.italic,
+      // Use ResizeToAvoidBottomInset to prevent keyboard from breaking layout
+      resizeToAvoidBottomInset: false, 
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [AppColors.primaryBlue, AppColors.midBlue],
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center, // Centers the content vertically
+              children: [
+                // 1. Reduced Logo Size to fit screen without scrolling
+                Image.asset(
+                  'lib/logo/sappiire_logo.png',
+                  height: 200, 
+                  fit: BoxFit.contain,
                 ),
-              ),
-
-              const SizedBox(height: 20),
-
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 20,
+                const SizedBox(height: 8),
+                const Text(
+                  'The efficient way to fill forms, and data safe.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color.fromARGB(255, 255, 255, 255),
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                  ),
                 ),
-                decoration: BoxDecoration(
-                  color: AppColors.accentBlue,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      'LOG IN',
-                      style: TextStyle(
-                        color: AppColors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
+                const SizedBox(height: 24),
+
+                // 2. The Login Card
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: AppColors.accentBlue,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 15,
+                        offset: const Offset(0, 8),
+                      )
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min, // Prevents card from expanding
+                    children: [
+                      const Text(
+                        'Sign In', 
+                        style: TextStyle(
+                          color: Colors.white, 
+                          fontSize: 20, 
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 15),
+                      const SizedBox(height: 20),
 
-                    SizedBox(
-                      height: 45,
-                      child: CustomTextField(
-                        hintText: 'Username',
+                      _fieldLabel("Username"),
+                      const SizedBox(height: 6),
+                      _buildStyledField(
                         controller: _usernameController,
-                        prefixIcon: const Icon(
-                          Icons.person,
-                          color: AppColors.white,
-                          size: 18,
-                        ),
+                        hint: 'Enter your username',
+                        icon: Icons.badge_outlined,
                       ),
-                    ),
-                    const SizedBox(height: 12),
+                      const SizedBox(height: 14),
 
-                    SizedBox(
-                      height: 45,
-                      child: CustomTextField(
-                        hintText: 'Password',
-                        obscureText: true,
+                      _fieldLabel("Password"),
+                      const SizedBox(height: 6),
+                      _buildStyledField(
                         controller: _passwordController,
-                        prefixIcon: const Icon(
-                          Icons.lock,
-                          color: AppColors.white,
-                          size: 18,
-                        ),
+                        hint: 'Enter your password',
+                        icon: Icons.lock_outline,
+                        obscure: true,
                       ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    _isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : SizedBox(
-                            height: 40,
-                            width: double.infinity,
-                            child: CustomButton(
-                              text: 'Log in',
-                              onPressed: _onLoginPressed,
-                              backgroundColor: Colors.white,
-                              textColor: Colors.black,
-                            ),
-                          ),
-
-                    const SizedBox(height: 10),
-                    const Row(
-                      children: [
-                        Expanded(child: Divider(color: AppColors.white)),
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8.0),
-                          child: Text(
-                            'or',
+                      
+                      // 3. Added Forgot Account Link (Right Aligned)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () {
+                            // No functionality yet
+                          },
+                          style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                          child: const Text(
+                            'Forgot account?',
                             style: TextStyle(
-                              color: AppColors.white,
+                              color: AppColors.lightBlue,
                               fontSize: 12,
                             ),
                           ),
                         ),
-                        Expanded(child: Divider(color: AppColors.white)),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-
-                    SizedBox(
-                      height: 40,
-                      width: double.infinity,
-                      child: CustomButton(
-                        text: 'Sign up',
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const SignUpScreen(),
-                            ),
-                          );
-                        },
-                        backgroundColor: Colors.transparent,
-                        outlineButton: true,
-                        textColor: AppColors.white,
                       ),
-                    ),
-                  ],
+
+                      const SizedBox(height: 8),
+
+                      // Login Button
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: _isLoading ? null : _onLoginPressed,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.highlight,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            elevation: 0,
+                          ),
+                          child: _isLoading 
+                            ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : const Text('Log In', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+                      _buildDivider(),
+                      const SizedBox(height: 16),
+
+                      // Register Button
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SignUpScreen())),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: AppColors.borderNavy, width: 1.5),
+                            foregroundColor: AppColors.mutedBlue,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: const Text("Sign Up"),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  // --- UI Helpers ---
+
+  Widget _fieldLabel(String text) => Text(
+        text, 
+        style: const TextStyle(
+          color: AppColors.labelBlue, 
+          fontSize: 12, 
+          fontWeight: FontWeight.w600,
+        ),
+      );
+
+  Widget _buildStyledField({required TextEditingController controller, required String hint, required IconData icon, bool obscure = false}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.inputBg, 
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.borderNavy, width: 1.5),
+      ),
+      child: TextField(
+        controller: controller,
+        obscureText: obscure,
+        style: const TextStyle(color: Colors.white, fontSize: 14),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: const TextStyle(color: AppColors.hintText, fontSize: 13),
+          prefixIcon: Icon(icon, color: AppColors.lightBlue, size: 18),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDivider() {
+    return const Row(
+      children: [
+        Expanded(child: Divider(color: AppColors.borderNavy)),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12), 
+          child: Text('or', style: TextStyle(color: AppColors.mutedBlue, fontSize: 12)),
+        ),
+        Expanded(child: Divider(color: AppColors.borderNavy)),
+      ],
     );
   }
 }

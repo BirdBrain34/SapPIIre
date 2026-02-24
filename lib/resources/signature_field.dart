@@ -7,6 +7,7 @@ class SignatureField extends StatelessWidget {
   final Function(List<Offset?>) onCaptured;
   final String label;
   final String? signatureImageBase64;
+   final Color labelColor;
 
   const SignatureField({
     super.key,
@@ -14,14 +15,22 @@ class SignatureField extends StatelessWidget {
     required this.onCaptured,
     this.label = "Signature",
     this.signatureImageBase64,
+    this.labelColor = AppColors.primaryBlue,
   });
 
-  @override
+@override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
+        Text(
+          label, 
+          style: TextStyle(
+            color: labelColor, // 3. Use the dynamic color here
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
         const SizedBox(height: 10),
         GestureDetector(
           onTap: () async {
@@ -37,7 +46,8 @@ class SignatureField extends StatelessWidget {
             height: 120,
             width: double.infinity,
             decoration: BoxDecoration(
-              border: Border.all(color: AppColors.primaryBlue.withOpacity(0.5)),
+              // 2. Updated border to white with opacity for better look on blue
+              border: Border.all(color: AppColors.primaryBlue.withOpacity(0.3)),
               borderRadius: BorderRadius.circular(8),
               color: Colors.white,
             ),
@@ -53,8 +63,8 @@ class SignatureField extends StatelessWidget {
                     child: FittedBox(
                       fit: BoxFit.contain,
                       child: SizedBox(
-                        width: 300, // Matching the internal drawing box width
-                        height: 200, // Matching the internal drawing box height
+                        width: 300,
+                        height: 200,
                         child: CustomPaint(painter: SignaturePainter(points!)),
                       ),
                     ),
@@ -87,27 +97,42 @@ class _SignatureDialogState extends State<SignatureDialog> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      // 3. Changed background to match your app theme
+      backgroundColor: AppColors.primaryBlue,
       appBar: AppBar(
         title: const Text("Digital Signature"),
-        backgroundColor: AppColors.primaryBlue,
+        backgroundColor: Colors.transparent, // Made transparent for a cleaner look
+        elevation: 0,
+        // 4. Force back arrow and buttons to white
+        iconTheme: const IconThemeData(color: Colors.white),
+        titleTextStyle: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
         actions: [
-          IconButton(icon: const Icon(Icons.undo), onPressed: () => setState(() => points.clear())),
-          IconButton(icon: const Icon(Icons.check), onPressed: () => Navigator.pop(context, points)),
+          IconButton(
+            icon: const Icon(Icons.undo, color: Colors.white), 
+            onPressed: () => setState(() => points.clear())
+          ),
+          IconButton(
+            icon: const Icon(Icons.check, color: Colors.white), 
+            onPressed: () => Navigator.pop(context, points)
+          ),
         ],
       ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text("Sign within the box", style: TextStyle(fontWeight: FontWeight.bold)),
+            // 5. Changed instruction text to white
+            const Text(
+              "Sign within the box", 
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)
+            ),
             const SizedBox(height: 20),
             Container(
               width: 300,
               height: 200,
               decoration: BoxDecoration(
                 color: Colors.white,
-                border: Border.all(color: AppColors.primaryBlue),
+                border: Border.all(color: Colors.white, width: 2),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: GestureDetector(

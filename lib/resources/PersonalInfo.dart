@@ -47,7 +47,8 @@ class PersonalInfoSection extends StatelessWidget {
         _buildField("House number, street name, phase/purok"), 
         _buildField("Kasarian / Sex"),
         
-        _buildBloodTypeRadio(),
+        // Swapped Radio for Dropdown
+        _buildBloodTypeDropdown(),
   
         _buildField("Estadong Sibil / Martial Status"), 
         _buildField("Lugar ng Kapanganakan / Place of Birth"), 
@@ -67,20 +68,23 @@ class PersonalInfoSection extends StatelessWidget {
     );
   }
 
-  Widget _buildBloodTypeRadio() {
+  Widget _buildBloodTypeDropdown() {
     const bloodTypes = ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'];
-    
+    final label = "Uri ng Dugo / Blood Type";
+    final isChecked = selectAll ? true : (fieldChecks[label] ?? false);
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Label and Checkbox Row
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
-                  "Uri ng Dugo / Blood Type",
-                  style: TextStyle(
+                  label,
+                  style: const TextStyle(
                     color: Colors.black87,
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
@@ -92,8 +96,8 @@ class PersonalInfoSection extends StatelessWidget {
                 height: 24,
                 width: 24,
                 child: Checkbox(
-                  value: selectAll ? true : (fieldChecks["Uri ng Dugo / Blood Type"] ?? false),
-                  onChanged: (v) => onCheckChanged("Uri ng Dugo / Blood Type", v ?? false),
+                  value: isChecked,
+                  onChanged: (v) => onCheckChanged(label, v ?? false),
                   activeColor: AppColors.primaryBlue,
                   side: const BorderSide(color: AppColors.primaryBlue, width: 1.5),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
@@ -101,23 +105,35 @@ class PersonalInfoSection extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            children: bloodTypes.map((type) => SizedBox(
-              width: 80,
-              child: RadioListTile<String>(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                visualDensity: VisualDensity.compact,
-                title: Text(type, style: const TextStyle(fontSize: 12)),
+          const SizedBox(height: 8),
+          
+          // The Actual Dropdown
+          DropdownButtonFormField<String>(
+            value: bloodTypes.contains(bloodType) ? bloodType : null,
+            items: bloodTypes.map((type) {
+              return DropdownMenuItem(
                 value: type,
-                groupValue: bloodType,
-                onChanged: onBloodTypeChanged,
-                activeColor: AppColors.primaryBlue,
+                child: Text(type, style: const TextStyle(fontSize: 14, color: Colors.black87)),
+              );
+            }).toList(),
+            onChanged: onBloodTypeChanged,
+            decoration: InputDecoration(
+              hintText: "Select Blood Type",
+              hintStyle: const TextStyle(fontSize: 14, color: Colors.grey),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              filled: true,
+              fillColor: AppColors.pageBg,
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: AppColors.cardBorder, width: 1),
               ),
-            )).toList(),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: AppColors.primaryBlue, width: 1.5),
+              ),
+            ),
+            dropdownColor: Colors.white,
+            icon: const Icon(Icons.arrow_drop_down, color: AppColors.primaryBlue),
           ),
         ],
       ),

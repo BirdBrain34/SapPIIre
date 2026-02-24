@@ -163,11 +163,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.primaryBlue,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text('Sign Up'),
-      ),
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          // This line turns the back arrow (and all other icons in the bar) white
+          iconTheme: const IconThemeData(color: Colors.white), 
+          title: const Text(
+            'Sign Up',
+            style: TextStyle(
+              color: Colors.white, 
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
