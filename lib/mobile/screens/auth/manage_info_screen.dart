@@ -18,6 +18,7 @@ import 'package:sappiire/resources/signature_field.dart';
 import 'package:sappiire/services/supabase_service.dart';
 import 'package:sappiire/mobile/widgets/date_picker_helper.dart';
 import 'package:sappiire/mobile/widgets/signature_helper.dart';
+import 'package:sappiire/mobile/widgets/NextButton.dart';
 
 
 class ManageInfoScreen extends StatefulWidget {
@@ -35,6 +36,9 @@ class ManageInfoScreen extends StatefulWidget {
 }
 
 class _ManageInfoScreenState extends State<ManageInfoScreen> {
+  String _username = "Loading...";
+  int _currentStep = 0;
+  final ScrollController _scrollController = ScrollController();
   final SupabaseService _supabaseService = SupabaseService();
   int _currentIndex = 0;
   bool _selectAll = false;
@@ -86,6 +90,91 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     "Gasul"
   ];
 
+  // This is the getter that tells Flutter which "Step" to show
+// This is the getter that tells Flutter which "Step" to show
+  List<Widget> get _formSections {
+    if (_selectedForm == "General Intake Sheet") {
+      return [
+        // Index 0: Client Information
+        ClientInfoSection(
+          selectAll: _selectAll,
+          controllers: _controllers,
+          fieldChecks: _fieldChecks,
+          onCheckChanged: (key, val) {
+            setState(() {
+              _fieldChecks[key] = val;
+              _isEdited = true;
+            });
+          },
+          membershipData: _membershipData,
+          onMembershipChanged: (key, val) {
+            setState(() {
+              _membershipData[key] = val;
+              _isEdited = true;
+            });
+          },
+        ),
+
+        // Index 1: Family Composition
+        FamilyTable(
+          key: _familyTableKey,
+          selectAll: _selectAll,
+          familyMembers: _familyMembers,
+          onFamilyChanged: (newData) {
+            setState(() {
+              _familyMembers = newData;
+              _isEdited = true;
+            });
+          },
+        ),
+
+        // Index 2: Socio-Economic Data
+        SocioEconomicSection(
+          selectAll: _selectAll,
+          controllers: _controllers,
+          hasSupport: _hasSupport,
+          housingStatus: _housingStatus,
+          supportingFamily: _supportingFamily,
+          onHasSupportChanged: (val) => setState(() { _hasSupport = val; _isEdited = true; }),
+          onHousingStatusChanged: (val) => setState(() { _housingStatus = val; _isEdited = true; }),
+          onSupportingFamilyChanged: (newData) {
+            setState(() {
+              _supportingFamily = newData;
+              _isEdited = true;
+            });
+          },
+        ),
+      ];
+    } else if (_selectedForm == "Personal Info") {
+      return [
+        PersonalInfoSection(
+          controllers: _controllers,
+          selectAll: _selectAll,
+          fieldChecks: _fieldChecks,
+          onCheckChanged: (key, val) { 
+            setState(() {
+              _fieldChecks[key] = val;
+              _isEdited = true;
+            });
+          },
+          onDateTap: () => _selectDate(),
+          onTextChanged: (val) {
+            if (!_isEdited) setState(() => _isEdited = true);
+          },
+          onBloodTypeChanged: (val) {
+            setState(() {
+              _bloodType = val;
+              _isEdited = true;
+            });
+          },
+        )
+      ];
+    }
+    return [const Center(child: Text("Select a form to begin"))];
+  }
+
+
+
 Future<void> _selectDate() async {
   await DatePickerHelper.selectDate(
     context: context,
@@ -93,6 +182,24 @@ Future<void> _selectDate() async {
     ageController: _controllers["Age"],
   );
   setState(() => _isEdited = true);
+}
+
+void _changeStep(int newStep) {
+  setState(() {
+    _currentStep = newStep;
+  });
+  
+  // Use postFrameCallback to wait for the new section to render, 
+  // then scroll to the very top (position 0).
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.fastOutSlowIn,
+      );
+    }
+  });
 }
 
   @override
@@ -130,7 +237,13 @@ Future<void> _selectDate() async {
   }
 
   Future<void> _loadUserProfile(String userId) async {
-    try {
+  try {
+    // 1. Fetch the username via the service
+    final name = await _supabaseService.getUsername(userId);
+    if (name != null && mounted) {
+      setState(() => _username = name);
+    }
+
       final response = await _supabaseService.loadUserProfile(userId);
 
       if (response != null && mounted) {
@@ -191,6 +304,7 @@ Future<void> _selectDate() async {
 
             _socioEconomicId = socioData['socio_economic_id']?.toString();
             final socioId = _socioEconomicId;
+            
 
             if (socioId != null) {
               _loadSupportingFamily(socioId);
@@ -432,21 +546,46 @@ Future<void> _selectDate() async {
     );
   }
 
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: AppColors.primaryBlue,
-        title: const Text("Manage Information", style: TextStyle(color: Colors.white)),
+        toolbarHeight: 70, // Slightly taller to fit two lines comfortably
         leading: IconButton(
-          icon: const Icon(Icons.logout, color: Colors.white),
+          icon: const Icon(Icons.logout, color: Colors.white, size: 20),
           onPressed: () {
             showDialog(
               context: context,
               builder: (_) => LogoutConfirmationDialog(onConfirm: _handleLogout),
             );
           },
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              "Manage Information".toUpperCase(),
+              style: const TextStyle(
+                color: Colors.white70, 
+                fontSize: 12, 
+                letterSpacing: 1.2,
+                fontWeight: FontWeight.w500
+              ),
+            ),
+            Text(
+              _username,
+              style: const TextStyle(
+                color: Colors.white, 
+                fontSize: 18, 
+                fontWeight: FontWeight.bold
+              ),
+            ),
+          ],
         ),
       ),
       body: Column(
@@ -456,107 +595,110 @@ Future<void> _selectDate() async {
             padding: const EdgeInsets.all(16),
             child: FormDropdown(
               selectedForm: _selectedForm,
-              items: const ["Personal Info","General Intake Sheet", "Senior Citizen ID"],
-              onChanged: (val) => setState(() => _selectedForm = val!),
+              items: const ["Personal Info", "General Intake Sheet", "Senior Citizen ID"],
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() {
+                    _selectedForm = val;
+                    _currentStep = 0;
+                    
+                    // 1. Reset the Select All toggle
+                    _selectAll = false;
+
+                    // 2. Clear all previous checkboxes
+                    // This ensures checks from "Personal Info" don't bleed into "GIS"
+                    _fieldChecks.updateAll((key, value) => false);
+
+                    _isEdited = true;
+                  });
+                }
+              },
             ),
           ),
+// Inside your build method:
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  if (_selectedForm == "Personal Info")...[
-                  _buildSectionCard(
-                    child: PersonalInfoSection(
-                      selectAll: _selectAll,
-                      controllers: _controllers,
-                      fieldChecks: _fieldChecks,
-                      onCheckChanged: (key, val) => setState(() {
-                        _fieldChecks[key] = val;
-                        _isEdited = true;
-                      }),
-                      onDateTap: _selectDate,
-                      onTextChanged: (v) {
-                        if (!_isEdited) setState(() => _isEdited = true);
-                      },
-                      bloodType: _bloodType,
-                      onBloodTypeChanged: (val) => setState(() {
-                        _bloodType = val;
-                        _isEdited = true;
-                      }),
+                // 1. Top Navigation & Progress
+                if (_formSections.length > 1)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 20),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Top BACK arrow
+                        Opacity(
+                          opacity: _currentStep > 0 ? 1.0 : 0.0, // Hidden but keeps spacing
+                          child: IconButton(
+                            icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+                            color: AppColors.primaryBlue,
+                            onPressed: _currentStep > 0 ? () => _changeStep(_currentStep - 1) : null,
+                          ),
+                        ),
+                        
+                        const SizedBox(width: 15),
+                        
+                        Text(
+                          "Page ${_currentStep + 1} of ${_formSections.length}",
+                          style: TextStyle(
+                            color: AppColors.primaryBlue, 
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16
+                          ),
+                        ),
+
+                        const SizedBox(width: 15),
+
+                        // Top NEXT arrow
+                        Opacity(
+                          opacity: _currentStep < _formSections.length - 1 ? 1.0 : 0.0,
+                          child: IconButton(
+                            icon: const Icon(Icons.arrow_forward_ios, size: 20),
+                            color: AppColors.primaryBlue,
+                            onPressed: _currentStep < _formSections.length - 1 
+                                ? () => _changeStep(_currentStep + 1) 
+                                : null,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
+
+                  // 2. Show ONLY the current section
                   _buildSectionCard(
-                    child: SignatureField(
-                      points: _capturedSignaturePoints,
-                      label: "Digital Signature",
-                      signatureImageBase64: _savedSignatureBase64,
-                      onCaptured: (points) {
-                        setState(() {
-                          _capturedSignaturePoints = points;
-                          _savedSignatureBase64 = null;
-                          _isEdited = true;
-                        });
-                      },
+                      child: _currentStep < _formSections.length 
+                          ? _formSections[_currentStep] 
+                          : _formSections[0] // Fallback to first step if index is out of bounds
                     ),
+
+                  // 3. Navigation Row (Bottom Left)
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    children: [
+                      // Bottom BACK arrow
+                      if (_currentStep > 0)
+                        IconButton(
+                          onPressed: () => _changeStep(_currentStep - 1),
+                          icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+                          color: AppColors.primaryBlue,
+                        )
+                      else
+                        const SizedBox(width: 48),
+
+                      const SizedBox(width: 10),
+
+                      // Bottom NEXT arrow
+                      if (_currentStep < _formSections.length - 1)
+                        IconButton(
+                          onPressed: () => _changeStep(_currentStep + 1),
+                          icon: const Icon(Icons.arrow_forward_ios, size: 20),
+                          color: AppColors.primaryBlue,
+                        ),
+                    ],
                   ),
-                  ]
-                  else ...[
-                  _buildSectionCard(
-                    child: ClientInfoSection(
-                      selectAll: _selectAll,
-                      controllers: _controllers,
-                      fieldChecks: _fieldChecks,
-                      membershipData: _membershipData,
-                      onCheckChanged: (key, val) => setState(() { _fieldChecks[key] = val; _isEdited = true; }),
-                      onMembershipChanged: (key, val) => setState(() { _membershipData[key] = val; _isEdited = true; }),
-                    ),
-                  ),
-                  _buildSectionCard(
-                    child: FamilyTable(
-                      key: _familyTableKey,
-                      selectAll: _selectAll,
-                      controllers: _controllers,
-                      familyMembers: _familyMembers,
-                      onFamilyChanged: (members) => setState(() {
-                        _familyMembers = members;
-                        _isEdited = true;
-                      }),
-                    ),
-                  ),
-                  _buildSectionCard(
-                    child: SocioEconomicSection(
-                      selectAll: _selectAll,
-                      controllers: _controllers,
-                      hasSupport: _hasSupport,
-                      housingStatus: _housingStatus,
-                      supportingFamily: _supportingFamily,
-                      onHasSupportChanged: (val) => setState(() {
-                        _hasSupport = val;
-                        if (!val) _supportingFamily.clear();
-                        _isEdited = true;
-                      }),
-                      onHousingStatusChanged: (val) => setState(() { _housingStatus = val; _isEdited = true; }),
-                      onSupportingFamilyChanged: (list) => setState(() { _supportingFamily = list; _isEdited = true; }),
-                      onAddMember: () => setState(() => _isEdited = true),
-                    ),
-                  ),
-                  // Signature section
-                    _buildSectionCard(
-                      child: SignatureField(
-                        points: _capturedSignaturePoints,
-                        label: "Digital Signature",
-                        signatureImageBase64: _savedSignatureBase64,
-                        onCaptured: (points) {
-                          setState(() {
-                            _capturedSignaturePoints = points;
-                            _savedSignatureBase64 = null;
-                            _isEdited = true;
-                          });
-                        },
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -596,11 +738,19 @@ Future<void> _selectDate() async {
               
             SelectAllButton(
               isSelected: _selectAll,
-              onChanged: (v) => setState(() {
-                _selectAll = v ?? false;
-                _fieldChecks.updateAll((key, val) => _selectAll);
-                _isEdited = true;
-              }),
+              onChanged: (v) {
+                setState(() {
+                  _selectAll = v ?? false;
+                  
+                  // Get the keys that belong to the CURRENTLY visible section only
+                  // This prevents background data from being modified accidentally
+                  for (final label in _allLabels) {
+                    _fieldChecks[label] = _selectAll;
+                  }
+                  
+                  _isEdited = true;
+                });
+              },
             ),
           ],
         ),

@@ -3,6 +3,22 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class SupabaseService {
   final _supabase = Supabase.instance.client;
 
+  // Get username for the header
+  Future<String?> getUsername(String userId) async {
+    try {
+      final response = await _supabase
+          .from('user_accounts')
+          .select('username')
+          .eq('user_id', userId)
+          .maybeSingle();
+      
+      return response?['username'] as String?;
+    } catch (e) {
+      print('Error fetching username: $e');
+      return null;
+    }
+  }
+
   // Load user profile with related data (address, socio-economic, family)
   Future<Map<String, dynamic>?> loadUserProfile(String userId) async {
     return await _supabase
