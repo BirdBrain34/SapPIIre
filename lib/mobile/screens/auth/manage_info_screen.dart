@@ -613,8 +613,35 @@ Future<void> _selectDate() async {
               context,
               MaterialPageRoute(builder: (_) => const QrScannerScreen()),
             );
-            if (sessionId != null) {
-              // You can call syncDataToWeb(sessionId) here if needed
+
+            if (sessionId != null && widget.userId != null) {
+              // Show loading so user knows something is happening
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Sending your info to the form...'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+
+              final success = await _supabaseService.pushProfileToSession(
+                sessionId: sessionId,
+                userId: widget.userId!,
+              );
+
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      success
+                        ? '✅ Info sent! Staff can see your data now.'
+                        : '❌ Failed to send. The session may be closed.',
+                    ),
+                    backgroundColor: success ? Colors.green[700] : Colors.red[700],
+                  ),
+                );
+              }
             }
           } else {
             setState(() => _currentIndex = i);

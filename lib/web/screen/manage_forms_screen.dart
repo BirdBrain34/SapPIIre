@@ -76,7 +76,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       _clearAllFields(); 
       
       final response = await Supabase.instance.client
-          .from('form_sessions')
+          .from('form_submission')
           .insert({
             'status': 'active', 
             'form_type': selectedForm, 
@@ -99,7 +99,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     _formSubscription?.cancel(); 
     
     _formSubscription = Supabase.instance.client
-        .from('form_sessions')
+        .from('form_submission')
         .stream(primaryKey: ['id'])
         .eq('id', sessionId)
         .listen((List<Map<String, dynamic>> data) {
@@ -133,7 +133,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       });
 
       await Supabase.instance.client
-          .from('form_sessions')
+          .from('form_submission')
           .update({'status': 'completed'})
           .eq('id', _currentSessionId);
 
@@ -154,7 +154,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       _formSubscription?.cancel();
       if (_currentSessionId != "WAITING-FOR-SESSION") {
         await Supabase.instance.client
-            .from('form_sessions')
+            .from('form_submission')
             .update({'status': 'closed'})
             .eq('id', _currentSessionId);
       }
@@ -346,7 +346,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
             setState(() => selectedForm = val!);
             if (_currentSessionId != "WAITING-FOR-SESSION") {
                await Supabase.instance.client
-                  .from('form_sessions')
+                  .from('form_submission')
                   .update({'form_type': selectedForm})
                   .eq('id', _currentSessionId);
             }
