@@ -18,7 +18,7 @@ import 'package:sappiire/resources/signature_field.dart';
 import 'package:sappiire/services/supabase_service.dart';
 import 'package:sappiire/mobile/widgets/date_picker_helper.dart';
 import 'package:sappiire/mobile/widgets/signature_helper.dart';
-import 'package:sappiire/mobile/widgets/NextButton.dart';
+
 
 
 class ManageInfoScreen extends StatefulWidget {
