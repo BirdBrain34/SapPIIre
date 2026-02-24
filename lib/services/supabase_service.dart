@@ -1,8 +1,155 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
+import 'package:crypto/crypto.dart';
+import 'dart:convert';
 
 class SupabaseService {
   final _supabase = Supabase.instance.client;
+
+  // Hash password using SHA-256
+  String _hashPassword(String password) {
+    final bytes = utf8.encode(password);
+    final digest = sha256.convert(bytes);
+    return digest.toString();
+  }
+
+  // ================================================================
+  // AUTHENTICATION
+  // ================================================================
+
+  // Sign up - Create user account + profile
+  Future<Map<String, dynamic>> signUp({
+    required String username,
+    required String password,
+    required String email,
+    required String firstName,
+    required String middleName,
+    required String lastName,
+    required String dateOfBirth,
+    required String phoneNumber,
+  }) async {
+    try {
+      final existingUser = await _supabase
+          .from('user_accounts')
+          .select('username')
+          .eq('username', username)
+          .maybeSingle();
+
+      if (existingUser != null) {
+        return {'success': false, 'message': 'Username already exists'};
+      }
+
+      final hashedPassword = _hashPassword(password);
+
+      final accountResponse = await _supabase
+          .from('user_accounts')
+          .insert({
+            'username': username,
+            'password': hashedPassword,
+            'email': email,
+            'is_active': true,
+          })
+          .select()
+          .single();
+
+      final String userId = accountResponse['user_id'];
+
+      final dateParts = dateOfBirth.split('/');
+      final formattedDate =
+          '${dateParts[2]}-${dateParts[0].padLeft(2, '0')}-${dateParts[1].padLeft(2, '0')}';
+
+      // Calculate age from birthdate
+      final birthYear = int.parse(dateParts[2]);
+      final currentYear = DateTime.now().year;
+      final age = currentYear - birthYear;
+
+      await _supabase.from('user_profiles').insert({
+        'user_id': userId,
+        'firstname': firstName,
+        'middle_name': middleName,
+        'lastname': lastName,
+        'birthdate': formattedDate,
+        'age': age,
+        'email': email,
+        'cellphone_number': phoneNumber,
+      });
+
+      return {
+        'success': true,
+        'message': 'Account created successfully',
+        'user_id': userId,
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Error creating account: ${e.toString()}',
+      };
+    }
+  }
+
+  // Login - Verify credentials
+  Future<Map<String, dynamic>> login({
+    required String username,
+    required String password,
+  }) async {
+    try {
+      final hashedPassword = _hashPassword(password);
+
+      final account = await _supabase
+          .from('user_accounts')
+          .select('user_id, username, email, password, is_active')
+          .eq('username', username)
+          .maybeSingle();
+
+      if (account == null) {
+        return {
+          'success': false,
+          'code': 'no_user',
+          'message': 'Account does not exist'
+        };
+      }
+
+      if (account['password'] != hashedPassword) {
+        return {
+          'success': false,
+          'code': 'wrong_password',
+          'message': 'Invalid username or password'
+        };
+      }
+
+      if (account['is_active'] == false) {
+        return {
+          'success': false,
+          'code': 'deactivated',
+          'message': 'Account is deactivated'
+        };
+      }
+
+      final profileResponse = await _supabase
+          .from('user_profiles')
+          .select()
+          .eq('user_id', account['user_id'])
+          .maybeSingle();
+
+      return {
+        'success': true,
+        'message': 'Login successful',
+        'user_id': account['user_id'],
+        'username': account['username'],
+        'email': account['email'],
+        'profile': profileResponse,
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Error during login: ${e.toString()}'
+      };
+    }
+  }
+
+  // ================================================================
+  // USER PROFILE
+  // ================================================================
 
   // Get username for the header
   Future<String?> getUsername(String userId) async {
@@ -202,12 +349,16 @@ class SupabaseService {
         'Subdivision': address['subdivision'] ?? '',
         'Barangay': address['barangay'] ?? '',
         'Kasarian': profile['gender'] ?? '',
+        'Kasarian / Sex': profile['gender'] ?? '',
+        'Uri ng Dugo / Blood Type': profile['blood_type'] ?? '',
         'Estadong Sibil': profile['civil_status'] ?? '',
+        'Estadong Sibil / Martial Status': profile['civil_status'] ?? '',
         'Relihiyon': profile['religion'] ?? '',
         'CP Number': profile['cellphone_number'] ?? '',
         'Email Address': profile['email'] ?? '',
         'Natapos o naabot sa pag-aaral': profile['education'] ?? '',
         'Lugar ng Kapanganakan': profile['birthplace'] ?? '',
+        'Lugar ng Kapanganakan / Place of Birth': profile['birthplace'] ?? '',
         'Trabaho/Pinagkakakitaan': profile['occupation'] ?? '',
         'Kumpanyang Pinagtratrabuhan': profile['workplace'] ?? '',
         'Buwanang Kita (A)': profile['monthly_allowance']?.toString() ?? '',

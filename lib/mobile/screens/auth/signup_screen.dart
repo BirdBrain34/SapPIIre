@@ -3,7 +3,7 @@ import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/mobile/widgets/custom_button.dart';
 import 'package:sappiire/mobile/widgets/custom_text_field.dart';
 import 'package:sappiire/mobile/screens/auth/manage_info_screen.dart';
-import 'package:sappiire/mobile/screens/auth/auth_service.dart';
+import 'package:sappiire/services/supabase_service.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -14,7 +14,7 @@ class SignUpScreen extends StatefulWidget {
 
 class _SignUpScreenState extends State<SignUpScreen> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  final AuthService _authService = AuthService();
+  final SupabaseService _supabaseService = SupabaseService();
   bool _isLoading = false;
 
   final TextEditingController _firstNameController = TextEditingController();
@@ -59,7 +59,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       setState(() => _isLoading = true);
 
       // Call signup service with user data
-      final result = await _authService.signUp(
+      final result = await _supabaseService.signUp(
         username: _usernameController.text.trim(),
         password: _passwordController.text,
         email: _emailController.text.trim(),
