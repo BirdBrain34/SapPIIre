@@ -163,12 +163,25 @@ class SupabaseService {
       final socio = (profile['socio_economic_data'] as Map<String, dynamic>?) ?? {};
       final family = List<Map<String, dynamic>>.from(familyResponse);
 
+      // Fetch supporting family if exists
+      List<Map<String, dynamic>> supportingFamily = [];
+      if (socio['socio_economic_id'] != null) {
+        final supportResponse = await _supabase
+            .from('supporting_family')
+            .select()
+            .eq('socio_economic_id', socio['socio_economic_id'])
+            .order('sort_order');
+        supportingFamily = List<Map<String, dynamic>>.from(supportResponse);
+      }
+
       // 2. Map to the EXACT keys used in _webControllers on ManageFormsScreen
       final formData = <String, dynamic>{
         // Client Info
         'Last Name': profile['lastname'] ?? '',
         'First Name': profile['firstname'] ?? '',
         'Middle Name': profile['middle_name'] ?? '',
+        'Date of Birth': profile['birthdate'] ?? '',
+        'Age': profile['age']?.toString() ?? '',
         'House number, street name, phase/purok': address['address_line'] ?? '',
         'Subdivision': address['subdivision'] ?? '',
         'Barangay': address['barangay'] ?? '',
@@ -182,6 +195,14 @@ class SupabaseService {
         'Trabaho/Pinagkakakitaan': profile['occupation'] ?? '',
         'Kumpanyang Pinagtratrabuhan': profile['workplace'] ?? '',
         'Buwanang Kita (A)': profile['monthly_allowance']?.toString() ?? '',
+
+        // Membership data
+        '__membership': {
+          'solo_parent': profile['solo_parent'] ?? false,
+          'pwd': profile['pwd'] ?? false,
+          'four_ps_member': profile['four_ps_member'] ?? false,
+          'phic_member': profile['phic_member'] ?? false,
+        },
 
         // Socio-Economic
         'Total Gross Family Income (A+B+C)=(D)': socio['gross_family_income']?.toString() ?? '',
@@ -199,6 +220,20 @@ class SupabaseService {
         'Transpo expense': socio['transport_expenses']?.toString() ?? '',
         'Loans': socio['loans']?.toString() ?? '',
         'Gasul': socio['gas']?.toString() ?? '',
+        'Kabuuang Tulong/Sustento kada Buwan (C)': supportingFamily.isNotEmpty 
+            ? supportingFamily[0]['monthly_alimony']?.toString() ?? '' 
+            : '',
+
+        // Socio-economic metadata
+        '__has_support': socio['has_support'] ?? false,
+        '__housing_status': socio['housing_status'] ?? '',
+
+        // Supporting family as JSON array
+        '__supporting_family': supportingFamily.map((m) => {
+          'name': m['name'] ?? '',
+          'relationship': m['relationship'] ?? '',
+          'regular_sustento': m['regular_sustento']?.toString() ?? '',
+        }).toList(),
 
         // Family composition as a JSON array — web FamilyTable will render this
         '__family_composition': family.map((m) => {
@@ -212,6 +247,9 @@ class SupabaseService {
           'occupation': m['occupation'] ?? '',
           'allowance': m['allowance']?.toString() ?? '',
         }).toList(),
+
+        // Signature
+        '__signature': profile['signature_data'] ?? '',
       };
 
       // 3. Push to form_submission — Realtime fires instantly to web listener

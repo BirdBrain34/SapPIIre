@@ -24,10 +24,23 @@ class ManageFormsScreen extends StatefulWidget {
 
 class _ManageFormsScreenState extends State<ManageFormsScreen> {
   List<Offset?>? _capturedSignaturePoints;
+  String? _signatureBase64;
   String selectedForm = "General Intake Sheet";
   final Map<String, TextEditingController> _webControllers = {};
   String _currentSessionId = "WAITING-FOR-SESSION";
   StreamSubscription? _formSubscription;
+  
+  // Additional state for complex fields
+  Map<String, bool> _membershipData = {
+    'solo_parent': false,
+    'pwd': false,
+    'four_ps_member': false,
+    'phic_member': false,
+  };
+  List<Map<String, dynamic>> _familyMembers = [];
+  List<Map<String, dynamic>> _supportingFamily = [];
+  bool _hasSupport = false;
+  String? _housingStatus;
 
   @override
   void initState() {
@@ -38,7 +51,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
 
   void _initializeControllers() {
     final List<String> allLabels = [
-      "Last Name", "First Name", "Middle Name",
+      "Last Name", "First Name", "Middle Name", "Date of Birth", "Age",
       "House number, street name, phase/purok", "Subdivision", "Barangay",
       "Kasarian", "Estadong Sibil", "Relihiyon", "CP Number", "Email Address",
       "Natapos o naabot sa pag-aaral", "Lugar ng Kapanganakan",
@@ -48,7 +61,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       "Total Monthly Expense (F)", "Net Monthly Income (D-F)",
       "Bayad sa bahay", "Food items", "Non-food items", "Utility bills",
       "Baby's needs", "School needs", "Medical needs", "Transpo expense",
-      "Loans", "Gasul"
+      "Loans", "Gasul", "Kabuuang Tulong/Sustento kada Buwan (C)"
     ];
 
     for (var label in allLabels) {
@@ -60,6 +73,20 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     for (var controller in _webControllers.values) {
       controller.clear();
     }
+    setState(() {
+      _membershipData = {
+        'solo_parent': false,
+        'pwd': false,
+        'four_ps_member': false,
+        'phic_member': false,
+      };
+      _familyMembers = [];
+      _supportingFamily = [];
+      _hasSupport = false;
+      _housingStatus = null;
+      _signatureBase64 = null;
+      _capturedSignaturePoints = null;
+    });
   }
 
   @override
@@ -107,6 +134,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         final Map<String, dynamic> incomingData = data.first['form_data'] ?? {};
 
         setState(() {
+          // Handle regular text fields
           incomingData.forEach((key, value) {
             if (_webControllers.containsKey(key)) {
               if (_webControllers[key]!.text != value.toString()) {
@@ -114,6 +142,49 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
               }
             }
           });
+
+          // Handle membership data
+          if (incomingData.containsKey('__membership')) {
+            final membership = incomingData['__membership'] as Map<String, dynamic>;
+            _membershipData = {
+              'solo_parent': membership['solo_parent'] ?? false,
+              'pwd': membership['pwd'] ?? false,
+              'four_ps_member': membership['four_ps_member'] ?? false,
+              'phic_member': membership['phic_member'] ?? false,
+            };
+          }
+
+          // Handle family composition
+          if (incomingData.containsKey('__family_composition')) {
+            _familyMembers = List<Map<String, dynamic>>.from(
+              incomingData['__family_composition'] ?? []
+            );
+          }
+
+          // Handle supporting family
+          if (incomingData.containsKey('__supporting_family')) {
+            _supportingFamily = List<Map<String, dynamic>>.from(
+              incomingData['__supporting_family'] ?? []
+            );
+          }
+
+          // Handle has_support flag
+          if (incomingData.containsKey('__has_support')) {
+            _hasSupport = incomingData['__has_support'] ?? false;
+          }
+
+          // Handle housing status
+          if (incomingData.containsKey('__housing_status')) {
+            _housingStatus = incomingData['__housing_status'];
+          }
+
+          // Handle signature
+          if (incomingData.containsKey('__signature')) {
+            _signatureBase64 = incomingData['__signature'];
+            if (_signatureBase64 != null && _signatureBase64!.isNotEmpty) {
+              _capturedSignaturePoints = [];
+            }
+          }
         });
       }
     });
@@ -228,22 +299,50 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                                         selectAll: false, 
                                         controllers: _webControllers,
                                         fieldChecks: const {}, 
-                                        onCheckChanged: (key, val) {}, 
+                                        onCheckChanged: (key, val) {},
+                                        membershipData: _membershipData,
+                                        onMembershipChanged: (key, val) {
+                                          setState(() => _membershipData[key] = val);
+                                        },
                                       ),
                                     ),
                                     _buildWebSectionCard(
-                                      child: FamilyTable(selectAll: false, controllers: _webControllers),
+                                      child: FamilyTable(
+                                        selectAll: false, 
+                                        controllers: _webControllers,
+                                        familyMembers: _familyMembers,
+                                        onFamilyChanged: (members) {
+                                          setState(() => _familyMembers = members);
+                                        },
+                                      ),
                                     ),
                                     _buildWebSectionCard(
-                                      child: SocioEconomicSection(selectAll: false, controllers: _webControllers),
+                                      child: SocioEconomicSection(
+                                        selectAll: false, 
+                                        controllers: _webControllers,
+                                        hasSupport: _hasSupport,
+                                        housingStatus: _housingStatus,
+                                        supportingFamily: _supportingFamily,
+                                        onHasSupportChanged: (val) {
+                                          setState(() => _hasSupport = val);
+                                        },
+                                        onHousingStatusChanged: (val) {
+                                          setState(() => _housingStatus = val);
+                                        },
+                                        onSupportingFamilyChanged: (list) {
+                                          setState(() => _supportingFamily = list);
+                                        },
+                                      ),
                                     ),
                                     _buildWebSectionCard(
                                       child: SignatureField(
                                         points: _capturedSignaturePoints,
-                                        label: "Digital Signature", // Optional custom label
+                                        label: "Digital Signature",
+                                        signatureImageBase64: _signatureBase64,
                                         onCaptured: (points) {
                                           setState(() {
                                             _capturedSignaturePoints = points;
+                                            _signatureBase64 = null;
                                           });
                                         },
                                       ),
