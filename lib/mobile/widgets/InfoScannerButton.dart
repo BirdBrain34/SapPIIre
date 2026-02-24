@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:sappiire/constants/app_colors.dart';
 
 class InfoScannerButton extends StatelessWidget {
   final VoidCallback onTap;

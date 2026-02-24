@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
-import 'package:sappiire/web/widget/side_menu.dart';
+import 'package:sappiire/web/widget/web_shell.dart';
+import 'package:sappiire/web/screen/manage_forms_screen.dart';
+import 'package:sappiire/web/screen/manage_staff_screen.dart';
+import 'package:sappiire/web/screen/create_staff_screen.dart';
+import 'package:sappiire/web/utils/page_transitions.dart';
 
 class DashboardScreen extends StatefulWidget {
   final String cswd_id;
@@ -21,114 +25,113 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FE),
-      body: Row(
-        children: [
-          SideMenu(
-            activePath: "Dashboard",
-            role: widget.role,
-            cswd_id: widget.cswd_id,
-            onLogout: widget.onLogout,
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(35.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    return WebShell(
+      activePath: 'Dashboard',
+      pageTitle: 'Dashboard',
+      pageSubtitle: 'Overview of CSWD form activity',
+      onLogout: widget.onLogout,
+      onNavigate: (screenPath) => _navigateToScreen(context, screenPath),
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              Row(
                 children: [
-                  const Text(
-                    "Dashboard",
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primaryBlue,
-                    ),
+                  _buildDashboardCard(
+                    title: "Total Forms",
+                    value: "0",
+                    icon: Icons.description,
+                    color: AppColors.highlight,
                   ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    "Welcome to SapPIIre CSWD Management System",
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey,
-                    ),
+                  const SizedBox(width: 20),
+                  _buildDashboardCard(
+                    title: "Active Sessions",
+                    value: "0",
+                    icon: Icons.qr_code_2,
+                    color: AppColors.successGreen,
                   ),
-                  const SizedBox(height: 35),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              _buildDashboardCard(
-                                title: "Total Forms",
-                                value: "0",
-                                icon: Icons.description,
-                                color: Colors.blue,
-                              ),
-                              const SizedBox(width: 20),
-                              _buildDashboardCard(
-                                title: "Active Sessions",
-                                value: "0",
-                                icon: Icons.qr_code_2,
-                                color: Colors.green,
-                              ),
-                              const SizedBox(width: 20),
-                              _buildDashboardCard(
-                                title: "Completed",
-                                value: "0",
-                                icon: Icons.check_circle,
-                                color: Colors.purple,
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 30),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(25),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.05),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: const Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  "Quick Actions",
-                                  style: TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.primaryBlue,
-                                  ),
-                                ),
-                                SizedBox(height: 20),
-                                Text(
-                                  "Dashboard content will be added here.",
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                  const SizedBox(width: 20),
+                  _buildDashboardCard(
+                    title: "Completed",
+                    value: "0",
+                    icon: Icons.check_circle,
+                    color: AppColors.highlight,
                   ),
                 ],
               ),
-            ),
+              const SizedBox(height: 30),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(25),
+                decoration: BoxDecoration(
+                  color: AppColors.cardBg,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.cardBorder),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Quick Actions",
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                    SizedBox(height: 20),
+                    Text(
+                      "Dashboard content will be added here.",
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
+    );
+  }
+
+  void _navigateToScreen(BuildContext context, String screenPath) {
+    Widget nextScreen;
+    switch (screenPath) {
+      case 'Forms':
+        nextScreen = ManageFormsScreen(
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+        );
+        break;
+      case 'Staff':
+        nextScreen = ManageStaffScreen(
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+        );
+        break;
+      case 'CreateStaff':
+        nextScreen = CreateStaffScreen(
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+        );
+        break;
+      default:
+        return;
+    }
+
+    Navigator.of(context).pushReplacement(
+      ContentFadeRoute(page: nextScreen),
     );
   }
 
@@ -142,12 +145,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Container(
         padding: const EdgeInsets.all(25),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          color: AppColors.cardBg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.cardBorder),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 16,
               offset: const Offset(0, 4),
             ),
           ],
@@ -161,7 +165,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               title,
               style: const TextStyle(
                 fontSize: 14,
-                color: Colors.grey,
+                color: AppColors.textMuted,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -171,7 +175,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               style: const TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.bold,
-                color: AppColors.primaryBlue,
+                color: AppColors.textDark,
               ),
             ),
           ],

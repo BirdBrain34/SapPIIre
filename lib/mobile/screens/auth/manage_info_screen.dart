@@ -424,7 +424,7 @@ Future<void> _selectDate() async {
       padding: const EdgeInsets.all(16),
       margin: const EdgeInsets.only(bottom: 20),
       decoration: BoxDecoration(
-        color: AppColors.cardWhite,
+        color: AppColors.cardBg,
         borderRadius: BorderRadius.circular(15),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
       ),
@@ -435,7 +435,7 @@ Future<void> _selectDate() async {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.pageBg,
       appBar: AppBar(
         backgroundColor: AppColors.primaryBlue,
         title: const Text("Manage Information", style: TextStyle(color: Colors.white)),
@@ -597,7 +597,7 @@ Future<void> _selectDate() async {
             SelectAllButton(
               isSelected: _selectAll,
               onChanged: (v) => setState(() {
-                _selectAll = v ?? false;
+                _selectAll = v;
                 _fieldChecks.updateAll((key, val) => _selectAll);
                 _isEdited = true;
               }),

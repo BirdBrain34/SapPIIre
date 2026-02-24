@@ -2,9 +2,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:sappiire/constants/app_colors.dart';
-import 'package:sappiire/web/widget/side_menu.dart';
+import 'package:sappiire/web/widget/web_shell.dart';
+import 'package:sappiire/web/screen/dashboard_screen.dart';
+import 'package:sappiire/web/screen/manage_staff_screen.dart';
+import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/resources/GIS.dart';
 import 'package:sappiire/web/screen/web_login_screen.dart';
+import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sappiire/resources/signature_field.dart';
 
@@ -232,7 +236,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       await Supabase.instance.client.auth.signOut();
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const WorkerLoginScreen()),
+          ContentFadeRoute(page: const WorkerLoginScreen()),
           (route) => false,
         );
       }
@@ -243,139 +247,161 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FE), // Light background
-      body: Row(
-        children: [
-          SideMenu(
-            activePath: "Forms",
-            role: widget.role,
-            cswd_id: widget.cswd_id,
-            onLogout: _handleLogout,
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(35.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        "Forms Management",
-                        style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: AppColors.primaryBlue),
-                      ),
-                      _buildHeaderButton(
-                        "Reset Form / New QR",
-                        Icons.refresh,
-                        onPressed: _createNewSession,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 25),
-                  _buildDropdown(),
-                  const SizedBox(height: 25),
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: AppColors.accentBlue, // Dark sidebar for QR
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20)],
-                      ),
-                      child: Row(
-                        children: [
-                          _buildQrSidebar(),
-                          Expanded(
-                            child: Container(
-                              margin: const EdgeInsets.all(20),
-                              child: SingleChildScrollView(
-                                padding: const EdgeInsets.only(right: 10),
-                                child: Column(
-                                  children: [
-                                    // 🔹 Sections wrapped in White Cards to match Mobile
-                                    _buildWebSectionCard(
-                                      child: ClientInfoSection(
-                                        selectAll: false, 
-                                        controllers: _webControllers,
-                                        fieldChecks: const {}, 
-                                        onCheckChanged: (key, val) {},
-                                        membershipData: _membershipData,
-                                        onMembershipChanged: (key, val) {
-                                          setState(() => _membershipData[key] = val);
-                                        },
-                                      ),
-                                    ),
-                                    _buildWebSectionCard(
-                                      child: FamilyTable(
-                                        selectAll: false, 
-                                        controllers: _webControllers,
-                                        familyMembers: _familyMembers,
-                                        onFamilyChanged: (members) {
-                                          setState(() => _familyMembers = members);
-                                        },
-                                      ),
-                                    ),
-                                    _buildWebSectionCard(
-                                      child: SocioEconomicSection(
-                                        selectAll: false, 
-                                        controllers: _webControllers,
-                                        hasSupport: _hasSupport,
-                                        housingStatus: _housingStatus,
-                                        supportingFamily: _supportingFamily,
-                                        onHasSupportChanged: (val) {
-                                          setState(() => _hasSupport = val);
-                                        },
-                                        onHousingStatusChanged: (val) {
-                                          setState(() => _housingStatus = val);
-                                        },
-                                        onSupportingFamilyChanged: (list) {
-                                          setState(() => _supportingFamily = list);
-                                        },
-                                      ),
-                                    ),
-                                    _buildWebSectionCard(
-                                      child: SignatureField(
-                                        points: _capturedSignaturePoints,
-                                        label: "Digital Signature",
-                                        signatureImageBase64: _signatureBase64,
-                                        onCaptured: (points) {
-                                          setState(() {
-                                            _capturedSignaturePoints = points;
-                                            _signatureBase64 = null;
-                                          });
-                                        },
-                                      ),
-                                    ),
-                                  ],
+    return WebShell(
+      activePath: 'Forms',
+      pageTitle: 'Forms Management',
+      pageSubtitle: 'Complete and submit client intake forms',
+      onLogout: _handleLogout,
+      headerActions: [
+        _buildHeaderButton(
+          "Reset Form / New QR",
+          Icons.refresh,
+          onPressed: _createNewSession,
+        ),
+      ],
+      onNavigate: (screenPath) => _navigateToScreen(context, screenPath),
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildDropdown(),
+            const SizedBox(height: 25),
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppColors.accentBlue,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20)],
+                ),
+                child: Row(
+                  children: [
+                    _buildQrSidebar(),
+                    Expanded(
+                      child: Container(
+                        margin: const EdgeInsets.all(20),
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.only(right: 10),
+                          child: Column(
+                            children: [
+                              _buildWebSectionCard(
+                                child: ClientInfoSection(
+                                  selectAll: false,
+                                  controllers: _webControllers,
+                                  fieldChecks: const {},
+                                  onCheckChanged: (key, val) {},
+                                  membershipData: _membershipData,
+                                  onMembershipChanged: (key, val) {
+                                    setState(() => _membershipData[key] = val);
+                                  },
                                 ),
                               ),
-                            ),
+                              _buildWebSectionCard(
+                                child: FamilyTable(
+                                  selectAll: false,
+                                  controllers: _webControllers,
+                                  familyMembers: _familyMembers,
+                                  onFamilyChanged: (members) {
+                                    setState(() => _familyMembers = members);
+                                  },
+                                ),
+                              ),
+                              _buildWebSectionCard(
+                                child: SocioEconomicSection(
+                                  selectAll: false,
+                                  controllers: _webControllers,
+                                  hasSupport: _hasSupport,
+                                  housingStatus: _housingStatus,
+                                  supportingFamily: _supportingFamily,
+                                  onHasSupportChanged: (val) {
+                                    setState(() => _hasSupport = val);
+                                  },
+                                  onHousingStatusChanged: (val) {
+                                    setState(() => _housingStatus = val);
+                                  },
+                                  onSupportingFamilyChanged: (list) {
+                                    setState(() => _supportingFamily = list);
+                                  },
+                                ),
+                              ),
+                              _buildWebSectionCard(
+                                child: SignatureField(
+                                  points: _capturedSignaturePoints,
+                                  label: "Digital Signature",
+                                  signatureImageBase64: _signatureBase64,
+                                  onCaptured: (points) {
+                                    setState(() {
+                                      _capturedSignaturePoints = points;
+                                      _signatureBase64 = null;
+                                    });
+                                  },
+                                ),
+                              ),
+                              ElevatedButton(
+                                onPressed: _finalizeEntry,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.buttonPurple,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 60,
+                                    vertical: 20,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                  ),
+                                ),
+                                child: const Text(
+                                  "FINALIZE & SAVE ENTRY",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 18,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 25),
-                  Align(
-                    alignment: Alignment.bottomRight,
-                    child: ElevatedButton(
-                      onPressed: _finalizeEntry, 
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.buttonPurple,
-                        padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 20),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                      ),
-                      child: const Text("FINALIZE & SAVE ENTRY",
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
+    );
+  }
+
+  void _navigateToScreen(BuildContext context, String screenPath) {
+    // Map screen paths to actual navigation
+    Widget nextScreen;
+    switch (screenPath) {
+      case 'Dashboard':
+        nextScreen = DashboardScreen(
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+          onLogout: _handleLogout,
+        );
+        break;
+      case 'Staff':
+        nextScreen = ManageStaffScreen(
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+        );
+        break;
+      case 'CreateStaff':
+        nextScreen = CreateStaffScreen(
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+        );
+        break;
+      default:
+        return; // Stay on current screen
+    }
+
+    Navigator.of(context).pushReplacement(
+      ContentFadeRoute(page: nextScreen),
     );
   }
 

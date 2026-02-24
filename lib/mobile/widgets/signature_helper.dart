@@ -1,6 +1,6 @@
 import 'dart:ui' as ui;
 import 'dart:convert';
-import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 // Reusable signature helper for converting signature points to/from base64
