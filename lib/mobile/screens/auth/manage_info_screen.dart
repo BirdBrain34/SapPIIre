@@ -144,29 +144,106 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
             });
           },
         ),
+
+        // Index 3 (or the last step): Your existing Signature logic
+Column( 
+          children: [
+            SignatureField(
+              points: _capturedSignaturePoints,
+              signatureImageBase64: _savedSignatureBase64, 
+              onCaptured: (points) { 
+                setState(() {
+                  _capturedSignaturePoints = points;
+                  _isEdited = true;
+                });
+              },
+            ),
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: () {
+                setState(() {
+                  _capturedSignaturePoints = null;
+                  _savedSignatureBase64 = null;
+                  _isEdited = true;
+                });
+              },
+              icon: const Icon(Icons.refresh, color: Colors.redAccent, size: 20),
+              label: const Text(
+                "Clear Signature", 
+                style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)
+              ),
+            ),
+          ],
+        ),
       ];
     } else if (_selectedForm == "Personal Info") {
       return [
-        PersonalInfoSection(
-          controllers: _controllers,
-          selectAll: _selectAll,
-          fieldChecks: _fieldChecks,
-          onCheckChanged: (key, val) { 
-            setState(() {
-              _fieldChecks[key] = val;
-              _isEdited = true;
-            });
-          },
-          onDateTap: () => _selectDate(),
-          onTextChanged: (val) {
-            if (!_isEdited) setState(() => _isEdited = true);
-          },
-          onBloodTypeChanged: (val) {
-            setState(() {
-              _bloodType = val;
-              _isEdited = true;
-            });
-          },
+        // This entire Column will be wrapped by _buildSectionCard in your build method
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            PersonalInfoSection(
+              controllers: _controllers,
+              selectAll: _selectAll,
+              fieldChecks: _fieldChecks,
+              onCheckChanged: (key, val) { 
+                setState(() {
+                  _fieldChecks[key] = val;
+                  _isEdited = true;
+                });
+              },
+              onDateTap: () => _selectDate(),
+              onTextChanged: (val) {
+                if (!_isEdited) setState(() => _isEdited = true);
+              },
+              onBloodTypeChanged: (val) {
+                setState(() {
+                  _bloodType = val;
+                  _isEdited = true;
+                });
+              },
+            ),
+            
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16.0),
+              child: Divider(thickness: 1),
+            ),
+            
+            const Text(
+              "Signature", 
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)
+            ),
+            const SizedBox(height: 10),
+
+            // Embedded Signature Field
+            SignatureField(
+              points: _capturedSignaturePoints,
+              signatureImageBase64: _savedSignatureBase64, 
+              onCaptured: (points) { 
+                setState(() {
+                  _capturedSignaturePoints = points;
+                  _isEdited = true;
+                });
+              },
+            ),
+
+            Center(
+              child: TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _capturedSignaturePoints = null;
+                    _savedSignatureBase64 = null;
+                    _isEdited = true;
+                  });
+                },
+                icon: const Icon(Icons.refresh, color: Colors.redAccent, size: 20),
+                label: const Text(
+                  "Clear Signature", 
+                  style: TextStyle(color: Colors.redAccent)
+                ),
+              ),
+            ),
+          ],
         )
       ];
     }
