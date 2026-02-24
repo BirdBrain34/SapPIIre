@@ -196,7 +196,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
               onTextChanged: (val) {
                 if (!_isEdited) setState(() => _isEdited = true);
               },
-            onBloodTypeChanged: (val) { // <--- This handles the dropdown selection
+              bloodType: _bloodType,
+              onBloodTypeChanged: (val) {
                 setState(() {
                   _bloodType = val;
                   _isEdited = true;
