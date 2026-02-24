@@ -308,10 +308,6 @@ class FamilyTableState extends State<FamilyTable> {
     }).toList();
   }
 
-  void _notifyParent() {
-    widget.onFamilyChanged?.call(getFamilyData());
-  }
-
   @override
   void dispose() {
     for (var member in _members) {

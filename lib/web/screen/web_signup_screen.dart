@@ -6,7 +6,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 import 'package:sappiire/constants/app_colors.dart';
-import 'package:sappiire/mobile/widgets/custom_text_field.dart';
 
 class WebSignupScreen extends StatefulWidget {
   const WebSignupScreen({super.key});
@@ -43,7 +42,7 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
   void _showSnackBar(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(message),
-      backgroundColor: isError ? Colors.red : Colors.green,
+      backgroundColor: isError ? AppColors.dangerRed : AppColors.successGreen,
     ));
   }
 
@@ -164,175 +163,473 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+
     return Scaffold(
-      backgroundColor: AppColors.primaryBlue,
-      appBar: AppBar(
-        title: const Text('Staff Registration'),
-        backgroundColor: AppColors.primaryBlue,
-        elevation: 0,
-        titleTextStyle: const TextStyle(
-          color:AppColors.white,
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-        ),
-        iconTheme: const IconThemeData(
-          color: AppColors.white,
-        )
-      ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+      backgroundColor: AppColors.pageBg,
+      body: screenWidth > 900
+          ? _buildDesktopLayout()
+          : _buildMobileLayout(),
+    );
+  }
+
+  Widget _buildDesktopLayout() {
+    return Row(
+      children: [
+        // ── Left Panel: Branding ──────────────────────────────────
+        Expanded(
           child: Container(
-            width: 600,
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: AppColors.accentBlue,
-              borderRadius: BorderRadius.circular(12),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF0D1B4E), Color(0xFF1A3A8F)],
+              ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                CustomTextField(
-                  hintText: 'CSWD Employee ID',
-                  controller: _cswdIdController,
-                ),
-                const SizedBox(height: 12),
-                Row(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(48),
+                child: Column(
                   children: [
-                    Expanded(
-                      child: CustomTextField(
-                        hintText: 'First Name',
-                        controller: _firstNameController,
+                    Image.asset('lib/Logo/sappiire_logo.png', height: 64),
+                    const SizedBox(height: 24),
+                    const Text(
+                      'SapPIIre',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 40,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: CustomTextField(
-                        hintText: 'Middle Name',
-                        controller: _middleNameController,
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Join the Portal',
+                      style: TextStyle(
+                        color: AppColors.lightBlue,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w300,
+                        letterSpacing: 0.5,
                       ),
                     ),
+                    const SizedBox(height: 48),
+                    _buildFeatureChip('🔐', 'Secure Access'),
+                    const SizedBox(height: 16),
+                    _buildFeatureChip('📋', 'Form Management'),
+                    const SizedBox(height: 16),
+                    _buildFeatureChip('👥', 'Team Collaboration'),
                   ],
                 ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: CustomTextField(
-                        hintText: 'Last Name',
-                        controller: _lastNameController,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    SizedBox(
-                      width: 120,
-                      child: CustomTextField(
-                        hintText: 'Suffix',
-                        controller: _nameSuffixController,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: CustomTextField(
-                        hintText: 'Position',
-                        controller: _positionController,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: CustomTextField(
-                        hintText: 'Department',
-                        controller: _departmentController,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                CustomTextField(
-                  hintText: 'Phone Number',
-                  controller: _phoneController,
-                ),
-                const SizedBox(height: 12),
-                CustomTextField(
-                  hintText: 'Email Address',
-                  controller: _emailController,
-                ),
-                const SizedBox(height: 12),
-                CustomTextField(
-                  hintText: 'Username',
-                  controller: _usernameController,
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: _selectedRequestedRole,
-                  decoration: InputDecoration(
-                    labelText: 'Requested Role',
-                    labelStyle: const TextStyle(color: AppColors.grey),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: AppColors.grey),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: AppColors.grey),
-                    ),
-                  ),
-                  items: _requestedRoles.map((role) {
-                    return DropdownMenuItem<String>(
-                      value: role,
-                      child: Text(role),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() => _selectedRequestedRole = value);
-                    }
-                  },
-                ),
-                const SizedBox(height: 12),
-                CustomTextField(
-                  hintText: 'Password',
-                  obscureText: true,
-                  controller: _passwordController,
-                ),
-                const SizedBox(height: 12),
-                CustomTextField(
-                  hintText: 'Confirm Password',
-                  obscureText: true,
-                  controller: _confirmPasswordController,
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  height: 48,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.white,
-                      foregroundColor: AppColors.primaryBlue,
-                    ),
-                    onPressed: _isLoading ? null : _handleSignUp,
-                    child: _isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: AppColors.primaryBlue,
-                            ),
-                          )
-                        : const Text(
-                            'CREATE ACCOUNT',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
+
+        // ── Right Panel: Registration Form ────────────────────────
+        Expanded(
+          child: Container(
+            color: Color(0xFF152257),
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(48),
+                child: SizedBox(
+                  width: 420,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'Create Account',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Register as a team member',
+                        style: TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      _styledField('CSWD Employee ID', _cswdIdController, false),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _styledField('First Name', _firstNameController, false),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _styledField('Middle Name', _middleNameController, false),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _styledField('Last Name', _lastNameController, false),
+                          ),
+                          const SizedBox(width: 12),
+                          SizedBox(
+                            width: 100,
+                            child: _styledField('Suffix', _nameSuffixController, false),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _styledField('Position', _positionController, false),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _styledField('Department', _departmentController, false),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      _styledField('Phone Number', _phoneController, false),
+                      const SizedBox(height: 16),
+                      _styledField('Email Address', _emailController, false),
+                      const SizedBox(height: 16),
+                      _styledField('Username', _usernameController, false),
+                      const SizedBox(height: 16),
+                      _buildRoleDropdown(),
+                      const SizedBox(height: 16),
+                      _styledField('Password', _passwordController, true),
+                      const SizedBox(height: 16),
+                      _styledField('Confirm Password', _confirmPasswordController, true),
+                      const SizedBox(height: 28),
+                      SizedBox(
+                        height: 48,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.highlight,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          onPressed: _isLoading ? null : _handleSignUp,
+                          child: _isLoading
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  'CREATE ACCOUNT',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Already have an account? ',
+                            style: TextStyle(
+                              color: AppColors.textMuted,
+                              fontSize: 13,
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: () => Navigator.pop(context),
+                            child: const Text(
+                              'Sign in',
+                              style: TextStyle(
+                                color: AppColors.highlight,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMobileLayout() {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: SizedBox(
+          width: 600,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Image.asset('lib/Logo/sappiire_logo.png', height: 48),
+              const SizedBox(height: 16),
+              const Text(
+                'Create Account',
+                style: TextStyle(
+                  color: AppColors.textDark,
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+              _styledField('CSWD Employee ID', _cswdIdController, false),
+              const SizedBox(height: 16),
+              _styledField('First Name', _firstNameController, false),
+              const SizedBox(height: 16),
+              _styledField('Middle Name', _middleNameController, false),
+              const SizedBox(height: 16),
+              _styledField('Last Name', _lastNameController, false),
+              const SizedBox(height: 16),
+              _styledField('Suffix', _nameSuffixController, false),
+              const SizedBox(height: 16),
+              _styledField('Position', _positionController, false),
+              const SizedBox(height: 16),
+              _styledField('Department', _departmentController, false),
+              const SizedBox(height: 16),
+              _styledField('Phone Number', _phoneController, false),
+              const SizedBox(height: 16),
+              _styledField('Email Address', _emailController, false),
+              const SizedBox(height: 16),
+              _styledField('Username', _usernameController, false),
+              const SizedBox(height: 16),
+              _buildRoleDropdown(),
+              const SizedBox(height: 16),
+              _styledField('Password', _passwordController, true),
+              const SizedBox(height: 16),
+              _styledField('Confirm Password', _confirmPasswordController, true),
+              const SizedBox(height: 28),
+              SizedBox(
+                height: 48,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.highlight,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  onPressed: _isLoading ? null : _handleSignUp,
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'CREATE ACCOUNT',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: Colors.white,
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Already have an account? ',
+                    style: TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 13,
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: const Text(
+                      'Sign in',
+                      style: TextStyle(
+                        color: AppColors.highlight,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _styledField(
+    String label,
+    TextEditingController controller,
+    bool obscure,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          obscureText: obscure,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+          ),
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Color(0xFF0D1B4E),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(
+                color: Color(0xFF4C8BF5),
+                width: 1.5,
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(
+                color: Color(0xFF4C8BF5),
+                width: 1,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(
+                color: Color(0xFF6EA8FE),
+                width: 2,
+              ),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
+            hintStyle: const TextStyle(
+              color: Colors.white54,
+              fontSize: 13,
+            ),
+          ),
+          cursorColor: AppColors.highlight,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRoleDropdown() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'REQUESTED ROLE',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          value: _selectedRequestedRole,
+          dropdownColor: Color(0xFF0D1B4E),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+          ),
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Color(0xFF0D1B4E),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(
+                color: Color(0xFF4C8BF5),
+                width: 1.5,
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(
+                color: Color(0xFF4C8BF5),
+                width: 1,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(
+                color: Color(0xFF6EA8FE),
+                width: 2,
+              ),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 12,
+            ),
+          ),
+          items: _requestedRoles.map((role) {
+            return DropdownMenuItem<String>(
+              value: role,
+              child: Text(role),
+            );
+          }).toList(),
+          onChanged: (value) {
+            if (value != null) {
+              setState(() => _selectedRequestedRole = value);
+            }
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFeatureChip(String emoji, String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.lightBlue.withOpacity(0.3),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(emoji, style: const TextStyle(fontSize: 20)),
+          const SizedBox(width: 12),
+          Text(
+            text,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }

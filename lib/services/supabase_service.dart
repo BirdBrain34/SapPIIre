@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/foundation.dart';
 
 class SupabaseService {
   final _supabase = Supabase.instance.client;
@@ -150,6 +151,137 @@ class SupabaseService {
         'profile_id': profileId,
         ...socioData,
       });
+    }
+  }
+
+  /// Reads the logged-in user's full profile from Supabase,
+  /// maps it to GIS field keys, and pushes it into form_submission
+  /// so the web listener receives it via Realtime and autofills live.
+  Future<bool> pushProfileToSession({
+    required String sessionId,
+    required String userId,
+  }) async {
+    try {
+      // 1. Fetch all PII in one query — profile + address + socio + family
+      final profile = await _supabase
+          .from('user_profiles')
+          .select('*, user_addresses(*), socio_economic_data(*)')
+          .eq('user_id', userId)
+          .single();
+
+      final familyResponse = await _supabase
+          .from('family_composition')
+          .select()
+          .eq('profile_id', profile['profile_id'])
+          .order('created_at');
+
+      final address = (profile['user_addresses'] as Map<String, dynamic>?) ?? {};
+      final socio = (profile['socio_economic_data'] as Map<String, dynamic>?) ?? {};
+      final family = List<Map<String, dynamic>>.from(familyResponse);
+
+      // Fetch supporting family if exists
+      List<Map<String, dynamic>> supportingFamily = [];
+      if (socio['socio_economic_id'] != null) {
+        final supportResponse = await _supabase
+            .from('supporting_family')
+            .select()
+            .eq('socio_economic_id', socio['socio_economic_id'])
+            .order('sort_order');
+        supportingFamily = List<Map<String, dynamic>>.from(supportResponse);
+      }
+
+      // 2. Map to the EXACT keys used in _webControllers on ManageFormsScreen
+      final formData = <String, dynamic>{
+        // Client Info
+        'Last Name': profile['lastname'] ?? '',
+        'First Name': profile['firstname'] ?? '',
+        'Middle Name': profile['middle_name'] ?? '',
+        'Date of Birth': profile['birthdate'] ?? '',
+        'Age': profile['age']?.toString() ?? '',
+        'House number, street name, phase/purok': address['address_line'] ?? '',
+        'Subdivision': address['subdivision'] ?? '',
+        'Barangay': address['barangay'] ?? '',
+        'Kasarian': profile['gender'] ?? '',
+        'Estadong Sibil': profile['civil_status'] ?? '',
+        'Relihiyon': profile['religion'] ?? '',
+        'CP Number': profile['cellphone_number'] ?? '',
+        'Email Address': profile['email'] ?? '',
+        'Natapos o naabot sa pag-aaral': profile['education'] ?? '',
+        'Lugar ng Kapanganakan': profile['birthplace'] ?? '',
+        'Trabaho/Pinagkakakitaan': profile['occupation'] ?? '',
+        'Kumpanyang Pinagtratrabuhan': profile['workplace'] ?? '',
+        'Buwanang Kita (A)': profile['monthly_allowance']?.toString() ?? '',
+
+        // Membership data
+        '__membership': {
+          'solo_parent': profile['solo_parent'] ?? false,
+          'pwd': profile['pwd'] ?? false,
+          'four_ps_member': profile['four_ps_member'] ?? false,
+          'phic_member': profile['phic_member'] ?? false,
+        },
+
+        // Socio-Economic
+        'Total Gross Family Income (A+B+C)=(D)': socio['gross_family_income']?.toString() ?? '',
+        'Household Size (E)': socio['household_size']?.toString() ?? '',
+        'Monthly Per Capita Income (D/E)': socio['monthly_per_capita']?.toString() ?? '',
+        'Total Monthly Expense (F)': socio['monthly_expenses']?.toString() ?? '',
+        'Net Monthly Income (D-F)': socio['net_monthly_income']?.toString() ?? '',
+        'Bayad sa bahay': socio['house_rent']?.toString() ?? '',
+        'Food items': socio['food_items']?.toString() ?? '',
+        'Non-food items': socio['non_food_items']?.toString() ?? '',
+        'Utility bills': socio['utility_bills']?.toString() ?? '',
+        "Baby's needs": socio['baby_needs']?.toString() ?? '',
+        'School needs': socio['school_needs']?.toString() ?? '',
+        'Medical needs': socio['medical_needs']?.toString() ?? '',
+        'Transpo expense': socio['transport_expenses']?.toString() ?? '',
+        'Loans': socio['loans']?.toString() ?? '',
+        'Gasul': socio['gas']?.toString() ?? '',
+        'Kabuuang Tulong/Sustento kada Buwan (C)': supportingFamily.isNotEmpty 
+            ? supportingFamily[0]['monthly_alimony']?.toString() ?? '' 
+            : '',
+
+        // Socio-economic metadata
+        '__has_support': socio['has_support'] ?? false,
+        '__housing_status': socio['housing_status'] ?? '',
+
+        // Supporting family as JSON array
+        '__supporting_family': supportingFamily.map((m) => {
+          'name': m['name'] ?? '',
+          'relationship': m['relationship'] ?? '',
+          'regular_sustento': m['regular_sustento']?.toString() ?? '',
+        }).toList(),
+
+        // Family composition as a JSON array — web FamilyTable will render this
+        '__family_composition': family.map((m) => {
+          'name': m['name'] ?? '',
+          'relationship': m['relationship_of_relative'] ?? '',
+          'birthdate': m['birthdate']?.toString() ?? '',
+          'age': m['age']?.toString() ?? '',
+          'gender': m['gender'] ?? '',
+          'civil_status': m['civil_status'] ?? '',
+          'education': m['education'] ?? '',
+          'occupation': m['occupation'] ?? '',
+          'allowance': m['allowance']?.toString() ?? '',
+        }).toList(),
+
+        // Signature
+        '__signature': profile['signature_data'] ?? '',
+      };
+
+      // 3. Push to form_submission — Realtime fires instantly to web listener
+      await _supabase
+          .from('form_submission')
+          .update({
+            'form_data': formData,
+            'status': 'scanned',
+          })
+          .eq('id', sessionId)
+          .eq('status', 'active'); // Safety guard — only update if still active
+
+      return true;
+    } catch (e) {
+      debugPrint('pushProfileToSession error: $e');
+      return false;
     }
   }
 }

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:sappiire/constants/app_colors.dart';
 
 class LogoutConfirmationDialog extends StatelessWidget {
   final VoidCallback onConfirm;

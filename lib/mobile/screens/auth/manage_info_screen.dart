@@ -615,7 +615,7 @@ void _changeStep(int newStep) {
       padding: const EdgeInsets.all(16),
       margin: const EdgeInsets.only(bottom: 20),
       decoration: BoxDecoration(
-        color: AppColors.cardWhite,
+        color: AppColors.cardBg,
         borderRadius: BorderRadius.circular(15),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
       ),
@@ -628,7 +628,7 @@ void _changeStep(int newStep) {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.pageBg,
       appBar: AppBar(
         backgroundColor: AppColors.primaryBlue,
         toolbarHeight: 70, // Slightly taller to fit two lines comfortably
@@ -815,19 +815,11 @@ void _changeStep(int newStep) {
               
             SelectAllButton(
               isSelected: _selectAll,
-              onChanged: (v) {
-                setState(() {
-                  _selectAll = v ?? false;
-                  
-                  // Get the keys that belong to the CURRENTLY visible section only
-                  // This prevents background data from being modified accidentally
-                  for (final label in _allLabels) {
-                    _fieldChecks[label] = _selectAll;
-                  }
-                  
-                  _isEdited = true;
-                });
-              },
+              onChanged: (v) => setState(() {
+                _selectAll = v;
+                _fieldChecks.updateAll((key, val) => _selectAll);
+                _isEdited = true;
+              }),
             ),
           ],
         ),
@@ -840,8 +832,35 @@ void _changeStep(int newStep) {
               context,
               MaterialPageRoute(builder: (_) => const QrScannerScreen()),
             );
-            if (sessionId != null) {
-              // You can call syncDataToWeb(sessionId) here if needed
+
+            if (sessionId != null && widget.userId != null) {
+              // Show loading so user knows something is happening
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Sending your info to the form...'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+
+              final success = await _supabaseService.pushProfileToSession(
+                sessionId: sessionId,
+                userId: widget.userId!,
+              );
+
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      success
+                        ? '✅ Info sent! Staff can see your data now.'
+                        : '❌ Failed to send. The session may be closed.',
+                    ),
+                    backgroundColor: success ? Colors.green[700] : Colors.red[700],
+                  ),
+                );
+              }
             }
           } else {
             setState(() => _currentIndex = i);
