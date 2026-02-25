@@ -329,6 +329,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                                   points: _capturedSignaturePoints,
                                   label: "Digital Signature",
                                   signatureImageBase64: _signatureBase64,
+                                  // --- ADD THESE TWO LINES TO FIX THE ERROR ---
+                                  isChecked: false, 
+                                  onCheckboxChanged: (val) {}, 
+                                  // --------------------------------------------
                                   onCaptured: (points) {
                                     setState(() {
                                       _capturedSignaturePoints = points;

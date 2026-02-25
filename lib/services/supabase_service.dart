@@ -435,4 +435,25 @@ class SupabaseService {
       return false;
     }
   }
+  /// Sends the specific filtered data selected by the user to the web session.
+  /// This allows the user to choose exactly which fields to transmit via checkboxes.
+Future<bool> sendDataToWebSession(String sessionId, Map<String, dynamic> data) async {
+  try {
+    final response = await _supabase
+        .from('form_submission')
+        .update({
+          'form_data': data, // The filtered checkboxes map
+          'status': 'scanned',
+          'scanned_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', sessionId)
+        .select()
+        .maybeSingle();
+
+    return response != null;
+  } catch (e) {
+    debugPrint('Supabase Update Error: $e');
+    return false;
+  }
+}
 }

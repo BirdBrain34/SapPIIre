@@ -70,6 +70,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     "Relihiyon", "CP Number", "Email Address", "Natapos o naabot sa pag-aaral",
     "Lugar ng Kapanganakan", "Lugar ng Kapanganakan / Place of Birth", "Trabaho/Pinagkakakitaan", "Kumpanyang Pinagtratrabuhan",
     "Buwanang Kita (A)",
+    "Membership Group",
     "House number, street name, phase/purok", "Subdivision", "Barangay",
     "Kasarian / Sex", "Uri ng Dugo / Blood Type", "Estadong Sibil / Martial Status",
     "Kabuuang Tulong/Sustento kada Buwan (C)",
@@ -107,10 +108,10 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
             });
           },
           membershipData: _membershipData,
-          onMembershipChanged: (key, val) {
+        onMembershipChanged: (key, val) {
+            
             setState(() {
               _membershipData[key] = val;
-              _isEdited = true;
             });
           },
         ),
@@ -145,34 +146,33 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           },
         ),
 
-        // Index 3 (or the last step): Your existing Signature logic
+// Inside _formSections in ManageInfoScreen.dart
+
+        // Index 3 (or the signature part):
         Column( 
+          crossAxisAlignment: CrossAxisAlignment.start, // Align to left
           children: [
+
+            const SizedBox(height: 10),
             SignatureField(
               points: _capturedSignaturePoints,
-              signatureImageBase64: _savedSignatureBase64, 
-              onCaptured: (points) { 
+              signatureImageBase64: _savedSignatureBase64,
+              // Pass the checkbox state from your _fieldChecks map
+              isChecked: _fieldChecks["Signature"] ?? false, 
+              onCheckboxChanged: (val) {
+                setState(() {
+                  _fieldChecks["Signature"] = val ?? false;
+                  _isEdited = true;
+                });
+              },
+              onCaptured: (points) {
                 setState(() {
                   _capturedSignaturePoints = points;
                   _isEdited = true;
                 });
               },
             ),
-            const SizedBox(height: 12),
-            TextButton.icon(
-              onPressed: () {
-                setState(() {
-                  _capturedSignaturePoints = null;
-                  _savedSignatureBase64 = null;
-                  _isEdited = true;
-                });
-              },
-              icon: const Icon(Icons.refresh, color: Colors.redAccent, size: 20),
-              label: const Text(
-                "Clear Signature", 
-                style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)
-              ),
-            ),
+            // ... keep your Clear Signature button below
           ],
         ),
       ];
@@ -223,30 +223,21 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
             // Embedded Signature Field
             SignatureField(
               points: _capturedSignaturePoints,
-              signatureImageBase64: _savedSignatureBase64, 
-              onCaptured: (points) { 
+              signatureImageBase64: _savedSignatureBase64,
+              // Pass the checkbox state from your _fieldChecks map
+              isChecked: _fieldChecks["Signature"] ?? false, 
+              onCheckboxChanged: (val) {
+                setState(() {
+                  _fieldChecks["Signature"] = val ?? false;
+                  _isEdited = true;
+                });
+              },
+              onCaptured: (points) {
                 setState(() {
                   _capturedSignaturePoints = points;
                   _isEdited = true;
                 });
               },
-            ),
-
-            Center(
-              child: TextButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _capturedSignaturePoints = null;
-                    _savedSignatureBase64 = null;
-                    _isEdited = true;
-                  });
-                },
-                icon: const Icon(Icons.refresh, color: Colors.redAccent, size: 20),
-                label: const Text(
-                  "Clear Signature", 
-                  style: TextStyle(color: Colors.redAccent)
-                ),
-              ),
             ),
           ],
         )
@@ -824,6 +815,10 @@ void _changeStep(int newStep) {
                 _selectAll = v;
                 _fieldChecks.updateAll((key, val) => _selectAll);
                 _isEdited = true;
+                _fieldChecks['Signature'] = _selectAll;
+                _fieldChecks['Membership Group'] = _selectAll;
+                _fieldChecks['Family Composition'] = _selectAll;
+               
               }),
             ),
           ],
@@ -832,38 +827,92 @@ void _changeStep(int newStep) {
       bottomNavigationBar: CustomBottomNav(
         currentIndex: _currentIndex,
         onTap: (i) async {
-          if (i == 1) {
-            final String? sessionId = await Navigator.push<String>(
+          if (i == 1) { // Send Button
+            // 1. Prepare the data based on Checkboxes
+            Map<String, dynamic> dataToTransmit = {};
+
+            // Standard Text Fields
+            // We map the UI Label to the Value only if the checkbox for that label is true
+            _controllers.forEach((label, controller) {
+              if (_fieldChecks[label] == true) {
+                dataToTransmit[label] = controller.text.trim();
+              }
+            });
+
+            // Membership Radios
+            if (_fieldChecks['Membership Group'] == true) {
+              dataToTransmit['__membership'] = {
+                'solo_parent': _membershipData['solo_parent'] ?? false,
+                'pwd': _membershipData['pwd'] ?? false,
+                'four_ps_member': _membershipData['four_ps_member'] ?? false,
+                'phic_member': _membershipData['phic_member'] ?? false,
+              };
+            }
+
+            // Family Table
+            if (_fieldChecks['Family Composition'] == true) {
+              final familyData = _familyTableKey.currentState?.getFamilyData() ?? _familyMembers;
+              dataToTransmit['__family_composition'] = familyData.map((m) => {
+                'name': m['name'] ?? '',
+                'relationship': m['relationship_of_relative'] ?? '',
+                'birthdate': m['birthdate']?.toString() ?? '',
+                'age': m['age']?.toString() ?? '',
+                'gender': m['gender'] ?? '',
+                'civil_status': m['civil_status'] ?? '',
+                'education': m['education'] ?? '',
+                'occupation': m['occupation'] ?? '',
+                'allowance': m['allowance']?.toString() ?? '',
+              }).toList();
+            }
+            if (_fieldChecks['Membership Group'] == true || _selectAll) {
+              dataToTransmit['__supporting_family'] = _supportingFamily.map((m) => {
+                'name': m['name'] ?? '',
+                'relationship': m['relationship'] ?? '',
+                'regular_sustento': m['regular_sustento']?.toString() ?? '0.0',
+              }).toList();
+              
+              // Also include the total sustainment amount (C) from its controller
+              dataToTransmit['Kabuuang Tulong/Sustento kada Buwan (C)'] = 
+                  _controllers["Kabuuang Tulong/Sustento kada Buwan (C)"]?.text ?? '';
+            }
+
+            // Signature
+            if (_fieldChecks['Signature'] == true) {
+              String? sigBase64 = _savedSignatureBase64;
+              if (_capturedSignaturePoints != null && _capturedSignaturePoints!.isNotEmpty) {
+                sigBase64 = await SignatureHelper.convertToBase64(_capturedSignaturePoints!);
+              }
+              if (sigBase64 != null) {
+                dataToTransmit['__signature'] = sigBase64;
+              }
+            }
+
+            // Socio-economic Metadata
+            if (_fieldChecks['Membership Group'] == true) { // Linked to membership group for convenience
+                dataToTransmit['__has_support'] = _hasSupport;
+                dataToTransmit['__housing_status'] = _housingStatus ?? '';
+            }
+
+            // 2. Open Scanner
+            final result = await Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const QrScannerScreen()),
+              MaterialPageRoute(
+                builder: (_) => QrScannerScreen(
+                  transmitData: dataToTransmit,
+                  userId: widget.userId,
+                ),
+              ),
             );
 
-            if (sessionId != null && widget.userId != null) {
-              // Show loading so user knows something is happening
+            // 3. Send to Supabase
+            if (result != null && result is String) {
+              // Use the existing service method that updates the 'form_data'
+              final success = await _supabaseService.sendDataToWebSession(result, dataToTransmit);
+              
               if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Sending your info to the form...'),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
-              }
-
-              final success = await _supabaseService.pushProfileToSession(
-                sessionId: sessionId,
-                userId: widget.userId!,
-              );
-
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      success
-                        ? '✅ Info sent! Staff can see your data now.'
-                        : '❌ Failed to send. The session may be closed.',
-                    ),
-                    backgroundColor: success ? Colors.green[700] : Colors.red[700],
-                  ),
+                _showFeedback(
+                  success ? "Data transmitted!" : "Failed to send data.",
+                  success ? Colors.green : Colors.red
                 );
               }
             }

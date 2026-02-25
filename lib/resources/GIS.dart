@@ -134,14 +134,38 @@ class _ClientInfoSectionState extends State<ClientInfoSection> {
         _buildField("Kumpanyang Pinagtratrabuhan"),
         _buildField("Buwanang Kita (A)"),
 
-        const SizedBox(height: 20),
-        const Text(
-          "Ikaw ba ay miyembro ng pamilya na:",
-          style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.w500),
-        ),
-        const SizedBox(height: 10),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Expanded(
+                  child: Text(
+                    "Ikaw ba ay miyembro ng pamilya na:",
+                    style: TextStyle(
+                      color: AppColors.primaryBlue, 
+                      fontWeight: FontWeight.bold, 
+                      fontSize: 14
+                    ),
+                  ),
+                ),
+                Checkbox(
+                  value: widget.fieldChecks["Membership Group"] ?? false,
+                  onChanged: (val) => widget.onCheckChanged("Membership Group", val ?? false),
+                  activeColor: AppColors.primaryBlue,
+                  side: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
 
-        ...membership.keys.map((key) => _buildMembershipRow(key)).toList(),
+            _buildMembershipRow("Solo Parent"),
+            _buildMembershipRow("PWD"),
+            _buildMembershipRow("4Ps"),
+            _buildMembershipRow("PHIC Member"),
+          ],
+        )
       ],
     );
   }
@@ -159,39 +183,46 @@ Widget _buildField(String label, {bool isDate = false, bool readOnly = false}) {
   );
 }
 
-  Widget _buildMembershipRow(String title) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 2,
-            child: Text(
-              title,
-              style: const TextStyle(color: Colors.black87, fontSize: 13),
-            ),
-          ),
-          _miniRadio(title, "Oo"),
-          _miniRadio(title, "Hindi"),
-        ],
-      ),
-    );
-  }
+Widget _buildMembershipRow(String label) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4.0),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(label, style: const TextStyle(fontSize: 13)),
+        ),
+        // This calls the radio button widget you provided
+        _miniRadio(label, 'Oo'),
+        _miniRadio(label, 'Hindi'),
+      ],
+    ),
+  );
+}
 
-  // Helper to build individual radio button for membership questions
   Widget _miniRadio(String key, String value) {
+    final Map<String, String> dbKeyMap = {
+      'Solo Parent': 'solo_parent',
+      'PWD': 'pwd',
+      '4Ps': 'four_ps_member',
+      'PHIC Member': 'phic_member',
+    };
+
+    final String dbKey = dbKeyMap[key] ?? key;
+    
+    // Get the actual boolean value from the widget's properties
+    bool isTrue = widget.membershipData?[dbKey] ?? false;
+    
+    // A radio is selected if (value is 'Oo' and data is true) OR (value is 'Hindi' and data is false)
+    bool isSelected = (value == 'Oo' && isTrue) || (value == 'Hindi' && !isTrue);
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Radio<String>(
           value: value,
-          groupValue: membership[key],
+          groupValue: isSelected ? value : null, 
           onChanged: (v) {
-            // Map UI label to database column name
-            final dbKey = key == 'Solo Parent' ? 'solo_parent' 
-                : key == 'PWD' ? 'pwd'
-                : key == '4Ps' ? 'four_ps_member'
-                : 'phic_member';
+            // Trigger the callback to the parent ManageInfoScreen
             widget.onMembershipChanged?.call(dbKey, v == 'Oo');
           },
           activeColor: AppColors.primaryBlue,
@@ -524,6 +555,8 @@ class _SocioEconomicSectionState extends State<SocioEconomicSection> {
     _initializeSupportControllers();
   }
 
+  
+
   @override
   void didUpdateWidget(SocioEconomicSection oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -770,7 +803,9 @@ class _SocioEconomicSectionState extends State<SocioEconomicSection> {
       ),
     );
   }
+  
 }
+
 
 
 

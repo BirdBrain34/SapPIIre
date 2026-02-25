@@ -7,29 +7,47 @@ class SignatureField extends StatelessWidget {
   final Function(List<Offset?>) onCaptured;
   final String label;
   final String? signatureImageBase64;
-   final Color labelColor;
+  final Color labelColor;
+  
+  // ADD THESE TWO PROPERTIES
+  final bool isChecked;
+  final ValueChanged<bool?> onCheckboxChanged;
 
   const SignatureField({
     super.key,
     required this.points,
     required this.onCaptured,
+    required this.isChecked,          // Added
+    required this.onCheckboxChanged,   // Added
     this.label = "Signature",
     this.signatureImageBase64,
     this.labelColor = AppColors.primaryBlue,
   });
 
-@override
+  @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label, 
-          style: TextStyle(
-            color: labelColor, // 3. Use the dynamic color here
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
+        // WRAP LABEL IN A ROW TO ADD THE CHECKBOX
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: labelColor,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+            Checkbox(
+              value: isChecked,
+              onChanged: onCheckboxChanged,
+              activeColor: AppColors.primaryBlue,
+              side: const BorderSide(color: AppColors.primaryBlue, width: 2),
+            ),
+          ],
         ),
         const SizedBox(height: 10),
         GestureDetector(
@@ -46,18 +64,19 @@ class SignatureField extends StatelessWidget {
             height: 120,
             width: double.infinity,
             decoration: BoxDecoration(
-              // 2. Updated border to white with opacity for better look on blue
               border: Border.all(color: AppColors.primaryBlue.withOpacity(0.3)),
               borderRadius: BorderRadius.circular(8),
               color: Colors.white,
             ),
             child: points == null || points!.isEmpty
-                ? (signatureImageBase64 != null 
+                ? (signatureImageBase64 != null
                     ? Image.memory(
                         base64Decode(signatureImageBase64!.split(',').last),
                         fit: BoxFit.contain,
                       )
-                    : const Center(child: Text("Tap to sign", style: TextStyle(color: Colors.black54, fontSize: 12))))
+                    : const Center(
+                        child: Text("Tap to sign",
+                            style: TextStyle(color: Colors.black54, fontSize: 12))))
                 : Padding(
                     padding: const EdgeInsets.all(8.0),
                     child: FittedBox(
