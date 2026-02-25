@@ -79,8 +79,6 @@ class ClientInfoSection extends StatefulWidget {
 }
 
 class _ClientInfoSectionState extends State<ClientInfoSection> {
-  bool _sectionChecked = false;
-
   // Convert membership boolean data to Filipino Yes/No format
   Map<String, String> get membership => {
     'Solo Parent': (widget.membershipData?['solo_parent'] ?? false) ? 'Oo' : 'Hindi',
@@ -88,6 +86,15 @@ class _ClientInfoSectionState extends State<ClientInfoSection> {
     '4Ps': (widget.membershipData?['four_ps_member'] ?? false) ? 'Oo' : 'Hindi',
     'PHIC': (widget.membershipData?['phic_member'] ?? false) ? 'Oo' : 'Hindi',
   };
+
+  bool get _sectionChecked {
+    final clientFields = ["Last Name", "First Name", "Middle Name", "Date of Birth", "Age", 
+      "House number, street name, phase/purok", "Subdivision", "Barangay", "Kasarian", 
+      "Estadong Sibil", "Relihiyon", "CP Number", "Email Address", 
+      "Natapos o naabot sa pag-aaral", "Lugar ng Kapanganakan", 
+      "Trabaho/Pinagkakakitaan", "Kumpanyang Pinagtratrabuhan", "Buwanang Kita (A)", "Membership Group"];
+    return clientFields.every((field) => widget.fieldChecks[field] == true);
+  }
 
   Future<void> _selectDate(TextEditingController controller) async {
   await DatePickerHelper.selectDate(
@@ -107,10 +114,14 @@ class _ClientInfoSectionState extends State<ClientInfoSection> {
           title: "A. CLIENT'S INFORMATION",
           isChecked: widget.selectAll || _sectionChecked,
           onChecked: (v) {
-            setState(() => _sectionChecked = v!);
-            widget.fieldChecks.forEach((key, value) {
-              widget.onCheckChanged(key, v!);
-            });
+            final clientFields = ["Last Name", "First Name", "Middle Name", "Date of Birth", "Age", 
+              "House number, street name, phase/purok", "Subdivision", "Barangay", "Kasarian", 
+              "Estadong Sibil", "Relihiyon", "CP Number", "Email Address", 
+              "Natapos o naabot sa pag-aaral", "Lugar ng Kapanganakan", 
+              "Trabaho/Pinagkakakitaan", "Kumpanyang Pinagtratrabuhan", "Buwanang Kita (A)", "Membership Group"];
+            for (var field in clientFields) {
+              widget.onCheckChanged(field, v!);
+            }
           },
         ),
         const SizedBox(height: 10),
@@ -241,6 +252,8 @@ class FamilyTable extends StatefulWidget {
   final Map<String, TextEditingController>? controllers;
   final List<Map<String, dynamic>>? familyMembers;
   final Function(List<Map<String, dynamic>>)? onFamilyChanged;
+  final Map<String, bool>? fieldChecks;
+  final Function(String, bool)? onCheckChanged;
 
   const FamilyTable({
     super.key, 
@@ -248,6 +261,8 @@ class FamilyTable extends StatefulWidget {
     this.controllers,
     this.familyMembers,
     this.onFamilyChanged,
+    this.fieldChecks,
+    this.onCheckChanged,
   });
   @override
   State<FamilyTable> createState() => FamilyTableState();
@@ -279,7 +294,8 @@ class _FamilyMemberData {
 
 class FamilyTableState extends State<FamilyTable> {
   List<_FamilyMemberData> _members = [];
-  bool _sectionChecked = false;
+  
+  bool get _sectionChecked => widget.fieldChecks?['Family Composition'] ?? widget.selectAll;
 
   @override
   void initState() {
@@ -354,8 +370,10 @@ class FamilyTableState extends State<FamilyTable> {
       children: [
         SectionHeader(
           title: "B. FAMILY COMPOSITION",
-          isChecked: widget.selectAll || _sectionChecked,
-          onChecked: (v) => setState(() => _sectionChecked = v!),
+          isChecked: _sectionChecked,
+          onChecked: (v) {
+            widget.onCheckChanged?.call('Family Composition', v ?? false);
+          },
         ),
         const SizedBox(height: 10),
         ..._members.asMap().entries.map((entry) => _buildMemberCard(entry.key)),
@@ -527,6 +545,8 @@ class SocioEconomicSection extends StatefulWidget {
   final Function(String)? onHousingStatusChanged;
   final Function(List<Map<String, dynamic>>)? onSupportingFamilyChanged;
   final VoidCallback? onAddMember;
+  final Map<String, bool>? fieldChecks;
+  final Function(String, bool)? onCheckChanged;
 
   const SocioEconomicSection({
     super.key, 
@@ -539,6 +559,8 @@ class SocioEconomicSection extends StatefulWidget {
     this.onHousingStatusChanged,
     this.onSupportingFamilyChanged,
     this.onAddMember,
+    this.fieldChecks,
+    this.onCheckChanged,
   });
 
   @override
@@ -546,8 +568,9 @@ class SocioEconomicSection extends StatefulWidget {
 }
 
 class _SocioEconomicSectionState extends State<SocioEconomicSection> {
-  bool _sectionChecked = false;
   List<Map<String, TextEditingController>> _supportControllers = [];
+  
+  bool get _sectionChecked => widget.fieldChecks?['Socio-Economic Data'] ?? widget.selectAll;
 
   @override
   void initState() {
@@ -658,8 +681,10 @@ class _SocioEconomicSectionState extends State<SocioEconomicSection> {
       children: [
         SectionHeader(
           title: "C. SOCIO-ECONOMIC DATA",
-          isChecked: widget.selectAll || _sectionChecked,
-          onChecked: (v) => setState(() => _sectionChecked = v!),
+          isChecked: _sectionChecked,
+          onChecked: (v) {
+            widget.onCheckChanged?.call('Socio-Economic Data', v ?? false);
+          },
         ),
         const SizedBox(height: 15),
         const Text("May ibang kaanak na sumusuporta sa pamilya?", style: TextStyle(color: Colors.black87)),

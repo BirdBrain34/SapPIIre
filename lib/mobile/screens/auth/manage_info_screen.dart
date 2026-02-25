@@ -121,9 +121,17 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           key: _familyTableKey,
           selectAll: _selectAll,
           familyMembers: _familyMembers,
+          fieldChecks: _fieldChecks,
+          onCheckChanged: (key, val) {
+            setState(() {
+              _fieldChecks[key] = val;
+              _isEdited = true;
+            });
+          },
           onFamilyChanged: (newData) {
             setState(() {
               _familyMembers = newData;
+              _fieldChecks['Family Composition'] = true;
               _isEdited = true;
             });
           },
@@ -136,11 +144,27 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           hasSupport: _hasSupport,
           housingStatus: _housingStatus,
           supportingFamily: _supportingFamily,
-          onHasSupportChanged: (val) => setState(() { _hasSupport = val; _isEdited = true; }),
-          onHousingStatusChanged: (val) => setState(() { _housingStatus = val; _isEdited = true; }),
+          fieldChecks: _fieldChecks,
+          onCheckChanged: (key, val) {
+            setState(() {
+              _fieldChecks[key] = val;
+              _isEdited = true;
+            });
+          },
+          onHasSupportChanged: (val) => setState(() { 
+            _hasSupport = val; 
+            _fieldChecks['Socio-Economic Data'] = true;
+            _isEdited = true; 
+          }),
+          onHousingStatusChanged: (val) => setState(() { 
+            _housingStatus = val; 
+            _fieldChecks['Socio-Economic Data'] = true;
+            _isEdited = true; 
+          }),
           onSupportingFamilyChanged: (newData) {
             setState(() {
               _supportingFamily = newData;
+              _fieldChecks['Socio-Economic Data'] = true;
               _isEdited = true;
             });
           },
@@ -818,7 +842,7 @@ void _changeStep(int newStep) {
                 _fieldChecks['Signature'] = _selectAll;
                 _fieldChecks['Membership Group'] = _selectAll;
                 _fieldChecks['Family Composition'] = _selectAll;
-               
+                _fieldChecks['Socio-Economic Data'] = _selectAll;
               }),
             ),
           ],
@@ -850,11 +874,11 @@ void _changeStep(int newStep) {
             }
 
             // Family Table
-            if (_fieldChecks['Family Composition'] == true) {
+            if (_fieldChecks['Family Composition'] == true || _selectAll) {
               final familyData = _familyTableKey.currentState?.getFamilyData() ?? _familyMembers;
               dataToTransmit['__family_composition'] = familyData.map((m) => {
                 'name': m['name'] ?? '',
-                'relationship': m['relationship_of_relative'] ?? '',
+                'relationship_of_relative': m['relationship_of_relative'] ?? '',
                 'birthdate': m['birthdate']?.toString() ?? '',
                 'age': m['age']?.toString() ?? '',
                 'gender': m['gender'] ?? '',
@@ -863,21 +887,48 @@ void _changeStep(int newStep) {
                 'occupation': m['occupation'] ?? '',
                 'allowance': m['allowance']?.toString() ?? '',
               }).toList();
+              
+              debugPrint('Family Data being sent: ${dataToTransmit['__family_composition']}');
             }
-            if (_fieldChecks['Membership Group'] == true || _selectAll) {
+            
+            // Socio-Economic Data
+            if (_fieldChecks['Socio-Economic Data'] == true || _selectAll) {
+              dataToTransmit['__has_support'] = _hasSupport;
+              dataToTransmit['__housing_status'] = _housingStatus ?? '';
+              
               dataToTransmit['__supporting_family'] = _supportingFamily.map((m) => {
                 'name': m['name'] ?? '',
                 'relationship': m['relationship'] ?? '',
                 'regular_sustento': m['regular_sustento']?.toString() ?? '0.0',
               }).toList();
               
-              // Also include the total sustainment amount (C) from its controller
-              dataToTransmit['Kabuuang Tulong/Sustento kada Buwan (C)'] = 
-                  _controllers["Kabuuang Tulong/Sustento kada Buwan (C)"]?.text ?? '';
+              // Include all socio-economic fields
+              final socioFields = [
+                "Kabuuang Tulong/Sustento kada Buwan (C)",
+                "Total Gross Family Income (A+B+C)=(D)",
+                "Household Size (E)",
+                "Monthly Per Capita Income (D/E)",
+                "Total Monthly Expense (F)",
+                "Net Monthly Income (D-F)",
+                "Bayad sa bahay",
+                "Food items",
+                "Non-food items",
+                "Utility bills",
+                "Baby's needs",
+                "School needs",
+                "Medical needs",
+                "Transpo expense",
+                "Loans",
+                "Gasul"
+              ];
+              
+              for (var field in socioFields) {
+                dataToTransmit[field] = _controllers[field]?.text ?? '';
+              }
             }
 
             // Signature
-            if (_fieldChecks['Signature'] == true) {
+            if (_fieldChecks['Signature'] == true || _selectAll) {
               String? sigBase64 = _savedSignatureBase64;
               if (_capturedSignaturePoints != null && _capturedSignaturePoints!.isNotEmpty) {
                 sigBase64 = await SignatureHelper.convertToBase64(_capturedSignaturePoints!);
@@ -885,12 +936,6 @@ void _changeStep(int newStep) {
               if (sigBase64 != null) {
                 dataToTransmit['__signature'] = sigBase64;
               }
-            }
-
-            // Socio-economic Metadata
-            if (_fieldChecks['Membership Group'] == true) { // Linked to membership group for convenience
-                dataToTransmit['__has_support'] = _hasSupport;
-                dataToTransmit['__housing_status'] = _housingStatus ?? '';
             }
 
             // 2. Open Scanner
@@ -906,6 +951,14 @@ void _changeStep(int newStep) {
 
             // 3. Send to Supabase
             if (result != null && result is String) {
+              // Debug: Print what we're sending
+              debugPrint('=== QR DATA TRANSMISSION ===');
+              debugPrint('Family Composition: ${dataToTransmit['__family_composition']}');
+              debugPrint('Socio-Economic Data: Has Support=${dataToTransmit['__has_support']}, Housing=${dataToTransmit['__housing_status']}');
+              debugPrint('Supporting Family: ${dataToTransmit['__supporting_family']}');
+              debugPrint('Socio Fields: Total Gross=${dataToTransmit['Total Gross Family Income (A+B+C)=(D)']}, Bayad=${dataToTransmit['Bayad sa bahay']}');
+              debugPrint('===========================');
+              
               // Use the existing service method that updates the 'form_data'
               final success = await _supabaseService.sendDataToWebSession(result, dataToTransmit);
               
