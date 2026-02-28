@@ -4,6 +4,7 @@ import 'package:sappiire/web/widget/web_shell.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/create_staff_screen.dart';
+import 'package:sappiire/web/screen/applicants_screen.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -122,6 +123,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         break;
       case 'CreateStaff':
         nextScreen = CreateStaffScreen(
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+        );
+        break;
+      case 'Applicants':
+        nextScreen = ApplicantsScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
         );

@@ -6,6 +6,7 @@ import 'package:sappiire/web/widget/web_shell.dart';
 import 'package:sappiire/web/screen/dashboard_screen.dart';
 import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/create_staff_screen.dart';
+import 'package:sappiire/web/screen/applicants_screen.dart';
 import 'package:sappiire/resources/GIS.dart';
 import 'package:sappiire/web/screen/web_login_screen.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
@@ -195,10 +196,40 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   }
 
   Future<void> _finalizeEntry() async {
-    final Map<String, String> finalData = {};
+    final Map<String, dynamic> finalData = {};
+    
+    // Save all text field data
     _webControllers.forEach((key, controller) {
       finalData[key] = controller.text;
     });
+    
+    // Save membership data with special prefix
+    if (_membershipData.isNotEmpty) {
+      finalData['__membership'] = _membershipData;
+    }
+    
+    // Save family composition
+    if (_familyMembers.isNotEmpty) {
+      finalData['__family_composition'] = _familyMembers;
+    }
+    
+    // Save supporting family
+    if (_supportingFamily.isNotEmpty) {
+      finalData['__supporting_family'] = _supportingFamily;
+    }
+    
+    // Save has support flag
+    finalData['__has_support'] = _hasSupport;
+    
+    // Save housing status
+    if (_housingStatus != null) {
+      finalData['__housing_status'] = _housingStatus;
+    }
+    
+    // Save signature if available
+    if (_signatureBase64 != null && _signatureBase64!.isNotEmpty) {
+      finalData['__signature'] = _signatureBase64;
+    }
 
     try {
       await Supabase.instance.client.from('client_submissions').insert({
@@ -221,6 +252,11 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       _createNewSession(); 
     } catch (e) {
       debugPrint("Finalize Error: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error finalizing entry: $e"), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -396,6 +432,12 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         break;
       case 'CreateStaff':
         nextScreen = CreateStaffScreen(
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+        );
+        break;
+      case 'Applicants':
+        nextScreen = ApplicantsScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
         );
