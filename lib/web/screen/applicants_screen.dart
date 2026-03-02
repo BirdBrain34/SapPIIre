@@ -73,59 +73,53 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     }
   }
 
-  Future<void> _deleteApplicant(String id) async {
+  Future<void> _deleteApplicant(dynamic id) async {
+    debugPrint('Delete button pressed for ID: $id');
+    
     final confirmed = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Applicant'),
-        content: const Text('Are you sure you want to delete this applicant form? This action cannot be undone.'),
+        content: const Text('Are you sure you want to delete this applicant? This cannot be undone.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
+            onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('Cancel'),
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
     );
 
+    debugPrint('Confirmation result: $confirmed');
+
     if (confirmed == true) {
       try {
-        debugPrint('Attempting to delete applicant with id: $id');
-        
-        final response = await _supabase
+        debugPrint('Deleting from Supabase...');
+        await _supabase
             .from('client_submissions')
             .delete()
             .eq('id', id);
-
-        debugPrint('Delete response: $response');
         
-        // Forcefully refresh after deletion
-        await Future.delayed(const Duration(milliseconds: 300));
+        debugPrint('Delete successful, reloading...');
         if (mounted) {
-          setState(() => _isLoading = true);
           await _loadApplicants();
-          
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Applicant deleted successfully'),
-                duration: Duration(seconds: 2),
-              ),
-            );
-          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Applicant deleted successfully')),
+          );
         }
       } catch (e) {
         debugPrint('Delete error: $e');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Error deleting applicant: $e'),
+              content: Text('Error: $e'),
               backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
             ),
           );
         }
