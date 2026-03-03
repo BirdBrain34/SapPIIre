@@ -6,6 +6,13 @@ import 'package:sappiire/web/screen/web_login_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:typed_data';
 import 'dart:convert';
+import 'dart:async';
+import 'package:sappiire/web/screen/dashboard_screen.dart';
+import 'package:sappiire/web/screen/manage_staff_screen.dart';
+import 'package:sappiire/web/screen/create_staff_screen.dart';
+import 'package:sappiire/web/utils/page_transitions.dart';
+import 'package:sappiire/web/screen/manage_forms_screen.dart';
+import 'package:sappiire/web/widget/web_shell.dart';
 
 class ApplicantsScreen extends StatefulWidget {
   final String cswd_id;
@@ -68,6 +75,47 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+    void _navigateToScreen(BuildContext context, String screenPath) {
+    // Map screen paths to actual navigation
+    Widget nextScreen;
+switch (screenPath) {
+    case 'Dashboard':
+      nextScreen = DashboardScreen(
+        cswd_id: widget.cswd_id,
+        role: widget.role,
+        onLogout: _handleLogout,
+        
+         // Ensure you have a logout method defined
+      );
+      break;
+    case 'Forms':
+      nextScreen = ManageFormsScreen(
+        cswd_id: widget.cswd_id,
+        role: widget.role,
+      );
+      break;
+    case 'Staff':
+      nextScreen = ManageStaffScreen(
+        cswd_id: widget.cswd_id,
+        role: widget.role,
+      );
+      break;
+    case 'CreateStaff':
+      nextScreen = CreateStaffScreen(
+        cswd_id: widget.cswd_id,
+        role: widget.role,
+      );
+      break;
+    case 'Applicants':
+      return; // Already here, do nothing
+    default:
+      return;
+  }
+    Navigator.of(context).pushReplacement(
+      ContentFadeRoute(page: nextScreen),
+    );
   }
 
   Future<void> _fetchSubmissions() async {
@@ -181,64 +229,56 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FE),
-      body: Row(
-        children: [
-          SideMenu(activePath: "Applicants", onLogout: _handleLogout),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(35.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        "Applicants",
-                        style: TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1A1A2E),
-                        ),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: _fetchSubmissions,
-                        icon: const Icon(Icons.refresh, color: AppColors.primaryBlue),
-                        label: const Text(
-                          "Refresh",
-                          style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: AppColors.buttonOutlineBlue),
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 25),
-                  Expanded(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildApplicantListPanel(),
-                        const SizedBox(width: 24),
-                        Expanded(child: _buildGisDetailPanel()),
-                      ],
-                    ),
-                  ),
-                ],
+@override
+Widget build(BuildContext context) {
+  return WebShell(
+    activePath: "Applicants",
+    pageTitle: "Applicants",
+    pageSubtitle: "Manage and review submitted applications",
+    onLogout: _handleLogout,
+    // This connects the Sidebar clicks to your logic
+    onNavigate: (path) => _navigateToScreen(context, path), 
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Top Action Bar
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            OutlinedButton.icon(
+              onPressed: _fetchSubmissions,
+              icon: const Icon(Icons.refresh, color: AppColors.primaryBlue),
+              label: const Text(
+                "Refresh",
+                style: TextStyle(
+                  color: AppColors.primaryBlue, 
+                  fontWeight: FontWeight.bold
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: AppColors.buttonOutlineBlue),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
+          ],
+        ),
+        const SizedBox(height: 25),
+        // Main Content Area (The Two Panels)
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildApplicantListPanel(),
+              const SizedBox(width: 24),
+              Expanded(child: _buildGisDetailPanel()),
+            ],
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _buildApplicantListPanel() {
     return Container(
