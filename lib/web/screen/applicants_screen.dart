@@ -1,13 +1,10 @@
+
 import 'package:flutter/material.dart';
-import 'dart:typed_data';
 import 'package:sappiire/constants/app_colors.dart';
-import 'package:sappiire/web/widget/web_shell.dart';
-import 'package:sappiire/web/screen/manage_forms_screen.dart';
-import 'package:sappiire/web/screen/manage_staff_screen.dart';
-import 'package:sappiire/web/screen/create_staff_screen.dart';
-import 'package:sappiire/web/screen/dashboard_screen.dart';
-import 'package:sappiire/web/utils/page_transitions.dart';
+import 'package:sappiire/web/widget/side_menu.dart';
+import 'package:sappiire/web/screen/web_login_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:typed_data';
 import 'dart:convert';
 
 class ApplicantsScreen extends StatefulWidget {
@@ -25,955 +22,638 @@ class ApplicantsScreen extends StatefulWidget {
 }
 
 class _ApplicantsScreenState extends State<ApplicantsScreen> {
-  final _supabase = Supabase.instance.client;
-  List<Map<String, dynamic>> _applicants = [];
+  List<Map<String, dynamic>> _submissions = [];
+  Map<String, dynamic>? _selectedSubmission;
   bool _isLoading = true;
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+
+  static const List<String> _clientInfoFields = [
+    "Last Name", "First Name", "Middle Name",
+    "Date of Birth", "Age",
+    "House number, street name, phase/purok", "Subdivision", "Barangay",
+    "Kasarian", "Estadong Sibil", "Relihiyon",
+    "CP Number", "Email Address",
+    "Natapos o naabot sa pag-aaral",
+    "Lugar ng Kapanganakan",
+    "Trabaho/Pinagkakitaan",
+    "Kumpanyang Pinagtratrabuhan",
+    "Buwanang Kita (A)",
+  ];
+
+  static const List<String> _socioEconomicFields = [
+    "Kabuuang Tulong/Sustento kada Buwan (C)",
+    "Total Gross Family Income (A+B+C)=(D)",
+    "Household Size (E)",
+    "Monthly Per Capita Income (D/E)",
+    "Total Monthly Expense (F)",
+    "Net Monthly Income (D-F)",
+    "Bayad sa bahay", "Food items", "Non-food items",
+    "Utility bills", "Baby's needs", "School needs",
+    "Medical needs", "Transpo expense", "Loans", "Gasul",
+  ];
+
+  static const List<String> _familyHeaders = [
+    "Pangalan", "Relasyon", "Birthdate", "Edad",
+    "Kasarian", "Sibil Status", "Edukasyon", "Trabaho", "Kita"
+  ];
 
   @override
   void initState() {
     super.initState();
-    _loadApplicants();
-  }
-
-  Future<void> _loadApplicants() async {
-    setState(() => _isLoading = true);
-    try {
-      final submissions = await _supabase
-          .from('client_submissions')
-          .select('id, form_type, data, created_at, last_edited_by, last_edited_at')
-          .order('created_at', ascending: false);
-
-      setState(() {
-        _applicants = List<Map<String, dynamic>>.from(submissions);
-        _isLoading = false;
-      });
-    } catch (e) {
-      debugPrint('Load applicants error: $e');
-      setState(() => _isLoading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading applicants: $e')),
-        );
-      }
-    }
-  }
-
-  String _extractApplicantName(Map<String, dynamic> data) {
-    final firstName = data['First Name'] ?? '';
-    final lastName = data['Last Name'] ?? '';
-    return '$firstName $lastName'.trim();
-  }
-
-  String _formatDate(String dateString) {
-    try {
-      final date = DateTime.parse(dateString);
-      return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year.toString().substring(2)}';
-    } catch (e) {
-      return dateString;
-    }
-  }
-
-  Future<void> _deleteApplicant(dynamic id) async {
-    debugPrint('Delete button pressed for ID: $id');
-    
-    final confirmed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Applicant'),
-        content: const Text('Are you sure you want to delete this applicant? This cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Delete', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-
-    debugPrint('Confirmation result: $confirmed');
-
-    if (confirmed == true) {
-      try {
-        debugPrint('Deleting from Supabase...');
-        await _supabase
-            .from('client_submissions')
-            .delete()
-            .eq('id', id);
-        
-        debugPrint('Delete successful, reloading...');
-        if (mounted) {
-          await _loadApplicants();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Applicant deleted successfully')),
-          );
-        }
-      } catch (e) {
-        debugPrint('Delete error: $e');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    }
-  }
-
-  void _viewApplicant(Map<String, dynamic> applicant) {
-    Navigator.of(context).pushReplacement(
-      ContentFadeRoute(
-        page: ViewApplicantScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          applicantId: applicant['id'],
-          applicantData: Map<String, dynamic>.from(applicant['data'] ?? {}),
-          formType: applicant['form_type'] ?? 'General Intake Sheet',
-        ),
-      ),
-    );
-  }
-
-  void _editApplicant(Map<String, dynamic> applicant) {
-    Navigator.of(context).pushReplacement(
-      ContentFadeRoute(
-        page: EditApplicantScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          applicantId: applicant['id'],
-          applicantData: Map<String, dynamic>.from(applicant['data'] ?? {}),
-          formType: applicant['form_type'] ?? 'General Intake Sheet',
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return WebShell(
-      activePath: 'Applicants',
-      pageTitle: 'Applicants',
-      pageSubtitle: 'View and manage submitted forms',
-      onLogout: () => Navigator.pop(context),
-      onNavigate: (screenPath) => _navigateToScreen(context, screenPath),
-      headerActions: [
-        ElevatedButton.icon(
-          onPressed: _loadApplicants,
-          icon: const Icon(Icons.refresh),
-          label: const Text('Refresh'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.highlight,
-            foregroundColor: Colors.white,
-          ),
-        ),
-      ],
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _applicants.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.folder_open_outlined,
-                            size: 64, color: AppColors.textMuted),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No applicants found',
-                          style: TextStyle(
-                            fontSize: 18,
-                            color: AppColors.textMuted,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: _applicants.length,
-                    itemBuilder: (ctx, idx) {
-                      final applicant = _applicants[idx];
-                      final data = applicant['data'] ?? {};
-                      final name = _extractApplicantName(data);
-                      final formType = applicant['form_type'] ?? 'Unknown';
-                      final submitDate = _formatDate(applicant['created_at'] ?? '');
-                      final lastEditedBy = applicant['last_edited_by'] ?? 'None';
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.cardBorder),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.04),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Row(
-                            children: [
-                              // Applicant info
-                              Expanded(
-                                child: GestureDetector(
-                                  onTap: () => _viewApplicant(applicant),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        name.isNotEmpty ? name : 'Unknown Applicant',
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: AppColors.highlight,
-                                          decoration: TextDecoration.underline,
-                                        ),
-                                      ),
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            'Form: $formType',
-                                            style: const TextStyle(
-                                              fontSize: 13,
-                                              color: AppColors.textMuted,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 16),
-                                        Expanded(
-                                          child: Text(
-                                            'Submitted: $submitDate',
-                                            style: const TextStyle(
-                                              fontSize: 13,
-                                              color: AppColors.textMuted,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 16),
-                                        Expanded(
-                                          child: Text(
-                                            'Last Edited: $lastEditedBy',
-                                            style: const TextStyle(
-                                              fontSize: 13,
-                                              color: AppColors.highlight,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),                                ),                              ),
-                              const SizedBox(width: 20),
-                              // Action buttons
-                              SizedBox(
-                                width: 180,
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  children: [
-                                    ElevatedButton.icon(
-                                      onPressed: () => _editApplicant(applicant),
-                                      icon: const Icon(Icons.edit, size: 18),
-                                      label: const Text('Edit'),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppColors.highlight,
-                                        foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 16, vertical: 12),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    ElevatedButton.icon(
-                                      onPressed: () => _deleteApplicant(applicant['id']),
-                                      icon: const Icon(Icons.delete, size: 18),
-                                      label: const Text('Delete'),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.red,
-                                        foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 16, vertical: 12),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-      ),
-    );
-  }
-
-  void _navigateToScreen(BuildContext context, String screenPath) {
-    Widget nextScreen;
-    switch (screenPath) {
-      case 'Dashboard':
-        nextScreen = DashboardScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          onLogout: () => Navigator.pop(context),
-        );
-        break;
-      case 'Forms':
-        nextScreen = ManageFormsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-        );
-        break;
-      case 'Staff':
-        nextScreen = ManageStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-        );
-        break;
-      case 'CreateStaff':
-        nextScreen = CreateStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-        );
-        break;
-      default:
-        return;
-    }
-
-    Navigator.of(context).pushReplacement(
-      ContentFadeRoute(page: nextScreen),
-    );
-  }
-}
-
-// ============================================================================
-// View Applicant Screen (Read-Only Display)
-// ============================================================================
-
-class ViewApplicantScreen extends StatefulWidget {
-  final String cswd_id;
-  final String role;
-  final dynamic applicantId;
-  final Map<String, dynamic> applicantData;
-  final String formType;
-
-  const ViewApplicantScreen({
-    super.key,
-    required this.cswd_id,
-    required this.role,
-    required this.applicantId,
-    required this.applicantData,
-    required this.formType,
-  });
-
-  @override
-  State<ViewApplicantScreen> createState() => _ViewApplicantScreenState();
-}
-
-class _ViewApplicantScreenState extends State<ViewApplicantScreen> {
-  final _supabase = Supabase.instance.client;
-
-  @override
-  Widget build(BuildContext context) {
-    return WebShell(
-      activePath: 'Applicants',
-      pageTitle: 'View Applicant',
-      pageSubtitle: 'Review applicant submitted information',
-      onLogout: () => Navigator.pop(context),
-      onNavigate: (screenPath) => _navigateToScreen(context, screenPath),
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Back button
-              Padding(
-                padding: const EdgeInsets.only(bottom: 24),
-                child: TextButton.icon(
-                  onPressed: () => Navigator.of(context).pushReplacement(
-                    ContentFadeRoute(
-                      page: ApplicantsScreen(
-                        cswd_id: widget.cswd_id,
-                        role: widget.role,
-                      ),
-                    ),
-                  ),
-                  icon: const Icon(Icons.arrow_back),
-                  label: const Text('Back to Applicants'),
-                ),
-              ),
-              // Form Title
-              Text(
-                '${widget.applicantData['First Name'] ?? ''} ${widget.applicantData['Last Name'] ?? ''}'
-                    .trim(),
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textDark,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Form Type: ${widget.formType}',
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: AppColors.textMuted,
-                ),
-              ),
-              const SizedBox(height: 32),
-              // Form fields in a grid
-              Wrap(
-                spacing: 24,
-                runSpacing: 24,
-                children: [
-                  // Regular text fields
-                  ...widget.applicantData.entries
-                      .where((entry) => !entry.key.startsWith('__'))
-                      .map((entry) {
-                    final key = entry.key;
-                    final value = entry.value;
-
-                    return SizedBox(
-                      width: 300,
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: AppColors.cardBorder),
-                          borderRadius: BorderRadius.circular(8),
-                          color: Colors.white,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              key,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.textMuted,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              value?.toString() ?? '(No data)',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                color: AppColors.textDark,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                  // Signature display
-                  if (widget.applicantData.containsKey('__signature') &&
-                      widget.applicantData['__signature'] != null &&
-                      (widget.applicantData['__signature'] as String).isNotEmpty)
-                    SizedBox(
-                      width: 350,
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: AppColors.highlight, width: 2),
-                          borderRadius: BorderRadius.circular(8),
-                          color: Colors.white,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Digital Signature',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.highlight,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Container(
-                              width: double.infinity,
-                              height: 150,
-                              decoration: BoxDecoration(
-                                border: Border.all(color: AppColors.cardBorder),
-                                borderRadius: BorderRadius.circular(4),
-                                color: Colors.grey[100],
-                              ),
-                              child: Image.memory(
-                                _base64ToBytes(widget.applicantData['__signature'] as String),
-                                fit: BoxFit.contain,
-                                errorBuilder: (context, error, stackTrace) {
-                                  return Center(
-                                    child: Text(
-                                      'Could not display signature',
-                                      style: TextStyle(color: Colors.red[400]),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 40),
-              // Action buttons
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pushReplacement(
-                      ContentFadeRoute(
-                        page: ApplicantsScreen(
-                          cswd_id: widget.cswd_id,
-                          role: widget.role,
-                        ),
-                      ),
-                    ),
-                    child: const Text('Close'),
-                  ),
-                  const SizedBox(width: 16),
-                  ElevatedButton.icon(
-                    onPressed: () => _navigateToEdit(),
-                    icon: const Icon(Icons.edit),
-                    label: const Text('Edit Form'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.highlight,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 14),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _navigateToEdit() {
-    Navigator.of(context).pushReplacement(
-      ContentFadeRoute(
-        page: EditApplicantScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          applicantId: widget.applicantId,
-          applicantData: widget.applicantData,
-          formType: widget.formType,
-        ),
-      ),
-    );
-  }
-
-  void _navigateToScreen(BuildContext context, String screenPath) {
-    Widget nextScreen;
-    switch (screenPath) {
-      case 'Applicants':
-        nextScreen = ApplicantsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-        );
-        break;
-      case 'Dashboard':
-        nextScreen = DashboardScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          onLogout: () => Navigator.pop(context),
-        );
-        break;
-      case 'Forms':
-        nextScreen = ManageFormsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-        );
-        break;
-      case 'Staff':
-        nextScreen = ManageStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-        );
-        break;
-      case 'CreateStaff':
-        nextScreen = CreateStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-        );
-        break;
-      default:
-        return;
-    }
-
-    Navigator.of(context).pushReplacement(
-      ContentFadeRoute(page: nextScreen),
-    );
-  }
-
-  Uint8List _base64ToBytes(String base64String) {
-    try {
-      return base64Decode(base64String);
-    } catch (e) {
-      debugPrint('Error decoding base64: $e');
-      return Uint8List(0);
-    }
-  }
-}
-
-// ============================================================================
-// Edit Applicant Screen
-// ============================================================================
-
-class EditApplicantScreen extends StatefulWidget {
-  final String cswd_id;
-  final String role;
-  final dynamic applicantId;
-  final Map<String, dynamic> applicantData;
-  final String formType;
-
-  const EditApplicantScreen({
-    super.key,
-    required this.cswd_id,
-    required this.role,
-    required this.applicantId,
-    required this.applicantData,
-    required this.formType,
-  });
-
-  @override
-  State<EditApplicantScreen> createState() => _EditApplicantScreenState();
-}
-
-class _EditApplicantScreenState extends State<EditApplicantScreen> {
-  final _supabase = Supabase.instance.client;
-  late Map<String, TextEditingController> _controllers;
-  late Map<String, String> _radioValues;
-  bool _isSaving = false;
-
-  // Radio button options for specific fields
-  static const Map<String, List<String>> radioOptions = {
-    'Kasarian': ['Male', 'Female', 'Other'],
-    'Estadong Sibil': ['Single', 'Married', 'Widowed', 'Divorced', 'Separated', 'Live-in'],
-    'Relihiyon': ['Catholic', 'Protestant', 'Muslim', 'Buddhist', 'Atheist', 'Other'],
-  };
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeControllers();
-    _initializeRadioValues();
-  }
-
-  void _initializeRadioValues() {
-    _radioValues = {};
-    for (var field in radioOptions.keys) {
-      _radioValues[field] = widget.applicantData[field] ?? '';
-    }
-  }
-
-  void _initializeControllers() {
-    _controllers = {};
-    // Initialize controllers for all possible fields
-    final allLabels = [
-      "Last Name", "First Name", "Middle Name", "Date of Birth", "Age",
-      "House number, street name, phase/purok", "Subdivision", "Barangay",
-      "Kasarian", "Estadong Sibil", "Relihiyon", "CP Number", "Email Address",
-      "Natapos o naabot sa pag-aaral", "Lugar ng Kapanganakan",
-      "Trabaho/Pinagkakakitaan", "Kumpanyang Pinagtratrabuhan",
-      "Buwanang Kita (A)", "Total Gross Family Income (A+B+C)=(D)",
-      "Household Size (E)", "Monthly Per Capita Income (D/E)",
-      "Total Monthly Expense (F)", "Net Monthly Income (D-F)",
-      "Bayad sa bahay", "Food items", "Non-food items", "Utility bills",
-      "Baby's needs", "School needs", "Medical needs", "Transpo expense",
-      "Loans", "Gasul", "Kabuuang Tulong/Sustento kada Buwan (C)"
-    ];
-
-    for (var label in allLabels) {
-      if (!radioOptions.containsKey(label)) {
-        _controllers[label] = TextEditingController(
-          text: widget.applicantData[label] ?? '',
-        );
-      }
-    }
+    _fetchSubmissions();
   }
 
   @override
   void dispose() {
-    for (var controller in _controllers.values) {
-      controller.dispose();
-    }
+    _searchController.dispose();
     super.dispose();
   }
 
-  Future<void> _saveChanges() async {
-    setState(() => _isSaving = true);
-
-    final updatedData = <String, String>{};
-    _controllers.forEach((key, controller) {
-      updatedData[key] = controller.text;
-    });
-    
-    // Include radio button values
-    for (var field in _radioValues.keys) {
-      updatedData[field] = _radioValues[field]!;
-    }
-
+  Future<void> _fetchSubmissions() async {
+    setState(() => _isLoading = true);
     try {
-      await _supabase
+      final response = await Supabase.instance.client
           .from('client_submissions')
-          .update({
-            'data': updatedData,
-            'last_edited_at': DateTime.now().toIso8601String(),
-            'last_edited_by': widget.cswd_id,
-          })
-          .eq('id', widget.applicantId);
+          .select('id, form_type, data, created_at')
+          .order('created_at', ascending: false);
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Changes saved successfully!')),
-        );
-        Navigator.of(context).pushReplacement(
-          ContentFadeRoute(
-            page: ApplicantsScreen(
-              cswd_id: widget.cswd_id,
-              role: widget.role,
-            ),
-          ),
-        );
-      }
+      setState(() {
+        _submissions = List<Map<String, dynamic>>.from(response);
+        _isLoading = false;
+      });
     } catch (e) {
-      if (mounted) {
-        setState(() => _isSaving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error saving changes: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+      debugPrint('Error fetching submissions: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  String _getApplicantName(Map<String, dynamic> submission) {
+    final data = submission['data'] as Map<String, dynamic>? ?? {};
+    final first = data['First Name'] ?? '';
+    final middle = data['Middle Name'] ?? '';
+    final last = data['Last Name'] ?? '';
+    if (first.isEmpty && last.isEmpty) return 'Unknown Applicant';
+    return '$last, $first${middle.isNotEmpty ? ' ${middle[0]}.' : ''}'.trim();
+  }
+
+  String _getFormattedDate(String? isoDate) {
+    if (isoDate == null) return '—';
+    try {
+      final dt = DateTime.parse(isoDate).toLocal();
+      return '${dt.month.toString().padLeft(2, '0')}/'
+          '${dt.day.toString().padLeft(2, '0')}/'
+          '${dt.year}  ${dt.hour.toString().padLeft(2, '0')}:'
+          '${dt.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return isoDate;
+    }
+  }
+
+  List<Map<String, dynamic>> get _filteredSubmissions {
+    if (_searchQuery.isEmpty) return _submissions;
+    final q = _searchQuery.toLowerCase();
+    return _submissions.where((s) {
+      return _getApplicantName(s).toLowerCase().contains(q) ||
+          (s['form_type'] as String? ?? '').toLowerCase().contains(q);
+    }).toList();
+  }
+
+  String _fieldValue(String key) {
+    if (_selectedSubmission == null) return '—';
+    final data = _selectedSubmission!['data'] as Map<String, dynamic>? ?? {};
+    final val = data[key];
+    if (val == null || val.toString().isEmpty) return '—';
+    return val.toString();
+  }
+
+  List<Map<String, dynamic>> get _familyRows {
+    if (_selectedSubmission == null) return [];
+    final data = _selectedSubmission!['data'] as Map<String, dynamic>? ?? {};
+    final raw = data['family_composition'];
+    if (raw == null) return [];
+    try {
+      return List<Map<String, dynamic>>.from(
+        (raw as List).map((e) => Map<String, dynamic>.from(e)),
+      );
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Map<String, dynamic> get _socioExtra {
+    if (_selectedSubmission == null) return {};
+    final data = _selectedSubmission!['data'] as Map<String, dynamic>? ?? {};
+    return Map<String, dynamic>.from(data['socio_economic'] ?? {});
+  }
+
+  /// look up possible signature keys in submitted data
+  /// return either String or Uint8List, or null if absent
+  dynamic _extractSignature(Map<String, dynamic> data) {
+    const candidates = [
+      'digital_signature',
+      'signature',
+      'Digital Signature',
+      'sig',
+      'digitalSignature',
+    ];
+    for (final k in candidates) {
+      if (data.containsKey(k)) {
+        final val = data[k];
+        if (val != null) {
+          debugPrint('signature key found: $k -> $val');
+          return val;
+        }
       }
+    }
+    // nothing found
+    debugPrint('no signature key present; available keys: ${data.keys.toList()}');
+    return null;
+  }
+
+  Future<void> _handleLogout() async {
+    await Supabase.instance.client.auth.signOut();
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const WorkerLoginScreen()),
+        (route) => false,
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return WebShell(
-      activePath: 'Applicants',
-      pageTitle: 'Edit Applicant',
-      pageSubtitle: 'Update applicant information',
-      onLogout: () => Navigator.pop(context),
-      onNavigate: (screenPath) => _navigateToScreen(context, screenPath),
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Back button
-              Padding(
-                padding: const EdgeInsets.only(bottom: 24),
-                child: TextButton.icon(
-                  onPressed: () => Navigator.of(context).pushReplacement(
-                    ContentFadeRoute(
-                      page: ApplicantsScreen(
-                        cswd_id: widget.cswd_id,
-                        role: widget.role,
-                      ),
-                    ),
-                  ),
-                  icon: const Icon(Icons.arrow_back),
-                  label: const Text('Back to Applicants'),
-                ),
-              ),
-              // Form Title
-              Text(
-                '${widget.applicantData['First Name'] ?? ''} ${widget.applicantData['Last Name'] ?? ''}'
-                    .trim(),
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textDark,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Form Type: ${widget.formType}',
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: AppColors.textMuted,
-                ),
-              ),
-              const SizedBox(height: 32),
-              // Form fields in a grid
-              Wrap(
-                spacing: 24,
-                runSpacing: 24,
+    return Scaffold(
+      backgroundColor: const Color(0xFFF4F7FE),
+      body: Row(
+        children: [
+          SideMenu(activePath: "Applicants", onLogout: _handleLogout),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(35.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Text input fields
-                  ..._controllers.entries.map((entry) {
-                    return SizedBox(
-                      width: 300,
-                      child: TextField(
-                        controller: entry.value,
-                        decoration: InputDecoration(
-                          labelText: entry.key,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          filled: true,
-                          fillColor: Colors.white,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "Applicants",
+                        style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1A1A2E),
                         ),
                       ),
-                    );
-                  }).toList(),
-                  // Radio button fields
-                  ..._radioValues.entries.map((entry) {
-                    final field = entry.key;
-                    final currentValue = entry.value;
-                    final options = radioOptions[field] ?? [];
-
-                    return SizedBox(
-                      width: 320,
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: AppColors.cardBorder),
-                          borderRadius: BorderRadius.circular(8),
-                          color: Colors.white,
+                      OutlinedButton.icon(
+                        onPressed: _fetchSubmissions,
+                        icon: const Icon(Icons.refresh, color: AppColors.primaryBlue),
+                        label: const Text(
+                          "Refresh",
+                          style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              field,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.textDark,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            ...options.map((option) {
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: Row(
-                                  children: [
-                                    Radio<String>(
-                                      value: option,
-                                      groupValue: currentValue,
-                                      onChanged: (val) {
-                                        if (val != null) {
-                                          setState(() {
-                                            _radioValues[field] = val;
-                                          });
-                                        }
-                                      },
-                                    ),
-                                    Text(option),
-                                  ],
-                                ),
-                              );
-                            }).toList(),
-                          ],
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: AppColors.buttonOutlineBlue),
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                       ),
-                    );
-                  }).toList(),
-                ],
-              ),
-              const SizedBox(height: 40),
-              // Save button
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pushReplacement(
-                      ContentFadeRoute(
-                        page: ApplicantsScreen(
-                          cswd_id: widget.cswd_id,
-                          role: widget.role,
-                        ),
-                      ),
-                    ),
-                    child: const Text('Cancel'),
+                    ],
                   ),
-                  const SizedBox(width: 16),
-                  ElevatedButton.icon(
-                    onPressed: _isSaving ? null : _saveChanges,
-                    icon: const Icon(Icons.save),
-                    label: _isSaving
-                        ? const Text('Saving...')
-                        : const Text('Save Changes'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.highlight,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 14),
+                  const SizedBox(height: 25),
+                  Expanded(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildApplicantListPanel(),
+                        const SizedBox(width: 24),
+                        Expanded(child: _buildGisDetailPanel()),
+                      ],
                     ),
                   ),
                 ],
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
 
-  void _navigateToScreen(BuildContext context, String screenPath) {
-    Widget nextScreen;
-    switch (screenPath) {
-      case 'Applicants':
-        nextScreen = ApplicantsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-        );
-        break;
-      case 'Dashboard':
-        nextScreen = DashboardScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          onLogout: () => Navigator.pop(context),
-        );
-        break;
-      case 'Forms':
-        nextScreen = ManageFormsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-        );
-        break;
-      case 'Staff':
-        nextScreen = ManageStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-        );
-        break;
-      case 'CreateStaff':
-        nextScreen = CreateStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-        );
-        break;
-      default:
-        return;
+  Widget _buildApplicantListPanel() {
+    return Container(
+      width: 300,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (v) => setState(() => _searchQuery = v),
+              decoration: InputDecoration(
+                hintText: 'Search applicants...',
+                hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                prefixIcon: Icon(Icons.search, color: Colors.grey.shade400, size: 20),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(Icons.clear, color: Colors.grey.shade400, size: 18),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: const Color(0xFFF4F7FE),
+                contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Text(
+                  '${_filteredSubmissions.length} submission${_filteredSubmissions.length != 1 ? 's' : ''}',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Divider(height: 1),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _filteredSubmissions.isEmpty
+                    ? Center(
+                        child: Text(
+                          'No submissions found.',
+                          style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: _filteredSubmissions.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final sub = _filteredSubmissions[index];
+                          final isSelected = _selectedSubmission?['id'] == sub['id'];
+                          final name = _getApplicantName(sub);
+                          final date = _getFormattedDate(sub['created_at'] as String?);
+                          final formType = sub['form_type'] as String? ?? 'GIS';
+
+                          return InkWell(
+                            onTap: () => setState(() => _selectedSubmission = sub),
+                            child: Container(
+                              color: isSelected
+                                  ? AppColors.primaryBlue.withOpacity(0.08)
+                                  : Colors.transparent,
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 20,
+                                    backgroundColor: isSelected
+                                        ? AppColors.primaryBlue
+                                        : const Color(0xFFE8EDF8),
+                                    child: Text(
+                                      name.isNotEmpty ? name[0].toUpperCase() : '?',
+                                      style: TextStyle(
+                                        color: isSelected ? Colors.white : AppColors.primaryBlue,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          name,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 13,
+                                            color: isSelected
+                                                ? AppColors.primaryBlue
+                                                : const Color(0xFF1A1A2E),
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          formType,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.grey.shade500,
+                                          ),
+                                        ),
+                                        Text(
+                                          date,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.grey.shade400,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (isSelected)
+                                    const Icon(Icons.chevron_right,
+                                        color: AppColors.primaryBlue, size: 18),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGisDetailPanel() {
+    if (_selectedSubmission == null) {
+      return Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.person_search_outlined,
+                  size: 64, color: Colors.grey.shade300),
+              const SizedBox(height: 16),
+              Text(
+                'Select an applicant to view their form',
+                style: TextStyle(color: Colors.grey.shade400, fontSize: 15),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
-    Navigator.of(context).pushReplacement(
-      ContentFadeRoute(page: nextScreen),
+    final data = _selectedSubmission!['data'] as Map<String, dynamic>? ?? {};
+    final name = _getApplicantName(_selectedSubmission!);
+    final date = _getFormattedDate(_selectedSubmission!['created_at'] as String?);
+    final formType = _selectedSubmission!['form_type'] as String? ?? 'General Intake Sheet';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+            decoration: BoxDecoration(
+              color: AppColors.primaryBlue,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(name,
+                          style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white)),
+                      const SizedBox(height: 4),
+                      Text(formType,
+                          style: const TextStyle(
+                              fontSize: 14, color: Colors.white70)),
+                    ],
+                  ),
+                ),
+                Text(date,
+                    style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              ],
+            ),
+          ),
+
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(28, 20, 28, 28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildSectionTitle('Client Information'),
+                  _buildFieldGrid(_clientInfoFields),
+                  const SizedBox(height: 16),
+
+                  _buildSectionTitle('Membership / Education / Assistance'),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 6,
+                    children: [
+                      for (final key in ['4Ps?', 'Kababaihan?', 'Senior Citizen?', 'PWD?'])
+                        Chip(
+                          label: Text(_fieldValue(key)),
+                          backgroundColor: const Color(0xFFE8EDF8),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  _buildSectionTitle('Family Composition'),
+                  _buildFamilyGrid(),
+                  const SizedBox(height: 16),
+
+                  _buildSectionTitle('Socio-Economic'),
+                  ..._socioEconomicFields.map((k) => _buildSocioRow(k, k)),
+                  const SizedBox(height: 16),
+
+                  _buildSectionTitle('Digital Signature'),
+                  Center(
+                    child: FractionallySizedBox(
+                      widthFactor: 0.6,
+                      child: Container(
+                        height: 120,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey.shade400),
+                        ),
+                        child: Builder(builder: (context) {
+                          final rawSig = _extractSignature(data);
+                          if (rawSig == null) {
+                            return Text('No signature provided',
+                                style: TextStyle(
+                                    color: Colors.grey.shade500, fontSize: 12));
+                          }
+
+                          if (rawSig is Uint8List) {
+                            debugPrint('rendering signature as bytes (${rawSig.length} bytes)');
+                            return Image.memory(rawSig, fit: BoxFit.contain);
+                          }
+
+                          final strSig = rawSig.toString();
+                          if (strSig.isEmpty) {
+                            return Text('No signature provided',
+                                style: TextStyle(
+                                    color: Colors.grey.shade500, fontSize: 12));
+                          }
+
+                          // attempt Base64 decode first
+                          try {
+                            final bytes = base64Decode(strSig);
+                            return Image.memory(bytes, fit: BoxFit.contain);
+                          } catch (e) {
+                            // not valid base64, show raw text so we can inspect
+                            return Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Text(
+                                'Could not render signature (invalid format):\n$strSig',
+                                style: TextStyle(
+                                    color: Colors.grey.shade500, fontSize: 11),
+                                textAlign: TextAlign.center,
+                              ),
+                            );
+                          }
+                        }),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(title,
+          style: const TextStyle(
+              fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.primaryBlue)),
+    );
+  }
+
+  Widget _buildFieldGrid(List<String> keys) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: keys.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2, mainAxisSpacing: 8, crossAxisSpacing: 12, childAspectRatio: 4),
+      itemBuilder: (ctx, idx) {
+        final key = keys[idx];
+        return Row(
+          children: [
+            Expanded(
+                flex: 3,
+                child: Text('$key:',
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w500))),
+            const SizedBox(width: 6),
+            Expanded(
+                flex: 5,
+                child: Text(_fieldValue(key),
+                    style: const TextStyle(fontSize: 13))),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildFamilyGrid() {
+    final rows = _familyRows;
+    if (rows.isEmpty) {
+      return Text('No family members entered',
+          style: TextStyle(color: Colors.grey.shade500, fontSize: 13));
+    }
+    return Table(
+      border: TableBorder.all(color: Colors.grey.shade300, width: 0.5),
+      columnWidths: const {
+        0: FlexColumnWidth(2),
+        1: FlexColumnWidth(1.5),
+        2: FlexColumnWidth(1.5),
+        3: FlexColumnWidth(1),
+        4: FlexColumnWidth(1),
+        5: FlexColumnWidth(1.2),
+        6: FlexColumnWidth(1.5),
+        7: FlexColumnWidth(1.5),
+        8: FlexColumnWidth(1),
+      },
+      children: [
+        TableRow(
+            decoration: BoxDecoration(color: Colors.grey.shade200),
+            children: _familyHeaders
+                .map((h) => Padding(
+                      padding: const EdgeInsets.all(4.0),
+                      child: Text(h,
+                          style: const TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.bold)),
+                    ))
+                .toList()),
+        ...rows.map((r) => TableRow(children: [
+              for (var h in _familyHeaders)
+                Padding(
+                  padding: const EdgeInsets.all(4.0),
+                  child: Text(r[h] ?? '—',
+                      style: const TextStyle(fontSize: 12)),
+                )
+            ]))
+      ],
+    );
+  }
+
+  Widget _buildSocioRow(String label, String key) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+              flex: 3,
+              child: Text('$label:',
+                  style: const TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w500))),
+          const SizedBox(width: 6),
+          Expanded(
+              flex: 5, child: Text(_fieldValue(key), style: const TextStyle(fontSize: 13))),
+        ],
+      ),
     );
   }
 }
