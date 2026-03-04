@@ -8,6 +8,9 @@ class CustomTextField extends StatelessWidget {
   final Icon? prefixIcon;
   final FormFieldValidator<String>? validator;
   final bool isDarkBackground;
+  final FocusNode? focusNode;
+  final ValueChanged<String>? onSubmitted;
+  final TextInputAction? textInputAction;
 
   const CustomTextField({
     super.key,
@@ -17,6 +20,9 @@ class CustomTextField extends StatelessWidget {
     this.prefixIcon,
     this.validator,
     this.isDarkBackground = true,
+    this.focusNode,
+    this.onSubmitted,
+    this.textInputAction,
   });
 
   @override
@@ -38,8 +44,11 @@ class CustomTextField extends StatelessWidget {
       ),
       child: TextFormField(
         controller: controller,
+        focusNode: focusNode,
         obscureText: obscureText,
         validator: validator,
+        onFieldSubmitted: onSubmitted,
+        textInputAction: textInputAction,
         style: TextStyle(color: contentColor, fontSize: 14), 
         decoration: InputDecoration(
           hintText: hintText,

@@ -34,7 +34,13 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   final Map<String, TextEditingController> _webControllers = {};
   String _currentSessionId = "WAITING-FOR-SESSION";
   StreamSubscription? _formSubscription;
-  
+
+  // ── NEW: controls whether a session has been started ──────────────────────
+  // false = show the "Start Session" gate screen
+  // true  = session is active, show the full form + QR
+  bool _sessionStarted = false;
+  bool _isStartingSession = false;
+
   // Additional state for complex fields
   Map<String, bool> _membershipData = {
     'solo_parent': false,
@@ -51,7 +57,8 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   void initState() {
     super.initState();
     _initializeControllers();
-    _createNewSession();
+    // ── KEY CHANGE: do NOT call _createNewSession() here anymore ─────────────
+    // A session is only created when the staff explicitly taps "Start Session".
   }
 
   void _initializeControllers() {
@@ -104,6 +111,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   }
 
   Future<void> _createNewSession() async {
+    setState(() {
+      _isStartingSession = true;
+    });
+
     try {
       _clearAllFields(); 
       
@@ -119,11 +130,18 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
 
       setState(() {
         _currentSessionId = response['id'].toString();
+        _sessionStarted = true; // show active view
       });
 
       _listenForMobileUpdates(_currentSessionId);
     } catch (e) {
       debugPrint("Error creating session: $e");
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isStartingSession = false;
+        });
+      }
     }
   }
 
@@ -286,129 +304,268 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     return WebShell(
       activePath: 'Forms',
       pageTitle: 'Forms Management',
-      pageSubtitle: 'Complete and submit client intake forms',
+      pageSubtitle: _sessionStarted
+          ? 'Session active — client can now scan the QR code'
+          : 'Start a session to generate a QR code for the client',
       onLogout: _handleLogout,
       headerActions: [
-        _buildHeaderButton(
-          "Reset Form / New QR",
-          Icons.refresh,
-          onPressed: _createNewSession,
-        ),
+        if (_sessionStarted)
+          _buildHeaderButton(
+            "End Session / New QR",
+            Icons.refresh,
+            onPressed: _createNewSession,
+          ),
       ],
       onNavigate: (screenPath) => _navigateToScreen(context, screenPath),
-      child: Padding(
-        padding: const EdgeInsets.all(28),
+
+      // ── Switch between gate screen and active form ─────────────────────────
+      child: _sessionStarted ? _buildActiveFormView() : _buildStartSessionGate(),
+    );
+  }
+
+  // ── GATE SCREEN: shown before any session is started ──────────────────────
+  Widget _buildStartSessionGate() {
+    return Center(
+      child: Container(
+        width: 480,
+        padding: const EdgeInsets.all(48),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 30,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            _buildDropdown(),
-            const SizedBox(height: 25),
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.accentBlue,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20)],
+            // Icon
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: AppColors.primaryBlue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(
+                Icons.qr_code_2_rounded,
+                size: 44,
+                color: AppColors.primaryBlue,
+              ),
+            ),
+            const SizedBox(height: 28),
+
+            // Title
+            const Text(
+              "Ready to assist a client?",
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1A1A2E),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Subtitle
+            Text(
+              "Starting a session will generate a unique QR code "
+              "for the client to scan with SapPIIre Mobile. "
+              "Their form data will autofill here in real time.",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade600,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 32),
+
+            // Form type dropdown (choose before starting)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF4F7FE),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                    color: AppColors.buttonOutlineBlue.withOpacity(0.4)),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: selectedForm,
+                  items: [
+                    "General Intake Sheet",
+                    "Medical Assistance",
+                    "Emergency Burial"
+                  ]
+                      .map((e) => DropdownMenuItem(
+                          value: e,
+                          child: Text(e,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600))))
+                      .toList(),
+                  onChanged: (val) => setState(() => selectedForm = val!),
                 ),
-                child: Row(
-                  children: [
-                    _buildQrSidebar(),
-                    Expanded(
-                      child: Container(
-                        margin: const EdgeInsets.all(20),
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.only(right: 10),
-                          child: Column(
-                            children: [
-                              _buildWebSectionCard(
-                                child: ClientInfoSection(
-                                  selectAll: false,
-                                  controllers: _webControllers,
-                                  fieldChecks: const {},
-                                  onCheckChanged: (key, val) {},
-                                  membershipData: _membershipData,
-                                  onMembershipChanged: (key, val) {
-                                    setState(() => _membershipData[key] = val);
-                                  },
-                                ),
-                              ),
-                              _buildWebSectionCard(
-                                child: FamilyTable(
-                                  selectAll: false,
-                                  controllers: _webControllers,
-                                  familyMembers: _familyMembers,
-                                  onFamilyChanged: (members) {
-                                    setState(() => _familyMembers = members);
-                                  },
-                                ),
-                              ),
-                              _buildWebSectionCard(
-                                child: SocioEconomicSection(
-                                  selectAll: false,
-                                  controllers: _webControllers,
-                                  hasSupport: _hasSupport,
-                                  housingStatus: _housingStatus,
-                                  supportingFamily: _supportingFamily,
-                                  onHasSupportChanged: (val) {
-                                    setState(() => _hasSupport = val);
-                                  },
-                                  onHousingStatusChanged: (val) {
-                                    setState(() => _housingStatus = val);
-                                  },
-                                  onSupportingFamilyChanged: (list) {
-                                    setState(() => _supportingFamily = list);
-                                  },
-                                ),
-                              ),
-                              _buildWebSectionCard(
-                                child: SignatureField(
-                                  points: _capturedSignaturePoints,
-                                  label: "Digital Signature",
-                                  signatureImageBase64: _signatureBase64,
-                                  // --- ADD THESE TWO LINES TO FIX THE ERROR ---
-                                  isChecked: false, 
-                                  onCheckboxChanged: (val) {}, 
-                                  // --------------------------------------------
-                                  onCaptured: (points) {
-                                    setState(() {
-                                      _capturedSignaturePoints = points;
-                                      _signatureBase64 = null;
-                                    });
-                                  },
-                                ),
-                              ),
-                              ElevatedButton(
-                                onPressed: _finalizeEntry,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.buttonPurple,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 60,
-                                    vertical: 20,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(15),
-                                  ),
-                                ),
-                                child: const Text(
-                                  "FINALIZE & SAVE ENTRY",
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 18,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+              ),
+            ),
+            const SizedBox(height: 28),
+
+            // Start Session button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _isStartingSession ? null : _createNewSession,
+                icon: _isStartingSession
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.play_arrow_rounded,
+                        color: Colors.white),
+                label: Text(
+                  _isStartingSession ? "Starting..." : "Start Session",
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryBlue,
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
                 ),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ── ACTIVE FORM VIEW: shown after session is started ──────────────────────
+  Widget _buildActiveFormView() {
+    return Padding(
+      padding: const EdgeInsets.all(28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildDropdown(),
+          const SizedBox(height: 25),
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppColors.accentBlue,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                      color: Colors.black.withOpacity(0.1), blurRadius: 20)
+                ],
+              ),
+              child: Row(
+                children: [
+                  _buildQrSidebar(),
+                  Expanded(
+                    child: Container(
+                      margin: const EdgeInsets.all(20),
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.only(right: 10),
+                        child: Column(
+                          children: [
+                            _buildWebSectionCard(
+                              child: ClientInfoSection(
+                                selectAll: false,
+                                controllers: _webControllers,
+                                fieldChecks: const {},
+                                onCheckChanged: (key, val) {},
+                                membershipData: _membershipData,
+                                onMembershipChanged: (key, val) {
+                                  setState(
+                                      () => _membershipData[key] = val);
+                                },
+                              ),
+                            ),
+                            _buildWebSectionCard(
+                              child: FamilyTable(
+                                selectAll: false,
+                                controllers: _webControllers,
+                                familyMembers: _familyMembers,
+                                onFamilyChanged: (members) {
+                                  setState(
+                                      () => _familyMembers = members);
+                                },
+                              ),
+                            ),
+                            _buildWebSectionCard(
+                              child: SocioEconomicSection(
+                                selectAll: false,
+                                controllers: _webControllers,
+                                hasSupport: _hasSupport,
+                                housingStatus: _housingStatus,
+                                supportingFamily: _supportingFamily,
+                                onHasSupportChanged: (val) {
+                                  setState(() => _hasSupport = val);
+                                },
+                                onHousingStatusChanged: (val) {
+                                  setState(() => _housingStatus = val);
+                                },
+                                onSupportingFamilyChanged: (list) {
+                                  setState(
+                                      () => _supportingFamily = list);
+                                },
+                              ),
+                            ),
+                            _buildWebSectionCard(
+                              child: SignatureField(
+                                points: _capturedSignaturePoints,
+                                label: "Digital Signature",
+                                signatureImageBase64: _signatureBase64,
+                                isChecked: false,
+                                onCheckboxChanged: (val) {},
+                                onCaptured: (points) {
+                                  setState(() {
+                                    _capturedSignaturePoints = points;
+                                    _signatureBase64 = null;
+                                  });
+                                },
+                              ),
+                            ),
+                            ElevatedButton(
+                              onPressed: _finalizeEntry,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.buttonPurple,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 60, vertical: 20),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius:
+                                        BorderRadius.circular(15)),
+                              ),
+                              child: const Text(
+                                "FINALIZE & SAVE ENTRY",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
