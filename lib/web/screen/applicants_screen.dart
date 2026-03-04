@@ -61,7 +61,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     "House number, street name, phase/purok", "Subdivision", "Barangay",
     "Kasarian", "Estadong Sibil", "Relihiyon", "CP Number", "Email Address",
     "Natapos o naabot sa pag-aaral", "Lugar ng Kapanganakan",
-    "Trabaho/Pinagkakitaan", "Kumpanyang Pinagtratrabuhan",
+    "Trabaho/Pinagkakakitaan", "Kumpanyang Pinagtratrabuhan",
     "Buwanang Kita (A)", "Total Gross Family Income (A+B+C)=(D)",
     "Household Size (E)", "Monthly Per Capita Income (D/E)",
     "Total Monthly Expense (F)", "Net Monthly Income (D-F)",
