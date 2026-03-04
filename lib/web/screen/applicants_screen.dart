@@ -10,6 +10,8 @@ import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/resources/GIS.dart';
 import 'package:sappiire/resources/signature_field.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:typed_data';
+import 'dart:convert';
 
 class ApplicantsScreen extends StatefulWidget {
   final String cswd_id;
@@ -99,6 +101,47 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     for (final c in _viewControllers.values) c.dispose();
     for (final c in _editControllers.values) c.dispose();
     super.dispose();
+  }
+
+    void _navigateToScreen(BuildContext context, String screenPath) {
+    // Map screen paths to actual navigation
+    Widget nextScreen;
+switch (screenPath) {
+    case 'Dashboard':
+      nextScreen = DashboardScreen(
+        cswd_id: widget.cswd_id,
+        role: widget.role,
+        onLogout: _handleLogout,
+        
+         // Ensure you have a logout method defined
+      );
+      break;
+    case 'Forms':
+      nextScreen = ManageFormsScreen(
+        cswd_id: widget.cswd_id,
+        role: widget.role,
+      );
+      break;
+    case 'Staff':
+      nextScreen = ManageStaffScreen(
+        cswd_id: widget.cswd_id,
+        role: widget.role,
+      );
+      break;
+    case 'CreateStaff':
+      nextScreen = CreateStaffScreen(
+        cswd_id: widget.cswd_id,
+        role: widget.role,
+      );
+      break;
+    case 'Applicants':
+      return; // Already here, do nothing
+    default:
+      return;
+  }
+    Navigator.of(context).pushReplacement(
+      ContentFadeRoute(page: nextScreen),
+    );
   }
 
   // ── Data fetching ─────────────────────────────────────────────────────────────
@@ -304,93 +347,61 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     }
   }
 
-  void _navigateToScreen(BuildContext context, String screenPath) {
-    Widget nextScreen;
-    switch (screenPath) {
-      case 'Dashboard':
-        nextScreen = DashboardScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          onLogout: _handleLogout,
-        );
-        break;
-      case 'Staff':
-        nextScreen = ManageStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-        );
-        break;
-      case 'CreateStaff':
-        nextScreen = CreateStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-        );
-        break;
-      case 'Forms':
-        nextScreen = ManageFormsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-        );
-        break;
-      default:
-        return;
-    }
-    Navigator.of(context).pushReplacement(ContentFadeRoute(page: nextScreen));
-  }
-
-  // ── Build ─────────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    return WebShell(
-      activePath: 'Applicants',
-      pageTitle: 'Applicants',
-      pageSubtitle: 'Review submitted client intake forms',
-      onLogout: _handleLogout,
-      headerActions: [
-        _buildHeaderButton("Refresh", Icons.refresh, onPressed: _fetchSubmissions),
-        if (_selectedSubmission != null) ...[
-          if (!_isEditMode)
-            _buildHeaderButton("Edit", Icons.edit, onPressed: _toggleEditMode),
-          if (_isEditMode) ...[
-            _buildHeaderButton("Delete", Icons.delete, onPressed: _deleteSubmission),
-          ],
-        ],
-      ],
-      onNavigate: (path) => _navigateToScreen(context, path),
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.accentBlue,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 20,
-                    )
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    // ── LEFT: Applicant list panel ─────────────────────────────
-                    _buildApplicantListPanel(),
-
-                    // ── RIGHT: Form detail panel (mirrors ManageForms style) ───
-                    Expanded(
-                      child: _selectedSubmission == null
-                          ? _buildEmptyState()
-                          : _buildFormDetailPanel(),
+    return Scaffold(
+      backgroundColor: const Color(0xFFF4F7FE),
+      body: Row(
+        children: [
+          SideMenu(activePath: "Applicants", onLogout: _handleLogout),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(35.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "Applicants",
+                        style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1A1A2E),
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _fetchSubmissions,
+                        icon: const Icon(Icons.refresh, color: AppColors.primaryBlue),
+                        label: const Text(
+                          "Refresh",
+                          style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: AppColors.buttonOutlineBlue),
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 25),
+                  Expanded(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildApplicantListPanel(),
+                        const SizedBox(width: 24),
+                        Expanded(child: _buildGisDetailPanel()),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
