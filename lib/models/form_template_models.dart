@@ -1,0 +1,243 @@
+// lib/models/form_template_models.dart
+// Data models for the dynamic form system.
+// These mirror the Supabase form_templates / form_fields tables.
+
+// ── Field type enum ───────────────────────────────────────────
+enum FormFieldType {
+  text,
+  date,
+  number,
+  dropdown,
+  radio,
+  boolean,
+  computed,
+  membershipGroup,
+  familyTable,
+  supportingFamilyTable,
+  signature,
+  unknown;
+
+  static FormFieldType fromString(String v) {
+    switch (v) {
+      case 'text':                    return FormFieldType.text;
+      case 'date':                    return FormFieldType.date;
+      case 'number':                  return FormFieldType.number;
+      case 'dropdown':                return FormFieldType.dropdown;
+      case 'radio':                   return FormFieldType.radio;
+      case 'boolean':                 return FormFieldType.boolean;
+      case 'computed':                return FormFieldType.computed;
+      case 'membership_group':        return FormFieldType.membershipGroup;
+      case 'family_table':            return FormFieldType.familyTable;
+      case 'supporting_family_table': return FormFieldType.supportingFamilyTable;
+      case 'signature':               return FormFieldType.signature;
+      default:                        return FormFieldType.unknown;
+    }
+  }
+}
+
+// ── FieldOption ───────────────────────────────────────────────
+class FieldOption {
+  final String optionId;
+  final String value;
+  final String label;
+  final int order;
+  final bool isDefault;
+
+  const FieldOption({
+    required this.optionId,
+    required this.value,
+    required this.label,
+    this.order = 0,
+    this.isDefault = false,
+  });
+
+  factory FieldOption.fromMap(Map<String, dynamic> m) => FieldOption(
+        optionId: m['option_id'] as String,
+        value: m['option_value'] as String,
+        label: m['option_label'] as String,
+        order: (m['option_order'] as int?) ?? 0,
+        isDefault: (m['is_default'] as bool?) ?? false,
+      );
+}
+
+// ── FieldCondition ────────────────────────────────────────────
+class FieldCondition {
+  final String conditionId;
+  final String fieldId;
+  final String triggerFieldId;
+  final String? triggerValue;
+  final String action; // 'show' | 'hide' | 'require'
+
+  const FieldCondition({
+    required this.conditionId,
+    required this.fieldId,
+    required this.triggerFieldId,
+    this.triggerValue,
+    this.action = 'show',
+  });
+
+  factory FieldCondition.fromMap(Map<String, dynamic> m) => FieldCondition(
+        conditionId: m['condition_id'] as String,
+        fieldId: m['field_id'] as String,
+        triggerFieldId: m['trigger_field_id'] as String,
+        triggerValue: m['trigger_value'] as String?,
+        action: (m['action'] as String?) ?? 'show',
+      );
+}
+
+// ── FormField ─────────────────────────────────────────────────
+class FormFieldModel {
+  final String fieldId;
+  final String templateId;
+  final String? sectionId;
+  final String fieldName;   // internal key, used as map key in form_data
+  final String fieldLabel;  // display label
+  final FormFieldType fieldType;
+  final bool isRequired;
+  final Map<String, dynamic>? validationRules;
+  final String? defaultValue;
+  final int fieldOrder;
+  final String? autofillSource; // e.g. 'lastname', 'address.barangay', 'socio.house_rent'
+  final String? placeholder;
+  final List<FieldOption> options;
+  final List<FieldCondition> conditions;
+
+  const FormFieldModel({
+    required this.fieldId,
+    required this.templateId,
+    this.sectionId,
+    required this.fieldName,
+    required this.fieldLabel,
+    required this.fieldType,
+    this.isRequired = false,
+    this.validationRules,
+    this.defaultValue,
+    this.fieldOrder = 0,
+    this.autofillSource,
+    this.placeholder,
+    this.options = const [],
+    this.conditions = const [],
+  });
+
+  factory FormFieldModel.fromMap(Map<String, dynamic> m) => FormFieldModel(
+        fieldId: m['field_id'] as String,
+        templateId: m['template_id'] as String,
+        sectionId: m['section_id'] as String?,
+        fieldName: m['field_name'] as String,
+        fieldLabel: m['field_label'] as String,
+        fieldType: FormFieldType.fromString(m['field_type'] as String? ?? ''),
+        isRequired: (m['is_required'] as bool?) ?? false,
+        validationRules: m['validation_rules'] as Map<String, dynamic>?,
+        defaultValue: m['default_value'] as String?,
+        fieldOrder: (m['field_order'] as int?) ?? 0,
+        autofillSource: m['autofill_source'] as String?,
+        placeholder: m['placeholder'] as String?,
+        options: (m['form_field_options'] as List<dynamic>? ?? [])
+            .map((o) => FieldOption.fromMap(o as Map<String, dynamic>))
+            .toList()
+          ..sort((a, b) => a.order.compareTo(b.order)),
+        conditions: (m['form_field_conditions'] as List<dynamic>? ?? [])
+            .map((c) => FieldCondition.fromMap(c as Map<String, dynamic>))
+            .toList(),
+      );
+
+  /// Returns true if this field should be visible given [formValues].
+  bool isVisible(Map<String, dynamic> formValues) {
+    if (conditions.isEmpty) return true;
+    // If ANY condition says "show", evaluate it
+    final showConditions = conditions.where((c) => c.action == 'show').toList();
+    if (showConditions.isEmpty) return true;
+    return showConditions.any((c) {
+      final currentVal = formValues[c.triggerFieldId]?.toString() ?? '';
+      return currentVal == (c.triggerValue ?? '');
+    });
+  }
+}
+
+// ── FormSection ───────────────────────────────────────────────
+class FormSection {
+  final String sectionId;
+  final String templateId;
+  final String sectionName;
+  final String? sectionDesc;
+  final int sectionOrder;
+  final bool isCollapsible;
+  final List<FormFieldModel> fields;
+
+  const FormSection({
+    required this.sectionId,
+    required this.templateId,
+    required this.sectionName,
+    this.sectionDesc,
+    this.sectionOrder = 0,
+    this.isCollapsible = false,
+    this.fields = const [],
+  });
+
+  factory FormSection.fromMap(Map<String, dynamic> m, List<FormFieldModel> fields) =>
+      FormSection(
+        sectionId: m['section_id'] as String,
+        templateId: m['template_id'] as String,
+        sectionName: m['section_name'] as String,
+        sectionDesc: m['section_desc'] as String?,
+        sectionOrder: (m['section_order'] as int?) ?? 0,
+        isCollapsible: (m['is_collapsible'] as bool?) ?? false,
+        fields: fields..sort((a, b) => a.fieldOrder.compareTo(b.fieldOrder)),
+      );
+}
+
+// ── FormTemplate ──────────────────────────────────────────────
+class FormTemplate {
+  final String templateId;
+  final String formName;
+  final String? formDesc;
+  final bool isActive;
+  final List<FormSection> sections;
+
+  const FormTemplate({
+    required this.templateId,
+    required this.formName,
+    this.formDesc,
+    this.isActive = true,
+    this.sections = const [],
+  });
+
+  /// Flat list of all fields across all sections, ordered by section then field.
+  List<FormFieldModel> get allFields =>
+      sections.expand((s) => s.fields).toList();
+
+  /// Look up a field by its field_name key.
+  FormFieldModel? fieldByName(String name) {
+    try {
+      return allFields.firstWhere((f) => f.fieldName == name);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  factory FormTemplate.fromMap(Map<String, dynamic> m) {
+    final rawSections =
+        (m['form_sections'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
+    final rawFields =
+        (m['form_fields'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
+
+    final allFields =
+        rawFields.map((f) => FormFieldModel.fromMap(f)).toList();
+
+    final sections = rawSections.map((s) {
+      final sectionFields = allFields
+          .where((f) => f.sectionId == s['section_id'])
+          .toList();
+      return FormSection.fromMap(s, sectionFields);
+    }).toList()
+      ..sort((a, b) => a.sectionOrder.compareTo(b.sectionOrder));
+
+    return FormTemplate(
+      templateId: m['template_id'] as String,
+      formName: m['form_name'] as String,
+      formDesc: m['form_desc'] as String?,
+      isActive: (m['is_active'] as bool?) ?? true,
+      sections: sections,
+    );
+  }
+}
