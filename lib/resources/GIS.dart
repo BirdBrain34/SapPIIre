@@ -24,31 +24,36 @@ class SectionHeader extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(
-                  color: AppColors.primaryBlue,
-                  fontWeight: FontWeight.bold, 
-                  fontSize: 16
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1a3a6b),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold, 
+                    fontSize: 16
+                  ),
                 ),
               ),
-            ),
-            Checkbox(
-              value: isChecked,
-              onChanged: onChecked,
-              side: const BorderSide(color: AppColors.primaryBlue, width: 2),
-              activeColor: AppColors.primaryBlue,
-            ),
-          ],
+              Checkbox(
+                value: isChecked,
+                onChanged: onChecked,
+                side: const BorderSide(color: Colors.white, width: 2),
+                activeColor: Colors.white,
+                checkColor: const Color(0xFF1a3a6b),
+              ),
+            ],
+          ),
         ),
-        const Divider(
-          color: Colors.black12, 
-          thickness: 1, 
-          height: 20,
-        ),
+        const SizedBox(height: 16),
       ],
     );
   }
@@ -129,21 +134,38 @@ class _ClientInfoSectionState extends State<ClientInfoSection> {
         _buildField("Last Name"),
         _buildField("First Name"),
         _buildField("Middle Name"),
+        
+        const Divider(color: Colors.black12, thickness: 1, height: 20),
+        
         _buildField("Date of Birth", isDate: true),
         _buildField("Age", readOnly: true),
+        
+        const Divider(color: Colors.black12, thickness: 1, height: 20),
+        
         _buildField("House number, street name, phase/purok"),
         _buildField("Subdivision"),
         _buildField("Barangay"),
+        
+        const Divider(color: Colors.black12, thickness: 1, height: 20),
+        
         _buildField("Kasarian"),
         _buildField("Estadong Sibil"),
         _buildField("Relihiyon"),
+        
+        const Divider(color: Colors.black12, thickness: 1, height: 20),
+        
         _buildField("CP Number"),
         _buildField("Email Address"),
+        
+        const Divider(color: Colors.black12, thickness: 1, height: 20),
+        
         _buildField("Natapos o naabot sa pag-aaral"),
         _buildField("Lugar ng Kapanganakan"),
         _buildField("Trabaho/Pinagkakakitaan"),
         _buildField("Kumpanyang Pinagtratrabuhan"),
         _buildField("Buwanang Kita (A)"),
+
+        const Divider(color: Colors.black12, thickness: 1, height: 20),
 
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -704,7 +726,8 @@ class _SocioEconomicSectionState extends State<SocioEconomicSection> {
           ),
           _buildFormInput("Kabuuang Tulong/Sustento kada Buwan (C)"),
         ],
-        const SizedBox(height: 20),
+        const Divider(color: Colors.black12, thickness: 1, height: 20),
+        
         const Text("Ikaw ba ay?", style: TextStyle(color: Colors.black87)),
         Wrap(
           children: [
@@ -712,13 +735,17 @@ class _SocioEconomicSectionState extends State<SocioEconomicSection> {
             "Nangungupahan", "Informal settler", "Transient", "Nakatira sa kalye/Dislocated"
           ].map((v) => _housingOption(v)).toList(),
         ),
-        const SizedBox(height: 20),
+        const Divider(color: Colors.black12, thickness: 1, height: 20),
+        
         _buildFormInput("Total Gross Family Income (A+B+C)=(D)"),
         _buildFormInput("Household Size (E)"),
         _buildFormInput("Monthly Per Capita Income (D/E)"),
+        const Divider(color: Colors.black12, thickness: 1, height: 20),
+        
         _buildFormInput("Total Monthly Expense (F)"),
         _buildFormInput("Net Monthly Income (D-F)"),
-        const SizedBox(height: 25),
+        const Divider(color: Colors.black12, thickness: 1, height: 20),
+        
         const Text("Mga gastusin sa bahay:", style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
         ...["Bayad sa bahay", "Food items", "Non-food items", "Utility bills", "Baby's needs", "School needs", "Medical needs", "Transpo expense", "Loans", "Gasul"].map((e) => _buildFormInput(e)).toList(),
       ],

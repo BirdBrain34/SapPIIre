@@ -29,27 +29,45 @@ class PersonalInfoSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          "PERSONAL INFORMATION",
-          style: TextStyle(
-            color: AppColors.primaryBlue,
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1a3a6b),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            "PERSONAL INFORMATION",
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
           ),
         ),
-        const Divider(color: Colors.black12, thickness: 1, height: 20),
+        const SizedBox(height: 16),
         
         _buildField("Last Name"),
         _buildField("First Name"), 
         _buildField("Middle Name"),
+        
+        const Divider(color: Colors.black12, thickness: 1, height: 20),
+        
         _buildField("Date of Birth", isDate: true),
         _buildField("Age", readOnly: true),
+        
+        const Divider(color: Colors.black12, thickness: 1, height: 20),
+        
         _buildField("House number, street name, phase/purok"), 
         _buildField("Kasarian / Sex"),
+        
+        const Divider(color: Colors.black12, thickness: 1, height: 20),
         
         // Swapped Radio for Dropdown
         _buildBloodTypeDropdown(),
   
+        const Divider(color: Colors.black12, thickness: 1, height: 20),
+        
         _buildField("Estadong Sibil / Martial Status"), 
         _buildField("Lugar ng Kapanganakan / Place of Birth"), 
       ],
