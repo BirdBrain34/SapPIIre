@@ -1,25 +1,10 @@
-// lib/dynamic_form/dynamic_field_widgets.dart
+// Dynamic Field Widgets
+// Renders individual form fields based on field type.
+// Supports text, number, date, dropdown, radio, boolean, computed fields,
+// family composition table, supporting family table, membership group, and signature.
 //
-// FIXES in this version:
-//  1. _optionsFor('gender') now falls back to the 'sex' field in the
-//     template. The GIS seed puts M/F options on the 'sex' field (Section A)
-//     and the family_table widget reuses those same options for the gender
-//     column — no separate 'gender' field needed in the seed.
-//
-//  2. Signature — two bugs fixed:
-//     a) Pan handlers now call setState() instead of markNeedsPaint().
-//        markNeedsPaint() relies on _repaintKey.currentContext which can
-//        become stale after a notifyListeners() rebuild, causing the canvas
-//        to stop accepting new strokes silently.
-//     b) Clear button no longer calls controller.notifyListeners() before
-//        the pad is displayed. Calling notifyListeners() mid-clear triggered
-//        an AnimatedBuilder rebuild that could reset _points before the user
-//        finished drawing, so a subsequent Save produced an empty image.
-//        The sequence is now: clear _points + set _showPad=true via setState,
-//        THEN update controller fields. notifyListeners() is only fired by
-//        the Save button after a confirmed non-null base64.
-//     c) Save button now only collapses the pad (_showPad=false) when b64
-//        is non-null, so an accidental empty-canvas save is a no-op.
+// Used by DynamicFormRenderer to build the complete form UI.
+// Handles both mobile (with checkboxes) and web (read-only) modes.
 
 import 'dart:ui' as ui;
 import 'dart:convert';
@@ -1146,32 +1131,37 @@ class _SignatureField extends StatefulWidget {
 class _SignatureFieldState extends State<_SignatureField> {
   final List<Offset?> _points = [];
   bool _showPad = false;
-  String? _savedSignature;
 
   @override
   void initState() {
     super.initState();
-    _savedSignature = widget.controller.signatureBase64;
-    _showPad = (_savedSignature == null || _savedSignature!.isEmpty);
+    final sig = widget.controller.signatureBase64;
+    _showPad = (sig == null || sig.isEmpty);
   }
 
   @override
   Widget build(BuildContext context) {
+    // Always read from controller for latest signature
+    final savedSignature = widget.controller.signatureBase64;
+    final hasSignature = savedSignature != null && savedSignature.isNotEmpty;
+    
+        debugPrint('Signature widget build: hasSignature=$hasSignature, _showPad=$_showPad, sigLength=${savedSignature?.length ?? 0}');
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const _FieldLabel(label: 'Signature'),
         if (widget.isReadOnly)
-          _buildReadOnlyView()
-        else if (_showPad)
-          _buildSignaturePad()
+          _buildReadOnlyView(savedSignature)
+        else if (hasSignature)
+          _buildSavedView(savedSignature)
         else
-          _buildSavedView(),
+          _buildSignaturePad(),
       ],
     );
   }
 
-  Widget _buildSavedView() {
+  Widget _buildSavedView(String signature) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1183,15 +1173,15 @@ class _SignatureFieldState extends State<_SignatureField> {
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: const Color(0xFFDDDDEE)),
           ),
-          child: _savedSignature != null && _savedSignature!.isNotEmpty
-              ? _renderSig(_savedSignature!)
-              : const SizedBox(),
+          child: _renderSig(signature),
         ),
         TextButton(
           onPressed: () {
+            _points.clear();
+            widget.controller.signatureBase64 = null;
+            widget.controller.signaturePoints = null;
+            widget.controller.notifyListeners();
             setState(() {
-              _points.clear();
-              _savedSignature = null;
               _showPad = true;
             });
           },
@@ -1201,7 +1191,7 @@ class _SignatureFieldState extends State<_SignatureField> {
     );
   }
 
-  Widget _buildReadOnlyView() {
+  Widget _buildReadOnlyView(String? signature) {
     return Container(
       height: 120,
       width: double.infinity,
@@ -1210,8 +1200,8 @@ class _SignatureFieldState extends State<_SignatureField> {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: const Color(0xFFDDDDEE)),
       ),
-      child: _savedSignature != null && _savedSignature!.isNotEmpty
-          ? _renderSig(_savedSignature!)
+      child: signature != null && signature.isNotEmpty
+          ? _renderSig(signature)
           : const Center(
               child: Text('No signature',
                   style: TextStyle(color: Colors.black38))),
@@ -1249,9 +1239,19 @@ class _SignatureFieldState extends State<_SignatureField> {
               _points.add(d.localPosition);
               setState(() {});
             },
-            onPanEnd: (_) {
+            onPanEnd: (_) async {
               _points.add(null);
               setState(() {});
+              
+              if (_points.whereType<Offset>().length >= 2) {
+                final b64 = await _convertToBase64(_points);
+                if (b64 != null) {
+                  widget.controller.signatureBase64 = b64;
+                  widget.controller.signaturePoints = List.from(_points);
+                  widget.controller.fieldChecks['Signature'] = true;
+                  widget.controller.notifyListeners();
+                }
+              }
             },
             child: CustomPaint(
               painter: _SignaturePainter(_points),
@@ -1259,35 +1259,12 @@ class _SignatureFieldState extends State<_SignatureField> {
             ),
           ),
         ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            TextButton(
-              onPressed: () => setState(() => _points.clear()),
-              child: const Text('Clear', style: TextStyle(color: Colors.red)),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (_points.whereType<Offset>().length < 2) return;
-                
-                final b64 = await _convertToBase64(_points);
-                if (b64 != null) {
-                  setState(() {
-                    _savedSignature = b64;
-                    _showPad = false;
-                  });
-                  // Update controller WITHOUT notifyListeners
-                  widget.controller.signatureBase64 = b64;
-                  widget.controller.signaturePoints = List.from(_points);
-                  widget.controller.fieldChecks['Signature'] = true;
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryBlue),
-              child: const Text('Save',
-                  style: TextStyle(color: Colors.white)),
-            ),
-          ],
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: () => setState(() => _points.clear()),
+            child: const Text('Clear', style: TextStyle(color: Colors.red)),
+          ),
         ),
       ],
     );

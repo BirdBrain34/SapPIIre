@@ -439,6 +439,11 @@ class SupabaseService {
   /// This allows the user to choose exactly which fields to transmit via checkboxes.
 Future<bool> sendDataToWebSession(String sessionId, Map<String, dynamic> data) async {
   try {
+    debugPrint('sendDataToWebSession called');
+    debugPrint('Session ID: $sessionId');
+    debugPrint('Data keys: ${data.keys.toList()}');
+    debugPrint('Data: $data');
+    
     final response = await _supabase
         .from('form_submission')
         .update({
@@ -450,6 +455,7 @@ Future<bool> sendDataToWebSession(String sessionId, Map<String, dynamic> data) a
         .select()
         .maybeSingle();
 
+    debugPrint('Supabase response: $response');
     return response != null;
   } catch (e) {
     debugPrint('Supabase Update Error: $e');
