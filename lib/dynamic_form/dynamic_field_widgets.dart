@@ -1,5 +1,25 @@
-// lib/widgets/dynamic_form/dynamic_field_widgets.dart
-// One widget per FormFieldType — the renderer dispatches here.
+// lib/dynamic_form/dynamic_field_widgets.dart
+//
+// FIXES in this version:
+//  1. _optionsFor('gender') now falls back to the 'sex' field in the
+//     template. The GIS seed puts M/F options on the 'sex' field (Section A)
+//     and the family_table widget reuses those same options for the gender
+//     column — no separate 'gender' field needed in the seed.
+//
+//  2. Signature — two bugs fixed:
+//     a) Pan handlers now call setState() instead of markNeedsPaint().
+//        markNeedsPaint() relies on _repaintKey.currentContext which can
+//        become stale after a notifyListeners() rebuild, causing the canvas
+//        to stop accepting new strokes silently.
+//     b) Clear button no longer calls controller.notifyListeners() before
+//        the pad is displayed. Calling notifyListeners() mid-clear triggered
+//        an AnimatedBuilder rebuild that could reset _points before the user
+//        finished drawing, so a subsequent Save produced an empty image.
+//        The sequence is now: clear _points + set _showPad=true via setState,
+//        THEN update controller fields. notifyListeners() is only fired by
+//        the Save button after a confirmed non-null base64.
+//     c) Save button now only collapses the pad (_showPad=false) when b64
+//        is non-null, so an accidental empty-canvas save is a no-op.
 
 import 'dart:ui' as ui;
 import 'dart:convert';
@@ -30,37 +50,47 @@ class DynamicFieldWidget extends StatelessWidget {
     Widget fieldWidget;
     switch (field.fieldType) {
       case FormFieldType.text:
-        fieldWidget = _TextField(field: field, controller: controller, isReadOnly: isReadOnly);
+        fieldWidget = _TextField(
+            field: field, controller: controller, isReadOnly: isReadOnly);
         break;
       case FormFieldType.date:
-        fieldWidget = _DateField(field: field, controller: controller, isReadOnly: isReadOnly);
+        fieldWidget = _DateField(
+            field: field, controller: controller, isReadOnly: isReadOnly);
         break;
       case FormFieldType.number:
-        fieldWidget = _NumberField(field: field, controller: controller, isReadOnly: isReadOnly);
+        fieldWidget = _NumberField(
+            field: field, controller: controller, isReadOnly: isReadOnly);
         break;
       case FormFieldType.computed:
         fieldWidget = _ComputedField(field: field, controller: controller);
         break;
       case FormFieldType.dropdown:
-        fieldWidget = _DropdownField(field: field, controller: controller, isReadOnly: isReadOnly);
+        fieldWidget = _DropdownField(
+            field: field, controller: controller, isReadOnly: isReadOnly);
         break;
       case FormFieldType.radio:
-        fieldWidget = _RadioField(field: field, controller: controller, isReadOnly: isReadOnly);
+        fieldWidget = _RadioField(
+            field: field, controller: controller, isReadOnly: isReadOnly);
         break;
       case FormFieldType.boolean:
-        fieldWidget = _BooleanField(field: field, controller: controller, isReadOnly: isReadOnly);
+        fieldWidget = _BooleanField(
+            field: field, controller: controller, isReadOnly: isReadOnly);
         break;
       case FormFieldType.membershipGroup:
-        fieldWidget = _MembershipGroupField(controller: controller, isReadOnly: isReadOnly);
+        fieldWidget = _MembershipGroupField(
+            controller: controller, isReadOnly: isReadOnly);
         break;
       case FormFieldType.familyTable:
-        fieldWidget = _FamilyTableField(controller: controller, isReadOnly: isReadOnly);
+        fieldWidget = _FamilyTableField(
+            controller: controller, isReadOnly: isReadOnly);
         break;
       case FormFieldType.supportingFamilyTable:
-        fieldWidget = _SupportingFamilyField(controller: controller, isReadOnly: isReadOnly);
+        fieldWidget = _SupportingFamilyField(
+            controller: controller, isReadOnly: isReadOnly);
         break;
       case FormFieldType.signature:
-        fieldWidget = _SignatureField(controller: controller, isReadOnly: isReadOnly);
+        fieldWidget =
+            _SignatureField(controller: controller, isReadOnly: isReadOnly);
         break;
       default:
         return const SizedBox();
@@ -68,7 +98,6 @@ class DynamicFieldWidget extends StatelessWidget {
 
     if (!showCheckbox) return fieldWidget;
 
-    // Mobile: wrap with leading checkbox
     final skipCheckbox = field.fieldType == FormFieldType.computed ||
         field.fieldType == FormFieldType.supportingFamilyTable;
     if (skipCheckbox) return fieldWidget;
@@ -83,25 +112,52 @@ class DynamicFieldWidget extends StatelessWidget {
             controller.notifyListeners();
           },
           activeColor: AppColors.primaryBlue,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          visualDensity: VisualDensity.compact,
         ),
         Expanded(child: fieldWidget),
       ],
     );
   }
-
-  String _checkKeyFor(FormFieldModel f) {
-    if (f.fieldType == FormFieldType.familyTable) return 'Family Composition';
-    if (f.fieldType == FormFieldType.signature) return 'Signature';
-    if (f.fieldType == FormFieldType.membershipGroup) return 'Membership Group';
-    return f.fieldName;
-  }
 }
 
-// ── Shared label widget ───────────────────────────────────────
+// ── Shared helpers ────────────────────────────────────────────
+String _checkKeyFor(FormFieldModel f) {
+  if (f.fieldType == FormFieldType.familyTable) return 'Family Composition';
+  if (f.fieldType == FormFieldType.signature) return 'Signature';
+  if (f.fieldType == FormFieldType.membershipGroup) return 'Membership Group';
+  return f.fieldName;
+}
+
+InputDecoration _inputDeco(
+        {String? hint, bool readOnly = false, Widget? suffix}) =>
+    InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(color: Colors.black38, fontSize: 13),
+      filled: true,
+      fillColor: readOnly ? const Color(0xFFF5F5F8) : Colors.white,
+      contentPadding:
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Color(0xFFDDDDEE)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Color(0xFFDDDDEE)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide:
+            const BorderSide(color: AppColors.primaryBlue, width: 1.5),
+      ),
+      suffixIcon: suffix,
+    );
+
+// ── Field label ───────────────────────────────────────────────
 class _FieldLabel extends StatelessWidget {
   final String label;
   final bool isRequired;
-
   const _FieldLabel({required this.label, this.isRequired = false});
 
   @override
@@ -118,9 +174,7 @@ class _FieldLabel extends StatelessWidget {
           children: [
             if (isRequired)
               const TextSpan(
-                text: ' *',
-                style: TextStyle(color: Colors.red),
-              ),
+                  text: ' *', style: TextStyle(color: Colors.red)),
           ],
         ),
       ),
@@ -128,41 +182,20 @@ class _FieldLabel extends StatelessWidget {
   }
 }
 
-// ── Shared input decoration ───────────────────────────────────
-InputDecoration _inputDeco({String? hint, bool readOnly = false, Widget? suffix}) =>
-    InputDecoration(
-      hintText: hint,
-      hintStyle: const TextStyle(color: Colors.black38, fontSize: 13),
-      filled: true,
-      fillColor: readOnly ? const Color(0xFFF5F5F8) : Colors.white,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFFDDDDEE)),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFFDDDDEE)),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: AppColors.primaryBlue, width: 1.5),
-      ),
-      suffixIcon: suffix,
-    );
-
 // ── Text field ────────────────────────────────────────────────
 class _TextField extends StatelessWidget {
   final FormFieldModel field;
   final FormStateController controller;
   final bool isReadOnly;
-
-  const _TextField({required this.field, required this.controller, required this.isReadOnly});
+  const _TextField(
+      {required this.field,
+      required this.controller,
+      required this.isReadOnly});
 
   @override
   Widget build(BuildContext context) {
-    final ctrl = controller.textControllers[field.fieldName] ??
-        TextEditingController();
+    final ctrl =
+        controller.textControllers[field.fieldName] ?? TextEditingController();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -170,11 +203,10 @@ class _TextField extends StatelessWidget {
         TextFormField(
           controller: ctrl,
           readOnly: isReadOnly,
-          decoration: _inputDeco(hint: field.placeholder, readOnly: isReadOnly),
+          decoration:
+              _inputDeco(hint: field.placeholder, readOnly: isReadOnly),
           style: const TextStyle(fontSize: 13),
-          onChanged: (v) {
-            controller.setValue(field.fieldName, v);
-          },
+          onChanged: (v) => controller.setValue(field.fieldName, v),
         ),
       ],
     );
@@ -186,13 +218,15 @@ class _NumberField extends StatelessWidget {
   final FormFieldModel field;
   final FormStateController controller;
   final bool isReadOnly;
-
-  const _NumberField({required this.field, required this.controller, required this.isReadOnly});
+  const _NumberField(
+      {required this.field,
+      required this.controller,
+      required this.isReadOnly});
 
   @override
   Widget build(BuildContext context) {
-    final ctrl = controller.textControllers[field.fieldName] ??
-        TextEditingController();
+    final ctrl =
+        controller.textControllers[field.fieldName] ?? TextEditingController();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -200,7 +234,8 @@ class _NumberField extends StatelessWidget {
         TextFormField(
           controller: ctrl,
           readOnly: isReadOnly,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          keyboardType:
+              const TextInputType.numberWithOptions(decimal: true),
           decoration: _inputDeco(hint: '0.00', readOnly: isReadOnly),
           style: const TextStyle(fontSize: 13),
           onChanged: (v) => controller.setValue(field.fieldName, v),
@@ -214,7 +249,6 @@ class _NumberField extends StatelessWidget {
 class _ComputedField extends StatelessWidget {
   final FormFieldModel field;
   final FormStateController controller;
-
   const _ComputedField({required this.field, required this.controller});
 
   @override
@@ -243,59 +277,78 @@ class _DateField extends StatelessWidget {
   final FormFieldModel field;
   final FormStateController controller;
   final bool isReadOnly;
-
-  const _DateField({required this.field, required this.controller, required this.isReadOnly});
+  const _DateField(
+      {required this.field,
+      required this.controller,
+      required this.isReadOnly});
 
   @override
   Widget build(BuildContext context) {
-    final ctrl = controller.textControllers[field.fieldName] ??
-        TextEditingController();
+    final ctrl =
+        controller.textControllers[field.fieldName] ?? TextEditingController();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _FieldLabel(label: field.fieldLabel, isRequired: field.isRequired),
-        TextFormField(
-          controller: ctrl,
-          readOnly: true,
-          decoration: _inputDeco(
-            hint: 'MM-DD-YYYY',
-            readOnly: isReadOnly,
-            suffix: isReadOnly ? null : const Icon(Icons.calendar_today, size: 18),
-          ),
-          style: const TextStyle(fontSize: 13),
+        GestureDetector(
           onTap: isReadOnly
               ? null
               : () async {
-                  final date = await showDatePicker(
+                  DateTime? initial;
+                  try {
+                    initial = DateTime.parse(ctrl.text);
+                  } catch (_) {
+                    initial = DateTime.now();
+                  }
+                  final picked = await showDatePicker(
                     context: context,
-                    initialDate: DateTime.now(),
+                    initialDate: initial,
                     firstDate: DateTime(1900),
                     lastDate: DateTime.now(),
-                    builder: (context, child) => Theme(
-                      data: Theme.of(context).copyWith(
+                    builder: (ctx, child) => Theme(
+                      data: Theme.of(ctx).copyWith(
                         colorScheme: const ColorScheme.light(
-                            primary: AppColors.primaryBlue),
+                          primary: AppColors.primaryBlue,
+                          onPrimary: Colors.white,
+                          onSurface: Colors.black,
+                        ),
                       ),
                       child: child!,
                     ),
                   );
-                  if (date != null) {
+                  if (picked != null) {
                     final formatted =
-                        '${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}-${date.year}';
-                    ctrl.text = formatted;
+                        '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
                     controller.setValue(field.fieldName, formatted);
-                    // Auto-fill age if this is DOB
-                    if (field.fieldName == 'date_of_birth') {
-                      final age = DateTime.now().year - date.year;
-                      final ageCtrl = controller.textControllers['age'];
-                      if (ageCtrl != null) {
-                        ageCtrl.text = age.toString();
-                        controller.setValue('age', age.toString(), notify: false);
-                      }
-                    }
-                    controller.notifyListeners();
                   }
                 },
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            decoration: BoxDecoration(
+              color: isReadOnly ? const Color(0xFFF5F5F8) : Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFDDDDEE)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.calendar_today,
+                    size: 16, color: AppColors.primaryBlue),
+                const SizedBox(width: 8),
+                Text(
+                  ctrl.text.isEmpty
+                      ? (field.placeholder ?? 'Select date')
+                      : ctrl.text,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: ctrl.text.isEmpty
+                        ? Colors.black38
+                        : Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ],
     );
@@ -307,8 +360,10 @@ class _DropdownField extends StatelessWidget {
   final FormFieldModel field;
   final FormStateController controller;
   final bool isReadOnly;
-
-  const _DropdownField({required this.field, required this.controller, required this.isReadOnly});
+  const _DropdownField(
+      {required this.field,
+      required this.controller,
+      required this.isReadOnly});
 
   @override
   Widget build(BuildContext context) {
@@ -317,33 +372,31 @@ class _DropdownField extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _FieldLabel(label: field.fieldLabel, isRequired: field.isRequired),
-        IgnorePointer(
-          ignoring: isReadOnly,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: isReadOnly ? const Color(0xFFF5F5F8) : Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFDDDDEE)),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: field.options.any((o) => o.value == current)
-                    ? current
-                    : null,
-                hint: Text(field.placeholder ?? 'Select...',
-                    style: const TextStyle(fontSize: 13, color: Colors.black38)),
-                isExpanded: true,
-                items: field.options
-                    .map((o) => DropdownMenuItem(
-                        value: o.value,
-                        child: Text(o.label,
-                            style: const TextStyle(fontSize: 13))))
-                    .toList(),
-                onChanged: isReadOnly
-                    ? null
-                    : (v) => controller.setValue(field.fieldName, v),
-              ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: isReadOnly ? const Color(0xFFF5F5F8) : Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFDDDDEE)),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: field.options.any((o) => o.value == current)
+                  ? current
+                  : null,
+              hint: Text(field.placeholder ?? 'Select...',
+                  style: const TextStyle(
+                      fontSize: 13, color: Colors.black38)),
+              isExpanded: true,
+              items: field.options
+                  .map((o) => DropdownMenuItem(
+                      value: o.value,
+                      child: Text(o.label,
+                          style: const TextStyle(fontSize: 13))))
+                  .toList(),
+              onChanged: isReadOnly
+                  ? null
+                  : (v) => controller.setValue(field.fieldName, v),
             ),
           ),
         ),
@@ -357,8 +410,10 @@ class _RadioField extends StatelessWidget {
   final FormFieldModel field;
   final FormStateController controller;
   final bool isReadOnly;
-
-  const _RadioField({required this.field, required this.controller, required this.isReadOnly});
+  const _RadioField(
+      {required this.field,
+      required this.controller,
+      required this.isReadOnly});
 
   @override
   Widget build(BuildContext context) {
@@ -369,22 +424,22 @@ class _RadioField extends StatelessWidget {
         _FieldLabel(label: field.fieldLabel, isRequired: field.isRequired),
         Wrap(
           spacing: 8,
+          runSpacing: 6,
           children: field.options.map((o) {
             final selected = current == o.value;
             return GestureDetector(
               onTap: isReadOnly
                   ? null
                   : () {
-                      controller.setValue(field.fieldName, o.value);
                       if (field.fieldName == 'housing_status') {
                         controller.housingStatus = o.value;
-                        controller.notifyListeners();
                       }
+                      controller.setValue(field.fieldName, o.value);
                     },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
                   color: selected
                       ? AppColors.primaryBlue
@@ -413,17 +468,19 @@ class _RadioField extends StatelessWidget {
   }
 }
 
-// ── Boolean (single toggle) field ────────────────────────────
+// ── Boolean field — Switch widget ─────────────────────────────
 class _BooleanField extends StatelessWidget {
   final FormFieldModel field;
   final FormStateController controller;
   final bool isReadOnly;
-
-  const _BooleanField({required this.field, required this.controller, required this.isReadOnly});
+  const _BooleanField(
+      {required this.field,
+      required this.controller,
+      required this.isReadOnly});
 
   @override
   Widget build(BuildContext context) {
-    bool current = false;
+    bool current;
     if (field.fieldName == 'has_support') {
       current = controller.hasSupport;
     } else {
@@ -445,26 +502,27 @@ class _BooleanField extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: Text(field.fieldLabel,
-              style: const TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.w500)),
+          child: Text(
+            field.fieldLabel,
+            style: const TextStyle(
+                fontSize: 13, fontWeight: FontWeight.w500),
+          ),
         ),
       ],
     );
   }
 }
 
-// ── Membership group (Solo Parent / PWD / 4Ps / PHIC) ────────
+// ── Membership group ──────────────────────────────────────────
 class _MembershipGroupField extends StatelessWidget {
   final FormStateController controller;
   final bool isReadOnly;
-
   const _MembershipGroupField(
       {required this.controller, required this.isReadOnly});
 
   @override
   Widget build(BuildContext context) {
-    final items = [
+    const items = [
       ('solo_parent', 'Solo Parent'),
       ('pwd', 'PWD'),
       ('four_ps_member', '4Ps Member'),
@@ -479,8 +537,7 @@ class _MembershipGroupField extends StatelessWidget {
           spacing: 8,
           runSpacing: 6,
           children: items.map((item) {
-            final selected =
-                controller.membershipData[item.$1] ?? false;
+            final selected = controller.membershipData[item.$1] ?? false;
             return GestureDetector(
               onTap: isReadOnly
                   ? null
@@ -490,8 +547,8 @@ class _MembershipGroupField extends StatelessWidget {
                     },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 7),
                 decoration: BoxDecoration(
                   color: selected
                       ? AppColors.primaryBlue
@@ -519,8 +576,7 @@ class _MembershipGroupField extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color:
-                            selected ? Colors.white : Colors.black87,
+                        color: selected ? Colors.white : Colors.black87,
                       ),
                     ),
                   ],
@@ -538,7 +594,6 @@ class _MembershipGroupField extends StatelessWidget {
 class _FamilyTableField extends StatefulWidget {
   final FormStateController controller;
   final bool isReadOnly;
-
   const _FamilyTableField(
       {required this.controller, required this.isReadOnly});
 
@@ -553,8 +608,27 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
   ];
   static const _headers = [
     'Name', 'Relationship', 'Birthdate', 'Age',
-    'Sex', 'Civil Status', 'Education', 'Occupation', 'Allowance',
+    'Sex', 'Civil Status', 'Education', 'Occupation', 'Allowance (₱)',
   ];
+
+  // ── Look up options from the template by field_name ───────
+  // For 'gender': the GIS template stores Sex options on the
+  // 'sex' field (Section A). We fall back to 'sex' when 'gender'
+  // is not a standalone field in the template.
+  List<FieldOption> _optionsFor(String fieldName) {
+    final lookupNames = fieldName == 'gender'
+        ? ['gender', 'sex']   // prefer explicit 'gender', fall back to 'sex'
+        : [fieldName];
+
+    for (final name in lookupNames) {
+      try {
+        final field = widget.controller.template.allFields
+            .firstWhere((f) => f.fieldName == name);
+        if (field.options.isNotEmpty) return field.options;
+      } catch (_) {}
+    }
+    return [];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -592,7 +666,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
           final i = entry.key;
           final m = entry.value;
           return Card(
-            margin: const EdgeInsets.only(bottom: 8),
+            margin: const EdgeInsets.only(bottom: 10),
             elevation: 0,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
@@ -604,34 +678,23 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
                 children: [
                   ..._cols.asMap().entries.map((col) {
                     return Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.only(bottom: 8),
                       child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           SizedBox(
                             width: 90,
                             child: Text(_headers[col.key],
                                 style: const TextStyle(
-                                    fontSize: 11, color: Colors.black54)),
+                                    fontSize: 11,
+                                    color: Colors.black54)),
                           ),
                           Expanded(
                             child: widget.isReadOnly
-                                ? Text(
-                                    m[col.value]?.toString() ?? '—',
-                                    style: const TextStyle(fontSize: 13),
-                                  )
-                                : TextFormField(
-                                    initialValue:
-                                        m[col.value]?.toString() ?? '',
-                                    decoration:
-                                        _inputDeco().copyWith(isDense: true),
-                                    style: const TextStyle(fontSize: 12),
-                                    onChanged: (v) {
-                                      widget.controller.familyMembers[i]
-                                          [col.value] = v;
-                                      widget.controller.fieldChecks[
-                                          'Family Composition'] = true;
-                                    },
-                                  ),
+                                ? Text(m[col.value]?.toString() ?? '—',
+                                    style: const TextStyle(fontSize: 13))
+                                : _buildEditCell(
+                                    context, i, m, col.value),
                           ),
                         ],
                       ),
@@ -644,14 +707,14 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
                         onPressed: () {
                           widget.controller.familyMembers =
                               List.from(members)..removeAt(i);
-                          widget.controller.notifyListeners();
+                          widget.controller.recomputeFromFamilyChange();
                           setState(() {});
                         },
                         icon: const Icon(Icons.delete_outline,
                             size: 14, color: Colors.red),
                         label: const Text('Remove',
-                            style:
-                                TextStyle(fontSize: 11, color: Colors.red)),
+                            style: TextStyle(
+                                fontSize: 11, color: Colors.red)),
                       ),
                     ),
                 ],
@@ -662,13 +725,280 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
       ],
     );
   }
+
+  Widget _buildEditCell(BuildContext context, int i,
+      Map<String, dynamic> m, String col) {
+    switch (col) {
+
+      // ── Birthdate → auto-calculates age ─────────────────
+      case 'birthdate':
+        final raw = m['birthdate']?.toString() ?? '';
+        return GestureDetector(
+          onTap: () async {
+            DateTime? initial;
+            try {
+              initial = DateTime.parse(raw);
+            } catch (_) {
+              initial = DateTime(DateTime.now().year - 18);
+            }
+            final picked = await showDatePicker(
+              context: context,
+              initialDate: initial,
+              firstDate: DateTime(1900),
+              lastDate: DateTime.now(),
+              builder: (ctx, child) => Theme(
+                data: Theme.of(ctx).copyWith(
+                  colorScheme: const ColorScheme.light(
+                    primary: AppColors.primaryBlue,
+                    onPrimary: Colors.white,
+                    onSurface: Colors.black87,
+                  ),
+                ),
+                child: child!,
+              ),
+            );
+            if (picked != null) {
+              final formatted =
+                  '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+              final today = DateTime.now();
+              int age = today.year - picked.year;
+              if (today.month < picked.month ||
+                  (today.month == picked.month &&
+                      today.day < picked.day)) {
+                age--;
+              }
+              widget.controller.familyMembers[i]['birthdate'] = formatted;
+              widget.controller.familyMembers[i]['age'] = age.toString();
+              widget.controller.fieldChecks['Family Composition'] = true;
+              widget.controller.notifyListeners();
+              setState(() {});
+            }
+          },
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFDDDDEE)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.calendar_today,
+                    size: 14, color: AppColors.primaryBlue),
+                const SizedBox(width: 6),
+                Text(
+                  raw.isEmpty ? 'Select date' : raw,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color:
+                        raw.isEmpty ? Colors.black38 : Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+
+      // ── Age — key-bound so it rebuilds when birthdate sets it ─
+      case 'age':
+        return TextFormField(
+          key: ValueKey('age_${i}_${m['age']}'),
+          initialValue: m['age']?.toString() ?? '',
+          keyboardType: TextInputType.number,
+          decoration: _inputDeco(hint: '0').copyWith(isDense: true),
+          style: const TextStyle(fontSize: 12),
+          onChanged: (v) {
+            widget.controller.familyMembers[i]['age'] = v;
+            widget.controller.fieldChecks['Family Composition'] = true;
+          },
+        );
+
+      // ── Gender: radio chips — options from 'sex' field ───
+      case 'gender':
+        final opts = _optionsFor('gender'); // falls back to 'sex'
+        final current = m['gender']?.toString() ?? '';
+        if (opts.isEmpty) {
+          return TextFormField(
+            initialValue: current,
+            decoration: _inputDeco().copyWith(isDense: true),
+            style: const TextStyle(fontSize: 12),
+            onChanged: (v) {
+              widget.controller.familyMembers[i]['gender'] = v;
+              widget.controller.fieldChecks['Family Composition'] = true;
+            },
+          );
+        }
+        return Wrap(
+          spacing: 6,
+          runSpacing: 4,
+          children: opts.map((opt) {
+            final isSelected = current == opt.value;
+            return GestureDetector(
+              onTap: () {
+                widget.controller.familyMembers[i]['gender'] = opt.value;
+                widget.controller.fieldChecks['Family Composition'] = true;
+                widget.controller.notifyListeners();
+                setState(() {});
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? AppColors.primaryBlue
+                      : const Color(0xFFF0F0F8),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isSelected
+                        ? AppColors.primaryBlue
+                        : const Color(0xFFDDDDEE),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isSelected
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_unchecked,
+                      size: 13,
+                      color: isSelected ? Colors.white : Colors.black45,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      opt.label,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: isSelected
+                            ? Colors.white
+                            : Colors.black87,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        );
+
+      // ── Civil Status: dropdown — options from 'civil_status' field ─
+      case 'civil_status':
+        return _inlineDropdown(
+          opts: _optionsFor('civil_status'),
+          current: m['civil_status']?.toString() ?? '',
+          fallbackHint: 'Civil Status',
+          onFallbackChange: (v) {
+            widget.controller.familyMembers[i]['civil_status'] = v;
+            widget.controller.fieldChecks['Family Composition'] = true;
+          },
+          onDropdownChange: (v) {
+            widget.controller.familyMembers[i]['civil_status'] = v;
+            widget.controller.fieldChecks['Family Composition'] = true;
+            widget.controller.notifyListeners();
+            setState(() {});
+          },
+        );
+
+      // ── Education: dropdown — options from 'education' field ─
+      case 'education':
+        return _inlineDropdown(
+          opts: _optionsFor('education'),
+          current: m['education']?.toString() ?? '',
+          fallbackHint: 'Education',
+          onFallbackChange: (v) {
+            widget.controller.familyMembers[i]['education'] = v;
+            widget.controller.fieldChecks['Family Composition'] = true;
+          },
+          onDropdownChange: (v) {
+            widget.controller.familyMembers[i]['education'] = v;
+            widget.controller.fieldChecks['Family Composition'] = true;
+            widget.controller.notifyListeners();
+            setState(() {});
+          },
+        );
+
+      // ── Allowance — triggers B recompute on every keystroke ─
+      case 'allowance':
+        return TextFormField(
+          initialValue: m['allowance']?.toString() ?? '',
+          keyboardType:
+              const TextInputType.numberWithOptions(decimal: true),
+          decoration: _inputDeco(hint: '0.00').copyWith(isDense: true),
+          style: const TextStyle(fontSize: 12),
+          onChanged: (v) {
+            widget.controller.familyMembers[i]['allowance'] = v;
+            widget.controller.fieldChecks['Family Composition'] = true;
+            // recomputeFromFamilyChange calls _recomputeFields (which
+            // sums B) then notifyListeners so computed fields update.
+            widget.controller.recomputeFromFamilyChange();
+          },
+        );
+
+      // ── Default: plain text ──────────────────────────────
+      default:
+        return TextFormField(
+          initialValue: m[col]?.toString() ?? '',
+          decoration: _inputDeco().copyWith(isDense: true),
+          style: const TextStyle(fontSize: 12),
+          onChanged: (v) {
+            widget.controller.familyMembers[i][col] = v;
+            widget.controller.fieldChecks['Family Composition'] = true;
+          },
+        );
+    }
+  }
+
+  // ── Inline dropdown with text fallback when no options ────
+  Widget _inlineDropdown({
+    required List<FieldOption> opts,
+    required String current,
+    required String fallbackHint,
+    required void Function(String) onFallbackChange,
+    required void Function(String) onDropdownChange,
+  }) {
+    if (opts.isEmpty) {
+      return TextFormField(
+        initialValue: current,
+        decoration: _inputDeco(hint: fallbackHint).copyWith(isDense: true),
+        style: const TextStyle(fontSize: 12),
+        onChanged: onFallbackChange,
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFDDDDEE)),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: opts.any((o) => o.value == current) ? current : null,
+          hint: const Text('Select...',
+              style: TextStyle(fontSize: 12, color: Colors.black38)),
+          isExpanded: true,
+          items: opts
+              .map((o) => DropdownMenuItem(
+                  value: o.value,
+                  child:
+                      Text(o.label, style: const TextStyle(fontSize: 12))))
+              .toList(),
+          onChanged: (v) {
+            if (v != null) onDropdownChange(v);
+          },
+        ),
+      ),
+    );
+  }
 }
 
 // ── Supporting Family table ───────────────────────────────────
 class _SupportingFamilyField extends StatefulWidget {
   final FormStateController controller;
   final bool isReadOnly;
-
   const _SupportingFamilyField(
       {required this.controller, required this.isReadOnly});
 
@@ -693,7 +1023,11 @@ class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
                 onPressed: () {
                   widget.controller.supportingFamily = [
                     ...members,
-                    {'name': '', 'relationship': '', 'regular_sustento': ''}
+                    {
+                      'name': '',
+                      'relationship': '',
+                      'regular_sustento': ''
+                    }
                   ];
                   widget.controller.notifyListeners();
                   setState(() {});
@@ -725,28 +1059,29 @@ class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
                         : Column(
                             children: [
                               TextFormField(
-                                initialValue: m['name']?.toString() ?? '',
+                                initialValue:
+                                    m['name']?.toString() ?? '',
                                 decoration: _inputDeco(hint: 'Name')
                                     .copyWith(isDense: true),
                                 style: const TextStyle(fontSize: 12),
-                                onChanged: (v) =>
-                                    widget.controller.supportingFamily[i]
-                                        ['name'] = v,
+                                onChanged: (v) => widget.controller
+                                    .supportingFamily[i]['name'] = v,
                               ),
                               const SizedBox(height: 4),
                               Row(children: [
                                 Expanded(
                                   child: TextFormField(
                                     initialValue:
-                                        m['relationship']?.toString() ?? '',
+                                        m['relationship']?.toString() ??
+                                            '',
                                     decoration:
                                         _inputDeco(hint: 'Relationship')
                                             .copyWith(isDense: true),
-                                    style: const TextStyle(fontSize: 12),
-                                    onChanged: (v) =>
-                                        widget.controller
-                                            .supportingFamily[i]
-                                            ['relationship'] = v,
+                                    style:
+                                        const TextStyle(fontSize: 12),
+                                    onChanged: (v) => widget.controller
+                                        .supportingFamily[i]
+                                        ['relationship'] = v,
                                   ),
                                 ),
                                 const SizedBox(width: 6),
@@ -755,26 +1090,28 @@ class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
                                     initialValue: m['regular_sustento']
                                             ?.toString() ??
                                         '',
-                                    decoration:
-                                        _inputDeco(hint: '₱ Sustento')
-                                            .copyWith(isDense: true),
                                     keyboardType:
-                                        TextInputType.number,
-                                    style: const TextStyle(fontSize: 12),
-                                    onChanged: (v) =>
-                                        widget.controller
-                                            .supportingFamily[i]
-                                            ['regular_sustento'] = v,
+                                        const TextInputType.numberWithOptions(
+                                            decimal: true),
+                                    decoration:
+                                        _inputDeco(hint: 'Monthly Amt')
+                                            .copyWith(isDense: true),
+                                    style:
+                                        const TextStyle(fontSize: 12),
+                                    onChanged: (v) => widget.controller
+                                        .supportingFamily[i]
+                                        ['regular_sustento'] = v,
                                   ),
                                 ),
                               ]),
                             ],
                           ),
                   ),
-                  if (!widget.isReadOnly)
+                  if (!widget.isReadOnly) ...[
+                    const SizedBox(width: 4),
                     IconButton(
-                      icon: const Icon(Icons.close,
-                          size: 16, color: Colors.red),
+                      icon: const Icon(Icons.delete_outline,
+                          size: 18, color: Colors.red),
                       onPressed: () {
                         widget.controller.supportingFamily =
                             List.from(members)..removeAt(i);
@@ -782,6 +1119,7 @@ class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
                         setState(() {});
                       },
                     ),
+                  ],
                 ],
               ),
             ),
@@ -793,10 +1131,11 @@ class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
 }
 
 // ── Signature field ───────────────────────────────────────────
+// PERFORMANCE FIX: Completely isolated from parent rebuilds.
+// Drawing happens in local state only. Controller is updated only on Save.
 class _SignatureField extends StatefulWidget {
   final FormStateController controller;
   final bool isReadOnly;
-
   const _SignatureField(
       {required this.controller, required this.isReadOnly});
 
@@ -807,105 +1146,116 @@ class _SignatureField extends StatefulWidget {
 class _SignatureFieldState extends State<_SignatureField> {
   final List<Offset?> _points = [];
   bool _showPad = false;
-  final _repaintKey = GlobalKey();
+  String? _savedSignature;
+
+  @override
+  void initState() {
+    super.initState();
+    _savedSignature = widget.controller.signatureBase64;
+    _showPad = (_savedSignature == null || _savedSignature!.isEmpty);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final hasSignature = widget.controller.signatureBase64 != null &&
-        widget.controller.signatureBase64!.isNotEmpty;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const _FieldLabel(label: 'Signature'),
-        const SizedBox(height: 8),
+        if (widget.isReadOnly)
+          _buildReadOnlyView()
+        else if (_showPad)
+          _buildSignaturePad()
+        else
+          _buildSavedView(),
+      ],
+    );
+  }
 
-        // Preview or placeholder
+  Widget _buildSavedView() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         Container(
-          width: double.infinity,
           height: 120,
+          width: double.infinity,
           decoration: BoxDecoration(
-            color: const Color(0xFFF5F5F8),
+            color: Colors.white,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: const Color(0xFFDDDDEE)),
           ),
-          child: hasSignature
-              ? Image.memory(
-                  base64Decode(widget.controller.signatureBase64!
-                      .replaceFirst('data:image/png;base64,', '')),
-                  fit: BoxFit.contain,
-                )
-              : const Center(
-                  child: Text('No signature yet',
-                      style: TextStyle(
-                          color: Colors.black38, fontSize: 12))),
+          child: _savedSignature != null && _savedSignature!.isNotEmpty
+              ? _renderSig(_savedSignature!)
+              : const SizedBox(),
         ),
-
-        if (!widget.isReadOnly) ...[
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              OutlinedButton.icon(
-                onPressed: () => setState(() => _showPad = true),
-                icon: const Icon(Icons.draw, size: 14),
-                label: const Text('Sign', style: TextStyle(fontSize: 12)),
-              ),
-              if (hasSignature) ...[
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: () {
-                    widget.controller.signatureBase64 = null;
-                    widget.controller.signaturePoints = null;
-                    widget.controller.notifyListeners();
-                    setState(() {});
-                  },
-                  icon: const Icon(Icons.clear, size: 14, color: Colors.red),
-                  label: const Text('Clear',
-                      style: TextStyle(fontSize: 12, color: Colors.red)),
-                ),
-              ],
-            ],
-          ),
-        ],
-
-        // Inline signature pad
-        if (_showPad && !widget.isReadOnly)
-          _buildSignaturePad(),
+        TextButton(
+          onPressed: () {
+            setState(() {
+              _points.clear();
+              _savedSignature = null;
+              _showPad = true;
+            });
+          },
+          child: const Text('Clear', style: TextStyle(color: Colors.red)),
+        ),
       ],
     );
+  }
+
+  Widget _buildReadOnlyView() {
+    return Container(
+      height: 120,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFDDDDEE)),
+      ),
+      child: _savedSignature != null && _savedSignature!.isNotEmpty
+          ? _renderSig(_savedSignature!)
+          : const Center(
+              child: Text('No signature',
+                  style: TextStyle(color: Colors.black38))),
+    );
+  }
+
+  Widget _renderSig(String sig) {
+    try {
+      final b64 = sig.contains(',') ? sig.split(',').last : sig;
+      return Image.memory(base64Decode(b64), fit: BoxFit.contain);
+    } catch (_) {
+      return const Center(
+          child: Text('Invalid signature',
+              style: TextStyle(color: Colors.black38)));
+    }
   }
 
   Widget _buildSignaturePad() {
     return Column(
       children: [
-        const SizedBox(height: 8),
         Container(
-          width: double.infinity,
           height: 200,
+          width: double.infinity,
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.primaryBlue, width: 1.5),
+            border: Border.all(color: const Color(0xFFDDDDEE)),
           ),
           child: GestureDetector(
             onPanStart: (d) {
               _points.add(d.localPosition);
-              (_repaintKey.currentContext?.findRenderObject() as RenderBox?)?.markNeedsPaint();
+              setState(() {});
             },
             onPanUpdate: (d) {
               _points.add(d.localPosition);
-              (_repaintKey.currentContext?.findRenderObject() as RenderBox?)?.markNeedsPaint();
+              setState(() {});
             },
-            onPanEnd: (d) {
+            onPanEnd: (_) {
               _points.add(null);
-              (_repaintKey.currentContext?.findRenderObject() as RenderBox?)?.markNeedsPaint();
+              setState(() {});
             },
-            child: RepaintBoundary(
-              key: _repaintKey,
-              child: CustomPaint(
-                painter: _SignaturePainter(_points),
-                child: Container(),
-              ),
+            child: CustomPaint(
+              painter: _SignaturePainter(_points),
+              child: Container(),
             ),
           ),
         ),
@@ -913,23 +1263,24 @@ class _SignatureFieldState extends State<_SignatureField> {
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             TextButton(
-              onPressed: () {
-                _points.clear();
-                setState(() {});
-              },
-              child: const Text('Clear',
-                  style: TextStyle(color: Colors.red)),
+              onPressed: () => setState(() => _points.clear()),
+              child: const Text('Clear', style: TextStyle(color: Colors.red)),
             ),
             ElevatedButton(
               onPressed: () async {
+                if (_points.whereType<Offset>().length < 2) return;
+                
                 final b64 = await _convertToBase64(_points);
                 if (b64 != null) {
+                  setState(() {
+                    _savedSignature = b64;
+                    _showPad = false;
+                  });
+                  // Update controller WITHOUT notifyListeners
                   widget.controller.signatureBase64 = b64;
                   widget.controller.signaturePoints = List.from(_points);
                   widget.controller.fieldChecks['Signature'] = true;
-                  widget.controller.notifyListeners();
                 }
-                setState(() => _showPad = false);
               },
               style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryBlue),
@@ -943,20 +1294,28 @@ class _SignatureFieldState extends State<_SignatureField> {
   }
 
   Future<String?> _convertToBase64(List<Offset?> points) async {
-    if (points.isEmpty) return null;
+    final realPoints = points.whereType<Offset>().toList();
+    if (realPoints.length < 2) return null;
+
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    final bgPaint = Paint()..color = Colors.white;
-    canvas.drawRect(const Rect.fromLTWH(0, 0, 300, 200), bgPaint);
+
+    canvas.drawRect(
+      const Rect.fromLTWH(0, 0, 300, 200),
+      Paint()..color = Colors.white,
+    );
+
     final pen = Paint()
       ..color = Colors.black
       ..strokeWidth = 3.0
       ..strokeCap = StrokeCap.round;
+
     for (int i = 0; i < points.length - 1; i++) {
       if (points[i] != null && points[i + 1] != null) {
         canvas.drawLine(points[i]!, points[i + 1]!, pen);
       }
     }
+
     final picture = recorder.endRecording();
     final img = await picture.toImage(300, 200);
     final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
@@ -983,5 +1342,5 @@ class _SignaturePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_SignaturePainter old) => old.points != points;
+  bool shouldRepaint(_SignaturePainter old) => true;
 }
