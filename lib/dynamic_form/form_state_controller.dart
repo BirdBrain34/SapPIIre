@@ -1,6 +1,11 @@
-// lib/widgets/dynamic_form/form_state_controller.dart
+// lib/dynamic_form/form_state_controller.dart
 // Holds all mutable state for a dynamic form instance.
 // Used by both the mobile and web renderers.
+//
+// FIX: _recomputeFields() now always sums family member allowances as (B).
+// Previously it only computed A + C, so editing any other field (income,
+// household size, etc.) would call setValue → _recomputeFields and silently
+// drop B, causing gross to revert to A+C only.
 
 import 'package:flutter/material.dart';
 import 'package:sappiire/models/form_template_models.dart';
@@ -9,7 +14,6 @@ class FormStateController extends ChangeNotifier {
   final FormTemplate template;
 
   // ── Core value store ──────────────────────────────────────
-  // Keys are field_name (snake_case). Values are dynamic.
   final Map<String, dynamic> _values = {};
 
   // ── TextEditingControllers for text/number/date fields ───
@@ -27,7 +31,7 @@ class FormStateController extends ChangeNotifier {
   bool hasSupport = false;
   String? housingStatus;
   String? signatureBase64;
-  List<Offset?>? signaturePoints;
+  List<Offset>? signaturePoints;
 
   // ── Checkbox selection state (mobile "what to share") ────
   final Map<String, bool> fieldChecks = {};
@@ -83,9 +87,16 @@ class FormStateController extends ChangeNotifier {
     if (notify) notifyListeners();
   }
 
+  // ── Called when family member allowances change ───────────
+  // Triggers a full recompute (B is derived from familyMembers)
+  // then notifies listeners so computed fields update on screen.
+  void recomputeFromFamilyChange() {
+    _recomputeFields();
+    notifyListeners();
+  }
+
   // ── Load from Supabase form_data JSONB ───────────────────
   void loadFromJson(Map<String, dynamic> data) {
-    // Clear first
     clearAll(notify: false);
 
     data.forEach((key, value) {
@@ -106,8 +117,8 @@ class FormStateController extends ChangeNotifier {
         housingStatus = value?.toString();
       } else if (key == '__signature') {
         signatureBase64 = value?.toString();
+        signaturePoints = null; // Clear points when loading saved signature
       } else {
-        // Try to match by both field_name and legacy label keys
         final field = template.fieldByName(key) ?? _findByLabel(key);
         if (field != null) {
           _values[field.fieldName] = value;
@@ -125,7 +136,6 @@ class FormStateController extends ChangeNotifier {
             hasSupport = value == true || value == 'true';
           }
         } else {
-          // Store unknown keys as-is (legacy compat)
           _values[key] = value;
         }
       }
@@ -171,7 +181,7 @@ class FormStateController extends ChangeNotifier {
     return result;
   }
 
-  // ── Build filtered map for QR transmission (checked fields only) ──
+  // ── Build filtered map for QR transmission ───────────────
   Map<String, dynamic> toFilteredJson() {
     final result = <String, dynamic>{};
 
@@ -216,7 +226,6 @@ class FormStateController extends ChangeNotifier {
 
   // ── Check if a field is visible ───────────────────────────
   bool isFieldVisible(FormFieldModel field) {
-    // Build a trigger-keyed value map for condition evaluation
     final triggerMap = <String, dynamic>{};
     for (final f in template.allFields) {
       if (f.fieldType == FormFieldType.boolean) {
@@ -225,7 +234,6 @@ class FormStateController extends ChangeNotifier {
         triggerMap[f.fieldId] = _values[f.fieldName]?.toString() ?? '';
       }
     }
-    // has_support is boolean stored in dedicated field
     final hasSupportField = template.fieldByName('has_support');
     if (hasSupportField != null) {
       triggerMap[hasSupportField.fieldId] = hasSupport.toString();
@@ -234,10 +242,32 @@ class FormStateController extends ChangeNotifier {
   }
 
   // ── Auto-compute calculated fields ───────────────────────
+  //
+  // Formula: D = A + B + C
+  //   A = monthly_income      (client's own income)
+  //   B = Σ familyMembers[*].allowance  (family member allowances)
+  //   C = monthly_alimony     (support from others / sustento)
+  //   D = gross_family_income (computed)
+  //
+  // IMPORTANT: B is read directly from familyMembers list here so
+  // that every code path (setValue, recomputeFromFamilyChange,
+  // loadFromJson) always produces the correct gross. Previously only
+  // recomputeFromFamilyChange included B, so any other trigger (e.g.
+  // typing in household_size) would overwrite gross with A+C only.
   void _recomputeFields() {
-    final monthly_income = _parseNum('monthly_income');
-    final monthly_alimony = _parseNum('monthly_alimony');
-    final gross = monthly_income + monthly_alimony;
+    final a = _parseNum('monthly_income');
+    final c = _parseNum('monthly_alimony');
+
+    // B — sum every family member's allowance field
+    final b = familyMembers.fold<double>(0.0, (sum, m) {
+      final raw = m['allowance']?.toString().replaceAll(',', '') ?? '0';
+      final parsed = double.tryParse(raw) ?? 0.0;
+      return sum + parsed;
+    });
+
+    debugPrint('💰 Recompute: A=$a, B=$b (${familyMembers.length} members), C=$c');
+
+    final gross = a + b + c; // D = A + B + C
 
     final hhSize = _parseNum('household_size');
     final perCapita = hhSize > 0 ? gross / hhSize : 0.0;
@@ -299,7 +329,6 @@ class FormStateController extends ChangeNotifier {
     if (notify) notifyListeners();
   }
 
-  // ── Helper: find field by its display label (legacy compat) ──
   FormFieldModel? _findByLabel(String label) {
     try {
       return template.allFields

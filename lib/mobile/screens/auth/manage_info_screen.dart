@@ -1,6 +1,9 @@
 // lib/mobile/screens/auth/manage_info_screen.dart
-// REFACTORED: Now dynamically loads any form template from Supabase.
-// No longer imports lib/resources/GIS.dart.
+// UPDATED UI:
+//  - AppBar with username (top-left) and logout button (top-right)
+//  - Floating Action Button for Select All (replaces inline button)
+//  - Bottom bar now only shows Save Profile
+//  - 4-item bottom nav: Manage Info | AutoFill QR | Camera | History
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -14,6 +17,8 @@ import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/mobile/screens/auth/qr_scanner_screen.dart';
 import 'package:sappiire/mobile/screens/auth/login_screen.dart';
+import 'package:sappiire/mobile/screens/auth/InfoScannerScreen.dart';
+import 'package:sappiire/mobile/widgets/bottom_navbar.dart';
 
 class ManageInfoScreen extends StatefulWidget {
   final String userId;
@@ -34,29 +39,37 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
   String _username = '';
+  int _currentNavIndex = 0;
 
+  // ── Lifecycle ─────────────────────────────────────────────
   @override
   void initState() {
     super.initState();
     _loadAll();
   }
 
+  @override
+  void dispose() {
+    _formCtrl?.dispose();
+    super.dispose();
+  }
+
+  // ── Data Loading ──────────────────────────────────────────
   Future<void> _loadAll() async {
     setState(() => _isLoading = true);
     try {
       debugPrint('🚀 ManageInfoScreen: Loading templates...');
-      // 1. Load available templates
-      final templates = await _templateService.fetchActiveTemplates(forceRefresh: true);
+      final templates =
+          await _templateService.fetchActiveTemplates(forceRefresh: true);
       debugPrint('📊 Received ${templates.length} templates');
 
-      // 2. Load saved user profile for autofill
-      final profileData = await _supabaseService.loadUserProfile(widget.userId);
+      final profileData =
+          await _supabaseService.loadUserProfile(widget.userId);
       final username = await _supabaseService.getUsername(widget.userId);
 
       setState(() {
         _templates = templates;
         _username = username ?? '';
-        // Default to GIS
         _selectedTemplate = templates.isNotEmpty
             ? (templates.firstWhere(
                 (t) => t.formName == 'General Intake Sheet',
@@ -64,7 +77,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
             : null;
       });
 
-      debugPrint('✅ Selected template: ${_selectedTemplate?.formName ?? "NONE"}');
+      debugPrint(
+          '✅ Selected template: ${_selectedTemplate?.formName ?? "NONE"}');
 
       if (_selectedTemplate != null) {
         _initFormController(profileData);
@@ -82,9 +96,10 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
     if (profileData != null) {
       debugPrint('📝 Autofilling from profile...');
-      // Pre-populate from saved profile
-      final address = (profileData['user_addresses'] as Map<String, dynamic>?) ?? {};
-      final socio = (profileData['socio_economic_data'] as Map<String, dynamic>?) ?? {};
+      final address =
+          (profileData['user_addresses'] as Map<String, dynamic>?) ?? {};
+      final socio =
+          (profileData['socio_economic_data'] as Map<String, dynamic>?) ?? {};
 
       final autofillData = _templateService.buildAutofillMap(
         template: _selectedTemplate!,
@@ -100,53 +115,68 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
     setState(() => _formCtrl = ctrl);
 
-    // Load family + supporting family separately
     if (profileData?['profile_id'] != null) {
       _loadComplexData(profileData!['profile_id'], profileData);
     }
   }
 
-  Future<void> _loadComplexData(String profileId, Map<String, dynamic> profileData) async {
+  Future<void> _loadComplexData(
+      String profileId, Map<String, dynamic> profileData) async {
     final family = await _supabaseService.loadFamilyComposition(profileId);
-    final socio = (profileData['socio_economic_data'] as Map<String, dynamic>?) ?? {};
+    final socio =
+        (profileData['socio_economic_data'] as Map<String, dynamic>?) ?? {};
     final socioId = socio['socio_economic_id']?.toString();
     final supporting = socioId != null
         ? await _supabaseService.loadSupportingFamily(socioId)
         : <Map<String, dynamic>>[];
 
     if (!mounted) return;
-    _formCtrl?.familyMembers = family.map((m) => {
-      'name': m['name'] ?? '',
-      'relationship': m['relationship_of_relative'] ?? '',
-      'birthdate': m['birthdate']?.toString() ?? '',
-      'age': m['age']?.toString() ?? '',
-      'gender': m['gender'] ?? '',
-      'civil_status': m['civil_status'] ?? '',
-      'education': m['education'] ?? '',
-      'occupation': m['occupation'] ?? '',
-      'allowance': m['allowance']?.toString() ?? '',
-    }).toList();
 
-    _formCtrl?.supportingFamily = supporting.map((m) => {
-      'name': m['name'] ?? '',
-      'relationship': m['relationship'] ?? '',
-      'regular_sustento': m['regular_sustento']?.toString() ?? '',
-    }).toList();
+    _formCtrl?.familyMembers = family
+        .map((m) => {
+              'name': m['name'] ?? '',
+              'relationship': m['relationship_of_relative'] ?? '',
+              'birthdate': m['birthdate']?.toString() ?? '',
+              'age': m['age']?.toString() ?? '',
+              'gender': m['gender'] ?? '',
+              'civil_status': m['civil_status'] ?? '',
+              'education': m['education'] ?? '',
+              'occupation': m['occupation'] ?? '',
+              'allowance': m['allowance']?.toString() ?? '',
+            })
+        .toList();
+
+    _formCtrl?.supportingFamily = supporting
+        .map((m) => {
+              'name': m['name'] ?? '',
+              'relationship': m['relationship'] ?? '',
+              'regular_sustento': m['regular_sustento']?.toString() ?? '',
+            })
+        .toList();
+
+    // Load monthly_alimony (C) from first supporting family member
+    if (supporting.isNotEmpty && supporting.first['monthly_alimony'] != null) {
+      final monthlyAlimony = supporting.first['monthly_alimony'].toString();
+      final alimonyField = _formCtrl?.template.fieldByName('monthly_alimony');
+      if (alimonyField != null && _formCtrl != null) {
+        _formCtrl!.setValue('monthly_alimony', monthlyAlimony, notify: false);
+      }
+    }
 
     _formCtrl?.hasSupport = (socio['has_support'] as bool?) ?? false;
     _formCtrl?.housingStatus = socio['housing_status']?.toString();
 
-    _formCtrl?.notifyListeners();
+    // Recompute fields now that family data is loaded
+    _formCtrl?.recomputeFromFamilyChange();
   }
 
-  // ── Save profile to Supabase ──────────────────────────────
+  // ── Save to Supabase ──────────────────────────────────────
   Future<void> _saveProfile() async {
     if (_formCtrl == null) return;
     setState(() => _isSaving = true);
     try {
       final data = _formCtrl!.toJson();
 
-      // Map dynamic field names back to Supabase column names
       final profileData = <String, dynamic>{};
       final addressData = <String, dynamic>{};
       final socioData = <String, dynamic>{};
@@ -164,7 +194,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         } else if (src == 'signature_data') {
           profileData['signature_data'] = val;
         } else {
-          // Direct profile column
           if (src == 'age') {
             profileData[src] = int.tryParse(val.toString()) ?? 0;
           } else {
@@ -173,7 +202,10 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         }
       }
 
-      // Membership booleans
+      if (data['__signature'] != null) {
+        profileData['signature_data'] = data['__signature'];
+      }
+
       final membership = _formCtrl!.membershipData;
       profileData.addAll(membership);
 
@@ -186,27 +218,36 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       await _supabaseService.saveUserAddress(profileId, addressData);
       await _supabaseService.saveFamilyComposition(
         profileId,
-        _formCtrl!.familyMembers.map((m) => {
-          'name': m['name'] ?? '',
-          'relationship_of_relative': m['relationship'] ?? '',
-          'birthdate': m['birthdate'],
-          'age': int.tryParse(m['age']?.toString() ?? '0') ?? 0,
-          'gender': m['gender'] ?? '',
-          'civil_status': m['civil_status'] ?? '',
-          'education': m['education'] ?? '',
-          'occupation': m['occupation'] ?? '',
-          'allowance': double.tryParse(m['allowance']?.toString().replaceAll(',', '') ?? '0') ?? 0,
-        }).toList(),
+        _formCtrl!.familyMembers
+            .map((m) => {
+                  'name': m['name'] ?? '',
+                  'relationship_of_relative': m['relationship'] ?? '',
+                  'birthdate': m['birthdate'],
+                  'age': int.tryParse(m['age']?.toString() ?? '0') ?? 0,
+                  'gender': m['gender'] ?? '',
+                  'civil_status': m['civil_status'] ?? '',
+                  'education': m['education'] ?? '',
+                  'occupation': m['occupation'] ?? '',
+                  'allowance': double.tryParse(m['allowance']
+                              ?.toString()
+                              .replaceAll(',', '') ??
+                          '0') ??
+                      0,
+                })
+            .toList(),
       );
 
       if (socioData.isNotEmpty) {
         socioData['housing_status'] = _formCtrl!.housingStatus ?? '';
         socioData['has_support'] = _formCtrl!.hasSupport;
-        final socioId = await _supabaseService.saveSocioEconomicData(profileId, socioData);
+        final socioId = await _supabaseService.saveSocioEconomicData(
+            profileId, socioData);
         await _supabaseService.saveSupportingFamily(
           socioId,
           _formCtrl!.supportingFamily,
-          double.tryParse(data['monthly_alimony']?.toString() ?? '0') ?? 0,
+          double.tryParse(
+                  data['monthly_alimony']?.toString() ?? '0') ??
+              0,
         );
       }
 
@@ -220,7 +261,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     if (mounted) setState(() => _isSaving = false);
   }
 
-  // ── QR share selected fields ──────────────────────────────
+  // ── QR Transmit ───────────────────────────────────────────
   Future<void> _scanAndTransmit() async {
     if (_formCtrl == null) return;
 
@@ -248,206 +289,301 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     }
   }
 
+  // ── Logout ────────────────────────────────────────────────
+  Future<void> _handleLogout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Log out?'),
+        content: const Text('Are you sure you want to log out?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.dangerRed,
+            ),
+            child: const Text('Log Out',
+                style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    await Supabase.instance.client.auth.signOut();
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    }
+  }
+
+  // ── Navigation ────────────────────────────────────────────
+  void _onNavTap(int index) {
+    switch (index) {
+      case 0:
+        setState(() => _currentNavIndex = 0);
+        break;
+      case 1:
+        // AutoFill QR — transmit selected fields
+        setState(() => _currentNavIndex = 1);
+        _scanAndTransmit().then((_) {
+          if (mounted) setState(() => _currentNavIndex = 0);
+        });
+        break;
+      case 2:
+        // Camera — ID scanner
+        setState(() => _currentNavIndex = 2);
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const InfoScannerScreen()),
+        ).then((_) {
+          if (mounted) setState(() => _currentNavIndex = 0);
+        });
+        break;
+      case 3:
+        // Form History — placeholder until screen is built
+        setState(() => _currentNavIndex = 3);
+        _showFeedback('Form History coming soon!', AppColors.primaryBlue);
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) setState(() => _currentNavIndex = 0);
+        });
+        break;
+    }
+  }
+
   void _showFeedback(String msg, Color color) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
         backgroundColor: color,
-        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _formCtrl?.dispose();
-    super.dispose();
   }
 
   // ── Build ─────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FE),
-      appBar: AppBar(
-        backgroundColor: AppColors.primaryBlue,
-        elevation: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('MY PROFILE',
-                style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 10,
-                    letterSpacing: 1.2,
-                    fontWeight: FontWeight.w500)),
-            Text(_username,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold)),
-          ],
-        ),
-        actions: [
-          // Save button
-          IconButton(
-            icon: _isSaving
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                        color: Colors.white, strokeWidth: 2))
-                : const Icon(Icons.save, color: Colors.white),
-            onPressed: _isSaving ? null : _saveProfile,
-          ),
-          // Logout button
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () async {
-              final confirm = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('Logout'),
-                  content: const Text('Are you sure you want to logout?'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      child: const Text('Cancel'),
-                    ),
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryBlue,
-                      ),
-                      child: const Text('Logout', style: TextStyle(color: Colors.white)),
-                    ),
-                  ],
-                ),
-              );
-              if (confirm == true && mounted) {
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  (route) => false,
-                );
-              }
-            },
-          ),
-        ],
+      backgroundColor: AppColors.pageBg,
+      // ── AppBar: username left, logout right ──────────────
+      appBar: _buildAppBar(),
+      // ── FAB: floating Select All toggle ─────────────────
+      floatingActionButton:
+          _formCtrl != null ? _buildSelectAllFAB() : null,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      // ── Bottom nav ───────────────────────────────────────
+      bottomNavigationBar: CustomBottomNav(
+        currentIndex: _currentNavIndex,
+        onTap: _onNavTap,
       ),
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppColors.primaryBlue))
-          : _selectedTemplate == null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.error_outline, size: 64, color: Colors.grey),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'No forms available',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Please ensure the "General Intake Sheet" template is created in Supabase.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey.shade600),
-                        ),
-                        const SizedBox(height: 24),
-                        ElevatedButton.icon(
-                          onPressed: _loadAll,
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Retry'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primaryBlue,
-                            foregroundColor: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : Column(
-                  children: [
-                    // ── Form selector dropdown ──────────────────
-                    Container(
-                      color: AppColors.primaryBlue.withOpacity(0.05),
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          const Text('Form:',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13)),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                    color: const Color(0xFFDDDDEE)),
-                              ),
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButton<String>(
-                                  value: _selectedTemplate!.templateId,
-                                  items: _templates
-                                      .map((t) => DropdownMenuItem(
-                                            value: t.templateId,
-                                            child: Text(t.formName,
-                                                style: const TextStyle(
-                                                    fontSize: 13,
-                                                    fontWeight:
-                                                        FontWeight.w600)),
-                                          ))
-                                      .toList(),
-                                  onChanged: (id) async {
-                                    final tpl = _templates.firstWhere(
-                                        (t) => t.templateId == id);
-                                    setState(() {
-                                      _selectedTemplate = tpl;
-                                    });
-                                    final profile =
-                                        await _supabaseService
-                                            .loadUserProfile(widget.userId);
-                                    _initFormController(profile);
-                                  },
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // ── Dynamic form ────────────────────────────
-                    Expanded(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(16),
-                        child: AnimatedBuilder(
-                          animation: _formCtrl!,
-                          builder: (context, _) => DynamicFormRenderer(
-                            template: _selectedTemplate!,
-                            controller: _formCtrl!,
-                            mode: 'mobile',
-                            showCheckboxes: true,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    // ── Bottom actions ──────────────────────────
-                    _buildBottomBar(),
-                  ],
-                ),
+          ? const Center(child: CircularProgressIndicator())
+          : _templates.isEmpty
+              ? _buildEmptyState()
+              : _buildFormContent(),
     );
   }
 
+  // ── AppBar with username + logout ─────────────────────────
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      backgroundColor: AppColors.primaryBlue,
+      elevation: 0,
+      automaticallyImplyLeading: false,
+      titleSpacing: 16,
+      title: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.person_outline,
+                color: Colors.white, size: 18),
+          ),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Welcome back,',
+                style: TextStyle(
+                    color: Colors.white60,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w400),
+              ),
+              Text(
+                _username.isEmpty ? 'User' : _username,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        Tooltip(
+          message: 'Log out',
+          child: IconButton(
+            icon: const Icon(Icons.logout_rounded,
+                color: Colors.white70, size: 22),
+            onPressed: _handleLogout,
+          ),
+        ),
+        const SizedBox(width: 4),
+      ],
+    );
+  }
+
+  // ── Floating Select All / Deselect All FAB ────────────────
+  Widget _buildSelectAllFAB() {
+    final isSelectAll = _formCtrl?.selectAll ?? false;
+    return FloatingActionButton.extended(
+      onPressed: () {
+        _formCtrl?.setSelectAll(!isSelectAll);
+        setState(() {});
+      },
+      backgroundColor: isSelectAll ? AppColors.highlight : AppColors.primaryBlue,
+      elevation: 6,
+      icon: Icon(
+        isSelectAll ? Icons.deselect_rounded : Icons.select_all_rounded,
+        color: Colors.white,
+        size: 20,
+      ),
+      label: Text(
+        isSelectAll ? 'Deselect All' : 'Select All',
+        style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.bold),
+      ),
+    );
+  }
+
+  // ── Empty / error state ───────────────────────────────────
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.error_outline, size: 48, color: Colors.grey),
+          const SizedBox(height: 12),
+          Text(
+            'No forms available.',
+            style: TextStyle(color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: _loadAll,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Retry'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryBlue,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Main form content ─────────────────────────────────────
+  Widget _buildFormContent() {
+    return Column(
+      children: [
+        // Form type selector
+        _buildFormSelector(),
+
+        // Dynamic form renderer
+        Expanded(
+          child: SingleChildScrollView(
+            // Extra bottom padding so FAB doesn't overlap content
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+            child: _formCtrl == null
+                ? const Center(child: CircularProgressIndicator())
+                : AnimatedBuilder(
+                    animation: _formCtrl!,
+                    builder: (context, _) => DynamicFormRenderer(
+                      template: _selectedTemplate!,
+                      controller: _formCtrl!,
+                      mode: 'mobile',
+                      showCheckboxes: true,
+                    ),
+                  ),
+          ),
+        ),
+
+        // Bottom save bar
+        _buildBottomBar(),
+      ],
+    );
+  }
+
+  Widget _buildFormSelector() {
+    return Container(
+      color: AppColors.primaryBlue.withOpacity(0.04),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          const Text(
+            'Form:',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFDDDDEE)),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _selectedTemplate?.templateId,
+                  items: _templates
+                      .map((t) => DropdownMenuItem(
+                            value: t.templateId,
+                            child: Text(
+                              t.formName,
+                              style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600),
+                            ),
+                          ))
+                      .toList(),
+                  onChanged: (id) async {
+                    final tpl =
+                        _templates.firstWhere((t) => t.templateId == id);
+                    setState(() => _selectedTemplate = tpl);
+                    final profile =
+                        await _supabaseService.loadUserProfile(widget.userId);
+                    _initFormController(profile);
+                  },
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Bottom bar: only Save (Select All moved to FAB) ───────
   Widget _buildBottomBar() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -461,51 +597,27 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           ),
         ],
       ),
-      child: Row(
-        children: [
-          // Select All
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: () {
-                _formCtrl?.setSelectAll(!(_formCtrl?.selectAll ?? false));
-                setState(() {});
-              },
-              icon: const Icon(Icons.select_all, size: 16),
-              label: Text(
-                _formCtrl?.selectAll ?? false
-                    ? 'Deselect All'
-                    : 'Select All',
-                style: const TextStyle(fontSize: 12),
-              ),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.primaryBlue,
-                side: const BorderSide(color: AppColors.primaryBlue),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
-              ),
-            ),
+      child: SizedBox(
+        width: double.infinity,
+        height: 46,
+        child: ElevatedButton.icon(
+          onPressed: _isSaving ? null : _saveProfile,
+          icon: _isSaving
+              ? const SizedBox(
+                  height: 16,
+                  width: 16,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white),
+                )
+              : const Icon(Icons.save_outlined, size: 18),
+          label: Text(_isSaving ? 'Saving...' : 'Save Profile'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.highlight,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10)),
           ),
-          const SizedBox(width: 10),
-          // Scan & Share
-          Expanded(
-            flex: 2,
-            child: ElevatedButton.icon(
-              onPressed: _scanAndTransmit,
-              icon: const Icon(Icons.qr_code_scanner,
-                  color: Colors.white, size: 18),
-              label: const Text('Scan & Share',
-                  style: TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.bold)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primaryBlue,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

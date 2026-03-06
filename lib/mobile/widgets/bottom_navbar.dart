@@ -1,6 +1,9 @@
+// lib/mobile/widgets/bottom_navbar.dart
+// UPDATED: 4-item nav → Manage Info | AutoFill QR (elevated) | Camera | Fill History
+
 import 'package:flutter/material.dart';
 import 'package:hugeicons/hugeicons.dart';
-import 'package:sappiire/constants/app_colors.dart'; // Ensure this path is correct
+import 'package:sappiire/constants/app_colors.dart';
 
 class CustomBottomNav extends StatelessWidget {
   final int currentIndex;
@@ -15,43 +18,30 @@ class CustomBottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 110,
-      color: Colors.transparent,
-      child: Stack(
-        alignment: Alignment.bottomCenter,
+      height: 80,
+      decoration: const BoxDecoration(
+        color: AppColors.primaryBlue,
+        border: Border(
+          top: BorderSide(color: Colors.white24, width: 1),
+        ),
+      ),
+      child: Row(
         children: [
-          // Main Navigation Bar
-          Container(
-            height: 85,
-            decoration: const BoxDecoration(
-              color: AppColors.primaryBlue, // Updated to your brand Blue
-              border: Border(
-                top: BorderSide(
-                  color: Colors.white24, // Subtle white border
-                  width: 1,
-                ),
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                Expanded(
-                  child: _navItem(0, HugeIcons.strokeRoundedUser, "Manage Info"),
-                ),
-                const Expanded(
-                  child: SizedBox(), // Middle spacer for the QR button
-                ),
-                Expanded(
-                  child: _navItem(2, HugeIcons.strokeRoundedClock01, "Fill History"),
-                ),
-              ],
-            ),
+          // 0 - Manage Info
+          Expanded(
+            child: _navItem(0, HugeIcons.strokeRoundedUser, "Manage Info"),
           ),
-
-          // Pop-out QR Code Button
-          Positioned(
-            top: 0,
-            child: _qrNavItem(1),
+          // 1 - AutoFill QR (elevated pop-out style inline)
+          Expanded(
+            child: _qrInlineItem(1),
+          ),
+          // 2 - Camera (ID Scanner)
+          Expanded(
+            child: _navItem(2, HugeIcons.strokeRoundedCamera02, "Camera"),
+          ),
+          // 3 - Fill History
+          Expanded(
+            child: _navItem(3, HugeIcons.strokeRoundedClock01, "History"),
           ),
         ],
       ),
@@ -59,7 +49,7 @@ class CustomBottomNav extends StatelessWidget {
   }
 
   Widget _navItem(int index, List<List<dynamic>> icon, String label) {
-    bool isActive = currentIndex == index;
+    final isActive = currentIndex == index;
     return GestureDetector(
       onTap: () => onTap(index),
       behavior: HitTestBehavior.opaque,
@@ -67,24 +57,25 @@ class CustomBottomNav extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              // Active indicator using a lighter blue or white with opacity
-              color: isActive ? Colors.white.withOpacity(0.15) : Colors.transparent,
+              color: isActive
+                  ? Colors.white.withOpacity(0.15)
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(20),
             ),
             child: HugeIcon(
               icon: icon,
               color: isActive ? Colors.white : Colors.white70,
-              size: 24,
+              size: 22,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 3),
           Text(
             label,
             style: TextStyle(
               color: isActive ? Colors.white : Colors.white70,
-              fontSize: 10,
+              fontSize: 9,
               fontWeight: isActive ? FontWeight.bold : FontWeight.w400,
             ),
             textAlign: TextAlign.center,
@@ -94,45 +85,52 @@ class CustomBottomNav extends StatelessWidget {
     );
   }
 
-  Widget _qrNavItem(int index) {
-    bool isActive = currentIndex == index;
+  Widget _qrInlineItem(int index) {
+    final isActive = currentIndex == index;
     return GestureDetector(
       onTap: () => onTap(index),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              // The QR button remains white unless active, then brand blue
-              color: isActive ? AppColors.primaryBlue : Colors.white,
-              borderRadius: BorderRadius.circular(15),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-              border: isActive 
-                ? Border.all(color: Colors.white, width: 2) 
-                : null,
+      behavior: HitTestBehavior.opaque,
+      child: Transform.translate(
+        // Lifts the QR button above the nav bar for a pop-out feel
+        offset: const Offset(0, -10),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: isActive ? AppColors.highlight : Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.25),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+                border: isActive
+                    ? Border.all(color: Colors.white, width: 2)
+                    : Border.all(
+                        color: AppColors.borderNavy.withOpacity(0.2), width: 1),
+              ),
+              child: HugeIcon(
+                icon: HugeIcons.strokeRoundedQrCode,
+                color: isActive ? Colors.white : AppColors.primaryBlue,
+                size: 28,
+              ),
             ),
-            child: HugeIcon(
-              icon: HugeIcons.strokeRoundedQrCode,
-              color: isActive ? Colors.white : AppColors.primaryBlue,
-              size: 35,
+            const SizedBox(height: 4),
+            Text(
+              "AutoFill QR",
+              style: TextStyle(
+                color: isActive ? Colors.white : Colors.white70,
+                fontSize: 9,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            "AutoFill QR",
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
