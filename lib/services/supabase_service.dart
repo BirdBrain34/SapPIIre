@@ -1,26 +1,94 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
-import 'package:crypto/crypto.dart';
-import 'dart:convert';
 
 class SupabaseService {
   final _supabase = Supabase.instance.client;
-
-  // Hash password using SHA-256
-  String _hashPassword(String password) {
-    final bytes = utf8.encode(password);
-    final digest = sha256.convert(bytes);
-    return digest.toString();
-  }
 
   // ================================================================
   // AUTHENTICATION
   // ================================================================
 
-  // Sign up - Create user account + profile
-  Future<Map<String, dynamic>> signUp({
+  /// Step 1 of signup: register with Supabase Auth.
+  /// Supabase sends an OTP to the email automatically.
+Future<Map<String, dynamic>> signUpWithEmail({
+  required String email,
+  required String password,
+}) async {
+  try {
+    // Check user_accounts first (verified users)
+    final existing = await _supabase
+        .from('user_accounts')
+        .select('email')
+        .eq('email', email)
+        .maybeSingle();
+
+    if (existing != null) {
+      return {
+        'success': false,
+        'message': 'This email is already registered. Please log in instead.',
+      };
+    }
+
+    final res = await _supabase.auth.signUp(
+      email: email,
+      password: password,
+    );
+
+    // Supabase returns a user but with no session if email already
+    // exists but is unconfirmed — catch this case
+    if (res.user == null) {
+      return {'success': false, 'message': 'Sign-up failed. Try again.'};
+    }
+
+    // If identities is empty, email already exists in auth.users
+    if (res.user!.identities != null && res.user!.identities!.isEmpty) {
+      return {
+        'success': false,
+        'message': 'This email is already registered. Please log in instead.',
+      };
+    }
+
+    return {
+      'success': true,
+      'message': 'OTP sent! Check your email.',
+      'user_id': res.user!.id,
+    };
+  } catch (e) {
+    return {'success': false, 'message': 'Error: ${e.toString()}'};
+  }
+}
+
+  /// Step 2 of signup: verify the OTP sent to email.
+  Future<Map<String, dynamic>> verifyEmailOtp({
+    required String email,
+    required String otp,
+  }) async {
+    try {
+      final response = await _supabase.auth.verifyOTP(
+        email: email,
+        token: otp,
+        type: OtpType.email,
+      );
+
+      if (response.user == null) {
+        return {'success': false, 'message': 'Invalid or expired code.'};
+      }
+
+      return {
+        'success': true,
+        'user_id': response.user!.id,
+      };
+    } on AuthException catch (e) {
+      return {'success': false, 'message': e.message};
+    } catch (e) {
+      return {'success': false, 'message': 'Verification error: ${e.toString()}'};
+    }
+  }
+
+  /// Step 3 of signup: save profile data after OTP is verified.
+  Future<Map<String, dynamic>> saveProfileAfterVerification({
+    required String userId,
     required String username,
-    required String password,
     required String email,
     required String firstName,
     required String middleName,
@@ -29,40 +97,21 @@ class SupabaseService {
     required String phoneNumber,
   }) async {
     try {
-      final existingUser = await _supabase
+      // Update username in user_accounts (trigger already inserted email as placeholder)
+      await _supabase
           .from('user_accounts')
-          .select('username')
-          .eq('username', username)
-          .maybeSingle();
+          .update({'username': username})
+          .eq('user_id', userId);
 
-      if (existingUser != null) {
-        return {'success': false, 'message': 'Username already exists'};
-      }
-
-      final hashedPassword = _hashPassword(password);
-
-      final accountResponse = await _supabase
-          .from('user_accounts')
-          .insert({
-            'username': username,
-            'password': hashedPassword,
-            'email': email,
-            'is_active': true,
-          })
-          .select()
-          .single();
-
-      final String userId = accountResponse['user_id'];
-
+      // Parse and format date
       final dateParts = dateOfBirth.split('/');
       final formattedDate =
           '${dateParts[2]}-${dateParts[0].padLeft(2, '0')}-${dateParts[1].padLeft(2, '0')}';
 
-      // Calculate age from birthdate
       final birthYear = int.parse(dateParts[2]);
-      final currentYear = DateTime.now().year;
-      final age = currentYear - birthYear;
+      final age = DateTime.now().year - birthYear;
 
+      // Insert profile
       await _supabase.from('user_profiles').insert({
         'user_id': userId,
         'firstname': firstName,
@@ -82,47 +131,39 @@ class SupabaseService {
     } catch (e) {
       return {
         'success': false,
-        'message': 'Error creating account: ${e.toString()}',
+        'message': 'Error saving profile: ${e.toString()}',
       };
     }
   }
 
-  // Login - Verify credentials
+  /// Login using Supabase Auth
   Future<Map<String, dynamic>> login({
     required String username,
     required String password,
   }) async {
     try {
-      final hashedPassword = _hashPassword(password);
-
+      // Resolve email from username
       final account = await _supabase
           .from('user_accounts')
-          .select('user_id, username, email, password, is_active')
+          .select('user_id, username, email, is_active')
           .eq('username', username)
           .maybeSingle();
 
       if (account == null) {
-        return {
-          'success': false,
-          'code': 'no_user',
-          'message': 'Account does not exist'
-        };
-      }
-
-      if (account['password'] != hashedPassword) {
-        return {
-          'success': false,
-          'code': 'wrong_password',
-          'message': 'Invalid username or password'
-        };
+        return {'success': false, 'message': 'Account does not exist'};
       }
 
       if (account['is_active'] == false) {
-        return {
-          'success': false,
-          'code': 'deactivated',
-          'message': 'Account is deactivated'
-        };
+        return {'success': false, 'message': 'Account is deactivated'};
+      }
+
+      final response = await _supabase.auth.signInWithPassword(
+        email: account['email'],
+        password: password,
+      );
+
+      if (response.user == null) {
+        return {'success': false, 'message': 'Invalid username or password'};
       }
 
       final profileResponse = await _supabase
@@ -139,19 +180,17 @@ class SupabaseService {
         'email': account['email'],
         'profile': profileResponse,
       };
+    } on AuthException catch (e) {
+      return {'success': false, 'message': e.message};
     } catch (e) {
-      return {
-        'success': false,
-        'message': 'Error during login: ${e.toString()}'
-      };
+      return {'success': false, 'message': 'Error during login: ${e.toString()}'};
     }
   }
 
   // ================================================================
-  // USER PROFILE
+  // USER PROFILE  (all original methods below — unchanged)
   // ================================================================
 
-  // Get username for the header
   Future<String?> getUsername(String userId) async {
     try {
       final response = await _supabase
@@ -159,15 +198,13 @@ class SupabaseService {
           .select('username')
           .eq('user_id', userId)
           .maybeSingle();
-      
       return response?['username'] as String?;
     } catch (e) {
-      print('Error fetching username: $e');
+      debugPrint('Error fetching username: $e');
       return null;
     }
   }
 
-  // Load user profile with related data (address, socio-economic, family)
   Future<Map<String, dynamic>?> loadUserProfile(String userId) async {
     return await _supabase
         .from('user_profiles')
@@ -176,7 +213,6 @@ class SupabaseService {
         .maybeSingle();
   }
 
-  // Load family composition for a profile
   Future<List<Map<String, dynamic>>> loadFamilyComposition(String profileId) async {
     final response = await _supabase
         .from('family_composition')
@@ -186,7 +222,6 @@ class SupabaseService {
     return List<Map<String, dynamic>>.from(response);
   }
 
-  // Load supporting family members
   Future<List<Map<String, dynamic>>> loadSupportingFamily(String socioEconomicId) async {
     final response = await _supabase
         .from('supporting_family')
@@ -196,7 +231,6 @@ class SupabaseService {
     return List<Map<String, dynamic>>.from(response);
   }
 
-  // Save complete user profile data
   Future<String> saveUserProfile({
     required String userId,
     required Map<String, dynamic> profileData,
@@ -211,7 +245,6 @@ class SupabaseService {
     return profileRes['profile_id'];
   }
 
-  // Save user address
   Future<void> saveUserAddress(String profileId, Map<String, dynamic> addressData) async {
     if (addressData.isNotEmpty) {
       final addressUpdate = {'profile_id': profileId, ...addressData};
@@ -219,20 +252,14 @@ class SupabaseService {
     }
   }
 
-  // Save family composition
   Future<void> saveFamilyComposition(String profileId, List<Map<String, dynamic>> familyData) async {
     await _supabase.from('family_composition').delete().eq('profile_id', profileId);
-    
     if (familyData.isNotEmpty) {
-      final familyPayload = familyData.map((member) => {
-        'profile_id': profileId,
-        ...member,
-      }).toList();
+      final familyPayload = familyData.map((member) => {'profile_id': profileId, ...member}).toList();
       await _supabase.from('family_composition').insert(familyPayload);
     }
   }
 
-  // Save socio-economic data
   Future<String> saveSocioEconomicData(String profileId, Map<String, dynamic> socioData) async {
     final socioUpdate = {'profile_id': profileId, ...socioData};
     final socioRes = await _supabase
@@ -243,10 +270,8 @@ class SupabaseService {
     return socioRes['socio_economic_id'].toString();
   }
 
-  // Save supporting family members
   Future<void> saveSupportingFamily(String socioEconomicId, List<Map<String, dynamic>> supportData, double monthlyAlimony) async {
     await _supabase.from('supporting_family').delete().eq('socio_economic_id', socioEconomicId);
-    
     if (supportData.isNotEmpty) {
       final supportList = supportData.asMap().entries.map((entry) => {
         'socio_economic_id': socioEconomicId,
@@ -256,14 +281,12 @@ class SupabaseService {
         'monthly_alimony': monthlyAlimony,
         'sort_order': entry.key,
       }).where((item) => item['name'].toString().isNotEmpty).toList();
-
       if (supportList.isNotEmpty) {
         await _supabase.from('supporting_family').insert(supportList);
       }
     }
   }
 
-  // Save user profile, address, family composition, and socio-economic data to Supabase
   Future<void> savePiiData({
     required Map<String, dynamic> personalInfo,
     required Map<String, dynamic> addressInfo,
@@ -280,36 +303,20 @@ class SupabaseService {
 
     final profileId = profileResponse['profile_id'];
 
-    await _supabase.from('user_addresses').upsert({
-      'profile_id': profileId,
-      ...addressInfo,
-    });
+    await _supabase.from('user_addresses').upsert({'profile_id': profileId, ...addressInfo});
 
     if (familyMembers.isNotEmpty) {
-      final familyWithId = familyMembers.map((m) => {
-        'profile_id': profileId,
-        ...m,
-      }).toList();
+      final familyWithId = familyMembers.map((m) => {'profile_id': profileId, ...m}).toList();
       await _supabase.from('family_composition').upsert(familyWithId);
     }
 
     if (socioData != null) {
-      await _supabase.from('socio_economic_data').upsert({
-        'profile_id': profileId,
-        ...socioData,
-      });
+      await _supabase.from('socio_economic_data').upsert({'profile_id': profileId, ...socioData});
     }
   }
 
-  /// Reads the logged-in user's full profile from Supabase,
-  /// maps it to GIS field keys, and pushes it into form_submission
-  /// so the web listener receives it via Realtime and autofills live.
-  Future<bool> pushProfileToSession({
-    required String sessionId,
-    required String userId,
-  }) async {
+  Future<bool> pushProfileToSession({required String sessionId, required String userId}) async {
     try {
-      // 1. Fetch all PII in one query — profile + address + socio + family
       final profile = await _supabase
           .from('user_profiles')
           .select('*, user_addresses(*), socio_economic_data(*)')
@@ -326,7 +333,6 @@ class SupabaseService {
       final socio = (profile['socio_economic_data'] as Map<String, dynamic>?) ?? {};
       final family = List<Map<String, dynamic>>.from(familyResponse);
 
-      // Fetch supporting family if exists
       List<Map<String, dynamic>> supportingFamily = [];
       if (socio['socio_economic_id'] != null) {
         final supportResponse = await _supabase
@@ -337,9 +343,7 @@ class SupabaseService {
         supportingFamily = List<Map<String, dynamic>>.from(supportResponse);
       }
 
-      // 2. Map to the EXACT keys used in _webControllers on ManageFormsScreen
       final formData = <String, dynamic>{
-        // Client Info
         'Last Name': profile['lastname'] ?? '',
         'First Name': profile['firstname'] ?? '',
         'Middle Name': profile['middle_name'] ?? '',
@@ -362,16 +366,12 @@ class SupabaseService {
         'Trabaho/Pinagkakakitaan': profile['occupation'] ?? '',
         'Kumpanyang Pinagtratrabuhan': profile['workplace'] ?? '',
         'Buwanang Kita (A)': profile['monthly_allowance']?.toString() ?? '',
-
-        // Membership data
         '__membership': {
           'solo_parent': profile['solo_parent'] ?? false,
           'pwd': profile['pwd'] ?? false,
           'four_ps_member': profile['four_ps_member'] ?? false,
           'phic_member': profile['phic_member'] ?? false,
         },
-
-        // Socio-Economic
         'Total Gross Family Income (A+B+C)=(D)': socio['gross_family_income']?.toString() ?? '',
         'Household Size (E)': socio['household_size']?.toString() ?? '',
         'Monthly Per Capita Income (D/E)': socio['monthly_per_capita']?.toString() ?? '',
@@ -387,22 +387,16 @@ class SupabaseService {
         'Transpo expense': socio['transport_expenses']?.toString() ?? '',
         'Loans': socio['loans']?.toString() ?? '',
         'Gasul': socio['gas']?.toString() ?? '',
-        'Kabuuang Tulong/Sustento kada Buwan (C)': supportingFamily.isNotEmpty 
-            ? supportingFamily[0]['monthly_alimony']?.toString() ?? '' 
+        'Kabuuang Tulong/Sustento kada Buwan (C)': supportingFamily.isNotEmpty
+            ? supportingFamily[0]['monthly_alimony']?.toString() ?? ''
             : '',
-
-        // Socio-economic metadata
         '__has_support': socio['has_support'] ?? false,
         '__housing_status': socio['housing_status'] ?? '',
-
-        // Supporting family as JSON array
         '__supporting_family': supportingFamily.map((m) => {
           'name': m['name'] ?? '',
           'relationship': m['relationship'] ?? '',
           'regular_sustento': m['regular_sustento']?.toString() ?? '',
         }).toList(),
-
-        // Family composition as a JSON array — web FamilyTable will render this
         '__family_composition': family.map((m) => {
           'name': m['name'] ?? '',
           'relationship': m['relationship_of_relative'] ?? '',
@@ -414,20 +408,14 @@ class SupabaseService {
           'occupation': m['occupation'] ?? '',
           'allowance': m['allowance']?.toString() ?? '',
         }).toList(),
-
-        // Signature
         '__signature': profile['signature_data'] ?? '',
       };
 
-      // 3. Push to form_submission — Realtime fires instantly to web listener
       await _supabase
           .from('form_submission')
-          .update({
-            'form_data': formData,
-            'status': 'scanned',
-          })
+          .update({'form_data': formData, 'status': 'scanned'})
           .eq('id', sessionId)
-          .eq('status', 'active'); // Safety guard — only update if still active
+          .eq('status', 'active');
 
       return true;
     } catch (e) {
@@ -435,25 +423,24 @@ class SupabaseService {
       return false;
     }
   }
-  /// Sends the specific filtered data selected by the user to the web session.
-  /// This allows the user to choose exactly which fields to transmit via checkboxes.
-Future<bool> sendDataToWebSession(String sessionId, Map<String, dynamic> data) async {
-  try {
-    final response = await _supabase
-        .from('form_submission')
-        .update({
-          'form_data': data, // The filtered checkboxes map
-          'status': 'scanned',
-          'scanned_at': DateTime.now().toIso8601String(),
-        })
-        .eq('id', sessionId)
-        .select()
-        .maybeSingle();
 
-    return response != null;
-  } catch (e) {
-    debugPrint('Supabase Update Error: $e');
-    return false;
+  Future<bool> sendDataToWebSession(String sessionId, Map<String, dynamic> data) async {
+    try {
+      final response = await _supabase
+          .from('form_submission')
+          .update({
+            'form_data': data,
+            'status': 'scanned',
+            'scanned_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', sessionId)
+          .select()
+          .maybeSingle();
+
+      return response != null;
+    } catch (e) {
+      debugPrint('Supabase Update Error: $e');
+      return false;
+    }
   }
-}
 }
