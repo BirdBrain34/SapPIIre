@@ -1,984 +1,511 @@
+// lib/mobile/screens/auth/manage_info_screen.dart
+// REFACTORED: Now dynamically loads any form template from Supabase.
+// No longer imports lib/resources/GIS.dart.
+
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:sappiire/constants/app_colors.dart';
-import 'package:sappiire/mobile/widgets/bottom_navbar.dart';
-import 'package:sappiire/mobile/widgets/selectall_button.dart';
-import 'package:sappiire/mobile/widgets/dropdown.dart';
-import 'package:sappiire/mobile/widgets/save_button.dart';
-import 'package:sappiire/mobile/widgets/logout_confirmation_dialog.dart';
-import 'package:sappiire/mobile/screens/auth/login_screen.dart';
-import 'package:sappiire/mobile/screens/auth/qr_scanner_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:sappiire/mobile/widgets/InfoScannerButton.dart';
-import 'package:sappiire/mobile/screens/auth/InfoScannerScreen.dart';
-import 'package:sappiire/models/id_information.dart';
-import 'package:sappiire/resources/GIS.dart';
-import 'package:sappiire/resources/PersonalInfo.dart';
-import 'package:sappiire/resources/signature_field.dart';
+
+import 'package:sappiire/constants/app_colors.dart';
+import 'package:sappiire/models/form_template_models.dart';
+import 'package:sappiire/services/form_template_service.dart';
 import 'package:sappiire/services/supabase_service.dart';
-import 'package:sappiire/mobile/widgets/date_picker_helper.dart';
-import 'package:sappiire/mobile/widgets/signature_helper.dart';
-
-
+import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
+import 'package:sappiire/dynamic_form/form_state_controller.dart';
+import 'package:sappiire/mobile/screens/auth/qr_scanner_screen.dart';
+import 'package:sappiire/mobile/screens/auth/login_screen.dart';
 
 class ManageInfoScreen extends StatefulWidget {
-  final String? userId;
-  final IdInformation? initialData;
-
-  const ManageInfoScreen({
-    super.key,
-    this.userId,
-    this.initialData,
-  });
+  final String userId;
+  const ManageInfoScreen({super.key, required this.userId});
 
   @override
   State<ManageInfoScreen> createState() => _ManageInfoScreenState();
 }
 
 class _ManageInfoScreenState extends State<ManageInfoScreen> {
-  String _username = "Loading...";
-  int _currentStep = 0;
-  final ScrollController _scrollController = ScrollController();
-  final SupabaseService _supabaseService = SupabaseService();
-  int _currentIndex = 0;
-  bool _selectAll = false;
-  bool _isEdited = false;
+  final _templateService = FormTemplateService();
+  final _supabaseService = SupabaseService();
+
+  List<FormTemplate> _templates = [];
+  FormTemplate? _selectedTemplate;
+  FormStateController? _formCtrl;
+
+  bool _isLoading = true;
   bool _isSaving = false;
-  List<Offset?>? _capturedSignaturePoints;
-  String? _savedSignatureBase64;
-  String _selectedForm = "General Intake Sheet";
-  List<Map<String, dynamic>> _familyMembers = [];
-  final GlobalKey<FamilyTableState> _familyTableKey = GlobalKey<FamilyTableState>();
-
-  final Map<String, TextEditingController> _controllers = {};
-  final Map<String, bool> _fieldChecks = {};
-  final Map<String, bool> _membershipData = {
-    'solo_parent': false,
-    'pwd': false,
-    'four_ps_member': false,
-    'phic_member': false,
-  };
-  bool _hasSupport = false;
-  String? _housingStatus;
-  List<Map<String, dynamic>> _supportingFamily = [];
-  String? _socioEconomicId;
-  String? _bloodType;
-
-  // All labels for UI Sections
-  final List<String> _allLabels = [
-    "Last Name", "First Name", "Middle Name", "Date of Birth", "Age", "Kasarian", "Estadong Sibil",
-    "Relihiyon", "CP Number", "Email Address", "Natapos o naabot sa pag-aaral",
-    "Lugar ng Kapanganakan", "Lugar ng Kapanganakan / Place of Birth", "Trabaho/Pinagkakakitaan", "Kumpanyang Pinagtratrabuhan",
-    "Buwanang Kita (A)",
-    "Membership Group",
-    "House number, street name, phase/purok", "Subdivision", "Barangay",
-    "Kasarian / Sex", "Uri ng Dugo / Blood Type", "Estadong Sibil / Martial Status",
-    "Kabuuang Tulong/Sustento kada Buwan (C)",
-    "Total Gross Family Income (A+B+C)=(D)",
-    "Household Size (E)",
-    "Monthly Per Capita Income (D/E)",
-    "Total Monthly Expense (F)",
-    "Net Monthly Income (D-F)",
-    "Bayad sa bahay",
-    "Food items",
-    "Non-food items",
-    "Utility bills",
-    "Baby's needs",
-    "School needs",
-    "Medical needs",
-    "Transpo expense",
-    "Loans",
-    "Gasul"
-  ];
-
-  // This is the getter that tells Flutter which "Step" to show
-// This is the getter that tells Flutter which "Step" to show
-  List<Widget> get _formSections {
-    if (_selectedForm == "General Intake Sheet") {
-      return [
-        // Index 0: Client Information
-        ClientInfoSection(
-          selectAll: _selectAll,
-          controllers: _controllers,
-          fieldChecks: _fieldChecks,
-          onCheckChanged: (key, val) {
-            setState(() {
-              _fieldChecks[key] = val;
-              _isEdited = true;
-            });
-          },
-          membershipData: _membershipData,
-        onMembershipChanged: (key, val) {
-            
-            setState(() {
-              _membershipData[key] = val;
-            });
-          },
-        ),
-
-        // Index 1: Family Composition
-        FamilyTable(
-          key: _familyTableKey,
-          selectAll: _selectAll,
-          familyMembers: _familyMembers,
-          fieldChecks: _fieldChecks,
-          onCheckChanged: (key, val) {
-            setState(() {
-              _fieldChecks[key] = val;
-              _isEdited = true;
-            });
-          },
-          onFamilyChanged: (newData) {
-            setState(() {
-              _familyMembers = newData;
-              _fieldChecks['Family Composition'] = true;
-              _isEdited = true;
-            });
-          },
-        ),
-
-        // Index 2: Socio-Economic Data
-        SocioEconomicSection(
-          selectAll: _selectAll,
-          controllers: _controllers,
-          hasSupport: _hasSupport,
-          housingStatus: _housingStatus,
-          supportingFamily: _supportingFamily,
-          fieldChecks: _fieldChecks,
-          onCheckChanged: (key, val) {
-            setState(() {
-              _fieldChecks[key] = val;
-              _isEdited = true;
-            });
-          },
-          onHasSupportChanged: (val) => setState(() { 
-            _hasSupport = val; 
-            _fieldChecks['Socio-Economic Data'] = true;
-            _isEdited = true; 
-          }),
-          onHousingStatusChanged: (val) => setState(() { 
-            _housingStatus = val; 
-            _fieldChecks['Socio-Economic Data'] = true;
-            _isEdited = true; 
-          }),
-          onSupportingFamilyChanged: (newData) {
-            setState(() {
-              _supportingFamily = newData;
-              _fieldChecks['Socio-Economic Data'] = true;
-              _isEdited = true;
-            });
-          },
-        ),
-
-// Inside _formSections in ManageInfoScreen.dart
-
-        // Index 3 (or the signature part):
-        Column( 
-          crossAxisAlignment: CrossAxisAlignment.start, // Align to left
-          children: [
-
-            const SizedBox(height: 10),
-            SignatureField(
-              points: _capturedSignaturePoints,
-              signatureImageBase64: _savedSignatureBase64,
-              // Pass the checkbox state from your _fieldChecks map
-              isChecked: _fieldChecks["Signature"] ?? false, 
-              onCheckboxChanged: (val) {
-                setState(() {
-                  _fieldChecks["Signature"] = val ?? false;
-                  _isEdited = true;
-                });
-              },
-              onCaptured: (points) {
-                setState(() {
-                  _capturedSignaturePoints = points;
-                  _isEdited = true;
-                });
-              },
-            ),
-            // ... keep your Clear Signature button below
-          ],
-        ),
-      ];
-    } else if (_selectedForm == "Personal Info") {
-      return [
-        // This entire Column will be wrapped by _buildSectionCard in your build method
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            PersonalInfoSection(
-              controllers: _controllers,
-              selectAll: _selectAll,
-              fieldChecks: _fieldChecks,
-              onCheckChanged: (key, val) { 
-                setState(() {
-                  _fieldChecks[key] = val;
-                  _isEdited = true;
-                });
-              },
-              onDateTap: () => _selectDate(),
-              onTextChanged: (val) {
-                if (!_isEdited) setState(() => _isEdited = true);
-              },
-              bloodType: _bloodType,
-              onBloodTypeChanged: (val) {
-                setState(() {
-                  _bloodType = val;
-                  _isEdited = true;
-                });
-              },
-            ),
-            
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16.0),
-              child: Divider(thickness: 1),
-            ),
-            
-            const Text(
-              "Signature", 
-              style: TextStyle(
-              color: Colors.white, // Add this line
-              fontWeight: FontWeight.bold, 
-              fontSize: 16,
-            ),
-            ),
-            const SizedBox(height: 10),
-
-            // Embedded Signature Field
-            SignatureField(
-              points: _capturedSignaturePoints,
-              signatureImageBase64: _savedSignatureBase64,
-              // Pass the checkbox state from your _fieldChecks map
-              isChecked: _fieldChecks["Signature"] ?? false, 
-              onCheckboxChanged: (val) {
-                setState(() {
-                  _fieldChecks["Signature"] = val ?? false;
-                  _isEdited = true;
-                });
-              },
-              onCaptured: (points) {
-                setState(() {
-                  _capturedSignaturePoints = points;
-                  _isEdited = true;
-                });
-              },
-            ),
-          ],
-        )
-      ];
-    }
-    return [const Center(child: Text("Select a form to begin"))];
-  }
-
-
-
-Future<void> _selectDate() async {
-  await DatePickerHelper.selectDate(
-    context: context,
-    dateController: _controllers["Date of Birth"]!,
-    ageController: _controllers["Age"],
-  );
-  setState(() => _isEdited = true);
-}
-
-void _changeStep(int newStep) {
-  setState(() {
-    _currentStep = newStep;
-  });
-  
-  // Use postFrameCallback to wait for the new section to render, 
-  // then scroll to the very top (position 0).
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        0,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.fastOutSlowIn,
-      );
-    }
-  });
-}
+  String _username = '';
 
   @override
   void initState() {
     super.initState();
+    _loadAll();
+  }
 
-    // Initialize controllers
-    for (final label in _allLabels) {
-      _controllers[label] = TextEditingController();
-      _controllers[label]!.addListener(() {
-        if (!_isEdited) setState(() => _isEdited = true);
+  Future<void> _loadAll() async {
+    setState(() => _isLoading = true);
+    try {
+      debugPrint('🚀 ManageInfoScreen: Loading templates...');
+      // 1. Load available templates
+      final templates = await _templateService.fetchActiveTemplates(forceRefresh: true);
+      debugPrint('📊 Received ${templates.length} templates');
+
+      // 2. Load saved user profile for autofill
+      final profileData = await _supabaseService.loadUserProfile(widget.userId);
+      final username = await _supabaseService.getUsername(widget.userId);
+
+      setState(() {
+        _templates = templates;
+        _username = username ?? '';
+        // Default to GIS
+        _selectedTemplate = templates.isNotEmpty
+            ? (templates.firstWhere(
+                (t) => t.formName == 'General Intake Sheet',
+                orElse: () => templates.first))
+            : null;
       });
-      _fieldChecks[label] = false;
-    }
 
-    // Autofill from scanner if available
-    if (widget.initialData != null) {
-      final data = widget.initialData!;
+      debugPrint('✅ Selected template: ${_selectedTemplate?.formName ?? "NONE"}');
 
-      _controllers["Last Name"]?.text = data.lastName;
-      _controllers["First Name"]?.text = data.firstName;
-      _controllers["Middle Name"]?.text = data.middleName;
-      _controllers["Date of Birth"]?.text = data.dateOfBirth;
-      _controllers["Kasarian"]?.text = data.sex;
-      _controllers["Estadong Sibil"]?.text = data.maritalStatus;
-      _controllers["Lugar ng Kapanganakan"]?.text = data.placeOfBirth;
-      _controllers["House number, street name, phase/purok"]?.text = data.address;
-    }
-
-    // Load existing user profile if userId exists
-    final String? effectiveId = widget.userId ?? Supabase.instance.client.auth.currentUser?.id;
-    if (effectiveId != null) {
-      _loadUserProfile(effectiveId);
-    }
-  }
-
-  Future<void> _loadUserProfile(String userId) async {
-  try {
-    // 1. Fetch the username via the service
-    final name = await _supabaseService.getUsername(userId);
-    if (name != null && mounted) {
-      setState(() => _username = name);
-    }
-
-      final response = await _supabaseService.loadUserProfile(userId);
-
-      if (response != null && mounted) {
-        setState(() {
-          _controllers["First Name"]?.text = response['firstname'] ?? '';
-          _controllers["Middle Name"]?.text = response['middle_name'] ?? '';
-          _controllers["Last Name"]?.text = response['lastname'] ?? '';
-          _controllers["Date of Birth"]?.text = response['birthdate'] ?? '';
-          _controllers["Age"]?.text = response['age']?.toString() ?? '';
-          _controllers["Email Address"]?.text = response['email'] ?? '';
-          _controllers["CP Number"]?.text = response['cellphone_number'] ?? '';
-          _controllers["Kasarian"]?.text = response['gender'] ?? '';
-          _controllers["Kasarian / Sex"]?.text = response['gender'] ?? '';
-          _bloodType = response['blood_type'];
-          _controllers["Estadong Sibil"]?.text = response['civil_status'] ?? '';
-          _controllers["Estadong Sibil / Martial Status"]?.text = response['civil_status'] ?? '';
-          _controllers["Relihiyon"]?.text = response['religion'] ?? '';
-          _controllers["Natapos o naabot sa pag-aaral"]?.text = response['education'] ?? '';
-          _controllers["Lugar ng Kapanganakan"]?.text = response['birthplace'] ?? '';
-          _controllers["Lugar ng Kapanganakan / Place of Birth"]?.text = response['birthplace'] ?? '';
-          _controllers["Trabaho/Pinagkakakitaan"]?.text = response['occupation'] ?? '';
-          _controllers["Kumpanyang Pinagtratrabuhan"]?.text = response['workplace'] ?? '';
-          _controllers["Buwanang Kita (A)"]?.text = response['monthly_allowance']?.toString() ?? '';
-
-          _membershipData['solo_parent'] = response['solo_parent'] ?? false;
-          _membershipData['pwd'] = response['pwd'] ?? false;
-          _membershipData['four_ps_member'] = response['four_ps_member'] ?? false;
-          _membershipData['phic_member'] = response['phic_member'] ?? false;
-
-          final addrData = response['user_addresses'];
-          if (addrData != null && addrData is Map) {
-            _controllers["House number, street name, phase/purok"]?.text = addrData['address_line'] ?? '';
-            _controllers["Subdivision"]?.text = addrData['subdivision'] ?? '';
-            _controllers["Barangay"]?.text = addrData['barangay'] ?? '';
-          }
-
-          final socioData = response['socio_economic_data'];
-          if (socioData != null && socioData is Map) {
-            _hasSupport = socioData['has_support'] ?? false;
-            _housingStatus = socioData['housing_status'];
-            _socioEconomicId = socioData['socio_economic_id']?.toString();
-
-            _controllers["Total Gross Family Income (A+B+C)=(D)"]?.text = socioData['gross_family_income']?.toString() ?? '';
-            _controllers["Household Size (E)"]?.text = socioData['household_size']?.toString() ?? '';
-            _controllers["Monthly Per Capita Income (D/E)"]?.text = socioData['monthly_per_capita']?.toString() ?? '';
-            _controllers["Total Monthly Expense (F)"]?.text = socioData['monthly_expenses']?.toString() ?? '';
-            _controllers["Net Monthly Income (D-F)"]?.text = socioData['net_monthly_income']?.toString() ?? '';
-            _controllers["Bayad sa bahay"]?.text = socioData['house_rent']?.toString() ?? '';
-            _controllers["Food items"]?.text = socioData['food_items']?.toString() ?? '';
-            _controllers["Non-food items"]?.text = socioData['non_food_items']?.toString() ?? '';
-            _controllers["Utility bills"]?.text = socioData['utility_bills']?.toString() ?? '';
-            _controllers["Baby's needs"]?.text = socioData['baby_needs']?.toString() ?? '';
-            _controllers["School needs"]?.text = socioData['school_needs']?.toString() ?? '';
-            _controllers["Medical needs"]?.text = socioData['medical_needs']?.toString() ?? '';
-            _controllers["Transpo expense"]?.text = socioData['transport_expenses']?.toString() ?? '';
-            _controllers["Loans"]?.text = socioData['loans']?.toString() ?? '';
-            _controllers["Gasul"]?.text = socioData['gas']?.toString() ?? '';
-
-            _socioEconomicId = socioData['socio_economic_id']?.toString();
-            final socioId = _socioEconomicId;
-            
-
-            if (socioId != null) {
-              _loadSupportingFamily(socioId);
-            }
-          }
-
-          _isEdited = false;
-        });
-
-        // Load signature if exists
-        if (response['signature_data'] != null) {
-          _savedSignatureBase64 = response['signature_data'];
-          _capturedSignaturePoints = [];
-          debugPrint('Signature loaded from database');
-        }
-
-        final String? profileId = response['profile_id'];
-        if (profileId != null) {
-          _loadFamilyComposition(profileId);
-        }
+      if (_selectedTemplate != null) {
+        _initFormController(profileData);
       }
-    } catch (e) {
-      debugPrint('Load Error: $e');
+    } catch (e, stack) {
+      debugPrint('❌ ManageInfoScreen._loadAll error: $e');
+      debugPrint('Stack: $stack');
     }
+    setState(() => _isLoading = false);
   }
 
-  Future<void> _loadFamilyComposition(String profileId) async {
-    try {
-      final response = await _supabaseService.loadFamilyComposition(profileId);
+  void _initFormController(Map<String, dynamic>? profileData) {
+    _formCtrl?.dispose();
+    final ctrl = FormStateController(template: _selectedTemplate!);
 
-      if (mounted) {
-        setState(() {
-          _familyMembers = response;
-        });
-      }
-    } catch (e) {
-      debugPrint('Load Family Composition Error: $e');
-    }
-  }
+    if (profileData != null) {
+      debugPrint('📝 Autofilling from profile...');
+      // Pre-populate from saved profile
+      final address = (profileData['user_addresses'] as Map<String, dynamic>?) ?? {};
+      final socio = (profileData['socio_economic_data'] as Map<String, dynamic>?) ?? {};
 
-  Future<void> _loadSupportingFamily(String socioEconomicId) async {
-    try {
-      final response = await _supabaseService.loadSupportingFamily(socioEconomicId);
-
-      if (mounted) {
-        setState(() {
-          _supportingFamily = response;
-          if (_supportingFamily.isNotEmpty && _supportingFamily[0]['monthly_alimony'] != null) {
-            _controllers["Kabuuang Tulong/Sustento kada Buwan (C)"]?.text =
-                _supportingFamily[0]['monthly_alimony'].toString();
-          }
-        });
-      }
-    } catch (e) {
-      debugPrint('Load Supporting Family Error: $e');
-    }
-  }
-
-  Future<void> _handleSave() async {
-    final String? currentUserId = widget.userId ?? Supabase.instance.client.auth.currentUser?.id;
-
-    if (currentUserId == null) {
-      _showFeedback("Error: User session lost. Please login.", Colors.red);
-      return;
-    }
-
-    setState(() => _isSaving = true);
-
-    try {
-      final profileMap = {
-        "Last Name": "lastname", "First Name": "firstname", "Middle Name": "middle_name",
-        "Date of Birth": "birthdate", "Age": "age",
-        "Kasarian": "gender", "Kasarian / Sex": "gender",
-        "Estadong Sibil": "civil_status", "Estadong Sibil / Martial Status": "civil_status",
-        "Relihiyon": "religion",
-        "CP Number": "cellphone_number", "Email Address": "email",
-        "Natapos o naabot sa pag-aaral": "education", "Lugar ng Kapanganakan": "birthplace", "Lugar ng Kapanganakan / Place of Birth": "birthplace",
-        "Trabaho/Pinagkakakitaan": "occupation", "Kumpanyang Pinagtratrabuhan": "workplace",
-        "Buwanang Kita (A)": "monthly_allowance"
-      };
-      final Map<String, dynamic> profileData = {};
-      profileMap.forEach((label, column) {
-        final value = _controllers[label]?.text.trim() ?? '';
-        if (value.isNotEmpty) {
-          if (column == 'age') {
-            profileData[column] = int.tryParse(value) ?? 0;
-          } else {
-            profileData[column] = value;
-          }
-        }
-      });
-      if (_bloodType != null) profileData['blood_type'] = _bloodType;
-
-      final String profileId = await _supabaseService.saveUserProfile(
-        userId: currentUserId,
-        profileData: profileData,
-        membershipData: _membershipData,
+      final autofillData = _templateService.buildAutofillMap(
+        template: _selectedTemplate!,
+        profile: profileData,
+        address: address,
+        socio: socio,
+        family: [],
+        supporting: [],
       );
+      debugPrint('✅ Autofill data keys: ${autofillData.keys.toList()}');
+      ctrl.loadFromJson(autofillData);
+    }
 
-      final addressMap = {
-        "House number, street name, phase/purok": "address_line",
-        "Subdivision": "subdivision", "Barangay": "barangay"
-      };
-      final Map<String, dynamic> addressData = {};
-      addressMap.forEach((label, column) {
-        final value = _controllers[label]?.text.trim() ?? '';
-        if (value.isNotEmpty) addressData[column] = value;
-      });
-      await _supabaseService.saveUserAddress(profileId, addressData);
+    setState(() => _formCtrl = ctrl);
 
-      try {
-        final familyData = _familyTableKey.currentState?.getFamilyData() ?? _familyMembers;
-        final validFamilyRows = familyData.where((member) {
-          final name = member['name']?.toString().trim() ?? '';
-          final relationship = member['relationship_of_relative']?.toString().trim() ?? '';
-          return name.isNotEmpty || relationship.isNotEmpty;
-        }).toList();
-
-        if (validFamilyRows.isNotEmpty) {
-          final familyPayload = validFamilyRows.map((member) => {
-            'name': member['name']?.toString().trim() ?? '',
-            'relationship_of_relative': member['relationship_of_relative']?.toString().trim() ?? '',
-            'birthdate': member['birthdate']?.toString().trim().isEmpty ?? true ? null : member['birthdate'],
-            'age': member['age'] is int ? member['age'] : int.tryParse(member['age']?.toString() ?? '0') ?? 0,
-            'gender': member['gender']?.toString().trim() ?? '',
-            'civil_status': member['civil_status']?.toString().trim() ?? '',
-            'education': member['education']?.toString().trim() ?? '',
-            'occupation': member['occupation']?.toString().trim() ?? '',
-            'allowance': member['allowance'] is num ? member['allowance'] : double.tryParse(member['allowance']?.toString().replaceAll(',', '') ?? '0') ?? 0,
-          }).toList();
-
-          await _supabaseService.saveFamilyComposition(profileId, familyPayload);
-        }
-      } catch (e) {
-        debugPrint('Family Composition Save Error: $e');
-      }
-
-      final socioMap = {
-        "Total Gross Family Income (A+B+C)=(D)": "gross_family_income",
-        "Household Size (E)": "household_size",
-        "Monthly Per Capita Income (D/E)": "monthly_per_capita",
-        "Total Monthly Expense (F)": "monthly_expenses",
-        "Net Monthly Income (D-F)": "net_monthly_income",
-        "Bayad sa bahay": "house_rent",
-        "Food items": "food_items",
-        "Non-food items": "non_food_items",
-        "Utility bills": "utility_bills",
-        "Baby's needs": "baby_needs",
-        "School needs": "school_needs",
-        "Medical needs": "medical_needs",
-        "Transpo expense": "transport_expenses",
-        "Loans": "loans",
-        "Gasul": "gas"
-      };
-      final Map<String, dynamic> socioData = {
-        'has_support': _hasSupport,
-        'housing_status': _housingStatus,
-      };
-      socioMap.forEach((label, column) {
-        final value = _controllers[label]?.text.trim() ?? '';
-        if (value.isNotEmpty) {
-          socioData[column] = (column == 'household_size') ? int.tryParse(value) ?? 1 : double.tryParse(value) ?? 0;
-        }
-      });
-
-      _socioEconomicId = await _supabaseService.saveSocioEconomicData(profileId, socioData);
-
-      if (_socioEconomicId != null && _hasSupport && _supportingFamily.isNotEmpty) {
-        final monthlyAlimony = double.tryParse(_controllers["Kabuuang Tulong/Sustento kada Buwan (C)"]?.text.trim() ?? '') ?? 0;
-        await _supabaseService.saveSupportingFamily(_socioEconomicId!, _supportingFamily, monthlyAlimony);
-      }
-
-      // Save signature
-      try {
-        if (_capturedSignaturePoints != null && _capturedSignaturePoints!.isNotEmpty) {
-          final signatureBase64 = await SignatureHelper.convertToBase64(_capturedSignaturePoints!);
-          
-          if (signatureBase64 != null) {
-            await Supabase.instance.client
-                .from('user_profiles')
-                .update({'signature_data': signatureBase64})
-                .eq('profile_id', profileId);
-            
-            debugPrint('Signature saved successfully');
-          }
-        }
-      } catch (e) {
-        debugPrint('Signature save error: $e');
-      }
-
-      if (mounted) {
-        setState(() { _isEdited = false; _isSaving = false; });
-        _showFeedback("Profile saved successfully!", Colors.green);
-      }
-    } catch (e) {
-      setState(() => _isSaving = false);
-      debugPrint("DB ERROR: $e");
-      _showFeedback("Save Failed: ${e.toString()}", Colors.red);
+    // Load family + supporting family separately
+    if (profileData?['profile_id'] != null) {
+      _loadComplexData(profileData!['profile_id'], profileData);
     }
   }
 
-  void _showFeedback(String message, Color color) {
+  Future<void> _loadComplexData(String profileId, Map<String, dynamic> profileData) async {
+    final family = await _supabaseService.loadFamilyComposition(profileId);
+    final socio = (profileData['socio_economic_data'] as Map<String, dynamic>?) ?? {};
+    final socioId = socio['socio_economic_id']?.toString();
+    final supporting = socioId != null
+        ? await _supabaseService.loadSupportingFamily(socioId)
+        : <Map<String, dynamic>>[];
+
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: color, behavior: SnackBarBehavior.floating),
-    );
+    _formCtrl?.familyMembers = family.map((m) => {
+      'name': m['name'] ?? '',
+      'relationship': m['relationship_of_relative'] ?? '',
+      'birthdate': m['birthdate']?.toString() ?? '',
+      'age': m['age']?.toString() ?? '',
+      'gender': m['gender'] ?? '',
+      'civil_status': m['civil_status'] ?? '',
+      'education': m['education'] ?? '',
+      'occupation': m['occupation'] ?? '',
+      'allowance': m['allowance']?.toString() ?? '',
+    }).toList();
+
+    _formCtrl?.supportingFamily = supporting.map((m) => {
+      'name': m['name'] ?? '',
+      'relationship': m['relationship'] ?? '',
+      'regular_sustento': m['regular_sustento']?.toString() ?? '',
+    }).toList();
+
+    _formCtrl?.hasSupport = (socio['has_support'] as bool?) ?? false;
+    _formCtrl?.housingStatus = socio['housing_status']?.toString();
+
+    _formCtrl?.notifyListeners();
   }
 
-  Future<void> _handleLogout() async {
-    await Supabase.instance.client.auth.signOut();
-    if (mounted) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-        (route) => false,
+  // ── Save profile to Supabase ──────────────────────────────
+  Future<void> _saveProfile() async {
+    if (_formCtrl == null) return;
+    setState(() => _isSaving = true);
+    try {
+      final data = _formCtrl!.toJson();
+
+      // Map dynamic field names back to Supabase column names
+      final profileData = <String, dynamic>{};
+      final addressData = <String, dynamic>{};
+      final socioData = <String, dynamic>{};
+
+      for (final field in _selectedTemplate!.allFields) {
+        final src = field.autofillSource;
+        if (src == null) continue;
+        final val = data[field.fieldName];
+        if (val == null || val.toString().isEmpty) continue;
+
+        if (src.startsWith('address.')) {
+          addressData[src.substring('address.'.length)] = val;
+        } else if (src.startsWith('socio.')) {
+          socioData[src.substring('socio.'.length)] = val;
+        } else if (src == 'signature_data') {
+          profileData['signature_data'] = val;
+        } else {
+          // Direct profile column
+          if (src == 'age') {
+            profileData[src] = int.tryParse(val.toString()) ?? 0;
+          } else {
+            profileData[src] = val;
+          }
+        }
+      }
+
+      // Membership booleans
+      final membership = _formCtrl!.membershipData;
+      profileData.addAll(membership);
+
+      final profileId = await _supabaseService.saveUserProfile(
+        userId: widget.userId,
+        profileData: profileData,
+        membershipData: membership,
+      );
+
+      await _supabaseService.saveUserAddress(profileId, addressData);
+      await _supabaseService.saveFamilyComposition(
+        profileId,
+        _formCtrl!.familyMembers.map((m) => {
+          'name': m['name'] ?? '',
+          'relationship_of_relative': m['relationship'] ?? '',
+          'birthdate': m['birthdate'],
+          'age': int.tryParse(m['age']?.toString() ?? '0') ?? 0,
+          'gender': m['gender'] ?? '',
+          'civil_status': m['civil_status'] ?? '',
+          'education': m['education'] ?? '',
+          'occupation': m['occupation'] ?? '',
+          'allowance': double.tryParse(m['allowance']?.toString().replaceAll(',', '') ?? '0') ?? 0,
+        }).toList(),
+      );
+
+      if (socioData.isNotEmpty) {
+        socioData['housing_status'] = _formCtrl!.housingStatus ?? '';
+        socioData['has_support'] = _formCtrl!.hasSupport;
+        final socioId = await _supabaseService.saveSocioEconomicData(profileId, socioData);
+        await _supabaseService.saveSupportingFamily(
+          socioId,
+          _formCtrl!.supportingFamily,
+          double.tryParse(data['monthly_alimony']?.toString() ?? '0') ?? 0,
+        );
+      }
+
+      if (mounted) {
+        _showFeedback('Profile saved!', Colors.green);
+      }
+    } catch (e) {
+      debugPrint('Save error: $e');
+      if (mounted) _showFeedback('Save failed: $e', Colors.red);
+    }
+    if (mounted) setState(() => _isSaving = false);
+  }
+
+  // ── QR share selected fields ──────────────────────────────
+  Future<void> _scanAndTransmit() async {
+    if (_formCtrl == null) return;
+
+    final dataToTransmit = _formCtrl!.toFilteredJson();
+
+    final sessionId = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => QrScannerScreen(
+          transmitData: dataToTransmit,
+          userId: widget.userId,
+        ),
+      ),
+    );
+
+    if (sessionId != null && mounted) {
+      final success = await _supabaseService.sendDataToWebSession(
+        sessionId,
+        dataToTransmit,
+      );
+      _showFeedback(
+        success ? 'Data transmitted!' : 'Failed to send data.',
+        success ? Colors.green : Colors.red,
       );
     }
+  }
+
+  void _showFeedback(String msg, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
   void dispose() {
-    for (var controller in _controllers.values) {
-      controller.dispose();
-    }
+    _formCtrl?.dispose();
     super.dispose();
   }
 
-  Widget _buildSectionCard({required Widget child}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(25),
-      margin: const EdgeInsets.only(bottom: 20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: child,
-    );
-  }
-
-
-
+  // ── Build ─────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.pageBg,
+      backgroundColor: const Color(0xFFF4F7FE),
       appBar: AppBar(
         backgroundColor: AppColors.primaryBlue,
-        toolbarHeight: 70, // Slightly taller to fit two lines comfortably
-        leading: IconButton(
-          icon: const Icon(Icons.logout, color: Colors.white, size: 20),
-          onPressed: () {
-            showDialog(
-              context: context,
-              builder: (_) => LogoutConfirmationDialog(onConfirm: _handleLogout),
-            );
-          },
-        ),
+        elevation: 0,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              "Manage Information".toUpperCase(),
-              style: const TextStyle(
-                color: Colors.white70, 
-                fontSize: 12, 
-                letterSpacing: 1.2,
-                fontWeight: FontWeight.w500
-              ),
-            ),
-            Text(
-              _username,
-              style: const TextStyle(
-                color: Colors.white, 
-                fontSize: 18, 
-                fontWeight: FontWeight.bold
-              ),
-            ),
+            const Text('MY PROFILE',
+                style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 10,
+                    letterSpacing: 1.2,
+                    fontWeight: FontWeight.w500)),
+            Text(_username,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold)),
           ],
         ),
-      ),
-      body: Column(
-        children: [
-          Container(
-            color: AppColors.primaryBlue.withOpacity(0.05),
-            padding: const EdgeInsets.all(16),
-            child: FormDropdown(
-              selectedForm: _selectedForm,
-              items: const ["Personal Info", "General Intake Sheet", "Senior Citizen ID"],
-              onChanged: (val) {
-                if (val != null) {
-                  setState(() {
-                    _selectedForm = val;
-                    _currentStep = 0;
-                    
-                    // 1. Reset the Select All toggle
-                    _selectAll = false;
-
-                    // 2. Clear all previous checkboxes
-                    // This ensures checks from "Personal Info" don't bleed into "GIS"
-                    _fieldChecks.updateAll((key, value) => false);
-
-                    _isEdited = true;
-                  });
-                }
-              },
-            ),
+        actions: [
+          // Save button
+          IconButton(
+            icon: _isSaving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        color: Colors.white, strokeWidth: 2))
+                : const Icon(Icons.save, color: Colors.white),
+            onPressed: _isSaving ? null : _saveProfile,
           ),
-// Inside your build method:
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                // 1. Top Navigation & Progress
-                if (_formSections.length > 1)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 20),
-                    child: Row(
+          // Logout button
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.white),
+            onPressed: () async {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Logout'),
+                  content: const Text('Are you sure you want to logout?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Cancel'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primaryBlue,
+                      ),
+                      child: const Text('Logout', style: TextStyle(color: Colors.white)),
+                    ),
+                  ],
+                ),
+              );
+              if (confirm == true && mounted) {
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  (route) => false,
+                );
+              }
+            },
+          ),
+        ],
+      ),
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.primaryBlue))
+          : _selectedTemplate == null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Top BACK arrow
-                        Opacity(
-                          opacity: _currentStep > 0 ? 1.0 : 0.0, // Hidden but keeps spacing
-                          child: IconButton(
-                            icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-                            color: AppColors.primaryBlue,
-                            onPressed: _currentStep > 0 ? () => _changeStep(_currentStep - 1) : null,
-                          ),
+                        const Icon(Icons.error_outline, size: 64, color: Colors.grey),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'No forms available',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                         ),
-                        
-                        const SizedBox(width: 15),
-                        
+                        const SizedBox(height: 8),
                         Text(
-                          "Page ${_currentStep + 1} of ${_formSections.length}",
-                          style: TextStyle(
-                            color: AppColors.primaryBlue, 
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16
-                          ),
+                          'Please ensure the "General Intake Sheet" template is created in Supabase.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey.shade600),
                         ),
-
-                        const SizedBox(width: 15),
-
-                        // Top NEXT arrow
-                        Opacity(
-                          opacity: _currentStep < _formSections.length - 1 ? 1.0 : 0.0,
-                          child: IconButton(
-                            icon: const Icon(Icons.arrow_forward_ios, size: 20),
-                            color: AppColors.primaryBlue,
-                            onPressed: _currentStep < _formSections.length - 1 
-                                ? () => _changeStep(_currentStep + 1) 
-                                : null,
+                        const SizedBox(height: 24),
+                        ElevatedButton.icon(
+                          onPressed: _loadAll,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Retry'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primaryBlue,
+                            foregroundColor: Colors.white,
                           ),
                         ),
                       ],
                     ),
                   ),
-
-                  // 2. Show ONLY the current section
-                  _buildSectionCard(
-                      child: _currentStep < _formSections.length 
-                          ? _formSections[_currentStep] 
-                          : _formSections[0] // Fallback to first step if index is out of bounds
+                )
+              : Column(
+                  children: [
+                    // ── Form selector dropdown ──────────────────
+                    Container(
+                      color: AppColors.primaryBlue.withOpacity(0.05),
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          const Text('Form:',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13)),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                    color: const Color(0xFFDDDDEE)),
+                              ),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: _selectedTemplate!.templateId,
+                                  items: _templates
+                                      .map((t) => DropdownMenuItem(
+                                            value: t.templateId,
+                                            child: Text(t.formName,
+                                                style: const TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight:
+                                                        FontWeight.w600)),
+                                          ))
+                                      .toList(),
+                                  onChanged: (id) async {
+                                    final tpl = _templates.firstWhere(
+                                        (t) => t.templateId == id);
+                                    setState(() {
+                                      _selectedTemplate = tpl;
+                                    });
+                                    final profile =
+                                        await _supabaseService
+                                            .loadUserProfile(widget.userId);
+                                    _initFormController(profile);
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
 
-                  // 3. Navigation Row (Bottom Left)
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: [
-                      // Bottom BACK arrow
-                      if (_currentStep > 0)
-                        IconButton(
-                          onPressed: () => _changeStep(_currentStep - 1),
-                          icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-                          color: AppColors.primaryBlue,
-                        )
-                      else
-                        const SizedBox(width: 48),
-
-                      const SizedBox(width: 10),
-
-                      // Bottom NEXT arrow
-                      if (_currentStep < _formSections.length - 1)
-                        IconButton(
-                          onPressed: () => _changeStep(_currentStep + 1),
-                          icon: const Icon(Icons.arrow_forward_ios, size: 20),
-                          color: AppColors.primaryBlue,
+                    // ── Dynamic form ────────────────────────────
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(16),
+                        child: AnimatedBuilder(
+                          animation: _formCtrl!,
+                          builder: (context, _) => DynamicFormRenderer(
+                            template: _selectedTemplate!,
+                            controller: _formCtrl!,
+                            mode: 'mobile',
+                            showCheckboxes: true,
+                          ),
                         ),
-                    ],
-                  ),
-                ],
+                      ),
+                    ),
+
+                    // ── Bottom actions ──────────────────────────
+                    _buildBottomBar(),
+                  ],
+                ),
+    );
+  }
+
+  Widget _buildBottomBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Select All
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () {
+                _formCtrl?.setSelectAll(!(_formCtrl?.selectAll ?? false));
+                setState(() {});
+              },
+              icon: const Icon(Icons.select_all, size: 16),
+              label: Text(
+                _formCtrl?.selectAll ?? false
+                    ? 'Deselect All'
+                    : 'Select All',
+                style: const TextStyle(fontSize: 12),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.primaryBlue,
+                side: const BorderSide(color: AppColors.primaryBlue),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          // Scan & Share
+          Expanded(
+            flex: 2,
+            child: ElevatedButton.icon(
+              onPressed: _scanAndTransmit,
+              icon: const Icon(Icons.qr_code_scanner,
+                  color: Colors.white, size: 18),
+              label: const Text('Scan & Share',
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryBlue,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
               ),
             ),
           ),
         ],
-      ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            // 1. ADD THE SCANNER BUTTON HERE
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: InfoScannerButton(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const InfoScannerScreen()),
-                  );
-                },
-              ),
-            ),
-
-            if (_isEdited)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _isSaving
-                    ? const FloatingActionButton(
-                        onPressed: null,
-                        backgroundColor: Colors.grey,
-                        child: CircularProgressIndicator(color: Colors.white),
-                      )
-                    : SaveButton(onTap: _handleSave),
-              ),
-              
-            SelectAllButton(
-              isSelected: _selectAll,
-              onChanged: (v) => setState(() {
-                _selectAll = v;
-                _fieldChecks.updateAll((key, val) => _selectAll);
-                _isEdited = true;
-                _fieldChecks['Signature'] = _selectAll;
-                _fieldChecks['Membership Group'] = _selectAll;
-                _fieldChecks['Family Composition'] = _selectAll;
-                _fieldChecks['Socio-Economic Data'] = _selectAll;
-              }),
-            ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: CustomBottomNav(
-        currentIndex: _currentIndex,
-        onTap: (i) async {
-          if (i == 1) { // Send Button
-            // 1. Prepare the data based on Checkboxes
-            Map<String, dynamic> dataToTransmit = {};
-
-            // Standard Text Fields
-            // We map the UI Label to the Value only if the checkbox for that label is true
-            _controllers.forEach((label, controller) {
-              if (_fieldChecks[label] == true) {
-                dataToTransmit[label] = controller.text.trim();
-              }
-            });
-
-            // Membership Radios
-            if (_fieldChecks['Membership Group'] == true) {
-              dataToTransmit['__membership'] = {
-                'solo_parent': _membershipData['solo_parent'] ?? false,
-                'pwd': _membershipData['pwd'] ?? false,
-                'four_ps_member': _membershipData['four_ps_member'] ?? false,
-                'phic_member': _membershipData['phic_member'] ?? false,
-              };
-            }
-
-            // Family Table
-            if (_fieldChecks['Family Composition'] == true || _selectAll) {
-              final familyData = _familyTableKey.currentState?.getFamilyData() ?? _familyMembers;
-              dataToTransmit['__family_composition'] = familyData.map((m) => {
-                'name': m['name'] ?? '',
-                'relationship_of_relative': m['relationship_of_relative'] ?? '',
-                'birthdate': m['birthdate']?.toString() ?? '',
-                'age': m['age']?.toString() ?? '',
-                'gender': m['gender'] ?? '',
-                'civil_status': m['civil_status'] ?? '',
-                'education': m['education'] ?? '',
-                'occupation': m['occupation'] ?? '',
-                'allowance': m['allowance']?.toString() ?? '',
-              }).toList();
-              
-              debugPrint('Family Data being sent: ${dataToTransmit['__family_composition']}');
-            }
-            
-            // Socio-Economic Data
-            if (_fieldChecks['Socio-Economic Data'] == true || _selectAll) {
-              dataToTransmit['__has_support'] = _hasSupport;
-              dataToTransmit['__housing_status'] = _housingStatus ?? '';
-              
-              dataToTransmit['__supporting_family'] = _supportingFamily.map((m) => {
-                'name': m['name'] ?? '',
-                'relationship': m['relationship'] ?? '',
-                'regular_sustento': m['regular_sustento']?.toString() ?? '0.0',
-              }).toList();
-              
-              // Include all socio-economic fields
-              final socioFields = [
-                "Kabuuang Tulong/Sustento kada Buwan (C)",
-                "Total Gross Family Income (A+B+C)=(D)",
-                "Household Size (E)",
-                "Monthly Per Capita Income (D/E)",
-                "Total Monthly Expense (F)",
-                "Net Monthly Income (D-F)",
-                "Bayad sa bahay",
-                "Food items",
-                "Non-food items",
-                "Utility bills",
-                "Baby's needs",
-                "School needs",
-                "Medical needs",
-                "Transpo expense",
-                "Loans",
-                "Gasul"
-              ];
-              
-              for (var field in socioFields) {
-                dataToTransmit[field] = _controllers[field]?.text ?? '';
-              }
-            }
-
-            // Signature
-            if (_fieldChecks['Signature'] == true || _selectAll) {
-              String? sigBase64 = _savedSignatureBase64;
-              if (_capturedSignaturePoints != null && _capturedSignaturePoints!.isNotEmpty) {
-                sigBase64 = await SignatureHelper.convertToBase64(_capturedSignaturePoints!);
-              }
-              if (sigBase64 != null) {
-                dataToTransmit['__signature'] = sigBase64;
-              }
-            }
-
-            // 2. Open Scanner
-            final result = await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => QrScannerScreen(
-                  transmitData: dataToTransmit,
-                  userId: widget.userId,
-                ),
-              ),
-            );
-
-            // 3. Send to Supabase
-            if (result != null && result is String) {
-              // Debug: Print what we're sending
-              debugPrint('=== QR DATA TRANSMISSION ===');
-              debugPrint('Family Composition: ${dataToTransmit['__family_composition']}');
-              debugPrint('Socio-Economic Data: Has Support=${dataToTransmit['__has_support']}, Housing=${dataToTransmit['__housing_status']}');
-              debugPrint('Supporting Family: ${dataToTransmit['__supporting_family']}');
-              debugPrint('Socio Fields: Total Gross=${dataToTransmit['Total Gross Family Income (A+B+C)=(D)']}, Bayad=${dataToTransmit['Bayad sa bahay']}');
-              debugPrint('===========================');
-              
-              // Use the existing service method that updates the 'form_data'
-              final success = await _supabaseService.sendDataToWebSession(result, dataToTransmit);
-              
-              if (mounted) {
-                _showFeedback(
-                  success ? "Data transmitted!" : "Failed to send data.",
-                  success ? Colors.green : Colors.red
-                );
-              }
-            }
-          } else {
-            setState(() => _currentIndex = i);
-          }
-        },
       ),
     );
   }

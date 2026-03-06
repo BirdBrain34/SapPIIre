@@ -1,15 +1,22 @@
+// lib/web/screen/applicants_screen.dart
+// REFACTORED: Uses DynamicFormRenderer to display any saved form template.
+// No more hardcoded GIS section imports.
+
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'package:sappiire/constants/app_colors.dart';
+import 'package:sappiire/models/form_template_models.dart';
+import 'package:sappiire/services/form_template_service.dart';
+import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
+import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/web/widget/web_shell.dart';
+import 'package:sappiire/web/utils/page_transitions.dart';
+import 'package:sappiire/web/screen/web_login_screen.dart';
 import 'package:sappiire/web/screen/dashboard_screen.dart';
 import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
-import 'package:sappiire/web/screen/web_login_screen.dart';
-import 'package:sappiire/web/utils/page_transitions.dart';
-import 'package:sappiire/resources/GIS.dart';
-import 'package:sappiire/resources/signature_field.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ApplicantsScreen extends StatefulWidget {
   final String cswd_id;
@@ -26,265 +33,184 @@ class ApplicantsScreen extends StatefulWidget {
 }
 
 class _ApplicantsScreenState extends State<ApplicantsScreen> {
+  final _supabase = Supabase.instance.client;
+  final _templateService = FormTemplateService();
+
   List<Map<String, dynamic>> _submissions = [];
   Map<String, dynamic>? _selectedSubmission;
+  FormTemplate? _activeTemplate;
+  FormStateController? _viewCtrl;
+  FormStateController? _editCtrl;
+
   bool _isLoading = true;
+  bool _isEditMode = false;
+  bool _isSaving = false;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
-  // ── Read-only controllers (populated when a submission is selected) ──────────
-  final Map<String, TextEditingController> _viewControllers = {};
-
-  // ── Complex field state (read-only mirrors) ──────────────────────────────────
-  Map<String, bool> _membershipData = {
-    'solo_parent': false,
-    'pwd': false,
-    'four_ps_member': false,
-    'phic_member': false,
-  };
-  List<Map<String, dynamic>> _familyMembers = [];
-  List<Map<String, dynamic>> _supportingFamily = [];
-  bool _hasSupport = false;
-  String? _housingStatus;
-  String? _signatureBase64;
-
-  // --- editing mode state --------------------------------------------------
-  final Map<String, TextEditingController> _editControllers = {};
-  Map<String, bool> _fieldChecks = {};
-  bool _isEditMode = false;
-  bool _isSaving = false;
-
-
-
-  static const List<String> _allLabels = [
-    "Last Name", "First Name", "Middle Name", "Date of Birth", "Age",
-    "House number, street name, phase/purok", "Subdivision", "Barangay",
-    "Kasarian", "Estadong Sibil", "Relihiyon", "CP Number", "Email Address",
-    "Natapos o naabot sa pag-aaral", "Lugar ng Kapanganakan",
-    "Trabaho/Pinagkakakitaan", "Kumpanyang Pinagtratrabuhan",
-    "Buwanang Kita (A)", "Total Gross Family Income (A+B+C)=(D)",
-    "Household Size (E)", "Monthly Per Capita Income (D/E)",
-    "Total Monthly Expense (F)", "Net Monthly Income (D-F)",
-    "Bayad sa bahay", "Food items", "Non-food items", "Utility bills",
-    "Baby's needs", "School needs", "Medical needs", "Transpo expense",
-    "Loans", "Gasul", "Kabuuang Tulong/Sustento kada Buwan (C)"
-  ];
+  // Template cache by form_type name
+  final Map<String, FormTemplate> _templateCache = {};
 
   @override
   void initState() {
     super.initState();
-    _initializeControllers();
-    _initializeEditControllers();
-    _fetchSubmissions();
+    _loadData();
   }
 
-  void _initializeControllers() {
-    for (final label in _allLabels) {
-      _viewControllers[label] = TextEditingController();
-    }
-  }
-
-  /// Prepare a separate set of controllers used while the user is editing a
-  /// submission so that we can discard or save without altering the viewable
-  /// controllers.
-  void _initializeEditControllers() {
-    for (final label in _allLabels) {
-      _editControllers[label] = TextEditingController();
-    }
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    for (final c in _viewControllers.values) c.dispose();
-    for (final c in _editControllers.values) c.dispose();
-    super.dispose();
-  }
-
-  // ── Data fetching ─────────────────────────────────────────────────────────────
-  Future<void> _fetchSubmissions() async {
+  Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      final response = await Supabase.instance.client
+      // Pre-load all templates
+      final templates = await _templateService.fetchActiveTemplates();
+      for (final t in templates) {
+        _templateCache[t.formName] = t;
+      }
+
+      final response = await _supabase
           .from('client_submissions')
-          .select('id, form_type, data, created_at')
-          .order('created_at', ascending: false);
+          .select('id, form_type, data, created_at, created_by')
+          .order('created_at', ascending: false)
+          .range(0, 99); // paginate: first 100
 
       setState(() {
         _submissions = List<Map<String, dynamic>>.from(response);
         _isLoading = false;
       });
     } catch (e) {
-      debugPrint('Error fetching submissions: $e');
+      debugPrint('_loadData error: $e');
       setState(() => _isLoading = false);
     }
   }
 
-  /// Populate all view-only controllers from a selected submission's data map.
-  void _loadSubmissionIntoView(Map<String, dynamic> submission) {
+  // ── Load a submission into the detail panel ───────────────
+  void _loadSubmission(Map<String, dynamic> submission) {
+    final formType = submission['form_type'] as String? ?? '';
     final data = submission['data'] as Map<String, dynamic>? ?? {};
+    final template = _templateCache[formType];
 
-    // Clear first
-    for (final c in _viewControllers.values) c.clear();
+    _viewCtrl?.dispose();
+    _editCtrl?.dispose();
 
-    // Build normalized lookup of data keys to handle small label differences
-    String _normalize(String s) =>
-        s.toString().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
-
-    final Map<String, String> normalizedToKey = {};
-    data.forEach((k, v) {
-      normalizedToKey[_normalize(k)] = k;
-    });
-
-    // Populate by exact key first
-    data.forEach((key, value) {
-      if (_viewControllers.containsKey(key)) {
-        _viewControllers[key]!.text = value?.toString() ?? '';
-      }
-    });
-
-    // Populate remaining controllers by normalized key match
-    for (final label in _viewControllers.keys) {
-      if (_viewControllers[label]!.text.isEmpty) {
-        final sourceKey = normalizedToKey[_normalize(label)];
-        if (sourceKey != null && data.containsKey(sourceKey)) {
-          _viewControllers[label]!.text =
-              data[sourceKey]?.toString() ?? '';
-        }
-      }
+    if (template == null) {
+      // Unknown template — show raw JSON fallback
+      setState(() {
+        _selectedSubmission = submission;
+        _activeTemplate = null;
+        _viewCtrl = null;
+        _editCtrl = null;
+        _isEditMode = false;
+      });
+      return;
     }
 
-    // Membership
-    final membership = data['__membership'] as Map<String, dynamic>? ?? {};
-    _membershipData = {
-      'solo_parent': membership['solo_parent'] ?? false,
-      'pwd': membership['pwd'] ?? false,
-      'four_ps_member': membership['four_ps_member'] ?? false,
-      'phic_member': membership['phic_member'] ?? false,
-    };
+    final view = FormStateController(template: template)..loadFromJson(data);
+    final edit = FormStateController(template: template)..loadFromJson(data);
 
-    // Family composition
-    _familyMembers = data.containsKey('__family_composition')
-        ? List<Map<String, dynamic>>.from(data['__family_composition'] ?? [])
-        : [];
-
-    // Supporting family
-    _supportingFamily = data.containsKey('__supporting_family')
-        ? List<Map<String, dynamic>>.from(data['__supporting_family'] ?? [])
-        : [];
-
-    _hasSupport = data['__has_support'] ?? false;
-    _housingStatus = data['__housing_status'];
-    _signatureBase64 = data['__signature'];
-
-    // reset any editing state when a new submission is chosen
-    _fieldChecks.clear();
-
-    if (_isEditMode) {
-      _copyViewToEdit();
-    }
-
-    setState(() => _selectedSubmission = submission);
-  }
-
-  // ── Helpers ───────────────────────────────────────────────────────────────────
-
-  void _copyViewToEdit() {
-    for (final key in _viewControllers.keys) {
-      _editControllers[key]!.text = _viewControllers[key]!.text;
-    }
-  }
-
-  void _toggleEditMode() {
     setState(() {
-      _isEditMode = !_isEditMode;
-      if (_isEditMode) {
-        _fieldChecks.clear();
-        _copyViewToEdit();
-      }
+      _selectedSubmission = submission;
+      _activeTemplate = template;
+      _viewCtrl = view;
+      _editCtrl = edit;
+      _isEditMode = false;
     });
   }
 
-  void _cancelEdit() {
-    setState(() => _isEditMode = false);
-  }
-
-  Future<void> _saveChanges() async {
-    if (_selectedSubmission == null) return;
+  // ── Save edited submission ────────────────────────────────
+  Future<void> _saveEdit() async {
+    if (_editCtrl == null || _selectedSubmission == null) return;
     setState(() => _isSaving = true);
-
-    final updatedData = <String, dynamic>{};
-    for (final entry in _editControllers.entries) {
-      updatedData[entry.key] = entry.value.text;
-    }
-    updatedData['__membership'] = _membershipData;
-    updatedData['__family_composition'] = _familyMembers;
-    updatedData['__supporting_family'] = _supportingFamily;
-    updatedData['__has_support'] = _hasSupport;
-    updatedData['__housing_status'] = _housingStatus;
-    updatedData['__signature'] = _signatureBase64 ?? '';
-
     try {
-      await Supabase.instance.client
+      final updatedData = _editCtrl!.toJson();
+      await _supabase
           .from('client_submissions')
-          .update({'data': updatedData})
+          .update({
+            'data': updatedData,
+            'last_edited_by': widget.cswd_id,
+            'last_edited_at': DateTime.now().toIso8601String(),
+          })
           .eq('id', _selectedSubmission!['id']);
-      await _fetchSubmissions();
+
+      await _loadData();
       setState(() {
         _isEditMode = false;
         _isSaving = false;
       });
-      _loadSubmissionIntoView(_submissions.firstWhere(
-          (e) => e['id'] == _selectedSubmission!['id'],
-          orElse: () => {}));
+      // Reload the same submission with fresh data
+      final updated = _submissions.firstWhere(
+          (s) => s['id'] == _selectedSubmission!['id'],
+          orElse: () => {});
+      if (updated.isNotEmpty) _loadSubmission(updated);
     } catch (e) {
-      debugPrint('Error saving changes: $e');
+      debugPrint('_saveEdit error: $e');
       setState(() => _isSaving = false);
     }
   }
 
   Future<void> _deleteSubmission() async {
     if (_selectedSubmission == null) return;
-    final id = _selectedSubmission!['id'];
-    try {
-      await Supabase.instance.client
-          .from('client_submissions')
-          .delete()
-          .eq('id', id);
-      setState(() {
-        _selectedSubmission = null;
-        _isEditMode = false;
-      });
-      await _fetchSubmissions();
-    } catch (e) {
-      debugPrint('Error deleting submission: $e');
-    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete applicant record?'),
+        content:
+            const Text('This action cannot be undone.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style:
+                ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete',
+                style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    await _supabase
+        .from('client_submissions')
+        .delete()
+        .eq('id', _selectedSubmission!['id']);
+
+    setState(() {
+      _selectedSubmission = null;
+      _activeTemplate = null;
+      _viewCtrl?.dispose();
+      _viewCtrl = null;
+      _editCtrl?.dispose();
+      _editCtrl = null;
+      _isEditMode = false;
+    });
+    await _loadData();
   }
 
   String _getApplicantName(Map<String, dynamic> submission) {
     final data = submission['data'] as Map<String, dynamic>? ?? {};
-    final first = data['First Name'] ?? '';
-    final middle = data['Middle Name'] ?? '';
-    final last = data['Last Name'] ?? '';
+    final first = (data['first_name'] ?? data['First Name'] ?? '').toString();
+    final middle = (data['middle_name'] ?? data['Middle Name'] ?? '').toString();
+    final last = (data['last_name'] ?? data['Last Name'] ?? '').toString();
     if (first.isEmpty && last.isEmpty) return 'Unknown Applicant';
     return '$last, $first${middle.isNotEmpty ? ' ${middle[0]}.' : ''}'.trim();
   }
 
-  String _getFormattedDate(String? isoDate) {
-    if (isoDate == null) return '—';
+  String _getFormattedDate(String? iso) {
+    if (iso == null) return '—';
     try {
-      final dt = DateTime.parse(isoDate).toLocal();
+      final dt = DateTime.parse(iso).toLocal();
       return '${dt.month.toString().padLeft(2, '0')}/'
           '${dt.day.toString().padLeft(2, '0')}/'
           '${dt.year}  '
           '${dt.hour.toString().padLeft(2, '0')}:'
           '${dt.minute.toString().padLeft(2, '0')}';
     } catch (_) {
-      return isoDate;
+      return iso;
     }
   }
 
-  List<Map<String, dynamic>> get _filteredSubmissions {
+  List<Map<String, dynamic>> get _filtered {
     if (_searchQuery.isEmpty) return _submissions;
     final q = _searchQuery.toLowerCase();
     return _submissions.where((s) {
@@ -293,9 +219,9 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     }).toList();
   }
 
-  // ── Navigation / logout ───────────────────────────────────────────────────────
+  // ── Logout / navigation ───────────────────────────────────
   Future<void> _handleLogout() async {
-    await Supabase.instance.client.auth.signOut();
+    await _supabase.auth.signOut();
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
         ContentFadeRoute(page: const WorkerLoginScreen()),
@@ -304,41 +230,35 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     }
   }
 
-  void _navigateToScreen(BuildContext context, String screenPath) {
-    Widget nextScreen;
-    switch (screenPath) {
+  void _navigateToScreen(BuildContext context, String path) {
+    Widget next;
+    switch (path) {
       case 'Dashboard':
-        nextScreen = DashboardScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          onLogout: _handleLogout,
-        );
+        next = DashboardScreen(
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            onLogout: _handleLogout);
         break;
       case 'Staff':
-        nextScreen = ManageStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-        );
+        next = ManageStaffScreen(
+            cswd_id: widget.cswd_id, role: widget.role);
         break;
       case 'CreateStaff':
-        nextScreen = CreateStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-        );
+        next = CreateStaffScreen(
+            cswd_id: widget.cswd_id, role: widget.role);
         break;
       case 'Forms':
-        nextScreen = ManageFormsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-        );
+        next = ManageFormsScreen(
+            cswd_id: widget.cswd_id, role: widget.role);
         break;
       default:
         return;
     }
-    Navigator.of(context).pushReplacement(ContentFadeRoute(page: nextScreen));
+    Navigator.of(context)
+        .pushReplacement(ContentFadeRoute(page: next));
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────────
+  // ── Build ─────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return WebShell(
@@ -347,20 +267,51 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       pageSubtitle: 'Review submitted client intake forms',
       onLogout: _handleLogout,
       headerActions: [
-        _buildHeaderButton("Refresh", Icons.refresh, onPressed: _fetchSubmissions),
+        _buildHeaderButton('Refresh', Icons.refresh,
+            onPressed: _loadData),
         if (_selectedSubmission != null) ...[
           if (!_isEditMode)
-            _buildHeaderButton("Edit", Icons.edit, onPressed: _toggleEditMode),
+            _buildHeaderButton('Edit', Icons.edit,
+                onPressed: () =>
+                    setState(() => _isEditMode = true)),
           if (_isEditMode) ...[
-            _buildHeaderButton("Delete", Icons.delete, onPressed: _deleteSubmission),
+            _buildHeaderButton('Delete', Icons.delete,
+                onPressed: _deleteSubmission),
+            const SizedBox(width: 8),
+            ElevatedButton.icon(
+              onPressed: _isSaving ? null : _saveEdit,
+              icon: _isSaving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.check, color: Colors.white, size: 18),
+              label: const Text('Save',
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 20, vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _buildHeaderButton('Discard', Icons.close,
+                onPressed: () {
+              _editCtrl?.loadFromJson(
+                  _selectedSubmission!['data'] as Map<String, dynamic>? ?? {});
+              setState(() => _isEditMode = false);
+            }),
           ],
         ],
       ],
-      onNavigate: (path) => _navigateToScreen(context, path),
+      onNavigate: (p) => _navigateToScreen(context, p),
       child: Padding(
         padding: const EdgeInsets.all(28),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: Container(
@@ -369,21 +320,17 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 20,
-                    )
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 20)
                   ],
                 ),
                 child: Row(
                   children: [
-                    // ── LEFT: Applicant list panel ─────────────────────────────
-                    _buildApplicantListPanel(),
-
-                    // ── RIGHT: Form detail panel (mirrors ManageForms style) ───
+                    _buildListPanel(),
                     Expanded(
                       child: _selectedSubmission == null
                           ? _buildEmptyState()
-                          : _buildFormDetailPanel(),
+                          : _buildDetailPanel(),
                     ),
                   ],
                 ),
@@ -395,159 +342,89 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     );
   }
 
-  // ── Left panel: list of submissions ──────────────────────────────────────────
-  Widget _buildApplicantListPanel() {
+  // ── Left panel: applicant list ────────────────────────────
+  Widget _buildListPanel() {
     return Container(
-      width: 300,
-      margin: const EdgeInsets.all(16),
+      width: 280,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        color: Colors.white.withOpacity(0.08),
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(24),
+          bottomLeft: Radius.circular(24),
+        ),
       ),
       child: Column(
         children: [
-          // Search bar
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
               controller: _searchController,
               onChanged: (v) => setState(() => _searchQuery = v),
+              style: const TextStyle(color: Colors.white, fontSize: 13),
               decoration: InputDecoration(
                 hintText: 'Search applicants...',
-                hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
-                prefixIcon:
-                    Icon(Icons.search, color: Colors.grey.shade400, size: 20),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: Icon(Icons.clear,
-                            color: Colors.grey.shade400, size: 18),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() => _searchQuery = '');
-                        },
-                      )
-                    : null,
+                hintStyle: const TextStyle(color: Colors.white54),
+                prefixIcon: const Icon(Icons.search, color: Colors.white54),
                 filled: true,
-                fillColor: const Color(0xFFF4F7FE),
-                contentPadding: const EdgeInsets.symmetric(
-                    vertical: 10, horizontal: 14),
+                fillColor: Colors.white.withOpacity(0.1),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
                 ),
+                isDense: true,
               ),
             ),
           ),
-
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '${_filteredSubmissions.length} submission${_filteredSubmissions.length != 1 ? 's' : ''}',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Divider(height: 1),
-
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _filteredSubmissions.isEmpty
-                    ? Center(
-                        child: Text(
-                          'No submissions found.',
-                          style: TextStyle(
-                              color: Colors.grey.shade400, fontSize: 13),
-                        ),
-                      )
-                    : ListView.separated(
-                        itemCount: _filteredSubmissions.length,
-                        separatorBuilder: (_, __) =>
-                            const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final sub = _filteredSubmissions[index];
-                          final isSelected =
-                              _selectedSubmission?['id'] == sub['id'];
-                          final name = _getApplicantName(sub);
-                          final date = _getFormattedDate(
-                              sub['created_at'] as String?);
-                          final formType =
-                              sub['form_type'] as String? ?? 'GIS';
-
-                          return InkWell(
-                            onTap: () => _loadSubmissionIntoView(sub),
-                            child: Container(
-                              color: isSelected
-                                  ? AppColors.primaryBlue.withOpacity(0.08)
-                                  : Colors.transparent,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 14),
-                              child: Row(
-                                children: [
-                                  CircleAvatar(
-                                    radius: 20,
-                                    backgroundColor: isSelected
-                                        ? AppColors.primaryBlue
-                                        : const Color(0xFFE8EDF8),
-                                    child: Text(
-                                      name.isNotEmpty
-                                          ? name[0].toUpperCase()
-                                          : '?',
-                                      style: TextStyle(
-                                        color: isSelected
-                                            ? Colors.white
-                                            : AppColors.primaryBlue,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          name,
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 13,
-                                            color: isSelected
-                                                ? AppColors.primaryBlue
-                                                : const Color(0xFF1A1A2E),
-                                          ),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        const SizedBox(height: 3),
-                                        Text(formType,
-                                            style: TextStyle(
-                                                fontSize: 11,
-                                                color: Colors.grey.shade500)),
-                                        Text(date,
-                                            style: TextStyle(
-                                                fontSize: 11,
-                                                color: Colors.grey.shade400)),
-                                      ],
-                                    ),
-                                  ),
-                                  if (isSelected)
-                                    const Icon(Icons.chevron_right,
-                                        color: AppColors.primaryBlue,
-                                        size: 18),
-                                ],
+                ? const Center(
+                    child: CircularProgressIndicator(color: Colors.white))
+                : _filtered.isEmpty
+                    ? const Center(
+                        child: Text('No applicants found.',
+                            style: TextStyle(color: Colors.white54)))
+                    : ListView.builder(
+                        itemCount: _filtered.length,
+                        itemBuilder: (ctx, i) {
+                          final s = _filtered[i];
+                          final isSelected = _selectedSubmission?['id'] == s['id'];
+                          return ListTile(
+                            selected: isSelected,
+                            selectedTileColor:
+                                Colors.white.withOpacity(0.15),
+                            onTap: () => _loadSubmission(s),
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 4),
+                            title: Text(
+                              _getApplicantName(s),
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: isSelected
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
                               ),
+                              overflow: TextOverflow.ellipsis,
                             ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  s['form_type'] ?? '',
+                                  style: const TextStyle(
+                                      color: Colors.white70, fontSize: 11),
+                                ),
+                                Text(
+                                  _getFormattedDate(s['created_at']),
+                                  style: const TextStyle(
+                                      color: Colors.white54, fontSize: 10),
+                                ),
+                              ],
+                            ),
+                            trailing: isSelected
+                                ? const Icon(Icons.chevron_right,
+                                    color: Colors.white70, size: 16)
+                                : null,
                           );
                         },
                       ),
@@ -557,7 +434,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     );
   }
 
-  // ── Right panel: empty state ──────────────────────────────────────────────────
+  // ── Right panel: empty ────────────────────────────────────
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -566,181 +443,62 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
           Icon(Icons.person_search_outlined,
               size: 64, color: Colors.white.withOpacity(0.4)),
           const SizedBox(height: 16),
-          Text(
-            'Select an applicant to view their form',
-            style: TextStyle(
-                color: Colors.white.withOpacity(0.7), fontSize: 15),
-          ),
+          Text('Select an applicant to view their form',
+              style: TextStyle(
+                  color: Colors.white.withOpacity(0.7), fontSize: 15)),
         ],
       ),
     );
   }
 
-  // ── Right panel: form detail (mirrors ManageFormsScreen section cards) ────────
-  Widget _buildFormDetailPanel() {
-    return Stack(
-      children: [
-        Container(
-          margin: const EdgeInsets.all(20),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.only(right: 10),
-            child: Column(
-              children: [
-                // Client Info
-                _buildSectionCard(
-                  child: ClientInfoSection(
-                    selectAll: false,
-                    controllers:
-                        _isEditMode ? _editControllers : _viewControllers,
-                    fieldChecks: _fieldChecks,
-                    onCheckChanged: (field, val) {
-                      if (!_isEditMode) return;
-                      setState(() => _fieldChecks[field] = val);
-                    },
-                    membershipData: _membershipData,
-                    onMembershipChanged: _isEditMode
-                        ? (key, val) =>
-                            setState(() => _membershipData[key] = val)
-                        : (_, __) {},
-                  ),
-                ),
+  // ── Right panel: dynamic form detail ─────────────────────
+  Widget _buildDetailPanel() {
+    // Fallback: no template found for this form_type
+    if (_activeTemplate == null) {
+      final data = _selectedSubmission!['data'] as Map<String, dynamic>? ?? {};
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: data.entries
+              .where((e) => !e.key.startsWith('__'))
+              .map((e) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      '${e.key}: ${e.value}',
+                      style: const TextStyle(
+                          color: Colors.white, fontSize: 12),
+                    ),
+                  ))
+              .toList(),
+        ),
+      );
+    }
 
-                // Family Composition
-                _buildSectionCard(
-                  child: FamilyTable(
-                    selectAll: false,
-                    controllers:
-                        _isEditMode ? _editControllers : _viewControllers,
-                    familyMembers: _familyMembers,
-                    onFamilyChanged: _isEditMode
-                        ? (list) => setState(() => _familyMembers = list)
-                        : (_) {},
-                    fieldChecks: _fieldChecks,
-                    onCheckChanged: (field, val) {
-                      if (!_isEditMode) return;
-                      setState(() => _fieldChecks[field] = val);
-                    },
-                  ),
-                ),
+    final ctrl = _isEditMode ? _editCtrl! : _viewCtrl!;
 
-                // Socio-Economic
-                _buildSectionCard(
-                  child: SocioEconomicSection(
-                    selectAll: false,
-                    controllers:
-                        _isEditMode ? _editControllers : _viewControllers,
-                    hasSupport: _hasSupport,
-                    housingStatus: _housingStatus,
-                    supportingFamily: _supportingFamily,
-                    onHasSupportChanged: _isEditMode
-                        ? (val) => setState(() => _hasSupport = val)
-                        : (_) {},
-                    onHousingStatusChanged: _isEditMode
-                        ? (val) => setState(() => _housingStatus = val)
-                        : (_) {},
-                    onSupportingFamilyChanged: _isEditMode
-                        ? (list) =>
-                            setState(() => _supportingFamily = list)
-                        : (_) {},
-                    fieldChecks: _fieldChecks,
-                    onCheckChanged: (field, val) {
-                      if (!_isEditMode) return;
-                      setState(() => _fieldChecks[field] = val);
-                    },
-                  ),
-                ),
-
-                // Signature
-                _buildSectionCard(
-                  child: SignatureField(
-                    points: (_signatureBase64 != null &&
-                            _signatureBase64!.isNotEmpty)
-                        ? []
-                        : null,
-                    label: "Digital Signature",
-                    signatureImageBase64: _signatureBase64,
-                    isChecked: false,
-                    onCheckboxChanged: (_) {},
-                    onCaptured: (_) {},
-                  ),
-                ),
-              ],
-            ),
+    return Container(
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F7FE),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(12),
+        child: AnimatedBuilder(
+          animation: ctrl,
+          builder: (context, _) => DynamicFormRenderer(
+            template: _activeTemplate!,
+            controller: ctrl,
+            mode: 'web',
+            isReadOnly: !_isEditMode,
+            showCheckboxes: false,
           ),
         ),
-
-        if (_isEditMode)
-          Positioned(
-            bottom: 20,
-            left: 20,
-            right: 20,
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 15,
-                  )
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: _cancelEdit,
-                    child: const Text('Discard'),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(
-                          color: AppColors.buttonOutlineBlue),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 15),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton(
-                    onPressed: _isSaving ? null : _saveChanges,
-                    child: _isSaving
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child:
-                                CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Save Changes'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  // ── Shared card wrapper (matches ManageFormsScreen style) ─────────────────────
-  Widget _buildSectionCard({required Widget child}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(25),
-      margin: const EdgeInsets.only(bottom: 20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
-      child: child,
     );
   }
 
-  // ── Header button (matches ManageFormsScreen style) ────────────────────────────
   Widget _buildHeaderButton(String label, IconData icon,
       {VoidCallback? onPressed}) {
     return OutlinedButton.icon(
@@ -752,10 +510,18 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       style: OutlinedButton.styleFrom(
         side: const BorderSide(color: AppColors.buttonOutlineBlue),
         padding:
-            const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _viewCtrl?.dispose();
+    _editCtrl?.dispose();
+    super.dispose();
   }
 }

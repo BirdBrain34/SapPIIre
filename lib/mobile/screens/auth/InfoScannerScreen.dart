@@ -1,6 +1,7 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/mobile/screens/auth/manage_info_screen.dart';
 import 'package:flutter/services.dart';
@@ -178,13 +179,17 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
               bottom: 30,
               right: 30,
               child: FloatingActionButton.extended(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ManageInfoScreen(
-                        initialData: accumulatedData),
-                  ),
-                ),
+                onPressed: () async {
+                  final userId = await Supabase.instance.client.auth.currentUser?.id;
+                  if (userId != null && mounted) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ManageInfoScreen(userId: userId),
+                      ),
+                    );
+                  }
+                },
                 label: const Text("Confirm Info"),
                 icon: const Icon(Icons.check),
                 backgroundColor: Colors.green,
