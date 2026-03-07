@@ -86,10 +86,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
   String _getStepTitle() {
     switch (_currentPage) {
       case 0: return 'Step 1 of 4 — Personal Info';
-      case 1: return 'Step 2 of 4 — Email & Password';
+      case 1: return 'Step 2 of 4 — Email';         // email only now
       case 2: return 'Step 2 of 4 — Verify Email';
       case 3: return 'Step 3 of 4 — Phone Number';
-      case 4: return 'Step 4 of 4 — Create Username';
+      case 4: return 'Step 4 of 4 — Username & Password'; // password moved here
       default: return '';
     }
   }
@@ -154,8 +154,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
-  // ── Validation ────────────────────────────────────────────────────────────
-
+  // ── Validation ────────────────────────────────────────────
   bool _isPageValid() {
     switch (_currentPage) {
       case 0:
@@ -167,15 +166,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
             _sex.isNotEmpty &&
             _maritalStatus.isNotEmpty;
       case 1:
-        return _emailController.text.contains('@') &&
-            _passwordController.text.length >= 6 &&
-            _passwordController.text == _confirmPasswordController.text;
+        return _emailController.text.contains('@');  // email only
       case 2:
-        return _otpController.text.length >= 4;
+        return _otpController.text.length == 8;
       case 3:
         return _phoneController.text.isNotEmpty;
       case 4:
-        return _usernameController.text.isNotEmpty;
+        return _usernameController.text.isNotEmpty &&
+            _passwordController.text.length >= 6 &&
+            _passwordController.text == _confirmPasswordController.text;
       default:
         return false;
     }
@@ -197,7 +196,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     setState(() => _isLoading = true);
     final result = await _supabaseService.signUpWithEmail(
       email: _emailController.text.trim(),
-      password: _passwordController.text,
     );
     setState(() => _isLoading = false);
     if (!mounted) return;
@@ -228,39 +226,39 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   Future<void> _handleResendOtp() async {
-  setState(() => _isLoading = true);
-  try {
-    await Supabase.instance.client.auth.resend(
-      type: OtpType.email,
-      email: _emailController.text.trim(),
-    );
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Code resent! Check your email.'),
-        backgroundColor: Colors.green,
-      ),
-    );
-  } catch (e) {
-    if (!mounted) return;
-    _showError('Failed to resend: $e');
-  } finally {
-    if (mounted) setState(() => _isLoading = false);
-  }
-}
-
-  Future<void> _handleCreateAccount() async {
-    if (_verifiedUserId == null) {
-      _showError('Session expired. Please start over.');
-      _pageController.animateToPage(0,
-          duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
-      return;
+    setState(() => _isLoading = true);
+    try {
+      await Supabase.instance.client.auth.signInWithOtp(
+        email: _emailController.text.trim(),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Code resent! Check your email.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _showError('Failed to resend: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+Future<void> _handleCreateAccount() async {
+  if (_verifiedUserId == null) {
+    _showError('Session expired. Please start over.');
+    _pageController.animateToPage(0,
+        duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+    return;
+  }
 
     setState(() => _isLoading = true);
     final result = await _supabaseService.saveProfileAfterVerification(
       userId: _verifiedUserId!,
       username: _usernameController.text.trim(),
+      password: _passwordController.text,   // ← pass password here now
       email: _emailController.text.trim(),
       firstName: _firstNameController.text.trim(),
       middleName: _middleNameController.text.trim(),
@@ -335,10 +333,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 onPageChanged: (p) => setState(() => _currentPage = p),
                 children: [
                   _buildPersonalInfoPage(),
-                  _buildEmailPasswordPage(),
+                  _buildEmailPage(),           
                   _buildOtpPage(),
                   _buildPhonePage(),
-                  _buildUsernamePage(),
+                  _buildUsernamePasswordPage(), 
                 ],
               ),
             ),
@@ -429,56 +427,29 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  Widget _buildEmailPasswordPage() {
-    final passwordsMatch = _passwordController.text.isNotEmpty &&
-        _passwordController.text == _confirmPasswordController.text;
-    final tooShort = _passwordController.text.isNotEmpty &&
-        _passwordController.text.length < 6;
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Email & Password',
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          const Text('A verification code will be sent to your email.',
-              style: TextStyle(color: Colors.white60, fontSize: 13)),
-          const SizedBox(height: 20),
-
-          CustomTextField(hintText: 'Email Address', controller: _emailController),
-          const SizedBox(height: 10),
-          CustomTextField(
-            hintText: 'Password (min. 6 characters)',
-            controller: _passwordController,
-            obscureText: true,
-            prefixIcon: const Icon(Icons.lock, color: Colors.white),
-          ),
-          if (tooShort) ...[
-            const SizedBox(height: 4),
-            const Text('Password must be at least 6 characters.',
-                style: TextStyle(color: Colors.orangeAccent, fontSize: 12)),
-          ],
-          const SizedBox(height: 10),
-          CustomTextField(
-            hintText: 'Confirm Password',
-            controller: _confirmPasswordController,
-            obscureText: true,
-            prefixIcon: const Icon(Icons.lock, color: Colors.white),
-          ),
-          if (_confirmPasswordController.text.isNotEmpty && !passwordsMatch) ...[
-            const SizedBox(height: 4),
-            const Text('Passwords do not match.',
-                style: TextStyle(color: Colors.orangeAccent, fontSize: 12)),
-          ],
-        ],
-      ),
-    );
-  }
+Widget _buildEmailPage() {
+  return SingleChildScrollView(
+    padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Email Address',
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        const Text('A verification code will be sent to your email.',
+            style: TextStyle(color: Colors.white60, fontSize: 13)),
+        const SizedBox(height: 20),
+        CustomTextField(
+          hintText: 'Email Address',
+          controller: _emailController,
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _buildOtpPage() {
     return Padding(
@@ -495,13 +466,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Text(
-            'A 6-digit code was sent to\n${_emailController.text}',
+            'A 8-digit code was sent to\n${_emailController.text}',
             textAlign: TextAlign.center,
             style: const TextStyle(color: Colors.white70, fontSize: 14),
           ),
           const SizedBox(height: 30),
           CustomTextField(
-            hintText: 'Enter 6-digit code',
+            hintText: 'Enter 8-digit code',
             controller: _otpController,
           ),
           const SizedBox(height: 16),
@@ -539,33 +510,60 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  Widget _buildUsernamePage() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 40),
-          const Text('Pick a Username',
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          const Text(
-            'This is how you will log in to SapPIIre.',
-            style: TextStyle(color: Colors.white60, fontSize: 13),
-          ),
-          const SizedBox(height: 30),
-          CustomTextField(
-            hintText: 'Username',
-            controller: _usernameController,
-            prefixIcon: const Icon(Icons.person, color: Colors.white),
-          ),
+Widget _buildUsernamePasswordPage() {
+  final passwordsMatch = _passwordController.text.isNotEmpty &&
+      _passwordController.text == _confirmPasswordController.text;
+  final tooShort = _passwordController.text.isNotEmpty &&
+      _passwordController.text.length < 6;
+
+  return SingleChildScrollView(
+    padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 20),
+        const Text('Username & Password',
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        const Text('This is how you will log in to SapPIIre.',
+            style: TextStyle(color: Colors.white60, fontSize: 13)),
+        const SizedBox(height: 20),
+        CustomTextField(
+          hintText: 'Username',
+          controller: _usernameController,
+          prefixIcon: const Icon(Icons.person, color: Colors.white),
+        ),
+        const SizedBox(height: 10),
+        CustomTextField(
+          hintText: 'Password (min. 6 characters)',
+          controller: _passwordController,
+          obscureText: true,
+          prefixIcon: const Icon(Icons.lock, color: Colors.white),
+        ),
+        if (tooShort) ...[
+          const SizedBox(height: 4),
+          const Text('Password must be at least 6 characters.',
+              style: TextStyle(color: Colors.orangeAccent, fontSize: 12)),
         ],
-      ),
-    );
-  }
+        const SizedBox(height: 10),
+        CustomTextField(
+          hintText: 'Confirm Password',
+          controller: _confirmPasswordController,
+          obscureText: true,
+          prefixIcon: const Icon(Icons.lock, color: Colors.white),
+        ),
+        if (_confirmPasswordController.text.isNotEmpty && !passwordsMatch) ...[
+          const SizedBox(height: 4),
+          const Text('Passwords do not match.',
+              style: TextStyle(color: Colors.orangeAccent, fontSize: 12)),
+        ],
+      ],
+    ),
+  );
+}
 
   // ── Reusable dropdown ─────────────────────────────────────────────────────
 

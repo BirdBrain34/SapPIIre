@@ -10,53 +10,68 @@ class SupabaseService {
 
   /// Step 1 of signup: register with Supabase Auth.
   /// Supabase sends an OTP to the email automatically.
-Future<Map<String, dynamic>> signUpWithEmail({
-  required String email,
-  required String password,
-}) async {
-  try {
-    // Check user_accounts first (verified users)
-    final existing = await _supabase
-        .from('user_accounts')
-        .select('email')
-        .eq('email', email)
-        .maybeSingle();
+  Future<Map<String, dynamic>> signUpWithEmail({
+    required String email,
+  }) async {
+    try {
+      // Check user_accounts for this email
+      final existing = await _supabase
+          .from('user_accounts')
+          .select('email, user_id')
+          .eq('email', email)
+          .maybeSingle();
 
-    if (existing != null) {
+      if (existing != null) {
+        final userId = existing['user_id'] as String?;
+        if (userId != null && userId.isNotEmpty) {
+          // Check if they finished signup (have a profile)
+          final profile = await _supabase
+              .from('user_profiles')
+              .select('profile_id')
+              .eq('user_id', userId)
+              .maybeSingle();
+
+          if (profile != null) {
+            // Fully registered — block
+            return {
+              'success': false,
+              'message': 'This email is already registered. Please log in instead.',
+            };
+          } else {
+            // Verified email but never finished — send OTP via signInWithOtp
+            // and treat it as continuing their signup
+            await _supabase.auth.signInWithOtp(
+              email: email,
+              shouldCreateUser: false, // don't create, just send OTP to existing
+            );
+            return {
+              'success': true,
+              'message': 'OTP sent! Check your email.',
+              'user_id': userId,
+            };
+          }
+        }
+      }
+
+      // Brand new email — use signUp which sends OTP only
+      final res = await _supabase.auth.signUp(
+        email: email,
+        password: DateTime.now().millisecondsSinceEpoch.toString(),
+      );
+
+      if (res.user == null) {
+        return {'success': false, 'message': 'Sign-up failed. Try again.'};
+      }
+
       return {
-        'success': false,
-        'message': 'This email is already registered. Please log in instead.',
+        'success': true,
+        'message': 'OTP sent! Check your email.',
+        'user_id': res.user!.id,
       };
+    } catch (e) {
+      return {'success': false, 'message': 'Error: ${e.toString()}'};
     }
-
-    final res = await _supabase.auth.signUp(
-      email: email,
-      password: password,
-    );
-
-    // Supabase returns a user but with no session if email already
-    // exists but is unconfirmed — catch this case
-    if (res.user == null) {
-      return {'success': false, 'message': 'Sign-up failed. Try again.'};
-    }
-
-    // If identities is empty, email already exists in auth.users
-    if (res.user!.identities != null && res.user!.identities!.isEmpty) {
-      return {
-        'success': false,
-        'message': 'This email is already registered. Please log in instead.',
-      };
-    }
-
-    return {
-      'success': true,
-      'message': 'OTP sent! Check your email.',
-      'user_id': res.user!.id,
-    };
-  } catch (e) {
-    return {'success': false, 'message': 'Error: ${e.toString()}'};
   }
-}
 
   /// Step 2 of signup: verify the OTP sent to email.
   Future<Map<String, dynamic>> verifyEmailOtp({
@@ -76,7 +91,7 @@ Future<Map<String, dynamic>> signUpWithEmail({
 
       return {
         'success': true,
-        'user_id': response.user!.id,
+        'user_id': response.user!.id,  // ← this is now reliable since OTP confirmed
       };
     } on AuthException catch (e) {
       return {'success': false, 'message': e.message};
@@ -89,6 +104,7 @@ Future<Map<String, dynamic>> signUpWithEmail({
   Future<Map<String, dynamic>> saveProfileAfterVerification({
     required String userId,
     required String username,
+    required String password,   // ← new param
     required String email,
     required String firstName,
     required String middleName,
@@ -97,21 +113,23 @@ Future<Map<String, dynamic>> signUpWithEmail({
     required String phoneNumber,
   }) async {
     try {
-      // Update username in user_accounts (trigger already inserted email as placeholder)
+      // Set the password now that they've verified their email
+      await _supabase.auth.updateUser(
+        UserAttributes(password: password),
+      );
+
+      // Update username in user_accounts
       await _supabase
           .from('user_accounts')
           .update({'username': username})
           .eq('user_id', userId);
 
-      // Parse and format date
       final dateParts = dateOfBirth.split('/');
       final formattedDate =
           '${dateParts[2]}-${dateParts[0].padLeft(2, '0')}-${dateParts[1].padLeft(2, '0')}';
-
       final birthYear = int.parse(dateParts[2]);
       final age = DateTime.now().year - birthYear;
 
-      // Insert profile
       await _supabase.from('user_profiles').insert({
         'user_id': userId,
         'firstname': firstName,
