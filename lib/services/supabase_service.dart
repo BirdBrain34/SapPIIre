@@ -423,6 +423,8 @@ Future<Map<String, dynamic>> signUpWithEmail({
       return false;
     }
   }
+  /// Sends the specific filtered data selected by the user to the web session.
+  /// This allows the user to choose exactly which fields to transmit via checkboxes.
   Future<bool> sendDataToWebSession(String sessionId, Map<String, dynamic> data) async {
     try {
       final response = await _supabase
@@ -438,7 +440,7 @@ Future<Map<String, dynamic>> signUpWithEmail({
 
       return response != null;
     } catch (e) {
-      debugPrint('Supabase Update Error: $e');
+        debugPrint('Supabase Update Error: $e');
       return false;
     }
   }
