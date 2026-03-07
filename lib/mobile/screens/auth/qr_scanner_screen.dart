@@ -92,11 +92,33 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
             ),
         ],
       ),
-      bottomNavigationBar: CustomBottomNav(
-        currentIndex: 1, 
-        onTap: (index) {
-          if (index == 0) Navigator.pop(context);
-        },
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: Colors.black,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 10,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                TextButton.icon(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  label: const Text('Back', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

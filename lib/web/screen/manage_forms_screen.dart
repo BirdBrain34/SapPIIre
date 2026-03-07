@@ -1,6 +1,14 @@
-// lib/web/screen/manage_forms_screen.dart
-// REFACTORED: Uses DynamicFormRenderer — no more hardcoded GIS.dart imports.
-// Staff selects template → starts session → QR autofills → finalize saves to client_submissions.
+// Web Forms Management Screen
+// Staff interface for managing client form submissions via QR code.
+//
+// Flow:
+// 1. Staff selects a form template
+// 2. Starts a session and generates QR code
+// 3. Client scans QR code with mobile app
+// 4. Client's data is transmitted and autofills the form in real-time
+// 5. Staff reviews and saves the submission to client_submissions table
+//
+// Uses Supabase Realtime to listen for incoming data from mobile.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -57,9 +65,9 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   }
 
   Future<void> _loadTemplates() async {
-    debugPrint('🌐 Web: Loading templates...');
+    debugPrint('Web: Loading templates...');
     final templates = await _templateService.fetchActiveTemplates(forceRefresh: true);
-    debugPrint('📊 Web: Received ${templates.length} templates');
+    debugPrint('Web: Received ${templates.length} templates');
     setState(() {
       _templates = templates;
       _selectedTemplate = templates.isNotEmpty
@@ -70,7 +78,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       _isLoading = false;
     });
     if (_selectedTemplate != null) {
-      debugPrint('✅ Web: Selected ${_selectedTemplate!.formName}');
+      debugPrint('Web: Selected ${_selectedTemplate!.formName}');
       _formCtrl = FormStateController(template: _selectedTemplate!);
     }
   }
@@ -116,22 +124,35 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     }
   }
 
-  // ── Listen for mobile QR data via Realtime ────────────────
+  // Listen for mobile QR data via Supabase Realtime
   void _listenForMobileUpdates(String sessionId) {
+    debugPrint('Web: Starting realtime listener for session $sessionId');
     _formSubscription?.cancel();
     _formSubscription = _supabase
         .from('form_submission')
         .stream(primaryKey: ['id'])
         .eq('id', sessionId)
         .listen((List<Map<String, dynamic>> data) {
-          if (data.isEmpty) return;
+          debugPrint('Web: Realtime update received');
+          if (data.isEmpty) {
+            debugPrint('Web: Data is empty');
+            return;
+          }
           final row = data.first;
+          debugPrint('Web: Row status: ${row['status']}');
           final incoming =
               row['form_data'] as Map<String, dynamic>? ?? {};
-          if (incoming.isEmpty) return;
+          debugPrint('Web: Incoming data keys: ${incoming.keys.toList()}');
+          debugPrint('Web: Incoming data size: ${incoming.length} fields');
+          if (incoming.isEmpty) {
+            debugPrint('Web: Incoming data is empty, skipping');
+            return;
+          }
           if (!mounted) return;
+          debugPrint('Web: Loading data into form controller');
           _formCtrl?.loadFromJson(incoming);
           setState(() {}); // refresh UI
+          debugPrint('Web: Form updated successfully');
         });
   }
 

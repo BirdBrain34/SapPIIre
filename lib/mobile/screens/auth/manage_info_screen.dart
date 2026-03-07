@@ -1,9 +1,17 @@
-// lib/mobile/screens/auth/manage_info_screen.dart
-// UPDATED UI:
-//  - AppBar with username (top-left) and logout button (top-right)
-//  - Floating Action Button for Select All (replaces inline button)
-//  - Bottom bar now only shows Save Profile
-//  - 4-item bottom nav: Manage Info | AutoFill QR | Camera | History
+// Mobile Manage Info Screen
+// Main screen for mobile users to manage their personal information.
+//
+// Flow:
+// 1. Loads form templates from Supabase
+// 2. Loads user profile data and autofills form
+// 3. User can edit data and save to Supabase
+// 4. User can select fields and transmit via QR code to web
+//
+// UI Structure:
+// - AppBar: Logout (left), Camera + Save buttons (right)
+// - Form: Dynamic form renderer with field selection checkboxes
+// - Bottom Nav: Manage Info, Autofill QR, History
+// - FAB: Select All / Deselect All fields
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -58,10 +66,10 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   Future<void> _loadAll() async {
     setState(() => _isLoading = true);
     try {
-      debugPrint('🚀 ManageInfoScreen: Loading templates...');
+      debugPrint('ManageInfoScreen: Loading templates...');
       final templates =
           await _templateService.fetchActiveTemplates(forceRefresh: true);
-      debugPrint('📊 Received ${templates.length} templates');
+      debugPrint('Received ${templates.length} templates');
 
       final profileData =
           await _supabaseService.loadUserProfile(widget.userId);
@@ -78,13 +86,13 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       });
 
       debugPrint(
-          '✅ Selected template: ${_selectedTemplate?.formName ?? "NONE"}');
+          'Selected template: ${_selectedTemplate?.formName ?? "NONE"}');
 
       if (_selectedTemplate != null) {
         _initFormController(profileData);
       }
     } catch (e, stack) {
-      debugPrint('❌ ManageInfoScreen._loadAll error: $e');
+      debugPrint('ManageInfoScreen._loadAll error: $e');
       debugPrint('Stack: $stack');
     }
     setState(() => _isLoading = false);
@@ -95,7 +103,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     final ctrl = FormStateController(template: _selectedTemplate!);
 
     if (profileData != null) {
-      debugPrint('📝 Autofilling from profile...');
+      debugPrint('Autofilling from profile...');
       final address =
           (profileData['user_addresses'] as Map<String, dynamic>?) ?? {};
       final socio =
@@ -109,7 +117,14 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         family: [],
         supporting: [],
       );
-      debugPrint('✅ Autofill data keys: ${autofillData.keys.toList()}');
+      
+      // Load signature from profile
+      if (profileData['signature_data'] != null) {
+        autofillData['__signature'] = profileData['signature_data'];
+        ctrl.signatureBase64 = profileData['signature_data'];
+      }
+      
+      debugPrint('Autofill data keys: ${autofillData.keys.toList()}');
       ctrl.loadFromJson(autofillData);
     }
 
@@ -204,6 +219,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
       if (data['__signature'] != null) {
         profileData['signature_data'] = data['__signature'];
+        _formCtrl!.signatureBase64 = data['__signature'];
       }
 
       final membership = _formCtrl!.membershipData;
@@ -265,7 +281,18 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   Future<void> _scanAndTransmit() async {
     if (_formCtrl == null) return;
 
+    // Check if at least one checkbox is selected
+    final hasAnyChecked = _formCtrl!.selectAll || 
+        _formCtrl!.fieldChecks.values.any((checked) => checked == true);
+    
+    if (!hasAnyChecked) {
+      _showFeedback('Please select at least one field to transmit', AppColors.dangerRed);
+      return;
+    }
+
     final dataToTransmit = _formCtrl!.toFilteredJson();
+    debugPrint('Data to transmit: ${dataToTransmit.keys.toList()}');
+    debugPrint('Data size: ${dataToTransmit.length} fields');
 
     final sessionId = await Navigator.push<String>(
       context,
@@ -278,10 +305,12 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
 
     if (sessionId != null && mounted) {
+      debugPrint('Sending to session: $sessionId');
       final success = await _supabaseService.sendDataToWebSession(
         sessionId,
         dataToTransmit,
       );
+      debugPrint('Transmission result: $success');
       _showFeedback(
         success ? 'Data transmitted!' : 'Failed to send data.',
         success ? Colors.green : Colors.red,
@@ -338,24 +367,22 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         });
         break;
       case 2:
-        // Camera — ID scanner
-        setState(() => _currentNavIndex = 2);
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const InfoScannerScreen()),
-        ).then((_) {
-          if (mounted) setState(() => _currentNavIndex = 0);
-        });
-        break;
-      case 3:
         // Form History — placeholder until screen is built
-        setState(() => _currentNavIndex = 3);
+        setState(() => _currentNavIndex = 2);
         _showFeedback('Form History coming soon!', AppColors.primaryBlue);
         Future.delayed(const Duration(milliseconds: 300), () {
           if (mounted) setState(() => _currentNavIndex = 0);
         });
         break;
     }
+  }
+
+  // ── Camera Scanner ────────────────────────────────────────
+  Future<void> _openCamera() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const InfoScannerScreen()),
+    );
   }
 
   void _showFeedback(String msg, Color color) {
@@ -374,17 +401,10 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.pageBg,
-      // ── AppBar: username left, logout right ──────────────
       appBar: _buildAppBar(),
-      // ── FAB: floating Select All toggle ─────────────────
-      floatingActionButton:
-          _formCtrl != null ? _buildSelectAllFAB() : null,
+      floatingActionButton: _formCtrl != null ? _buildSelectAllFAB() : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      // ── Bottom nav ───────────────────────────────────────
-      bottomNavigationBar: CustomBottomNav(
-        currentIndex: _currentNavIndex,
-        onTap: _onNavTap,
-      ),
+      bottomNavigationBar: _buildBottomNav(),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _templates.isEmpty
@@ -393,13 +413,17 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
   }
 
-  // ── AppBar with username + logout ─────────────────────────
+  // ── AppBar: logout left, camera + save right ──────────────
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
       backgroundColor: AppColors.primaryBlue,
       elevation: 0,
       automaticallyImplyLeading: false,
-      titleSpacing: 16,
+      leading: IconButton(
+        icon: const Icon(Icons.logout_rounded, color: Colors.white70, size: 22),
+        onPressed: _handleLogout,
+        tooltip: 'Log out',
+      ),
       title: Row(
         children: [
           Container(
@@ -408,8 +432,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
               color: Colors.white.withOpacity(0.15),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(Icons.person_outline,
-                color: Colors.white, size: 18),
+            child: const Icon(Icons.person_outline, color: Colors.white, size: 18),
           ),
           const SizedBox(width: 10),
           Column(
@@ -418,61 +441,39 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
             children: [
               const Text(
                 'Welcome back,',
-                style: TextStyle(
-                    color: Colors.white60,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w400),
+                style: TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.w400),
               ),
               Text(
                 _username.isEmpty ? 'User' : _username,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
               ),
             ],
           ),
         ],
       ),
       actions: [
-        Tooltip(
-          message: 'Log out',
-          child: IconButton(
-            icon: const Icon(Icons.logout_rounded,
-                color: Colors.white70, size: 22),
-            onPressed: _handleLogout,
-          ),
+        IconButton(
+          icon: const Icon(Icons.camera_alt_outlined, color: Colors.white, size: 22),
+          onPressed: _openCamera,
+          tooltip: 'Scan ID',
         ),
-        const SizedBox(width: 4),
+        IconButton(
+          icon: _isSaving
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : const Icon(Icons.save_outlined, color: Colors.white, size: 22),
+          onPressed: _isSaving ? null : _saveProfile,
+          tooltip: 'Save Profile',
+        ),
+        const SizedBox(width: 8),
       ],
     );
   }
 
-  // ── Floating Select All / Deselect All FAB ────────────────
-  Widget _buildSelectAllFAB() {
-    final isSelectAll = _formCtrl?.selectAll ?? false;
-    return FloatingActionButton.extended(
-      onPressed: () {
-        _formCtrl?.setSelectAll(!isSelectAll);
-        setState(() {});
-      },
-      backgroundColor: isSelectAll ? AppColors.highlight : AppColors.primaryBlue,
-      elevation: 6,
-      icon: Icon(
-        isSelectAll ? Icons.deselect_rounded : Icons.select_all_rounded,
-        color: Colors.white,
-        size: 20,
-      ),
-      label: Text(
-        isSelectAll ? 'Deselect All' : 'Select All',
-        style: const TextStyle(
-            color: Colors.white,
-            fontSize: 12,
-            fontWeight: FontWeight.bold),
-      ),
-    );
-  }
+
 
   // ── Empty / error state ───────────────────────────────────
   Widget _buildEmptyState() {
@@ -505,14 +506,10 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   Widget _buildFormContent() {
     return Column(
       children: [
-        // Form type selector
         _buildFormSelector(),
-
-        // Dynamic form renderer
         Expanded(
           child: SingleChildScrollView(
-            // Extra bottom padding so FAB doesn't overlap content
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
             child: _formCtrl == null
                 ? const Center(child: CircularProgressIndicator())
                 : AnimatedBuilder(
@@ -526,9 +523,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                   ),
           ),
         ),
-
-        // Bottom save bar
-        _buildBottomBar(),
       ],
     );
   }
@@ -583,40 +577,100 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
   }
 
-  // ── Bottom bar: only Save (Select All moved to FAB) ───────
-  Widget _buildBottomBar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(
+  // ── Floating Select All Button ────────────────────────────────
+  Widget _buildSelectAllFAB() {
+    final isSelectAll = _formCtrl?.selectAll ?? false;
+    return FloatingActionButton.extended(
+      onPressed: () {
+        _formCtrl?.setSelectAll(!isSelectAll);
+        setState(() {});
+      },
+      backgroundColor: isSelectAll ? AppColors.highlight : AppColors.primaryBlue,
+      elevation: 6,
+      icon: Icon(
+        isSelectAll ? Icons.deselect_rounded : Icons.select_all_rounded,
         color: Colors.white,
+        size: 20,
+      ),
+      label: Text(
+        isSelectAll ? 'Deselect All' : 'Select All',
+        style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.bold),
+      ),
+    );
+  }
+
+  // ── Bottom nav: 3 items with increased height ─────────────
+  Widget _buildBottomNav() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.primaryBlue,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Colors.black.withOpacity(0.2),
             blurRadius: 10,
             offset: const Offset(0, -2),
           ),
         ],
       ),
-      child: SizedBox(
-        width: double.infinity,
-        height: 46,
-        child: ElevatedButton.icon(
-          onPressed: _isSaving ? null : _saveProfile,
-          icon: _isSaving
-              ? const SizedBox(
-                  height: 16,
-                  width: 16,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white),
-                )
-              : const Icon(Icons.save_outlined, size: 18),
-          label: Text(_isSaving ? 'Saving...' : 'Save Profile'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.highlight,
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10)),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildNavItem(0, Icons.edit_document, 'Manage Info'),
+              _buildNavItem(1, Icons.qr_code_scanner, 'Autofill QR'),
+              _buildNavItem(2, Icons.history, 'History'),
+            ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem(int index, IconData icon, String label) {
+    final isActive = _currentNavIndex == index;
+    return InkWell(
+      onTap: () => _onNavTap(index),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (index == 1)
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Icon(
+                  icon,
+                  color: isActive ? AppColors.highlight : AppColors.primaryBlue,
+                  size: 24,
+                ),
+              )
+            else
+              Icon(
+                icon,
+                color: isActive ? AppColors.highlight : Colors.white60,
+                size: 24,
+              ),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: TextStyle(
+                color: isActive ? AppColors.highlight : Colors.white60,
+                fontSize: 10,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+              ),
+            ),
+          ],
         ),
       ),
     );

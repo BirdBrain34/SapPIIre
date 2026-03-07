@@ -1,8 +1,18 @@
-// lib/models/form_template_models.dart
+// Form Template Models
 // Data models for the dynamic form system.
-// These mirror the Supabase form_templates / form_fields tables.
+// These mirror the Supabase database schema for form_templates, form_sections, form_fields.
+//
+// Structure:
+// - FormTemplate: Top-level form definition
+// - FormSection: Groups related fields together
+// - FormFieldModel: Individual field definition with type, validation, options
+// - FieldOption: Dropdown/radio options
+// - FieldCondition: Conditional visibility rules
+//
+// Used by FormTemplateService to parse database responses and by
+// DynamicFormRenderer to build the UI.
 
-// ── Field type enum ───────────────────────────────────────────
+// Field type enum
 enum FormFieldType {
   text,
   date,
@@ -35,7 +45,7 @@ enum FormFieldType {
   }
 }
 
-// ── FieldOption ───────────────────────────────────────────────
+// Field option for dropdown/radio fields
 class FieldOption {
   final String optionId;
   final String value;
@@ -60,7 +70,7 @@ class FieldOption {
       );
 }
 
-// ── FieldCondition ────────────────────────────────────────────
+// Field condition for conditional visibility
 class FieldCondition {
   final String conditionId;
   final String fieldId;
@@ -85,7 +95,7 @@ class FieldCondition {
       );
 }
 
-// ── FormField ─────────────────────────────────────────────────
+// Form field definition
 class FormFieldModel {
   final String fieldId;
   final String templateId;
@@ -141,7 +151,7 @@ class FormFieldModel {
             .toList(),
       );
 
-  /// Returns true if this field should be visible given [formValues].
+  // Returns true if this field should be visible given current form values
   bool isVisible(Map<String, dynamic> formValues) {
     if (conditions.isEmpty) return true;
     // If ANY condition says "show", evaluate it
@@ -154,7 +164,7 @@ class FormFieldModel {
   }
 }
 
-// ── FormSection ───────────────────────────────────────────────
+// Form section definition
 class FormSection {
   final String sectionId;
   final String templateId;
@@ -186,7 +196,7 @@ class FormSection {
       );
 }
 
-// ── FormTemplate ──────────────────────────────────────────────
+// Form template definition
 class FormTemplate {
   final String templateId;
   final String formName;
@@ -202,11 +212,11 @@ class FormTemplate {
     this.sections = const [],
   });
 
-  /// Flat list of all fields across all sections, ordered by section then field.
+  // Flat list of all fields across all sections, ordered by section then field
   List<FormFieldModel> get allFields =>
       sections.expand((s) => s.fields).toList();
 
-  /// Look up a field by its field_name key.
+  // Look up a field by its field_name key
   FormFieldModel? fieldByName(String name) {
     try {
       return allFields.firstWhere((f) => f.fieldName == name);

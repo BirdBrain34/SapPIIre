@@ -1,6 +1,11 @@
-// lib/widgets/dynamic_form/dynamic_form_renderer.dart
-// The core widget that renders a FormTemplate from Supabase.
-// Works on both mobile (paginated by section) and web (single scroll).
+// Dynamic Form Renderer
+// Renders a complete form from a FormTemplate.
+// Supports two modes:
+//   - mobile: Paginated by section with prev/next navigation
+//   - web: All sections in a single scrollable column
+//
+// Uses FormStateController to manage form state and DynamicFieldWidget to render individual fields.
+// Supports field selection checkboxes for mobile QR transmission.
 
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
@@ -58,23 +63,6 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
 
     return Column(
       children: [
-        // ── Select All toggle (mobile only) ──────────────
-        if (widget.showCheckboxes)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                Checkbox(
-                  value: _ctrl.selectAll,
-                  onChanged: (v) => _ctrl.setSelectAll(v ?? false),
-                  activeColor: AppColors.primaryBlue,
-                ),
-                const Text('Select All',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
-              ],
-            ),
-          ),
-
         // ── Pagination header ─────────────────────────────
         if (_sections.length > 1)
           Padding(
