@@ -231,6 +231,10 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   }
 
   void _navigateToScreen(BuildContext context, String path) {
+    if ((path == 'Staff' || path == 'CreateStaff') &&
+        widget.role != 'superadmin') {
+      return;
+    }
     Widget next;
     switch (path) {
       case 'Dashboard':
@@ -265,6 +269,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       activePath: 'Applicants',
       pageTitle: 'Applicants',
       pageSubtitle: 'Review submitted client intake forms',
+      role: widget.role,
       onLogout: _handleLogout,
       headerActions: [
         _buildHeaderButton('Refresh', Icons.refresh,

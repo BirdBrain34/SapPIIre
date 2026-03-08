@@ -4,12 +4,14 @@ import 'logout_confirmation_dialog.dart';
 
 class SideMenu extends StatelessWidget {
   final String activePath;
+  final String role;
   final VoidCallback? onLogout;
   final Function(String)? onNavigate;
 
   const SideMenu({
     super.key,
     required this.activePath,
+    required this.role,
     this.onLogout,
     this.onNavigate,
   });
@@ -103,33 +105,35 @@ class SideMenu extends StatelessWidget {
           Container(height: 1, color: const Color(0xFF1E2E60)),
           const SizedBox(height: 8),
 
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 6),
-            child: Text(
-              'ADMIN',
-              style: TextStyle(
-                color: AppColors.mutedBlue.withOpacity(0.6),
-                fontSize: 10,
-                letterSpacing: 1.5,
-                fontWeight: FontWeight.w600,
+          if (role == 'superadmin') ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 6),
+              child: Text(
+                'ADMIN',
+                style: TextStyle(
+                  color: AppColors.mutedBlue.withOpacity(0.6),
+                  fontSize: 10,
+                  letterSpacing: 1.5,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
-          ),
 
-          _navItem(
-            context,
-            Icons.manage_accounts_outlined,
-            'Manage Staff',
-            'Staff',
-            activePath,
-          ),
-          _navItem(
-            context,
-            Icons.person_add_outlined,
-            'Create Staff',
-            'CreateStaff',
-            activePath,
-          ),
+            _navItem(
+              context,
+              Icons.manage_accounts_outlined,
+              'Manage Staff',
+              'Staff',
+              activePath,
+            ),
+            _navItem(
+              context,
+              Icons.person_add_outlined,
+              'Create Staff',
+              'CreateStaff',
+              activePath,
+            ),
+          ],
 
           const Spacer(),
           Container(height: 1, color: const Color(0xFF1E2E60)),

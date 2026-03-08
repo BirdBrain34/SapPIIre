@@ -98,6 +98,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
       activePath: 'Staff',
       pageTitle: 'Manage Staff Accounts',
       pageSubtitle: 'Review and manage staff access',
+      role: widget.role,
       onLogout: () => Navigator.pop(context),
       onNavigate: (screenPath) => _navigateToScreen(context, screenPath),
       child: Padding(
@@ -271,6 +272,10 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
   }
 
   void _navigateToScreen(BuildContext context, String screenPath) {
+    if ((screenPath == 'Staff' || screenPath == 'CreateStaff') &&
+        widget.role != 'superadmin') {
+      return;
+    }
     Widget nextScreen;
     switch (screenPath) {
       case 'Dashboard':

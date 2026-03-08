@@ -96,6 +96,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       activePath: 'Dashboard',
       pageTitle: 'Intake Analytics Dashboard',
       pageSubtitle: 'Comprehensive insights from General Intake submissions',
+      role: widget.role,
       onLogout: widget.onLogout,
       onNavigate: (screenPath) => _navigateToScreen(context, screenPath),
       child: Padding(
@@ -380,6 +381,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _navigateToScreen(BuildContext context, String screenPath) {
+    if ((screenPath == 'Staff' || screenPath == 'CreateStaff') &&
+        widget.role != 'superadmin') {
+      return;
+    }
     Widget nextScreen;
     switch (screenPath) {
       case 'Forms':

@@ -222,6 +222,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   }
 
   void _navigateToScreen(BuildContext context, String screenPath) {
+    if ((screenPath == 'Staff' || screenPath == 'CreateStaff') &&
+        widget.role != 'superadmin') {
+      return;
+    }
     Widget next;
     switch (screenPath) {
       case 'Dashboard':
@@ -258,6 +262,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       pageSubtitle: _sessionStarted
           ? 'Session active — client can scan the QR code'
           : 'Start a session to generate a QR code',
+      role: widget.role,
       onLogout: _handleLogout,
       headerActions: [
         if (_sessionStarted) ...[
