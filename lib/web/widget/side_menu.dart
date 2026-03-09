@@ -121,6 +121,13 @@ class SideMenu extends StatelessWidget {
 
             _navItem(
               context,
+              Icons.construction_outlined,
+              'Form Builder',
+              'FormBuilder',
+              activePath,
+            ),
+            _navItem(
+              context,
               Icons.manage_accounts_outlined,
               'Manage Staff',
               'Staff',

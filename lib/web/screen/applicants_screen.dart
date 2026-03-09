@@ -17,6 +17,7 @@ import 'package:sappiire/web/screen/dashboard_screen.dart';
 import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
+import 'package:sappiire/web/screen/form_builder_screen.dart';
 
 class ApplicantsScreen extends StatefulWidget {
   final String cswd_id;
@@ -253,6 +254,11 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         break;
       case 'Forms':
         next = ManageFormsScreen(
+            cswd_id: widget.cswd_id, role: widget.role);
+        break;
+      case 'FormBuilder':
+        if (widget.role != 'superadmin') return;
+        next = FormBuilderScreen(
             cswd_id: widget.cswd_id, role: widget.role);
         break;
       default:

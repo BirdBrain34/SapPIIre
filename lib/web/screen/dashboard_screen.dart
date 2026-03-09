@@ -5,6 +5,7 @@ import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/applicants_screen.dart';
+import 'package:sappiire/web/screen/form_builder_screen.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/services/intake_analytics_service.dart';
 import 'package:sappiire/web/components/intake_chart_widgets.dart';
@@ -407,6 +408,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         break;
       case 'Applicants':
         nextScreen = ApplicantsScreen(
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+        );
+        break;
+      case 'FormBuilder':
+        if (widget.role != 'superadmin') return;
+        nextScreen = FormBuilderScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
         );

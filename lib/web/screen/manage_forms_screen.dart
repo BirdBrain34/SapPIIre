@@ -18,6 +18,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/services/form_template_service.dart';
+import 'package:sappiire/services/form_builder_service.dart';
 import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/web/widget/web_shell.dart';
@@ -27,6 +28,7 @@ import 'package:sappiire/web/screen/dashboard_screen.dart';
 import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/applicants_screen.dart';
+import 'package:sappiire/web/screen/form_builder_screen.dart';
 
 class ManageFormsScreen extends StatefulWidget {
   final String cswd_id;
@@ -244,6 +246,11 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         break;
       case 'Applicants':
         next = ApplicantsScreen(
+            cswd_id: widget.cswd_id, role: widget.role);
+        break;
+      case 'FormBuilder':
+        if (widget.role != 'superadmin') return;
+        next = FormBuilderScreen(
             cswd_id: widget.cswd_id, role: widget.role);
         break;
       default:
