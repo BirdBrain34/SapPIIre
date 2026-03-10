@@ -17,6 +17,7 @@ import 'package:sappiire/mobile/screens/auth/qr_scanner_screen.dart';
 import 'package:sappiire/mobile/screens/auth/login_screen.dart';
 import 'package:sappiire/mobile/screens/auth/InfoScannerScreen.dart';
 import 'package:sappiire/mobile/widgets/bottom_navbar.dart';
+import 'package:sappiire/mobile/screens/auth/ProfileScreen.dart';
 
 class ManageInfoScreen extends StatefulWidget {
   final String userId;
@@ -438,17 +439,24 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   }
 
   // ── AppBar: logout left, camera + save right ──────────────
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      backgroundColor: AppColors.primaryBlue,
-      elevation: 0,
-      automaticallyImplyLeading: false,
-      leading: IconButton(
-        icon: const Icon(Icons.logout_rounded, color: Colors.white70, size: 22),
-        onPressed: _handleLogout,
-        tooltip: 'Log out',
+PreferredSizeWidget _buildAppBar() {
+  return AppBar(
+    backgroundColor: AppColors.primaryBlue,
+    elevation: 0,
+    automaticallyImplyLeading: false,
+    leading: IconButton(
+      icon: const Icon(Icons.logout_rounded, color: Colors.white70, size: 22),
+      onPressed: _handleLogout,
+      tooltip: 'Log out',
+    ),
+    title: GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ProfileScreen(userId: widget.userId),
+        ),
       ),
-      title: Row(
+      child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(7),
@@ -475,6 +483,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           ),
         ],
       ),
+    ),
       actions: [
         IconButton(
           icon: const Icon(Icons.camera_alt_outlined, color: Colors.white, size: 22),
