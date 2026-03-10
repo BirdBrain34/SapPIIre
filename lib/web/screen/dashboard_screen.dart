@@ -5,6 +5,7 @@ import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/applicants_screen.dart';
+import 'package:sappiire/web/screen/form_builder_screen.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/services/intake_analytics_service.dart';
 import 'package:sappiire/web/components/intake_chart_widgets.dart';
@@ -96,6 +97,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       activePath: 'Dashboard',
       pageTitle: 'Intake Analytics Dashboard',
       pageSubtitle: 'Comprehensive insights from General Intake submissions',
+      role: widget.role,
       onLogout: widget.onLogout,
       onNavigate: (screenPath) => _navigateToScreen(context, screenPath),
       child: Padding(
@@ -380,6 +382,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _navigateToScreen(BuildContext context, String screenPath) {
+    if ((screenPath == 'Staff' || screenPath == 'CreateStaff') &&
+        widget.role != 'superadmin') {
+      return;
+    }
     Widget nextScreen;
     switch (screenPath) {
       case 'Forms':
@@ -402,6 +408,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         break;
       case 'Applicants':
         nextScreen = ApplicantsScreen(
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+        );
+        break;
+      case 'FormBuilder':
+        if (widget.role != 'superadmin') return;
+        nextScreen = FormBuilderScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
         );

@@ -1,17 +1,6 @@
 // Mobile Manage Info Screen
-// Main screen for mobile users to manage their personal information.
-//
-// Flow:
-// 1. Loads form templates from Supabase
-// 2. Loads user profile data and autofills form
-// 3. User can edit data and save to Supabase
-// 4. User can select fields and transmit via QR code to web
-//
-// UI Structure:
-// - AppBar: Logout (left), Camera + Save buttons (right)
-// - Form: Dynamic form renderer with field selection checkboxes
-// - Bottom Nav: Manage Info, Autofill QR, History
-// - FAB: Select All / Deselect All fields
+// Loads templates + profile, renders dynamic form, saves to Supabase,
+// and transmits selected fields to the web portal via QR.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -21,6 +10,7 @@ import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/services/form_template_service.dart';
 import 'package:sappiire/services/supabase_service.dart';
+import '../../../services/field_value_service.dart';
 import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/mobile/screens/auth/qr_scanner_screen.dart';
@@ -39,6 +29,7 @@ class ManageInfoScreen extends StatefulWidget {
 class _ManageInfoScreenState extends State<ManageInfoScreen> {
   final _templateService = FormTemplateService();
   final _supabaseService = SupabaseService();
+  final _fieldValueService = FieldValueService();
 
   List<FormTemplate> _templates = [];
   FormTemplate? _selectedTemplate;
@@ -98,12 +89,12 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     setState(() => _isLoading = false);
   }
 
+  // ── Build form controller with autofill + saved field values ──
   void _initFormController(Map<String, dynamic>? profileData) {
     _formCtrl?.dispose();
     final ctrl = FormStateController(template: _selectedTemplate!);
 
     if (profileData != null) {
-      debugPrint('Autofilling from profile...');
       final address =
           (profileData['user_addresses'] as Map<String, dynamic>?) ?? {};
       final socio =
@@ -118,13 +109,11 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         supporting: [],
       );
       
-      // Load signature from profile
       if (profileData['signature_data'] != null) {
         autofillData['__signature'] = profileData['signature_data'];
         ctrl.signatureBase64 = profileData['signature_data'];
       }
       
-      debugPrint('Autofill data keys: ${autofillData.keys.toList()}');
       ctrl.loadFromJson(autofillData);
     }
 
@@ -132,6 +121,37 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
     if (profileData?['profile_id'] != null) {
       _loadComplexData(profileData!['profile_id'], profileData);
+    }
+
+    // Merge saved field values on top (fills fields without autofill_source)
+    _mergeFieldValues(ctrl);
+  }
+
+  /// Loads user_field_values and fills only empty fields after autofill.
+  Future<void> _mergeFieldValues(FormStateController ctrl) async {
+    if (_selectedTemplate == null) return;
+    try {
+      final saved = await _fieldValueService.loadUserFieldValues(
+        userId: widget.userId,
+        template: _selectedTemplate!,
+      );
+      if (saved.isEmpty || !mounted) return;
+
+      // Only fill fields that are currently empty
+      final current = ctrl.toJson();
+      final merged = <String, dynamic>{};
+      for (final entry in saved.entries) {
+        final existing = current[entry.key];
+        if (existing == null ||
+            existing.toString().trim().isEmpty) {
+          merged[entry.key] = entry.value;
+        }
+      }
+      if (merged.isNotEmpty) {
+        ctrl.loadFromJson({...current, ...merged});
+      }
+    } catch (e) {
+      debugPrint('_mergeFieldValues error: $e');
     }
   }
 
@@ -169,11 +189,10 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
             })
         .toList();
 
-    // Load monthly_alimony (C) from first supporting family member
+    // Load alimony from first supporting family row
     if (supporting.isNotEmpty && supporting.first['monthly_alimony'] != null) {
       final monthlyAlimony = supporting.first['monthly_alimony'].toString();
-      final alimonyField = _formCtrl?.template.fieldByName('monthly_alimony');
-      if (alimonyField != null && _formCtrl != null) {
+      if (_formCtrl != null) {
         _formCtrl!.setValue('monthly_alimony', monthlyAlimony, notify: false);
       }
     }
@@ -267,6 +286,13 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         );
       }
 
+      // ── Pass 2: Save ALL field values by field_id (works for any template) ──
+      await _fieldValueService.saveUserFieldValues(
+        userId: widget.userId,
+        template: _selectedTemplate!,
+        formData: data,
+      );
+
       if (mounted) {
         _showFeedback('Profile saved!', Colors.green);
       }
@@ -281,7 +307,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   Future<void> _scanAndTransmit() async {
     if (_formCtrl == null) return;
 
-    // Check if at least one checkbox is selected
+    // Require at least one checkbox selected
     final hasAnyChecked = _formCtrl!.selectAll || 
         _formCtrl!.fieldChecks.values.any((checked) => checked == true);
     
@@ -291,8 +317,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     }
 
     final dataToTransmit = _formCtrl!.toFilteredJson();
-    debugPrint('Data to transmit: ${dataToTransmit.keys.toList()}');
-    debugPrint('Data size: ${dataToTransmit.length} fields');
 
     final sessionId = await Navigator.push<String>(
       context,
@@ -305,12 +329,12 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
 
     if (sessionId != null && mounted) {
-      debugPrint('Sending to session: $sessionId');
-      final success = await _supabaseService.sendDataToWebSession(
-        sessionId,
-        dataToTransmit,
+      // Push field values + JSONB to web session
+      final success = await _fieldValueService.pushToSubmission(
+        sessionId: sessionId,
+        template: _selectedTemplate!,
+        formData: dataToTransmit,
       );
-      debugPrint('Transmission result: $success');
       _showFeedback(
         success ? 'Data transmitted!' : 'Failed to send data.',
         success ? Colors.green : Colors.red,

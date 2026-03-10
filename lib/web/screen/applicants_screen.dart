@@ -17,6 +17,7 @@ import 'package:sappiire/web/screen/dashboard_screen.dart';
 import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
+import 'package:sappiire/web/screen/form_builder_screen.dart';
 
 class ApplicantsScreen extends StatefulWidget {
   final String cswd_id;
@@ -60,7 +61,6 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      // Pre-load all templates
       final templates = await _templateService.fetchActiveTemplates();
       for (final t in templates) {
         _templateCache[t.formName] = t;
@@ -72,13 +72,89 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
           .order('created_at', ascending: false)
           .range(0, 99); // paginate: first 100
 
+      final submissions = List<Map<String, dynamic>>.from(response);
+
+      // Resolve names for older submissions that lack __applicant_name
+      await _resolveUnknownNames(submissions);
+
       setState(() {
-        _submissions = List<Map<String, dynamic>>.from(response);
+        _submissions = submissions;
         _isLoading = false;
       });
     } catch (e) {
       debugPrint('_loadData error: $e');
       setState(() => _isLoading = false);
+    }
+  }
+
+  /// Resolves names for legacy submissions missing __applicant_name.
+  /// Traces __session_id → form_submission.user_id → user_profiles in batch.
+  Future<void> _resolveUnknownNames(List<Map<String, dynamic>> submissions) async {
+    final needsResolution = <Map<String, dynamic>>[];
+    for (final sub in submissions) {
+      final data = sub['data'] as Map<String, dynamic>? ?? {};
+      if (data['__applicant_name'] is Map) continue;
+      final sid = data['__session_id']?.toString();
+      if (sid != null && sid.isNotEmpty) needsResolution.add(sub);
+    }
+
+    if (needsResolution.isEmpty) return;
+
+    final sessionIds = needsResolution
+        .map((s) => (s['data'] as Map<String, dynamic>)['__session_id']?.toString())
+        .whereType<String>()
+        .toSet()
+        .toList();
+    if (sessionIds.isEmpty) return;
+
+    try {
+      // session IDs → user_ids
+      final sessions = await _supabase
+          .from('form_submission')
+          .select('id, user_id')
+          .inFilter('id', sessionIds);
+
+      final sessionToUserId = <String, String>{};
+      final userIds = <String>{};
+      for (final row in sessions) {
+        final uid = row['user_id']?.toString();
+        if (uid != null && uid.isNotEmpty) {
+          sessionToUserId[row['id'].toString()] = uid;
+          userIds.add(uid);
+        }
+      }
+
+      if (userIds.isEmpty) return;
+
+      // user_ids → profile names
+      final profiles = await _supabase
+          .from('user_profiles')
+          .select('user_id, lastname, firstname, middle_name')
+          .inFilter('user_id', userIds.toList());
+
+      final userIdToName = <String, Map<String, String>>{};
+      for (final p in profiles) {
+        userIdToName[p['user_id'].toString()] = {
+          'last': (p['lastname'] ?? '').toString().trim(),
+          'first': (p['firstname'] ?? '').toString().trim(),
+          'middle': (p['middle_name'] ?? '').toString().trim(),
+        };
+      }
+
+      // Embed resolved names into submissions
+      for (final sub in needsResolution) {
+        final data = sub['data'] as Map<String, dynamic>? ?? {};
+        final sessionId = data['__session_id']?.toString();
+        if (sessionId == null) continue;
+        final userId = sessionToUserId[sessionId];
+        if (userId == null) continue;
+        final name = userIdToName[userId];
+        if (name != null && (name['last']!.isNotEmpty || name['first']!.isNotEmpty)) {
+          data['__applicant_name'] = name;
+        }
+      }
+    } catch (e) {
+      debugPrint('_resolveUnknownNames error: $e');
     }
   }
 
@@ -92,7 +168,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     _editCtrl?.dispose();
 
     if (template == null) {
-      // Unknown template — show raw JSON fallback
+      // Unknown/deleted template — raw JSON fallback
       setState(() {
         _selectedSubmission = submission;
         _activeTemplate = null;
@@ -187,13 +263,61 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     await _loadData();
   }
 
+  // ── Applicant name resolution (3-tier fallback) ──────────
   String _getApplicantName(Map<String, dynamic> submission) {
     final data = submission['data'] as Map<String, dynamic>? ?? {};
-    final first = (data['first_name'] ?? data['First Name'] ?? '').toString();
-    final middle = (data['middle_name'] ?? data['Middle Name'] ?? '').toString();
-    final last = (data['last_name'] ?? data['Last Name'] ?? '').toString();
+
+    // 1) Embedded name from _embedApplicantName / _resolveUnknownNames
+    if (data['__applicant_name'] is Map) {
+      final n = data['__applicant_name'] as Map<String, dynamic>;
+      final name = _formatName(n);
+      if (name != null) return name;
+    }
+
+    // 2) Common key names in JSONB (GIS and custom templates)
+    final last = _findNameValue(data, ['last_name', 'Last Name', 'lastname', 'Apelyido']);
+    final first = _findNameValue(data, ['first_name', 'First Name', 'firstname', 'Pangalan']);
+    final middle = _findNameValue(data, ['middle_name', 'Middle Name', 'middle_name', 'Gitnang Pangalan']);
+
+    // 3) Template-aware: match by autofill_source or field label
+    if (last.isEmpty && first.isEmpty) {
+      final formType = submission['form_type'] as String? ?? '';
+      final template = _templateCache[formType];
+      if (template != null) {
+        String tLast = '', tFirst = '', tMid = '';
+        for (final field in template.allFields) {
+          final src = field.autofillSource;
+          final lbl = field.fieldLabel.toLowerCase();
+          final val = data[field.fieldName]?.toString() ?? '';
+          if (val.isEmpty) continue;
+          if (src == 'lastname' || lbl.contains('last') && lbl.contains('name')) tLast = val;
+          if (src == 'firstname' || lbl.contains('first') && lbl.contains('name')) tFirst = val;
+          if (src == 'middle_name' || lbl.contains('middle') && lbl.contains('name')) tMid = val;
+        }
+        final tName = _formatName({'last': tLast, 'first': tFirst, 'middle': tMid});
+        if (tName != null) return tName;
+      }
+    }
+
     if (first.isEmpty && last.isEmpty) return 'Unknown Applicant';
-    return '$last, $first${middle.isNotEmpty ? ' ${middle[0]}.' : ''}'.trim();
+    return _formatName({'last': last, 'first': first, 'middle': middle}) ?? 'Unknown Applicant';
+  }
+
+  /// Formats {last, first, middle} into "Last, First M." or null if empty.
+  String? _formatName(Map<dynamic, dynamic> n) {
+    final last = (n['last'] ?? '').toString().trim();
+    final first = (n['first'] ?? '').toString().trim();
+    final mid = (n['middle'] ?? '').toString().trim();
+    if (last.isEmpty && first.isEmpty) return null;
+    return '$last, $first${mid.isNotEmpty ? ' ${mid[0]}.' : ''}'.trim();
+  }
+
+  String _findNameValue(Map<String, dynamic> data, List<String> keys) {
+    for (final key in keys) {
+      final val = data[key]?.toString().trim() ?? '';
+      if (val.isNotEmpty) return val;
+    }
+    return '';
   }
 
   String _getFormattedDate(String? iso) {
@@ -231,6 +355,10 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   }
 
   void _navigateToScreen(BuildContext context, String path) {
+    if ((path == 'Staff' || path == 'CreateStaff') &&
+        widget.role != 'superadmin') {
+      return;
+    }
     Widget next;
     switch (path) {
       case 'Dashboard':
@@ -251,6 +379,11 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         next = ManageFormsScreen(
             cswd_id: widget.cswd_id, role: widget.role);
         break;
+      case 'FormBuilder':
+        if (widget.role != 'superadmin') return;
+        next = FormBuilderScreen(
+            cswd_id: widget.cswd_id, role: widget.role);
+        break;
       default:
         return;
     }
@@ -265,6 +398,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       activePath: 'Applicants',
       pageTitle: 'Applicants',
       pageSubtitle: 'Review submitted client intake forms',
+      role: widget.role,
       onLogout: _handleLogout,
       headerActions: [
         _buildHeaderButton('Refresh', Icons.refresh,

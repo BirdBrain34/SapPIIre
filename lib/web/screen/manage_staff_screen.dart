@@ -6,6 +6,7 @@ import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/screen/dashboard_screen.dart';
 import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/applicants_screen.dart';
+import 'package:sappiire/web/screen/form_builder_screen.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -98,6 +99,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
       activePath: 'Staff',
       pageTitle: 'Manage Staff Accounts',
       pageSubtitle: 'Review and manage staff access',
+      role: widget.role,
       onLogout: () => Navigator.pop(context),
       onNavigate: (screenPath) => _navigateToScreen(context, screenPath),
       child: Padding(
@@ -271,6 +273,10 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
   }
 
   void _navigateToScreen(BuildContext context, String screenPath) {
+    if ((screenPath == 'Staff' || screenPath == 'CreateStaff') &&
+        widget.role != 'superadmin') {
+      return;
+    }
     Widget nextScreen;
     switch (screenPath) {
       case 'Dashboard':
@@ -294,6 +300,13 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
         break;
       case 'Applicants':
         nextScreen = ApplicantsScreen(
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+        );
+        break;
+      case 'FormBuilder':
+        if (widget.role != 'superadmin') return;
+        nextScreen = FormBuilderScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
         );

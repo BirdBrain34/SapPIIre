@@ -9,6 +9,7 @@ class WebShell extends StatelessWidget {
   final String activePath;
   final String pageTitle;
   final String pageSubtitle;
+  final String role;
   final Widget child;
   final VoidCallback onLogout;
   final List<Widget>? headerActions;
@@ -19,6 +20,7 @@ class WebShell extends StatelessWidget {
     required this.activePath,
     required this.pageTitle,
     required this.pageSubtitle,
+    required this.role,
     required this.child,
     required this.onLogout,
     this.headerActions,
@@ -34,6 +36,7 @@ class WebShell extends StatelessWidget {
           // Sidebar — static, never transitions
           SideMenu(
             activePath: activePath,
+            role: role,
             onLogout: onLogout,
             onNavigate: onNavigate,
           ),

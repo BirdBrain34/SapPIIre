@@ -1,11 +1,5 @@
-// Dynamic Form Renderer
-// Renders a complete form from a FormTemplate.
-// Supports two modes:
-//   - mobile: Paginated by section with prev/next navigation
-//   - web: All sections in a single scrollable column
-//
-// Uses FormStateController to manage form state and DynamicFieldWidget to render individual fields.
-// Supports field selection checkboxes for mobile QR transmission.
+// Renders any FormTemplate dynamically.
+// mobile: paginated sections | web: single scrollable column
 
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
@@ -13,9 +7,7 @@ import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/dynamic_form/dynamic_field_widgets.dart';
 
-// ── DynamicFormRenderer ───────────────────────────────────────
-// mode: 'mobile' — one section at a time with prev/next navigation
-// mode: 'web'    — all sections in a single scrollable column
+
 class DynamicFormRenderer extends StatefulWidget {
   final FormTemplate template;
   final FormStateController controller;
@@ -43,6 +35,19 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
   List<FormSection> get _sections => widget.template.sections;
 
   @override
+  void didUpdateWidget(covariant DynamicFormRenderer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Reset page when switching templates to avoid RangeError
+    if (widget.template.templateId != oldWidget.template.templateId) {
+      _currentSection = 0;
+    }
+    // Clamp if sections shrunk
+    if (_currentSection >= _sections.length && _sections.isNotEmpty) {
+      _currentSection = _sections.length - 1;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _ctrl,
@@ -56,9 +61,13 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
     );
   }
 
-  // ── MOBILE: paginated by section ─────────────────────────
+  // ── MOBILE: one section at a time ─────────────────────
   Widget _buildMobileLayout() {
     if (_sections.isEmpty) return const SizedBox();
+    // Clamp index to valid range
+    if (_currentSection >= _sections.length) {
+      _currentSection = _sections.length - 1;
+    }
     final section = _sections[_currentSection];
 
     return Column(

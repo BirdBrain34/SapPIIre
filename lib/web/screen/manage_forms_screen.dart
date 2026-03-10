@@ -18,6 +18,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/services/form_template_service.dart';
+import 'package:sappiire/services/form_builder_service.dart';
 import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/web/widget/web_shell.dart';
@@ -27,6 +28,7 @@ import 'package:sappiire/web/screen/dashboard_screen.dart';
 import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/applicants_screen.dart';
+import 'package:sappiire/web/screen/form_builder_screen.dart';
 
 class ManageFormsScreen extends StatefulWidget {
   final String cswd_id;
@@ -156,13 +158,17 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         });
   }
 
-  // ── Finalize: save to client_submissions ──────────────────
+  // ── Finalize: save form data to client_submissions ───────
   Future<void> _finalizeEntry() async {
     if (_formCtrl == null || _selectedTemplate == null) return;
     setState(() => _isFinalizing = true);
 
     try {
       final formData = _formCtrl!.toJson();
+
+      // Embed applicant name + session ID for traceability
+      await _embedApplicantName(formData);
+      formData['__session_id'] = _currentSessionId;
 
       await _supabase.from('client_submissions').insert({
         'form_type': _selectedTemplate!.formName,
@@ -204,6 +210,74 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     }
   }
 
+  /// Embeds __applicant_name into the JSONB data.
+  /// Tries: 1) session user_id → user_profiles, 2) autofill_source fields,
+  /// 3) brute-force key name matching.
+  Future<void> _embedApplicantName(Map<String, dynamic> formData) async {
+    // Strategy 1: session → user_profiles (most reliable)
+    if (_currentSessionId != 'WAITING-FOR-SESSION') {
+      try {
+        final session = await _supabase
+            .from('form_submission')
+            .select('user_id')
+            .eq('id', _currentSessionId)
+            .maybeSingle();
+        final userId = session?['user_id'] as String?;
+        if (userId != null) {
+          final profile = await _supabase
+              .from('user_profiles')
+              .select('lastname, firstname, middle_name')
+              .eq('user_id', userId)
+              .maybeSingle();
+          if (profile != null) {
+            final last = (profile['lastname'] ?? '').toString().trim();
+            final first = (profile['firstname'] ?? '').toString().trim();
+            final mid = (profile['middle_name'] ?? '').toString().trim();
+            if (last.isNotEmpty || first.isNotEmpty) {
+              formData['__applicant_name'] = {
+                'last': last,
+                'first': first,
+                'middle': mid,
+              };
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('_embedApplicantName error: $e');
+      }
+    }
+
+    // Strategy 2: template fields with autofill_source
+    if (_selectedTemplate != null) {
+      String last = '', first = '', mid = '';
+      for (final field in _selectedTemplate!.allFields) {
+        final src = field.autofillSource;
+        if (src == 'lastname') last = formData[field.fieldName]?.toString() ?? '';
+        if (src == 'firstname') first = formData[field.fieldName]?.toString() ?? '';
+        if (src == 'middle_name') mid = formData[field.fieldName]?.toString() ?? '';
+      }
+      if (last.isNotEmpty || first.isNotEmpty) {
+        formData['__applicant_name'] = {'last': last, 'first': first, 'middle': mid};
+        return;
+      }
+    }
+
+    // Strategy 3: match common name patterns in JSONB keys
+    String last = '', first = '', mid = '';
+    for (final key in formData.keys) {
+      final lk = key.toLowerCase();
+      final val = formData[key]?.toString() ?? '';
+      if (val.isEmpty) continue;
+      if (lk.contains('last') && lk.contains('name') && last.isEmpty) last = val;
+      if (lk.contains('first') && lk.contains('name') && first.isEmpty) first = val;
+      if (lk.contains('middle') && lk.contains('name') && mid.isEmpty) mid = val;
+    }
+    if (last.isNotEmpty || first.isNotEmpty) {
+      formData['__applicant_name'] = {'last': last, 'first': first, 'middle': mid};
+    }
+  }
+
   Future<void> _handleLogout() async {
     _formSubscription?.cancel();
     if (_currentSessionId != 'WAITING-FOR-SESSION') {
@@ -222,6 +296,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   }
 
   void _navigateToScreen(BuildContext context, String screenPath) {
+    if ((screenPath == 'Staff' || screenPath == 'CreateStaff') &&
+        widget.role != 'superadmin') {
+      return;
+    }
     Widget next;
     switch (screenPath) {
       case 'Dashboard':
@@ -242,6 +320,11 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         next = ApplicantsScreen(
             cswd_id: widget.cswd_id, role: widget.role);
         break;
+      case 'FormBuilder':
+        if (widget.role != 'superadmin') return;
+        next = FormBuilderScreen(
+            cswd_id: widget.cswd_id, role: widget.role);
+        break;
       default:
         return;
     }
@@ -258,6 +341,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       pageSubtitle: _sessionStarted
           ? 'Session active — client can scan the QR code'
           : 'Start a session to generate a QR code',
+      role: widget.role,
       onLogout: _handleLogout,
       headerActions: [
         if (_sessionStarted) ...[

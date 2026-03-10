@@ -15,11 +15,15 @@
 // Field type enum
 enum FormFieldType {
   text,
+  paragraph,
   date,
+  time,
   number,
   dropdown,
   radio,
+  checkbox,
   boolean,
+  linearScale,
   computed,
   membershipGroup,
   familyTable,
@@ -30,17 +34,43 @@ enum FormFieldType {
   static FormFieldType fromString(String v) {
     switch (v) {
       case 'text':                    return FormFieldType.text;
+      case 'paragraph':               return FormFieldType.paragraph;
       case 'date':                    return FormFieldType.date;
+      case 'time':                    return FormFieldType.time;
       case 'number':                  return FormFieldType.number;
       case 'dropdown':                return FormFieldType.dropdown;
       case 'radio':                   return FormFieldType.radio;
+      case 'checkbox':                return FormFieldType.checkbox;
       case 'boolean':                 return FormFieldType.boolean;
+      case 'linear_scale':            return FormFieldType.linearScale;
       case 'computed':                return FormFieldType.computed;
       case 'membership_group':        return FormFieldType.membershipGroup;
       case 'family_table':            return FormFieldType.familyTable;
       case 'supporting_family_table': return FormFieldType.supportingFamilyTable;
       case 'signature':               return FormFieldType.signature;
       default:                        return FormFieldType.unknown;
+    }
+  }
+
+  /// Convert enum value back to the database string representation.
+  String toDbString() {
+    switch (this) {
+      case FormFieldType.text:                    return 'text';
+      case FormFieldType.paragraph:               return 'paragraph';
+      case FormFieldType.date:                    return 'date';
+      case FormFieldType.time:                    return 'time';
+      case FormFieldType.number:                  return 'number';
+      case FormFieldType.dropdown:                return 'dropdown';
+      case FormFieldType.radio:                   return 'radio';
+      case FormFieldType.checkbox:                return 'checkbox';
+      case FormFieldType.boolean:                 return 'boolean';
+      case FormFieldType.linearScale:             return 'linear_scale';
+      case FormFieldType.computed:                return 'computed';
+      case FormFieldType.membershipGroup:         return 'membership_group';
+      case FormFieldType.familyTable:             return 'family_table';
+      case FormFieldType.supportingFamilyTable:   return 'supporting_family_table';
+      case FormFieldType.signature:               return 'signature';
+      case FormFieldType.unknown:                 return 'unknown';
     }
   }
 }
