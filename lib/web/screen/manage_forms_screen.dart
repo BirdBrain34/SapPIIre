@@ -158,7 +158,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         });
   }
 
-  // ── Finalize: save to client_submissions ──────────────────
+  // ── Finalize: save form data to client_submissions ───────
   Future<void> _finalizeEntry() async {
     if (_formCtrl == null || _selectedTemplate == null) return;
     setState(() => _isFinalizing = true);
@@ -166,10 +166,8 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     try {
       final formData = _formCtrl!.toJson();
 
-      // Resolve applicant name from the session's user_id → user_profiles
+      // Embed applicant name + session ID for traceability
       await _embedApplicantName(formData);
-
-      // Tag the session ID so applicants_screen can trace back if needed
       formData['__session_id'] = _currentSessionId;
 
       await _supabase.from('client_submissions').insert({
@@ -212,13 +210,11 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     }
   }
 
-  /// Embeds __applicant_name into the form data JSONB.
-  /// Tries three strategies:
-  ///   1. Lookup user_id from form_submission session → user_profiles
-  ///   2. Search the form data for name fields by autofill_source
-  ///   3. Search by common field_name patterns (last_name, first_name etc.)
+  /// Embeds __applicant_name into the JSONB data.
+  /// Tries: 1) session user_id → user_profiles, 2) autofill_source fields,
+  /// 3) brute-force key name matching.
   Future<void> _embedApplicantName(Map<String, dynamic> formData) async {
-    // Strategy 1: session user_id → user_profiles (most reliable)
+    // Strategy 1: session → user_profiles (most reliable)
     if (_currentSessionId != 'WAITING-FOR-SESSION') {
       try {
         final session = await _supabase
@@ -248,11 +244,11 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           }
         }
       } catch (e) {
-        debugPrint('_embedApplicantName strategy 1 error: $e');
+        debugPrint('_embedApplicantName error: $e');
       }
     }
 
-    // Strategy 2: search template fields by autofill_source
+    // Strategy 2: template fields with autofill_source
     if (_selectedTemplate != null) {
       String last = '', first = '', mid = '';
       for (final field in _selectedTemplate!.allFields) {
@@ -267,7 +263,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       }
     }
 
-    // Strategy 3: brute-force search form data keys for common name patterns
+    // Strategy 3: match common name patterns in JSONB keys
     String last = '', first = '', mid = '';
     for (final key in formData.keys) {
       final lk = key.toLowerCase();

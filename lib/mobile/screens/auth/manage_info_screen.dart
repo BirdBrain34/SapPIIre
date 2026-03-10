@@ -1,17 +1,6 @@
 // Mobile Manage Info Screen
-// Main screen for mobile users to manage their personal information.
-//
-// Flow:
-// 1. Loads form templates from Supabase
-// 2. Loads user profile data and autofills form
-// 3. User can edit data and save to Supabase
-// 4. User can select fields and transmit via QR code to web
-//
-// UI Structure:
-// - AppBar: Logout (left), Camera + Save buttons (right)
-// - Form: Dynamic form renderer with field selection checkboxes
-// - Bottom Nav: Manage Info, Autofill QR, History
-// - FAB: Select All / Deselect All fields
+// Loads templates + profile, renders dynamic form, saves to Supabase,
+// and transmits selected fields to the web portal via QR.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -100,12 +89,12 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     setState(() => _isLoading = false);
   }
 
+  // ── Build form controller with autofill + saved field values ──
   void _initFormController(Map<String, dynamic>? profileData) {
     _formCtrl?.dispose();
     final ctrl = FormStateController(template: _selectedTemplate!);
 
     if (profileData != null) {
-      debugPrint('Autofilling from profile...');
       final address =
           (profileData['user_addresses'] as Map<String, dynamic>?) ?? {};
       final socio =
@@ -120,13 +109,11 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         supporting: [],
       );
       
-      // Load signature from profile
       if (profileData['signature_data'] != null) {
         autofillData['__signature'] = profileData['signature_data'];
         ctrl.signatureBase64 = profileData['signature_data'];
       }
       
-      debugPrint('Autofill data keys: ${autofillData.keys.toList()}');
       ctrl.loadFromJson(autofillData);
     }
 
@@ -136,13 +123,11 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       _loadComplexData(profileData!['profile_id'], profileData);
     }
 
-    // Pass 2: Merge saved user_field_values on top (fills non-autofill fields)
+    // Merge saved field values on top (fills fields without autofill_source)
     _mergeFieldValues(ctrl);
   }
 
-  /// Load saved field values from user_field_values table.
-  /// These cover ALL template fields (including ones without autofill_source).
-  /// Only fills fields that are still empty after the structured autofill pass.
+  /// Loads user_field_values and fills only empty fields after autofill.
   Future<void> _mergeFieldValues(FormStateController ctrl) async {
     if (_selectedTemplate == null) return;
     try {
@@ -164,7 +149,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       }
       if (merged.isNotEmpty) {
         ctrl.loadFromJson({...current, ...merged});
-        debugPrint('Merged ${merged.length} saved field values');
       }
     } catch (e) {
       debugPrint('_mergeFieldValues error: $e');
@@ -205,11 +189,10 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
             })
         .toList();
 
-    // Load monthly_alimony (C) from first supporting family member
+    // Load alimony from first supporting family row
     if (supporting.isNotEmpty && supporting.first['monthly_alimony'] != null) {
       final monthlyAlimony = supporting.first['monthly_alimony'].toString();
-      final alimonyField = _formCtrl?.template.fieldByName('monthly_alimony');
-      if (alimonyField != null && _formCtrl != null) {
+      if (_formCtrl != null) {
         _formCtrl!.setValue('monthly_alimony', monthlyAlimony, notify: false);
       }
     }
@@ -303,10 +286,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         );
       }
 
-      // ── Pass 2: Save ALL field values (including non-autofill fields) ──
-      // This is the template-agnostic save — works for GIS and every new
-      // template created via the Form Builder. Uses field_id as the key
-      // so no autofill_source mapping is needed.
+      // ── Pass 2: Save ALL field values by field_id (works for any template) ──
       await _fieldValueService.saveUserFieldValues(
         userId: widget.userId,
         template: _selectedTemplate!,
@@ -327,7 +307,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   Future<void> _scanAndTransmit() async {
     if (_formCtrl == null) return;
 
-    // Check if at least one checkbox is selected
+    // Require at least one checkbox selected
     final hasAnyChecked = _formCtrl!.selectAll || 
         _formCtrl!.fieldChecks.values.any((checked) => checked == true);
     
@@ -337,8 +317,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     }
 
     final dataToTransmit = _formCtrl!.toFilteredJson();
-    debugPrint('Data to transmit: ${dataToTransmit.keys.toList()}');
-    debugPrint('Data size: ${dataToTransmit.length} fields');
 
     final sessionId = await Navigator.push<String>(
       context,
@@ -351,16 +329,12 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
 
     if (sessionId != null && mounted) {
-      debugPrint('Sending to session: $sessionId');
-      // Use FieldValueService to write both:
-      //   1. Normalised per-field rows to submission_field_values
-      //   2. form_submission.form_data JSONB for the web Realtime listener
+      // Push field values + JSONB to web session
       final success = await _fieldValueService.pushToSubmission(
         sessionId: sessionId,
         template: _selectedTemplate!,
         formData: dataToTransmit,
       );
-      debugPrint('Transmission result: $success');
       _showFeedback(
         success ? 'Data transmitted!' : 'Failed to send data.',
         success ? Colors.green : Colors.red,
