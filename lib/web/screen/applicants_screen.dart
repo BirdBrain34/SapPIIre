@@ -73,13 +73,102 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
           .order('created_at', ascending: false)
           .range(0, 99); // paginate: first 100
 
+      final submissions = List<Map<String, dynamic>>.from(response);
+
+      // Resolve missing applicant names for legacy submissions
+      await _resolveUnknownNames(submissions);
+
       setState(() {
-        _submissions = List<Map<String, dynamic>>.from(response);
+        _submissions = submissions;
         _isLoading = false;
       });
     } catch (e) {
       debugPrint('_loadData error: $e');
       setState(() => _isLoading = false);
+    }
+  }
+
+  /// For submissions that don't have __applicant_name embedded (saved before
+  /// the _embedApplicantName code was deployed), try to resolve the name by
+  /// tracing __session_id → form_submission.user_id → user_profiles.
+  /// Mutates each submission's `data` map in-place so _getApplicantName picks
+  /// up the resolved name.
+  Future<void> _resolveUnknownNames(List<Map<String, dynamic>> submissions) async {
+    // Gather submissions that need resolution
+    final needsResolution = <Map<String, dynamic>>[];
+    for (final sub in submissions) {
+      final data = sub['data'] as Map<String, dynamic>? ?? {};
+      // Already has embedded name → skip
+      if (data['__applicant_name'] is Map) continue;
+      // Has a session_id we can trace
+      final sessionId = data['__session_id']?.toString();
+      if (sessionId != null && sessionId.isNotEmpty) {
+        needsResolution.add(sub);
+        continue;
+      }
+      // No session_id — check if _getApplicantName would resolve via template
+      // (this is fast/synchronous, no DB call needed)
+    }
+
+    if (needsResolution.isEmpty) return;
+
+    // Batch: collect all session IDs → fetch form_submission rows → user_ids → user_profiles
+    final sessionIds = needsResolution
+        .map((s) => (s['data'] as Map<String, dynamic>)['__session_id']?.toString())
+        .whereType<String>()
+        .toSet()
+        .toList();
+
+    if (sessionIds.isEmpty) return;
+
+    try {
+      // Step 1: session IDs → user_ids
+      final sessions = await _supabase
+          .from('form_submission')
+          .select('id, user_id')
+          .inFilter('id', sessionIds);
+
+      final sessionToUserId = <String, String>{};
+      final userIds = <String>{};
+      for (final row in sessions) {
+        final uid = row['user_id']?.toString();
+        if (uid != null && uid.isNotEmpty) {
+          sessionToUserId[row['id'].toString()] = uid;
+          userIds.add(uid);
+        }
+      }
+
+      if (userIds.isEmpty) return;
+
+      // Step 2: user_ids → names
+      final profiles = await _supabase
+          .from('user_profiles')
+          .select('user_id, lastname, firstname, middle_name')
+          .inFilter('user_id', userIds.toList());
+
+      final userIdToName = <String, Map<String, String>>{};
+      for (final p in profiles) {
+        userIdToName[p['user_id'].toString()] = {
+          'last': (p['lastname'] ?? '').toString().trim(),
+          'first': (p['firstname'] ?? '').toString().trim(),
+          'middle': (p['middle_name'] ?? '').toString().trim(),
+        };
+      }
+
+      // Step 3: embed into submissions
+      for (final sub in needsResolution) {
+        final data = sub['data'] as Map<String, dynamic>? ?? {};
+        final sessionId = data['__session_id']?.toString();
+        if (sessionId == null) continue;
+        final userId = sessionToUserId[sessionId];
+        if (userId == null) continue;
+        final name = userIdToName[userId];
+        if (name != null && (name['last']!.isNotEmpty || name['first']!.isNotEmpty)) {
+          data['__applicant_name'] = name;
+        }
+      }
+    } catch (e) {
+      debugPrint('_resolveUnknownNames error: $e');
     }
   }
 
@@ -190,11 +279,54 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
 
   String _getApplicantName(Map<String, dynamic> submission) {
     final data = submission['data'] as Map<String, dynamic>? ?? {};
-    final first = (data['first_name'] ?? data['First Name'] ?? '').toString();
-    final middle = (data['middle_name'] ?? data['Middle Name'] ?? '').toString();
-    final last = (data['last_name'] ?? data['Last Name'] ?? '').toString();
+
+    // Priority 1: Embedded name from _embedApplicantName()
+    if (data['__applicant_name'] is Map) {
+      final n = data['__applicant_name'] as Map<String, dynamic>;
+      final last = (n['last'] ?? '').toString().trim();
+      final first = (n['first'] ?? '').toString().trim();
+      final mid = (n['middle'] ?? '').toString().trim();
+      if (last.isNotEmpty || first.isNotEmpty) {
+        return '$last, $first${mid.isNotEmpty ? ' ${mid[0]}.' : ''}'.trim();
+      }
+    }
+
+    // Priority 2: Try common key names in form_data (GIS and custom templates)
+    final last = _findNameValue(data, ['last_name', 'Last Name', 'lastname', 'Apelyido']);
+    final first = _findNameValue(data, ['first_name', 'First Name', 'firstname', 'Pangalan']);
+    final middle = _findNameValue(data, ['middle_name', 'Middle Name', 'middle_name', 'Gitnang Pangalan']);
+
+    // Priority 3: Search by field_label pattern via the template
+    if (last.isEmpty && first.isEmpty) {
+      final formType = submission['form_type'] as String? ?? '';
+      final template = _templateCache[formType];
+      if (template != null) {
+        String tLast = '', tFirst = '', tMid = '';
+        for (final field in template.allFields) {
+          final src = field.autofillSource;
+          final lbl = field.fieldLabel.toLowerCase();
+          final val = data[field.fieldName]?.toString() ?? '';
+          if (val.isEmpty) continue;
+          if (src == 'lastname' || lbl.contains('last') && lbl.contains('name')) tLast = val;
+          if (src == 'firstname' || lbl.contains('first') && lbl.contains('name')) tFirst = val;
+          if (src == 'middle_name' || lbl.contains('middle') && lbl.contains('name')) tMid = val;
+        }
+        if (tLast.isNotEmpty || tFirst.isNotEmpty) {
+          return '$tLast, $tFirst${tMid.isNotEmpty ? ' ${tMid[0]}.' : ''}'.trim();
+        }
+      }
+    }
+
     if (first.isEmpty && last.isEmpty) return 'Unknown Applicant';
     return '$last, $first${middle.isNotEmpty ? ' ${middle[0]}.' : ''}'.trim();
+  }
+
+  String _findNameValue(Map<String, dynamic> data, List<String> keys) {
+    for (final key in keys) {
+      final val = data[key]?.toString().trim() ?? '';
+      if (val.isNotEmpty) return val;
+    }
+    return '';
   }
 
   String _getFormattedDate(String? iso) {

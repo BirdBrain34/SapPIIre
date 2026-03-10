@@ -21,6 +21,7 @@ import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/services/form_template_service.dart';
 import 'package:sappiire/services/supabase_service.dart';
+import '../../../services/field_value_service.dart';
 import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/mobile/screens/auth/qr_scanner_screen.dart';
@@ -39,6 +40,7 @@ class ManageInfoScreen extends StatefulWidget {
 class _ManageInfoScreenState extends State<ManageInfoScreen> {
   final _templateService = FormTemplateService();
   final _supabaseService = SupabaseService();
+  final _fieldValueService = FieldValueService();
 
   List<FormTemplate> _templates = [];
   FormTemplate? _selectedTemplate;
@@ -132,6 +134,40 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
     if (profileData?['profile_id'] != null) {
       _loadComplexData(profileData!['profile_id'], profileData);
+    }
+
+    // Pass 2: Merge saved user_field_values on top (fills non-autofill fields)
+    _mergeFieldValues(ctrl);
+  }
+
+  /// Load saved field values from user_field_values table.
+  /// These cover ALL template fields (including ones without autofill_source).
+  /// Only fills fields that are still empty after the structured autofill pass.
+  Future<void> _mergeFieldValues(FormStateController ctrl) async {
+    if (_selectedTemplate == null) return;
+    try {
+      final saved = await _fieldValueService.loadUserFieldValues(
+        userId: widget.userId,
+        template: _selectedTemplate!,
+      );
+      if (saved.isEmpty || !mounted) return;
+
+      // Only fill fields that are currently empty
+      final current = ctrl.toJson();
+      final merged = <String, dynamic>{};
+      for (final entry in saved.entries) {
+        final existing = current[entry.key];
+        if (existing == null ||
+            existing.toString().trim().isEmpty) {
+          merged[entry.key] = entry.value;
+        }
+      }
+      if (merged.isNotEmpty) {
+        ctrl.loadFromJson({...current, ...merged});
+        debugPrint('Merged ${merged.length} saved field values');
+      }
+    } catch (e) {
+      debugPrint('_mergeFieldValues error: $e');
     }
   }
 
@@ -267,6 +303,16 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         );
       }
 
+      // ── Pass 2: Save ALL field values (including non-autofill fields) ──
+      // This is the template-agnostic save — works for GIS and every new
+      // template created via the Form Builder. Uses field_id as the key
+      // so no autofill_source mapping is needed.
+      await _fieldValueService.saveUserFieldValues(
+        userId: widget.userId,
+        template: _selectedTemplate!,
+        formData: data,
+      );
+
       if (mounted) {
         _showFeedback('Profile saved!', Colors.green);
       }
@@ -306,9 +352,13 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
     if (sessionId != null && mounted) {
       debugPrint('Sending to session: $sessionId');
-      final success = await _supabaseService.sendDataToWebSession(
-        sessionId,
-        dataToTransmit,
+      // Use FieldValueService to write both:
+      //   1. Normalised per-field rows to submission_field_values
+      //   2. form_submission.form_data JSONB for the web Realtime listener
+      final success = await _fieldValueService.pushToSubmission(
+        sessionId: sessionId,
+        template: _selectedTemplate!,
+        formData: dataToTransmit,
       );
       debugPrint('Transmission result: $success');
       _showFeedback(

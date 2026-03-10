@@ -166,6 +166,12 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     try {
       final formData = _formCtrl!.toJson();
 
+      // Resolve applicant name from the session's user_id → user_profiles
+      await _embedApplicantName(formData);
+
+      // Tag the session ID so applicants_screen can trace back if needed
+      formData['__session_id'] = _currentSessionId;
+
       await _supabase.from('client_submissions').insert({
         'form_type': _selectedTemplate!.formName,
         'data': formData,
@@ -203,6 +209,76 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         ));
       }
       setState(() => _isFinalizing = false);
+    }
+  }
+
+  /// Embeds __applicant_name into the form data JSONB.
+  /// Tries three strategies:
+  ///   1. Lookup user_id from form_submission session → user_profiles
+  ///   2. Search the form data for name fields by autofill_source
+  ///   3. Search by common field_name patterns (last_name, first_name etc.)
+  Future<void> _embedApplicantName(Map<String, dynamic> formData) async {
+    // Strategy 1: session user_id → user_profiles (most reliable)
+    if (_currentSessionId != 'WAITING-FOR-SESSION') {
+      try {
+        final session = await _supabase
+            .from('form_submission')
+            .select('user_id')
+            .eq('id', _currentSessionId)
+            .maybeSingle();
+        final userId = session?['user_id'] as String?;
+        if (userId != null) {
+          final profile = await _supabase
+              .from('user_profiles')
+              .select('lastname, firstname, middle_name')
+              .eq('user_id', userId)
+              .maybeSingle();
+          if (profile != null) {
+            final last = (profile['lastname'] ?? '').toString().trim();
+            final first = (profile['firstname'] ?? '').toString().trim();
+            final mid = (profile['middle_name'] ?? '').toString().trim();
+            if (last.isNotEmpty || first.isNotEmpty) {
+              formData['__applicant_name'] = {
+                'last': last,
+                'first': first,
+                'middle': mid,
+              };
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('_embedApplicantName strategy 1 error: $e');
+      }
+    }
+
+    // Strategy 2: search template fields by autofill_source
+    if (_selectedTemplate != null) {
+      String last = '', first = '', mid = '';
+      for (final field in _selectedTemplate!.allFields) {
+        final src = field.autofillSource;
+        if (src == 'lastname') last = formData[field.fieldName]?.toString() ?? '';
+        if (src == 'firstname') first = formData[field.fieldName]?.toString() ?? '';
+        if (src == 'middle_name') mid = formData[field.fieldName]?.toString() ?? '';
+      }
+      if (last.isNotEmpty || first.isNotEmpty) {
+        formData['__applicant_name'] = {'last': last, 'first': first, 'middle': mid};
+        return;
+      }
+    }
+
+    // Strategy 3: brute-force search form data keys for common name patterns
+    String last = '', first = '', mid = '';
+    for (final key in formData.keys) {
+      final lk = key.toLowerCase();
+      final val = formData[key]?.toString() ?? '';
+      if (val.isEmpty) continue;
+      if (lk.contains('last') && lk.contains('name') && last.isEmpty) last = val;
+      if (lk.contains('first') && lk.contains('name') && first.isEmpty) first = val;
+      if (lk.contains('middle') && lk.contains('name') && mid.isEmpty) mid = val;
+    }
+    if (last.isNotEmpty || first.isNotEmpty) {
+      formData['__applicant_name'] = {'last': last, 'first': first, 'middle': mid};
     }
   }
 
