@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 
 class SupabaseService {
   final _supabase = Supabase.instance.client;
@@ -100,7 +101,71 @@ class SupabaseService {
     }
   }
 
-  /// Step 3 of signup: save profile data after OTP is verified.
+    /// Step 3 of signup: Phone OTP.
+  Future<Map<String, dynamic>> sendPhoneOtp(String phone) async {
+    try {
+      final otp = (100000 + (DateTime.now().millisecondsSinceEpoch % 900000)).toString();
+      
+      final response = await http.post(
+        Uri.parse('https://api.semaphore.co/api/v4/otp'),
+        body: {
+          'apikey': 'fc4874818b2f98480dbba9e862b90334',
+          'number': phone,
+          'message': 'Your SapPIIre verification code is {otp}. Do not share this with anyone.',
+          'code': otp,
+          //'sendername': 'SEMAPHORE',
+          'sendername': 'SapPIIre',
+        },
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        // Store OTP in Supabase directly
+        await _supabase.from('phone_otp').delete().eq('phone', phone);
+        await _supabase.from('phone_otp').insert({
+          'phone': phone,
+          'otp': otp,
+          'expires_at': DateTime.now().add(const Duration(minutes: 10)).toUtc().toIso8601String(),
+        });
+        return {'success': true, 'message': 'OTP sent!'};
+      } else {
+        return {'success': false, 'message': 'Semaphore error: ${response.body}'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> verifyPhoneOtp({
+    required String phone,
+    required String otp,
+  }) async {
+    try {
+      final data = await _supabase
+          .from('phone_otp')
+          .select()
+          .eq('phone', phone)
+          .eq('otp', otp)
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      if (data == null) {
+        return {'success': false, 'message': 'Invalid code'};
+      }
+
+      if (DateTime.parse(data['expires_at']).isBefore(DateTime.now().toUtc())) {
+        await _supabase.from('phone_otp').delete().eq('id', data['id']);
+        return {'success': false, 'message': 'Code has expired. Please request a new one.'};
+      }
+
+      await _supabase.from('phone_otp').delete().eq('id', data['id']);
+      return {'success': true, 'message': 'Phone verified!'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Step 4 of signup: save profile data after OTP is verified.
   Future<Map<String, dynamic>> saveProfileAfterVerification({
     required String userId,
     required String username,
@@ -153,6 +218,8 @@ class SupabaseService {
       };
     }
   }
+
+
 
   /// Login using Supabase Auth
   Future<Map<String, dynamic>> login({

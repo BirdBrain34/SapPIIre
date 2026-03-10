@@ -29,6 +29,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
   int _currentPage = 0;
   bool _isLoading = false;
   String? _verifiedUserId;
+  bool _phoneSent = false;
+  final _phoneOtpController = TextEditingController();
 
   // Page 0 — Personal info
   final _lastNameController       = TextEditingController();
@@ -62,6 +64,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       _dobController, _addressController, _placeOfBirthController,
       _emailController, _passwordController, _confirmPasswordController,
       _otpController, _phoneController, _usernameController,
+      _phoneOtpController, // ← add this
     ]) {
       c.addListener(() => setState(() {}));
     }
@@ -74,6 +77,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       _dobController, _addressController, _placeOfBirthController,
       _emailController, _passwordController, _confirmPasswordController,
       _otpController, _phoneController, _usernameController,
+      _phoneOtpController, // ← add this
       _pageController,
     ]) {
       c.dispose();
@@ -170,7 +174,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
       case 2:
         return _otpController.text.length == 8;
       case 3:
-        return _phoneController.text.isNotEmpty;
+        return _phoneSent
+            ? _phoneOtpController.text.length == 6
+            : _phoneController.text.isNotEmpty;
       case 4:
         return _usernameController.text.isNotEmpty &&
             _passwordController.text.length >= 6 &&
@@ -187,7 +193,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
       case 0: _goNext(); break;
       case 1: _handleSendOtp(); break;
       case 2: _handleVerifyOtp(); break;
-      case 3: _goNext(); break;
+      case 3:
+      if (!_phoneSent) {
+        _handleSendPhoneOtp();
+      } else {
+        _handleVerifyPhoneOtp();
+      }
+      break;
       case 4: _handleCreateAccount(); break;
     }
   }
@@ -243,6 +255,43 @@ class _SignUpScreenState extends State<SignUpScreen> {
       _showError('Failed to resend: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleSendPhoneOtp() async {
+  setState(() => _isLoading = true);
+  final result = await _supabaseService.sendPhoneOtp(
+    _phoneController.text.trim(),
+  );
+  setState(() => _isLoading = false);
+  if (!mounted) return;
+
+  if (result['success']) {
+    setState(() => _phoneSent = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Code sent to your phone!'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  } else {
+    _showError(result['message']);
+  }
+}
+
+  Future<void> _handleVerifyPhoneOtp() async {
+    setState(() => _isLoading = true);
+    final result = await _supabaseService.verifyPhoneOtp(
+      phone: _phoneController.text.trim(),
+      otp: _phoneOtpController.text.trim(),
+    );
+    setState(() => _isLoading = false);
+    if (!mounted) return;
+
+    if (result['success']) {
+      _goNext();
+    } else {
+      _showError(result['message']);
     }
   }
 
@@ -500,11 +549,30 @@ Widget _buildEmailPage() {
                   fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           const Text(
-            'Used for account recovery and future verification.',
+            'A verification code will be sent via SMS.',
             style: TextStyle(color: Colors.white60, fontSize: 13),
           ),
           const SizedBox(height: 30),
-          CustomTextField(hintText: '09XXXXXXXXX', controller: _phoneController),
+          CustomTextField(
+            hintText: '09XXXXXXXXX',
+            controller: _phoneController,
+          ),
+          if (_phoneSent) ...[
+            const SizedBox(height: 16),
+            const Text('Enter the 6-digit code sent to your number',
+                style: TextStyle(color: Colors.white60, fontSize: 13)),
+            const SizedBox(height: 8),
+            CustomTextField(
+              hintText: 'Enter 6-digit code',
+              controller: _phoneOtpController,
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: _isLoading ? null : _handleSendPhoneOtp,
+              child: const Text('Resend Code',
+                  style: TextStyle(color: Colors.white60, fontSize: 13)),
+            ),
+          ],
         ],
       ),
     );
