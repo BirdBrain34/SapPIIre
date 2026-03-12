@@ -18,6 +18,7 @@ import 'package:sappiire/mobile/screens/auth/login_screen.dart';
 import 'package:sappiire/mobile/screens/auth/InfoScannerScreen.dart';
 import 'package:sappiire/mobile/widgets/bottom_navbar.dart';
 import 'package:sappiire/mobile/screens/auth/ProfileScreen.dart';
+import 'package:sappiire/mobile/screens/auth/HistoryScreen.dart';
 
 class ManageInfoScreen extends StatefulWidget {
   final String userId;
@@ -391,14 +392,9 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           if (mounted) setState(() => _currentNavIndex = 0);
         });
         break;
-      case 2:
-        // Form History — placeholder until screen is built
-        setState(() => _currentNavIndex = 2);
-        _showFeedback('Form History coming soon!', AppColors.primaryBlue);
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (mounted) setState(() => _currentNavIndex = 0);
-        });
-        break;
+        case 2:
+          setState(() => _currentNavIndex = 2);
+          break;
     }
   }
 
@@ -427,14 +423,16 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     return Scaffold(
       backgroundColor: AppColors.pageBg,
       appBar: _buildAppBar(),
-      floatingActionButton: _formCtrl != null ? _buildSelectAllFAB() : null,
+      floatingActionButton: (_formCtrl != null && _currentNavIndex == 0) ? _buildSelectAllFAB() : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: _buildBottomNav(),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _templates.isEmpty
-              ? _buildEmptyState()
-              : _buildFormContent(),
+      body: _currentNavIndex == 2
+          ? HistoryScreen(userId: widget.userId, embedded: true)
+          : _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _templates.isEmpty
+                  ? _buildEmptyState()
+                  : _buildFormContent(),
     );
   }
 
