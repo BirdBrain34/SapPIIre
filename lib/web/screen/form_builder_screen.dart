@@ -869,7 +869,28 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   }
 
   // ── Navigation ──────────────────────────────────────────────
+  Future<bool> _confirmLeave() async {
+    if (!_hasUnsavedChanges) return true;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Unsaved Changes'),
+        content: const Text('You have unsaved changes. Leave without saving?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Stay')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Leave', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
   Future<void> _handleLogout() async {
+    if (!await _confirmLeave()) return;
     await _supabase.auth.signOut();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
@@ -911,7 +932,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       default:
         return;
     }
-    Navigator.of(context).pushReplacement(ContentFadeRoute(page: next));
+    _confirmLeave().then((ok) {
+      if (!ok || !mounted) return;
+      Navigator.of(context).pushReplacement(ContentFadeRoute(page: next));
+    });
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -1046,8 +1070,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                     : ListView.builder(
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         itemCount: _templates.length,
-                        itemBuilder: (_, i) =>
-                            _buildTemplateListItem(_templates[i]),
+                        itemBuilder: (_, i) => _buildTemplateListItem(_templates[i]),
                       ),
           ),
         ],
@@ -1127,7 +1150,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 style: TextStyle(fontSize: 11, color: statusClr)),
           ],
         ),
-        onTap: () => _loadTemplate(id),
+        onTap: () async {
+          if (id == _activeTemplateId) return;
+          if (!await _confirmLeave()) return;
+          _loadTemplate(id);
+        },
       ),
     );
   }

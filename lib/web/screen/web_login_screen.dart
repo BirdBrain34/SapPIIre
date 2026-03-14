@@ -176,6 +176,7 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
                       controller: _usernameController,
                       hint: 'Enter your username',
                       icon: Icons.badge_outlined,
+                      textInputAction: TextInputAction.next,
                     ),
                     const SizedBox(height: 20),
 
@@ -187,6 +188,8 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
                       hint: 'Enter your password',
                       icon: Icons.lock_outline,
                       obscure: true,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _isLoading ? null : _handleLogin(),
                     ),
 
                     // Forgot password
@@ -319,16 +322,20 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
     required String hint,
     required IconData icon,
     bool obscure = false,
+    TextInputAction? textInputAction,
+    ValueChanged<String>? onSubmitted,
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF0D1B4E), // darkest navy for contrast
+        color: const Color(0xFF0D1B4E),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFF2A3F7A), width: 1.5),
       ),
       child: TextField(
         controller: controller,
         obscureText: obscure,
+        textInputAction: textInputAction,
+        onSubmitted: onSubmitted,
         style: const TextStyle(color: Colors.white, fontSize: 15),
         decoration: InputDecoration(
           hintText: hint,
