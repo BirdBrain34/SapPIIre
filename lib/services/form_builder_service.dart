@@ -15,6 +15,59 @@ class FormBuilderService {
 
   final _supabase = Supabase.instance.client;
 
+  /// Last error from saveTemplateStructure (for UI display).
+  String? lastSaveError;
+
+  /// Delete all child rows (options, conditions, values) for a template's fields,
+  /// then delete the fields and sections themselves.
+  Future<void> _cascadeDeleteStructure(
+    String templateId, {
+    bool includeValues = false,
+  }) async {
+    final existingFields = await _supabase
+        .from('form_fields')
+        .select('field_id')
+        .eq('template_id', templateId);
+
+    if (existingFields.isNotEmpty) {
+      final fieldIds =
+          existingFields.map((f) => f['field_id'] as String).toList();
+      await _supabase
+          .from('form_field_options')
+          .delete()
+          .inFilter('field_id', fieldIds);
+      await _supabase
+          .from('form_field_conditions')
+          .delete()
+          .inFilter('field_id', fieldIds);
+      if (includeValues) {
+        await _supabase
+            .from('submission_field_values')
+            .delete()
+            .inFilter('field_id', fieldIds);
+        await _supabase
+            .from('user_field_values')
+            .delete()
+            .inFilter('field_id', fieldIds);
+      }
+    }
+
+    // Delete child fields first (parent_field_id IS NOT NULL), then parents
+    await _supabase
+        .from('form_fields')
+        .delete()
+        .eq('template_id', templateId)
+        .not('parent_field_id', 'is', null);
+    await _supabase
+        .from('form_fields')
+        .delete()
+        .eq('template_id', templateId);
+    await _supabase
+        .from('form_sections')
+        .delete()
+        .eq('template_id', templateId);
+  }
+
   // ================================================================
   // TEMPLATE CRUD
   // ================================================================
@@ -52,7 +105,7 @@ class FormBuilderService {
             form_fields(
               field_id, template_id, section_id, field_name, field_label,
               field_type, is_required, validation_rules, default_value,
-              field_order, autofill_source, placeholder,
+              field_order, autofill_source, placeholder, parent_field_id,
               form_field_options(
                 option_id, field_id, option_value, option_label,
                 option_order, is_default
@@ -114,31 +167,7 @@ class FormBuilderService {
       }
 
       // Manually cascade: options → conditions → fields → sections → template
-      final existingFields = await _supabase
-          .from('form_fields')
-          .select('field_id')
-          .eq('template_id', templateId);
-
-      for (final f in existingFields) {
-        final fid = f['field_id'] as String;
-        await _supabase
-            .from('form_field_options')
-            .delete()
-            .eq('field_id', fid);
-        await _supabase
-            .from('form_field_conditions')
-            .delete()
-            .eq('field_id', fid);
-      }
-
-      await _supabase
-          .from('form_fields')
-          .delete()
-          .eq('template_id', templateId);
-      await _supabase
-          .from('form_sections')
-          .delete()
-          .eq('template_id', templateId);
+      await _cascadeDeleteStructure(templateId);
       await _supabase
           .from('form_templates')
           .delete()
@@ -172,31 +201,7 @@ class FormBuilderService {
       }
 
       // Now cascade-delete structure
-      final existingFields = await _supabase
-          .from('form_fields')
-          .select('field_id')
-          .eq('template_id', templateId);
-
-      for (final f in existingFields) {
-        final fid = f['field_id'] as String;
-        await _supabase
-            .from('form_field_options')
-            .delete()
-            .eq('field_id', fid);
-        await _supabase
-            .from('form_field_conditions')
-            .delete()
-            .eq('field_id', fid);
-      }
-
-      await _supabase
-          .from('form_fields')
-          .delete()
-          .eq('template_id', templateId);
-      await _supabase
-          .from('form_sections')
-          .delete()
-          .eq('template_id', templateId);
+      await _cascadeDeleteStructure(templateId, includeValues: true);
       await _supabase
           .from('form_templates')
           .delete()
@@ -231,24 +236,47 @@ class FormBuilderService {
         'theme_config': themeConfig,
       }).eq('template_id', templateId);
 
-      // 2. Clear existing children
+      // 2. Smart cleanup: only delete removed fields; preserve user data for kept fields
       final existingFields = await _supabase
           .from('form_fields')
           .select('field_id')
           .eq('template_id', templateId);
+      final existingIds =
+          existingFields.map((f) => f['field_id'] as String).toSet();
+      final incomingIds =
+          fields.map((f) => f['field_id'] as String).toSet();
+      final removedIds = existingIds.difference(incomingIds).toList();
 
-      for (final f in existingFields) {
-        final fid = f['field_id'] as String;
+      // Delete options and conditions for ALL existing fields (will be re-inserted)
+      if (existingIds.isNotEmpty) {
         await _supabase
             .from('form_field_options')
             .delete()
-            .eq('field_id', fid);
+            .inFilter('field_id', existingIds.toList());
         await _supabase
             .from('form_field_conditions')
             .delete()
-            .eq('field_id', fid);
+            .inFilter('field_id', existingIds.toList());
       }
 
+      // Only delete value rows for fields that are actually being removed
+      if (removedIds.isNotEmpty) {
+        await _supabase
+            .from('submission_field_values')
+            .delete()
+            .inFilter('field_id', removedIds);
+        await _supabase
+            .from('user_field_values')
+            .delete()
+            .inFilter('field_id', removedIds);
+      }
+
+      // Delete child fields first, then all fields for this template
+      await _supabase
+          .from('form_fields')
+          .delete()
+          .eq('template_id', templateId)
+          .not('parent_field_id', 'is', null);
       await _supabase
           .from('form_fields')
           .delete()
@@ -263,15 +291,27 @@ class FormBuilderService {
         await _supabase.from('form_sections').insert(sections);
       }
       if (fields.isNotEmpty) {
-        await _supabase.from('form_fields').insert(fields);
+        // Insert parent fields first, then children (FK on parent_field_id)
+        final parentFields =
+            fields.where((f) => f['parent_field_id'] == null).toList();
+        final childFields =
+            fields.where((f) => f['parent_field_id'] != null).toList();
+        if (parentFields.isNotEmpty) {
+          await _supabase.from('form_fields').insert(parentFields);
+        }
+        if (childFields.isNotEmpty) {
+          await _supabase.from('form_fields').insert(childFields);
+        }
       }
       if (options.isNotEmpty) {
         await _supabase.from('form_field_options').insert(options);
       }
 
       return true;
-    } catch (e) {
+    } catch (e, stack) {
       debugPrint('FormBuilderService.saveTemplateStructure error: $e');
+      debugPrint('Stack: $stack');
+      lastSaveError = e.toString();
       return false;
     }
   }

@@ -181,21 +181,14 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
                f.fieldType != FormFieldType.supportingFamilyTable);
     if (checkableFields.isEmpty) return false;
     return checkableFields.every(
-        (f) => _ctrl.fieldChecks[_checkKeyFor(f)] == true);
+        (f) => _ctrl.fieldChecks[f.checkKey] == true);
   }
 
   void _checkSection(FormSection section, bool v) {
     for (final f in section.fields) {
-      _ctrl.fieldChecks[_checkKeyFor(f)] = v;
+      _ctrl.fieldChecks[f.checkKey] = v;
     }
     _ctrl.notifyListeners();
-  }
-
-  String _checkKeyFor(FormFieldModel field) {
-    if (field.fieldType == FormFieldType.familyTable) return 'Family Composition';
-    if (field.fieldType == FormFieldType.signature) return 'Signature';
-    if (field.fieldType == FormFieldType.membershipGroup) return 'Membership Group';
-    return field.fieldName;
   }
 }
 

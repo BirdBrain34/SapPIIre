@@ -33,6 +33,10 @@ String _generateUuid() {
   return '${h(0, 4)}-${h(4, 6)}-${h(6, 8)}-${h(8, 10)}-${h(10, 16)}';
 }
 
+/// Convert a label to a snake_case slug for field/option values.
+String _slugify(String label) =>
+    label.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
+
 // ── Field type labels and icons for the builder ─────────────
 const _typeLabels = <FormFieldType, String>{
   FormFieldType.radio: 'Multiple Choice',
@@ -45,6 +49,7 @@ const _typeLabels = <FormFieldType, String>{
   FormFieldType.time: 'Time',
   FormFieldType.number: 'Number',
   FormFieldType.boolean: 'Yes / No',
+  FormFieldType.memberTable: 'Member Table',
 };
 
 const _typeIcons = <FormFieldType, IconData>{
@@ -58,6 +63,7 @@ const _typeIcons = <FormFieldType, IconData>{
   FormFieldType.time: Icons.access_time,
   FormFieldType.number: Icons.pin,
   FormFieldType.boolean: Icons.toggle_on_outlined,
+  FormFieldType.memberTable: Icons.table_chart_outlined,
 };
 
 const _systemTypeLabels = <FormFieldType, String>{
@@ -88,6 +94,26 @@ class _BuilderOption {
       : id = id ?? _generateUuid();
 }
 
+class _BuilderColumn {
+  String id;
+  String label;
+  String fieldName;
+  FormFieldType type; // text, number, date, dropdown
+  int order;
+  List<_BuilderOption> options; // only for dropdown columns
+
+  _BuilderColumn({
+    String? id,
+    this.label = 'Column',
+    String? fieldName,
+    this.type = FormFieldType.text,
+    this.order = 0,
+    List<_BuilderOption>? options,
+  })  : id = id ?? _generateUuid(),
+        fieldName = fieldName ?? 'col_${_generateUuid().substring(0, 8)}',
+        options = options ?? [];
+}
+
 class _BuilderField {
   String id;
   String label;
@@ -97,6 +123,7 @@ class _BuilderField {
   String? placeholder;
   int order;
   List<_BuilderOption> options;
+  List<_BuilderColumn> columns; // for memberTable
   int scaleMin;
   int scaleMax;
 
@@ -109,11 +136,13 @@ class _BuilderField {
     this.placeholder,
     this.order = 0,
     List<_BuilderOption>? options,
+    List<_BuilderColumn>? columns,
     this.scaleMin = 1,
     this.scaleMax = 5,
   })  : id = id ?? _generateUuid(),
         fieldName = fieldName ?? 'field_${_generateUuid().substring(0, 8)}',
-        options = options ?? [_BuilderOption(label: 'Option 1', order: 0)];
+        options = options ?? [_BuilderOption(label: 'Option 1', order: 0)],
+        columns = columns ?? [];
 
   bool get hasOptions =>
       type == FormFieldType.radio ||
@@ -245,8 +274,23 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     final rawFields = (data['form_fields'] as List<dynamic>? ?? [])
         .cast<Map<String, dynamic>>();
 
+    // Separate child column-definition fields from top-level fields
+    final childFields = rawFields
+        .where((f) => f['parent_field_id'] != null)
+        .toList();
+    final topLevelFields = rawFields
+        .where((f) => f['parent_field_id'] == null)
+        .toList();
+
+    // Group children by parent_field_id
+    final childrenByParent = <String, List<Map<String, dynamic>>>{};
+    for (final cf in childFields) {
+      final pid = cf['parent_field_id'] as String;
+      childrenByParent.putIfAbsent(pid, () => []).add(cf);
+    }
+
     final sections = rawSections.map((s) {
-      final sFields = rawFields
+      final sFields = topLevelFields
           .where((f) => f['section_id'] == s['section_id'])
           .toList()
         ..sort((a, b) => ((a['field_order'] as int?) ?? 0)
@@ -264,6 +308,38 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 ..sort((a, b) => ((a['option_order'] as int?) ?? 0)
                     .compareTo((b['option_order'] as int?) ?? 0));
 
+          // Parse columns for member_table fields
+          List<_BuilderColumn> columns = [];
+          final fid = f['field_id'] as String;
+          if (f['field_type'] == 'member_table' &&
+              childrenByParent.containsKey(fid)) {
+            final childList = childrenByParent[fid]!
+              ..sort((a, b) => ((a['field_order'] as int?) ?? 0)
+                  .compareTo((b['field_order'] as int?) ?? 0));
+            columns = childList.map((cf) {
+              final colOpts =
+                  (cf['form_field_options'] as List<dynamic>? ?? [])
+                      .cast<Map<String, dynamic>>()
+                    ..sort((a, b) => ((a['option_order'] as int?) ?? 0)
+                        .compareTo((b['option_order'] as int?) ?? 0));
+              return _BuilderColumn(
+                id: cf['field_id'] as String,
+                label: cf['field_label'] as String? ?? '',
+                fieldName: cf['field_name'] as String? ?? '',
+                type: FormFieldType.fromString(
+                    cf['field_type'] as String? ?? 'text'),
+                order: (cf['field_order'] as int?) ?? 0,
+                options: colOpts
+                    .map((o) => _BuilderOption(
+                          id: o['option_id'] as String,
+                          label: o['option_label'] as String? ?? '',
+                          order: (o['option_order'] as int?) ?? 0,
+                        ))
+                    .toList(),
+              );
+            }).toList();
+          }
+
           return _BuilderField(
             id: f['field_id'] as String,
             label: f['field_label'] as String? ?? '',
@@ -273,6 +349,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             isRequired: (f['is_required'] as bool?) ?? false,
             placeholder: f['placeholder'] as String?,
             order: (f['field_order'] as int?) ?? 0,
+            columns: columns,
             options: rawOpts
                 .map((o) => _BuilderOption(
                       id: o['option_id'] as String,
@@ -378,14 +455,47 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           'field_order': fi,
         });
 
+        // Serialize member table columns as child fields
+        if (field.type == FormFieldType.memberTable) {
+          for (var ci = 0; ci < field.columns.length; ci++) {
+            final col = field.columns[ci];
+            dbFields.add({
+              'field_id': col.id,
+              'template_id': _activeTemplateId,
+              'section_id': section.id,
+              'field_name': col.fieldName,
+              'field_label': col.label,
+              'field_type': col.type.toDbString(),
+              'is_required': false,
+              'placeholder': null,
+              'field_order': ci,
+              'parent_field_id': field.id,
+            });
+
+            // Column options (for dropdown columns)
+            if (col.type == FormFieldType.dropdown) {
+              for (var oi = 0; oi < col.options.length; oi++) {
+                final opt = col.options[oi];
+                dbOptions.add({
+                  'option_id': opt.id,
+                  'field_id': col.id,
+                  'option_value': _slugify(opt.label),
+                  'option_label': opt.label,
+                  'option_order': oi,
+                  'is_default': false,
+                });
+              }
+            }
+          }
+        }
+
         if (field.hasOptions) {
           for (var oi = 0; oi < field.options.length; oi++) {
             final opt = field.options[oi];
             dbOptions.add({
               'option_id': opt.id,
               'field_id': field.id,
-              'option_value':
-                  opt.label.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_'),
+              'option_value': _slugify(opt.label),
               'option_label': opt.label,
               'option_order': oi,
               'is_default': false,
@@ -416,7 +526,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     });
 
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(success ? 'Template saved ✓' : 'Error saving template'),
+      content: Text(success
+          ? 'Template saved'
+          : 'Error saving template: ${_service.lastSaveError ?? "unknown"}'),
       backgroundColor: success ? Colors.green : Colors.red,
       behavior: SnackBarBehavior.floating,
     ));
@@ -1550,8 +1662,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             ),
             onChanged: (v) {
               field.label = v;
-              field.fieldName =
-                  v.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
+              field.fieldName = _slugify(v);
               _hasUnsavedChanges = true;
             },
           ),
@@ -1718,6 +1829,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         return _iconPreview('Time', Icons.access_time);
       case FormFieldType.linearScale:
         return _buildLinearScaleEditor(field, isActive);
+      case FormFieldType.memberTable:
+        return _buildColumnEditor(field, isActive);
       case FormFieldType.boolean:
         return Column(
           children: [
@@ -1831,6 +1944,206 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             field.scaleMax = v!;
             _hasUnsavedChanges = true;
           }),
+        ),
+      ],
+    );
+  }
+
+  // ── Column Editor (member table) ──────────────────────────────
+  Widget _buildColumnEditor(_BuilderField field, bool isActive) {
+    const columnTypes = <FormFieldType, String>{
+      FormFieldType.text: 'Text',
+      FormFieldType.number: 'Number',
+      FormFieldType.date: 'Date',
+      FormFieldType.dropdown: 'Dropdown',
+    };
+
+    if (!isActive) {
+      if (field.columns.isEmpty) {
+        return const Text('No columns defined',
+            style: TextStyle(fontSize: 12, color: AppColors.textMuted));
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('${field.columns.length} column(s) defined',
+              style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: field.columns.map((c) {
+              return Chip(
+                label: Text(
+                    '${c.label} (${columnTypes[c.type] ?? c.type.toDbString()})',
+                    style: const TextStyle(fontSize: 11)),
+                visualDensity: VisualDensity.compact,
+              );
+            }).toList(),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Table Columns',
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textMuted)),
+        const SizedBox(height: 8),
+        ...field.columns.asMap().entries.map((entry) {
+          final ci = entry.key;
+          final col = entry.value;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: TextField(
+                    controller: _ctrl('col_${col.id}', col.label),
+                    style: const TextStyle(fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: 'Column name',
+                      filled: true,
+                      fillColor: AppColors.pageBg,
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 10),
+                    ),
+                    onChanged: (v) {
+                      col.label = v;
+                      col.fieldName = _slugify(v);
+                      _hasUnsavedChanges = true;
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 2,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.cardBorder),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<FormFieldType>(
+                        value: col.type,
+                        isExpanded: true,
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.textDark),
+                        items: columnTypes.entries.map((e) {
+                          return DropdownMenuItem(
+                            value: e.key,
+                            child: Text(e.value),
+                          );
+                        }).toList(),
+                        onChanged: (v) {
+                          if (v == null) return;
+                          setState(() {
+                            col.type = v;
+                            if (v == FormFieldType.dropdown &&
+                                col.options.isEmpty) {
+                              col.options
+                                  .add(_BuilderOption(label: 'Option 1'));
+                            }
+                            _hasUnsavedChanges = true;
+                          });
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: const Icon(Icons.close,
+                      size: 18, color: AppColors.textMuted),
+                  onPressed: () => setState(() {
+                    field.columns.removeAt(ci);
+                    _hasUnsavedChanges = true;
+                  }),
+                ),
+              ],
+            ),
+          );
+        }),
+
+        // Dropdown options sub-editors
+        ...field.columns
+            .where((c) => c.type == FormFieldType.dropdown)
+            .map((col) => Padding(
+                  padding: const EdgeInsets.only(left: 24, bottom: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Options for "${col.label}":',
+                          style: const TextStyle(
+                              fontSize: 11, color: AppColors.textMuted)),
+                      ...col.options.asMap().entries.map((oe) {
+                        final opt = oe.value;
+                        return Row(
+                          children: [
+                            const Icon(Icons.arrow_right,
+                                size: 16, color: AppColors.textMuted),
+                            Expanded(
+                              child: TextField(
+                                controller:
+                                    _ctrl('colopt_${opt.id}', opt.label),
+                                style: const TextStyle(fontSize: 12),
+                                decoration: const InputDecoration(
+                                  hintText: 'Option',
+                                  border: InputBorder.none,
+                                  contentPadding:
+                                      EdgeInsets.symmetric(vertical: 6),
+                                ),
+                                onChanged: (v) {
+                                  opt.label = v;
+                                  _hasUnsavedChanges = true;
+                                },
+                              ),
+                            ),
+                            if (col.options.length > 1)
+                              IconButton(
+                                icon: const Icon(Icons.close, size: 14),
+                                onPressed: () => setState(() {
+                                  col.options.removeAt(oe.key);
+                                  _hasUnsavedChanges = true;
+                                }),
+                              ),
+                          ],
+                        );
+                      }),
+                      TextButton.icon(
+                        onPressed: () => setState(() {
+                          col.options.add(_BuilderOption(
+                              label: 'Option ${col.options.length + 1}'));
+                          _hasUnsavedChanges = true;
+                        }),
+                        icon: const Icon(Icons.add, size: 14),
+                        label: const Text('Add option',
+                            style: TextStyle(fontSize: 11)),
+                      ),
+                    ],
+                  ),
+                )),
+
+        // Add column button
+        TextButton.icon(
+          onPressed: () => setState(() {
+            field.columns.add(_BuilderColumn(
+              label: 'Column ${field.columns.length + 1}',
+              order: field.columns.length,
+            ));
+            _hasUnsavedChanges = true;
+          }),
+          icon: const Icon(Icons.add_circle_outline, size: 16),
+          label: const Text('Add Column', style: TextStyle(fontSize: 12)),
         ),
       ],
     );

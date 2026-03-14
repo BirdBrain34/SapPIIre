@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
+import 'package:sappiire/mobile/widgets/date_picker_helper.dart';
 
 // ── Top-level dispatcher ──────────────────────────────────────
 class DynamicFieldWidget extends StatelessWidget {
@@ -30,7 +31,7 @@ class DynamicFieldWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final checkKey = _checkKeyFor(field);
+    final checkKey = field.checkKey;
 
     Widget fieldWidget;
     switch (field.fieldType) {
@@ -73,6 +74,10 @@ class DynamicFieldWidget extends StatelessWidget {
         fieldWidget = _SupportingFamilyField(
             controller: controller, isReadOnly: isReadOnly);
         break;
+      case FormFieldType.memberTable:
+        fieldWidget = _MemberTableWidget(
+            field: field, controller: controller, isReadOnly: isReadOnly);
+        break;
       case FormFieldType.signature:
         fieldWidget =
             _SignatureField(controller: controller, isReadOnly: isReadOnly);
@@ -107,12 +112,6 @@ class DynamicFieldWidget extends StatelessWidget {
 }
 
 // ── Shared helpers ────────────────────────────────────────────
-String _checkKeyFor(FormFieldModel f) {
-  if (f.fieldType == FormFieldType.familyTable) return 'Family Composition';
-  if (f.fieldType == FormFieldType.signature) return 'Signature';
-  if (f.fieldType == FormFieldType.membershipGroup) return 'Membership Group';
-  return f.fieldName;
-}
 
 InputDecoration _inputDeco(
         {String? hint, bool readOnly = false, Widget? suffix}) =>
@@ -302,9 +301,8 @@ class _DateField extends StatelessWidget {
                     ),
                   );
                   if (picked != null) {
-                    final formatted =
-                        '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
-                    controller.setValue(field.fieldName, formatted);
+                    controller.setValue(field.fieldName,
+                        DatePickerHelper.formatDate(picked));
                   }
                 },
           child: Container(
@@ -743,8 +741,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
               ),
             );
             if (picked != null) {
-              final formatted =
-                  '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+              final formatted = DatePickerHelper.formatDate(picked);
               final today = DateTime.now();
               int age = today.year - picked.year;
               if (today.month < picked.month ||
@@ -1320,4 +1317,236 @@ class _SignaturePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_SignaturePainter old) => true;
+}
+
+// ── Member Table (generic, column-driven) ─────────────────────
+class _MemberTableWidget extends StatefulWidget {
+  final FormFieldModel field;
+  final FormStateController controller;
+  final bool isReadOnly;
+  const _MemberTableWidget({
+    required this.field,
+    required this.controller,
+    required this.isReadOnly,
+  });
+
+  @override
+  State<_MemberTableWidget> createState() => _MemberTableWidgetState();
+}
+
+class _MemberTableWidgetState extends State<_MemberTableWidget> {
+  List<FormFieldModel> get _columns => widget.field.columns;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = widget.controller.getMemberTableRows(widget.field.fieldName);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header row: label + Add Row button
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _FieldLabel(
+              label: widget.field.fieldLabel,
+              isRequired: widget.field.isRequired,
+            ),
+            if (!widget.isReadOnly)
+              TextButton.icon(
+                onPressed: () {
+                  widget.controller.addMemberTableRow(
+                    widget.field.fieldName,
+                    _columns,
+                  );
+                  setState(() {});
+                },
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('Add Row', style: TextStyle(fontSize: 12)),
+              ),
+          ],
+        ),
+
+        // Empty state
+        if (rows.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              'No rows added.',
+              style: TextStyle(color: Colors.black45, fontSize: 12),
+            ),
+          ),
+
+        // Rows as cards
+        ...rows.asMap().entries.map((entry) {
+          final rowIdx = entry.key;
+          final rowData = entry.value;
+          return Card(
+            margin: const EdgeInsets.only(bottom: 10),
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: const BorderSide(color: Color(0xFFEEEEF5)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                children: [
+                  ..._columns.map((col) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 100,
+                            child: Text(
+                              col.fieldLabel,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.black54,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: widget.isReadOnly
+                                ? Text(
+                                    rowData[col.fieldName]?.toString() ?? '',
+                                    style: const TextStyle(fontSize: 13),
+                                  )
+                                : _buildCellEditor(col, rowData, rowIdx),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                  if (!widget.isReadOnly)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () {
+                          widget.controller.removeMemberTableRow(
+                            widget.field.fieldName,
+                            rowIdx,
+                          );
+                          setState(() {});
+                        },
+                        icon: const Icon(Icons.delete_outline,
+                            size: 14, color: Colors.red),
+                        label: const Text('Remove',
+                            style: TextStyle(fontSize: 11, color: Colors.red)),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _buildCellEditor(
+      FormFieldModel col, Map<String, dynamic> rowData, int rowIdx) {
+    final currentValue = rowData[col.fieldName]?.toString() ?? '';
+
+    switch (col.fieldType) {
+      case FormFieldType.text:
+      case FormFieldType.number:
+        return TextFormField(
+          key: ValueKey('${widget.field.fieldName}_${rowIdx}_${col.fieldName}'),
+          initialValue: currentValue,
+          keyboardType: col.fieldType == FormFieldType.number
+              ? const TextInputType.numberWithOptions(decimal: true)
+              : TextInputType.text,
+          decoration: _inputDeco(hint: col.placeholder ?? col.fieldLabel),
+          style: const TextStyle(fontSize: 13),
+          onChanged: (v) {
+            widget.controller.updateMemberTableCell(
+              widget.field.fieldName, rowIdx, col.fieldName, v,
+            );
+          },
+        );
+
+      case FormFieldType.date:
+        return GestureDetector(
+          onTap: () async {
+            DateTime initial;
+            try {
+              initial = DateTime.parse(currentValue);
+            } catch (_) {
+              initial = DateTime.now();
+            }
+            final picked = await showDatePicker(
+              context: context,
+              initialDate: initial,
+              firstDate: DateTime(1900),
+              lastDate: DateTime(2100),
+              builder: DatePickerHelper.themedBuilder,
+            );
+            if (picked != null) {
+              widget.controller.updateMemberTableCell(
+                widget.field.fieldName, rowIdx, col.fieldName,
+                DatePickerHelper.formatDate(picked),
+              );
+              setState(() {});
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFDDDDEE)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    currentValue.isEmpty ? 'Select date' : currentValue,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color:
+                          currentValue.isEmpty ? Colors.black38 : Colors.black,
+                    ),
+                  ),
+                ),
+                const Icon(Icons.calendar_today,
+                    size: 16, color: Colors.black38),
+              ],
+            ),
+          ),
+        );
+
+      case FormFieldType.dropdown:
+        return DropdownButtonFormField<String>(
+          value: currentValue.isEmpty ? null : currentValue,
+          items: col.options.map((opt) {
+            return DropdownMenuItem(
+              value: opt.value,
+              child: Text(opt.label, style: const TextStyle(fontSize: 13)),
+            );
+          }).toList(),
+          decoration: _inputDeco(hint: 'Select...'),
+          onChanged: (v) {
+            widget.controller.updateMemberTableCell(
+              widget.field.fieldName, rowIdx, col.fieldName, v ?? '',
+            );
+            setState(() {});
+          },
+        );
+
+      default:
+        return TextFormField(
+          key: ValueKey('${widget.field.fieldName}_${rowIdx}_${col.fieldName}'),
+          initialValue: currentValue,
+          decoration: _inputDeco(hint: col.fieldLabel),
+          style: const TextStyle(fontSize: 13),
+          onChanged: (v) {
+            widget.controller.updateMemberTableCell(
+              widget.field.fieldName, rowIdx, col.fieldName, v,
+            );
+          },
+        );
+    }
+  }
 }

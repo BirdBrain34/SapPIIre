@@ -35,6 +35,9 @@ class FormStateController extends ChangeNotifier {
   String? signatureBase64;
   List<Offset>? signaturePoints;
 
+  // ── Member table state (generic user-defined tables) ──
+  Map<String, List<Map<String, dynamic>>> memberTableData = {};
+
   // ── Checkbox selection state (mobile "what to share") ────
   final Map<String, bool> fieldChecks = {};
   bool selectAll = false;
@@ -69,6 +72,10 @@ class FormStateController extends ChangeNotifier {
           break;
         case FormFieldType.supportingFamilyTable:
           break;
+        case FormFieldType.memberTable:
+          memberTableData[field.fieldName] = [];
+          fieldChecks[field.fieldLabel] = false;
+          break;
         default:
           break;
       }
@@ -95,6 +102,42 @@ class FormStateController extends ChangeNotifier {
   void recomputeFromFamilyChange() {
     _recomputeFields();
     notifyListeners();
+  }
+
+  // ── Member table helpers ──────────────────────────────────
+  List<Map<String, dynamic>> getMemberTableRows(String fieldName) {
+    return memberTableData[fieldName] ?? [];
+  }
+
+  void setMemberTableRows(String fieldName, List<Map<String, dynamic>> rows) {
+    memberTableData[fieldName] = rows;
+    notifyListeners();
+  }
+
+  void addMemberTableRow(String fieldName, List<FormFieldModel> columns) {
+    final emptyRow = <String, dynamic>{
+      for (final col in columns) col.fieldName: '',
+    };
+    memberTableData.putIfAbsent(fieldName, () => []);
+    memberTableData[fieldName]!.add(emptyRow);
+    notifyListeners();
+  }
+
+  void removeMemberTableRow(String fieldName, int index) {
+    final rows = memberTableData[fieldName];
+    if (rows != null && index >= 0 && index < rows.length) {
+      rows.removeAt(index);
+      notifyListeners();
+    }
+  }
+
+  void updateMemberTableCell(
+      String fieldName, int rowIndex, String colName, dynamic value) {
+    final rows = memberTableData[fieldName];
+    if (rows != null && rowIndex >= 0 && rowIndex < rows.length) {
+      rows[rowIndex][colName] = value;
+      notifyListeners();
+    }
   }
 
   // Load form data from JSON (from database or QR transmission)
@@ -125,19 +168,25 @@ class FormStateController extends ChangeNotifier {
       } else {
         final field = template.fieldByName(key) ?? _findByLabel(key);
         if (field != null) {
-          _values[field.fieldName] = value;
-          if (textControllers.containsKey(field.fieldName)) {
-            textControllers[field.fieldName]!.text = value?.toString() ?? '';
-          }
-          if (field.fieldType == FormFieldType.radio ||
-              field.fieldType == FormFieldType.dropdown) {
-            _values[field.fieldName] = value?.toString();
-          }
-          if (field.fieldName == 'housing_status') {
-            housingStatus = value?.toString();
-          }
-          if (field.fieldName == 'has_support') {
-            hasSupport = value == true || value == 'true';
+          if (field.fieldType == FormFieldType.memberTable && value is List) {
+            memberTableData[field.fieldName] = value
+                .map((e) => Map<String, dynamic>.from(e as Map))
+                .toList();
+          } else {
+            _values[field.fieldName] = value;
+            if (textControllers.containsKey(field.fieldName)) {
+              textControllers[field.fieldName]!.text = value?.toString() ?? '';
+            }
+            if (field.fieldType == FormFieldType.radio ||
+                field.fieldType == FormFieldType.dropdown) {
+              _values[field.fieldName] = value?.toString();
+            }
+            if (field.fieldName == 'housing_status') {
+              housingStatus = value?.toString();
+            }
+            if (field.fieldName == 'has_support') {
+              hasSupport = value == true || value == 'true';
+            }
           }
         } else {
           _values[key] = value;
@@ -170,6 +219,12 @@ class FormStateController extends ChangeNotifier {
         case FormFieldType.boolean:
           result[field.fieldName] = _values[field.fieldName] ?? false;
           break;
+        case FormFieldType.memberTable:
+          final rows = memberTableData[field.fieldName];
+          if (rows != null && rows.isNotEmpty) {
+            result[field.fieldName] = rows;
+          }
+          break;
         default:
           break;
       }
@@ -190,7 +245,7 @@ class FormStateController extends ChangeNotifier {
     final result = <String, dynamic>{};
 
     for (final field in template.allFields) {
-      final checkKey = _checkKeyFor(field);
+      final checkKey = field.checkKey;
       if (fieldChecks[checkKey] != true && !selectAll) continue;
 
       switch (field.fieldType) {
@@ -205,6 +260,12 @@ class FormStateController extends ChangeNotifier {
         case FormFieldType.radio:
           final val = _values[field.fieldName];
           if (val != null) result[field.fieldName] = val;
+          break;
+        case FormFieldType.memberTable:
+          final rows = memberTableData[field.fieldName];
+          if (rows != null && rows.isNotEmpty) {
+            result[field.fieldName] = rows;
+          }
           break;
         default:
           break;
@@ -332,6 +393,7 @@ class FormStateController extends ChangeNotifier {
     housingStatus = null;
     signatureBase64 = null;
     signaturePoints = null;
+    memberTableData.clear();
     fieldChecks.updateAll((_, __) => false);
     selectAll = false;
     if (notify) notifyListeners();
@@ -344,13 +406,6 @@ class FormStateController extends ChangeNotifier {
     } catch (_) {
       return null;
     }
-  }
-
-  String _checkKeyFor(FormFieldModel field) {
-    if (field.fieldType == FormFieldType.familyTable) return 'Family Composition';
-    if (field.fieldType == FormFieldType.signature) return 'Signature';
-    if (field.fieldType == FormFieldType.membershipGroup) return 'Membership Group';
-    return field.fieldName;
   }
 
   @override

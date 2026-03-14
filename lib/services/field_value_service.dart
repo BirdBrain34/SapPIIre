@@ -1,6 +1,8 @@
 // Saves/loads field values for ANY template using field_id as the key.
 // Works for GIS and every custom template — no migration needed per form.
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/form_template_models.dart';
@@ -53,6 +55,7 @@ class FieldValueService {
     try {
       final eligible = template.allFields
           .where((f) => !_skipTypes.contains(f.fieldType))
+          .where((f) => f.parentFieldId == null)
           .toList();
       if (eligible.isEmpty) return {};
 
@@ -62,15 +65,29 @@ class FieldValueService {
           .eq('user_id', userId)
           .inFilter('field_id', eligible.map((f) => f.fieldId).toList());
 
-      // Reverse map: field_id → field_name
+      // Reverse map: field_id → field_name and field_id → field_type
       final idToName = {for (final f in eligible) f.fieldId: f.fieldName};
+      final idToType = {for (final f in eligible) f.fieldId: f.fieldType};
       final result = <String, dynamic>{};
       for (final row in rows) {
         final fid = row['field_id'] as String?;
         final fval = row['field_value'] as String?;
         if (fid == null || fval == null || fval.isEmpty) continue;
         final name = idToName[fid];
-        if (name != null) result[name] = fval;
+        if (name == null) continue;
+
+        if (idToType[fid] == FormFieldType.memberTable) {
+          try {
+            result[name] = (jsonDecode(fval) as List)
+                .map((e) => Map<String, dynamic>.from(e as Map))
+                .toList();
+          } catch (_) {
+            result[name] = <Map<String, dynamic>>[];
+          }
+          continue;
+        }
+
+        result[name] = fval;
       }
       return result;
     } catch (e) {
@@ -135,6 +152,17 @@ class FieldValueService {
     final rows = <Map<String, dynamic>>[];
     for (final field in template.allFields) {
       if (_skipTypes.contains(field.fieldType)) continue;
+      if (field.parentFieldId != null) continue; // skip child column-definitions
+
+      if (field.fieldType == FormFieldType.memberTable) {
+        final val = formData[field.fieldName];
+        if (val == null) continue;
+        final jsonStr = jsonEncode(val);
+        if (jsonStr == '[]' || jsonStr.isEmpty) continue;
+        rows.add(rowBuilder(field, jsonStr));
+        continue;
+      }
+
       final val = formData[field.fieldName]?.toString().trim() ?? '';
       if (val.isEmpty) continue;
       rows.add(rowBuilder(field, val));
