@@ -57,7 +57,10 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
   // ── Data Loading ──────────────────────────────────────────
   Future<void> _loadAll() async {
-    setState(() => _isLoading = true);
+    final previousTemplateId = _selectedTemplate?.templateId;
+    // Only show full-screen spinner on first load, not on pull-to-refresh
+    final isFirstLoad = _templates.isEmpty && _selectedTemplate == null;
+    if (isFirstLoad) setState(() => _isLoading = true);
     try {
       debugPrint('ManageInfoScreen: Loading templates...');
       final templates =
@@ -68,14 +71,23 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           await _supabaseService.loadUserProfile(widget.userId);
       final username = await _supabaseService.getUsername(widget.userId);
 
+      if (!mounted) return;
       setState(() {
         _templates = templates;
         _username = username ?? '';
-        _selectedTemplate = templates.isNotEmpty
-            ? (templates.firstWhere(
-                (t) => t.formName == 'General Intake Sheet',
-                orElse: () => templates.first))
-            : null;
+        if (templates.isEmpty) {
+          _selectedTemplate = null;
+        } else if (previousTemplateId != null &&
+            templates.any((t) => t.templateId == previousTemplateId)) {
+          // Stay on the same template after refresh
+          _selectedTemplate = templates
+              .firstWhere((t) => t.templateId == previousTemplateId);
+        } else {
+          // First load — default to General Intake Sheet
+          _selectedTemplate = templates.firstWhere(
+              (t) => t.formName == 'General Intake Sheet',
+              orElse: () => templates.first);
+        }
       });
 
       debugPrint(
@@ -88,7 +100,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       debugPrint('ManageInfoScreen._loadAll error: $e');
       debugPrint('Stack: $stack');
     }
-    setState(() => _isLoading = false);
+    if (mounted) setState(() => _isLoading = false);
   }
 
   // ── Build form controller with autofill + saved field values ──
@@ -508,24 +520,36 @@ PreferredSizeWidget _buildAppBar() {
 
   // ── Empty / error state ───────────────────────────────────
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+    return RefreshIndicator(
+      onRefresh: _loadAll,
+      color: AppColors.primaryBlue,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         children: [
+          SizedBox(height: MediaQuery.of(context).size.height * 0.3),
           const Icon(Icons.error_outline, size: 48, color: Colors.grey),
           const SizedBox(height: 12),
           Text(
             'No forms available.',
             style: TextStyle(color: Colors.grey.shade600),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Pull down to refresh',
+            style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: _loadAll,
-            icon: const Icon(Icons.refresh),
-            label: const Text('Retry'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primaryBlue,
-              foregroundColor: Colors.white,
+          Center(
+            child: ElevatedButton.icon(
+              onPressed: _loadAll,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryBlue,
+                foregroundColor: Colors.white,
+              ),
             ),
           ),
         ],
@@ -539,19 +563,24 @@ PreferredSizeWidget _buildAppBar() {
       children: [
         _buildFormSelector(),
         Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
-            child: _formCtrl == null
-                ? const Center(child: CircularProgressIndicator())
-                : AnimatedBuilder(
-                    animation: _formCtrl!,
-                    builder: (context, _) => DynamicFormRenderer(
-                      template: _selectedTemplate!,
-                      controller: _formCtrl!,
-                      mode: 'mobile',
-                      showCheckboxes: true,
+          child: RefreshIndicator(
+            onRefresh: _loadAll,
+            color: AppColors.primaryBlue,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+              child: _formCtrl == null
+                  ? const Center(child: CircularProgressIndicator())
+                  : AnimatedBuilder(
+                      animation: _formCtrl!,
+                      builder: (context, _) => DynamicFormRenderer(
+                        template: _selectedTemplate!,
+                        controller: _formCtrl!,
+                        mode: 'mobile',
+                        showCheckboxes: true,
+                      ),
                     ),
-                  ),
+            ),
           ),
         ),
       ],
