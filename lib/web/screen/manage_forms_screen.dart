@@ -304,7 +304,30 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     }
   }
 
+  /// Returns true if navigation should proceed (no active session, or user confirmed).
+  Future<bool> _confirmLeave() async {
+    if (!_sessionStarted) return true;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Unsaved Session'),
+        content: const Text(
+            'You have an active session with unsaved data. Leave anyway?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Stay')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Leave', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
   Future<void> _handleLogout() async {
+    if (!await _confirmLeave()) return;
     _formSubscription?.cancel();
     if (_currentSessionId != 'WAITING-FOR-SESSION') {
       await _supabase
@@ -356,8 +379,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       default:
         return;
     }
-    Navigator.of(context)
-        .pushReplacement(ContentFadeRoute(page: next));
+    _confirmLeave().then((ok) {
+      if (!ok || !mounted) return;
+      Navigator.of(context).pushReplacement(ContentFadeRoute(page: next));
+    });
   }
 
   // ── Build ─────────────────────────────────────────────────
