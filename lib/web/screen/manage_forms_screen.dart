@@ -14,11 +14,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/services/form_template_service.dart';
 import 'package:sappiire/services/form_builder_service.dart';
+import 'package:sappiire/services/display_session_service.dart';
 import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/web/widget/web_shell.dart';
@@ -46,6 +49,7 @@ class ManageFormsScreen extends StatefulWidget {
 
 class _ManageFormsScreenState extends State<ManageFormsScreen> {
   final _templateService = FormTemplateService();
+  final _displayService = DisplaySessionService();
   final _supabase = Supabase.instance.client;
 
   List<FormTemplate> _templates = [];
@@ -59,6 +63,9 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   bool _isStartingSession = false;
   bool _isLoading = true;
   bool _isFinalizing = false;
+
+  /// Derive a stable station ID from the worker's cswd_id.
+  String get _stationId => 'desk_${widget.cswd_id}';
 
   @override
   void initState() {
@@ -120,6 +127,14 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       });
 
       _listenForMobileUpdates(_currentSessionId);
+
+      // Push to display_sessions so the customer monitor updates
+      await _displayService.pushSession(
+        stationId: _stationId,
+        sessionId: _currentSessionId,
+        templateId: _selectedTemplate!.templateId,
+        formName: _selectedTemplate!.formName,
+      );
     } catch (e) {
       debugPrint('_createNewSession error: $e');
       setState(() => _isStartingSession = false);
@@ -197,6 +212,9 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         _isFinalizing = false;
       });
       _formSubscription?.cancel();
+
+      // Revert customer display to standby
+      await _displayService.resetStation(_stationId);
     } catch (e) {
       debugPrint('_finalizeEntry error: $e');
       if (mounted) {
@@ -278,7 +296,38 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     }
   }
 
+  /// Open the customer-facing display in a new browser window.
+  void _openCustomerDisplay() {
+    if (kIsWeb) {
+      final url = '/#/display?station=${Uri.encodeComponent(_stationId)}';
+      launchUrl(Uri.parse(url));
+    }
+  }
+
+  /// Returns true if navigation should proceed (no active session, or user confirmed).
+  Future<bool> _confirmLeave() async {
+    if (!_sessionStarted) return true;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Unsaved Session'),
+        content: const Text(
+            'You have an active session with unsaved data. Leave anyway?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Stay')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Leave', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
   Future<void> _handleLogout() async {
+    if (!await _confirmLeave()) return;
     _formSubscription?.cancel();
     if (_currentSessionId != 'WAITING-FOR-SESSION') {
       await _supabase
@@ -286,6 +335,8 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           .update({'status': 'closed'})
           .eq('id', _currentSessionId);
     }
+    // Reset display monitor on logout
+    await _displayService.resetStation(_stationId);
     await _supabase.auth.signOut();
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
@@ -328,8 +379,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       default:
         return;
     }
-    Navigator.of(context)
-        .pushReplacement(ContentFadeRoute(page: next));
+    _confirmLeave().then((ok) {
+      if (!ok || !mounted) return;
+      Navigator.of(context).pushReplacement(ContentFadeRoute(page: next));
+    });
   }
 
   // ── Build ─────────────────────────────────────────────────
@@ -344,7 +397,11 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       role: widget.role,
       onLogout: _handleLogout,
       headerActions: [
+        // "Open Customer Display" button — always visible
+        _buildHeaderButton('Open Customer Display', Icons.desktop_windows,
+            onPressed: _openCustomerDisplay),
         if (_sessionStarted) ...[
+          const SizedBox(width: 8),
           _buildHeaderButton('New Session', Icons.refresh,
               onPressed: _createNewSession),
           const SizedBox(width: 8),

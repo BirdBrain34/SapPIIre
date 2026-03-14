@@ -60,6 +60,24 @@ const _typeIcons = <FormFieldType, IconData>{
   FormFieldType.boolean: Icons.toggle_on_outlined,
 };
 
+const _systemTypeLabels = <FormFieldType, String>{
+  FormFieldType.computed: 'Computed',
+  FormFieldType.membershipGroup: 'Membership Group',
+  FormFieldType.familyTable: 'Family Table',
+  FormFieldType.supportingFamilyTable: 'Supporting Family Table',
+  FormFieldType.signature: 'Signature',
+  FormFieldType.unknown: 'Unknown',
+};
+
+const _systemTypeIcons = <FormFieldType, IconData>{
+  FormFieldType.computed: Icons.calculate_outlined,
+  FormFieldType.membershipGroup: Icons.group_outlined,
+  FormFieldType.familyTable: Icons.table_chart_outlined,
+  FormFieldType.supportingFamilyTable: Icons.table_chart_outlined,
+  FormFieldType.signature: Icons.draw_outlined,
+  FormFieldType.unknown: Icons.help_outline,
+};
+
 // ── Mutable builder models (file-private) ───────────────────
 class _BuilderOption {
   String id;
@@ -657,6 +675,139 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     });
   }
 
+  // ── System block definitions ───────────────────────────────
+  static const _systemBlocks = <FormFieldType, ({String label, String fieldName, String desc, IconData icon})>{
+    FormFieldType.membershipGroup: (
+      label: 'Membership Group',
+      fieldName: 'membership_group',
+      desc: 'Solo Parent, PWD, 4Ps, PHIC checkboxes',
+      icon: Icons.group_outlined,
+    ),
+    FormFieldType.familyTable: (
+      label: 'Family Composition',
+      fieldName: 'family_composition',
+      desc: 'Table for household members',
+      icon: Icons.table_chart_outlined,
+    ),
+    FormFieldType.supportingFamilyTable: (
+      label: 'Supporting Family Members',
+      fieldName: 'supporting_family_members',
+      desc: 'Table for supporting relatives',
+      icon: Icons.table_chart_outlined,
+    ),
+    FormFieldType.computed: (
+      label: 'Computed Field',
+      fieldName: 'computed_field',
+      desc: 'Auto-calculated value (income, expenses, etc.)',
+      icon: Icons.calculate_outlined,
+    ),
+    FormFieldType.signature: (
+      label: 'Signature',
+      fieldName: 'signature',
+      desc: 'Signature drawing pad',
+      icon: Icons.draw_outlined,
+    ),
+  };
+
+  void _addSystemField(int si, FormFieldType type) {
+    final block = _systemBlocks[type];
+    if (block == null) return;
+    final section = _sections[si];
+
+    // Prevent duplicates for one-per-form blocks
+    final allFields = _sections.expand((s) => s.fields);
+    if (const {
+      FormFieldType.membershipGroup,
+      FormFieldType.familyTable,
+      FormFieldType.supportingFamilyTable,
+      FormFieldType.signature,
+    }.contains(type) && allFields.any((f) => f.type == type)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('A "${block.label}" block already exists in this form.'),
+          backgroundColor: Colors.orange.shade700,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      section.fields.add(_BuilderField(
+        label: block.label,
+        fieldName: block.fieldName,
+        type: type,
+        isRequired: false,
+        order: section.fields.length,
+        options: [],
+      ));
+      _activeSectionIdx = si;
+      _activeFieldIdx = section.fields.length - 1;
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  void _showSystemBlockPicker(int si) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Add Intake Module',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textDark,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'These are fixed system blocks with specialized rendering.',
+                style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 12),
+              ..._systemBlocks.entries.map((e) {
+                final block = e.value;
+                final exists = _sections
+                    .expand((s) => s.fields)
+                    .any((f) => f.type == e.key);
+                return ListTile(
+                  leading: Icon(block.icon,
+                      color: exists ? AppColors.textMuted : _themeColor),
+                  title: Text(block.label,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: exists ? AppColors.textMuted : AppColors.textDark,
+                      )),
+                  subtitle: Text(
+                    exists ? 'Already added' : block.desc,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: exists ? AppColors.textMuted : AppColors.textMuted,
+                    ),
+                  ),
+                  enabled: !exists || e.key == FormFieldType.computed,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _addSystemField(si, e.key);
+                  },
+                );
+              }),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void _removeField(int si, int fi) {
     setState(() {
       _sections[si].fields.removeAt(fi);
@@ -718,7 +869,28 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   }
 
   // ── Navigation ──────────────────────────────────────────────
+  Future<bool> _confirmLeave() async {
+    if (!_hasUnsavedChanges) return true;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Unsaved Changes'),
+        content: const Text('You have unsaved changes. Leave without saving?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Stay')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Leave', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
   Future<void> _handleLogout() async {
+    if (!await _confirmLeave()) return;
     await _supabase.auth.signOut();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
@@ -760,7 +932,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       default:
         return;
     }
-    Navigator.of(context).pushReplacement(ContentFadeRoute(page: next));
+    _confirmLeave().then((ok) {
+      if (!ok || !mounted) return;
+      Navigator.of(context).pushReplacement(ContentFadeRoute(page: next));
+    });
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -895,8 +1070,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                     : ListView.builder(
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         itemCount: _templates.length,
-                        itemBuilder: (_, i) =>
-                            _buildTemplateListItem(_templates[i]),
+                        itemBuilder: (_, i) => _buildTemplateListItem(_templates[i]),
                       ),
           ),
         ],
@@ -976,7 +1150,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 style: TextStyle(fontSize: 11, color: statusClr)),
           ],
         ),
-        onTap: () => _loadTemplate(id),
+        onTap: () async {
+          if (id == _activeTemplateId) return;
+          if (!await _confirmLeave()) return;
+          _loadTemplate(id);
+        },
       ),
     );
   }
@@ -1414,7 +1592,28 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: AppColors.cardBorder),
             ),
-            child: DropdownButtonHideUnderline(
+            child: field.type.isSystemType
+              ? Row(
+                  children: [
+                    Icon(
+                      _systemTypeIcons[field.type] ?? Icons.help_outline,
+                      size: 18,
+                      color: AppColors.textMuted,
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        'System Field: ${_systemTypeLabels[field.type] ?? field.type.toDbString()}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textMuted,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                )
+              : DropdownButtonHideUnderline(
               child: DropdownButton<FormFieldType>(
                 value: field.type,
                 isExpanded: true,
@@ -1458,7 +1657,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   Widget _buildFieldHeaderInactive(_BuilderField field) {
     return Row(
       children: [
-        Icon(_typeIcons[field.type] ?? Icons.help_outline,
+        Icon(
+            (field.type.isSystemType
+                ? _systemTypeIcons[field.type]
+                : _typeIcons[field.type]) ??
+                Icons.help_outline,
             size: 16, color: AppColors.textMuted),
         const SizedBox(width: 8),
         Expanded(
@@ -1762,6 +1965,14 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             icon: Icon(Icons.add_circle_outline,
                 size: 18, color: _themeColor),
             label: Text('Add question',
+                style: TextStyle(color: _themeColor, fontSize: 13)),
+          ),
+          const SizedBox(width: 8),
+          TextButton.icon(
+            onPressed: () => _showSystemBlockPicker(si),
+            icon: Icon(Icons.dashboard_customize_outlined,
+                size: 18, color: _themeColor),
+            label: Text('Add intake module',
                 style: TextStyle(color: _themeColor, fontSize: 13)),
           ),
         ],
