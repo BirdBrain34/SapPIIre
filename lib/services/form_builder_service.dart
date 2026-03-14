@@ -218,7 +218,7 @@ class FormBuilderService {
   // ================================================================
 
   /// Save the entire template structure (metadata + sections + fields + options).
-  /// Uses a clear-and-reinsert approach for reliability.
+  /// Uses upsert-only approach to avoid FK constraint issues with value tables.
   Future<bool> saveTemplateStructure({
     required String templateId,
     required String formName,
@@ -236,73 +236,50 @@ class FormBuilderService {
         'theme_config': themeConfig,
       }).eq('template_id', templateId);
 
-      // 2. Smart cleanup: only delete removed fields; preserve user data for kept fields
+      // 2. Delete options only (safe — no user data references options)
       final existingFields = await _supabase
           .from('form_fields')
           .select('field_id')
           .eq('template_id', templateId);
-      final existingIds =
-          existingFields.map((f) => f['field_id'] as String).toSet();
-      final incomingIds =
-          fields.map((f) => f['field_id'] as String).toSet();
-      final removedIds = existingIds.difference(incomingIds).toList();
 
-      // Delete options and conditions for ALL existing fields (will be re-inserted)
-      if (existingIds.isNotEmpty) {
+      if (existingFields.isNotEmpty) {
+        final existingIds =
+            existingFields.map((f) => f['field_id'] as String).toList();
         await _supabase
             .from('form_field_options')
             .delete()
-            .inFilter('field_id', existingIds.toList());
+            .inFilter('field_id', existingIds);
         await _supabase
             .from('form_field_conditions')
             .delete()
-            .inFilter('field_id', existingIds.toList());
+            .inFilter('field_id', existingIds);
       }
 
-      // Only delete value rows for fields that are actually being removed
-      if (removedIds.isNotEmpty) {
-        await _supabase
-            .from('submission_field_values')
-            .delete()
-            .inFilter('field_id', removedIds);
-        await _supabase
-            .from('user_field_values')
-            .delete()
-            .inFilter('field_id', removedIds);
-      }
-
-      // Delete child fields first, then all fields for this template
-      await _supabase
-          .from('form_fields')
-          .delete()
-          .eq('template_id', templateId)
-          .not('parent_field_id', 'is', null);
-      await _supabase
-          .from('form_fields')
-          .delete()
-          .eq('template_id', templateId);
-      await _supabase
-          .from('form_sections')
-          .delete()
-          .eq('template_id', templateId);
-
-      // 3. Insert fresh structure
+      // 3. Upsert sections (never delete — fields reference them)
       if (sections.isNotEmpty) {
-        await _supabase.from('form_sections').insert(sections);
+        await _supabase
+            .from('form_sections')
+            .upsert(sections, onConflict: 'section_id');
       }
-      if (fields.isNotEmpty) {
-        // Insert parent fields first, then children (FK on parent_field_id)
-        final parentFields =
-            fields.where((f) => f['parent_field_id'] == null).toList();
-        final childFields =
-            fields.where((f) => f['parent_field_id'] != null).toList();
-        if (parentFields.isNotEmpty) {
-          await _supabase.from('form_fields').insert(parentFields);
-        }
-        if (childFields.isNotEmpty) {
-          await _supabase.from('form_fields').insert(childFields);
-        }
+
+      // 4. Upsert fields one-by-one to avoid any bulk DELETE behaviour
+      final parentFields =
+          fields.where((f) => f['parent_field_id'] == null).toList();
+      final childFields =
+          fields.where((f) => f['parent_field_id'] != null).toList();
+
+      for (final f in parentFields) {
+        await _supabase
+            .from('form_fields')
+            .upsert(f, onConflict: 'field_id');
       }
+      for (final f in childFields) {
+        await _supabase
+            .from('form_fields')
+            .upsert(f, onConflict: 'field_id');
+      }
+
+      // 5. Insert fresh options
       if (options.isNotEmpty) {
         await _supabase.from('form_field_options').insert(options);
       }
