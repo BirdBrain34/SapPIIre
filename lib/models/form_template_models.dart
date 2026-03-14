@@ -52,6 +52,17 @@ enum FormFieldType {
     }
   }
 
+  /// Whether this type is a system/custom type that should not be changed
+  /// by the user in the form builder (e.g. familyTable, computed, signature).
+  bool get isSystemType => const {
+    FormFieldType.computed,
+    FormFieldType.membershipGroup,
+    FormFieldType.familyTable,
+    FormFieldType.supportingFamilyTable,
+    FormFieldType.signature,
+    FormFieldType.unknown,
+  }.contains(this);
+
   /// Convert enum value back to the database string representation.
   String toDbString() {
     switch (this) {
