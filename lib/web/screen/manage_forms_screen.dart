@@ -14,7 +14,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:web/web.dart' as web;
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/models/form_template_models.dart';
@@ -297,8 +298,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
 
   /// Open the customer-facing display in a new browser window.
   void _openCustomerDisplay() {
-    final url = '/#/display?station=${Uri.encodeComponent(_stationId)}';
-    web.window.open(url, 'customer_display_${_stationId}');
+    if (kIsWeb) {
+      final url = '/#/display?station=${Uri.encodeComponent(_stationId)}';
+      launchUrl(Uri.parse(url));
+    }
   }
 
   Future<void> _handleLogout() async {
