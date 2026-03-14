@@ -28,6 +28,7 @@ enum FormFieldType {
   membershipGroup,
   familyTable,
   supportingFamilyTable,
+  memberTable,
   signature,
   unknown;
 
@@ -47,6 +48,7 @@ enum FormFieldType {
       case 'membership_group':        return FormFieldType.membershipGroup;
       case 'family_table':            return FormFieldType.familyTable;
       case 'supporting_family_table': return FormFieldType.supportingFamilyTable;
+      case 'member_table':            return FormFieldType.memberTable;
       case 'signature':               return FormFieldType.signature;
       default:                        return FormFieldType.unknown;
     }
@@ -80,6 +82,7 @@ enum FormFieldType {
       case FormFieldType.membershipGroup:         return 'membership_group';
       case FormFieldType.familyTable:             return 'family_table';
       case FormFieldType.supportingFamilyTable:   return 'supporting_family_table';
+      case FormFieldType.memberTable:              return 'member_table';
       case FormFieldType.signature:               return 'signature';
       case FormFieldType.unknown:                 return 'unknown';
     }
@@ -152,6 +155,8 @@ class FormFieldModel {
   final String? placeholder;
   final List<FieldOption> options;
   final List<FieldCondition> conditions;
+  final String? parentFieldId;
+  final List<FormFieldModel> columns; // child column definitions for memberTable
 
   const FormFieldModel({
     required this.fieldId,
@@ -168,6 +173,8 @@ class FormFieldModel {
     this.placeholder,
     this.options = const [],
     this.conditions = const [],
+    this.parentFieldId,
+    this.columns = const [],
   });
 
   factory FormFieldModel.fromMap(Map<String, dynamic> m) => FormFieldModel(
@@ -190,7 +197,56 @@ class FormFieldModel {
         conditions: (m['form_field_conditions'] as List<dynamic>? ?? [])
             .map((c) => FieldCondition.fromMap(c as Map<String, dynamic>))
             .toList(),
+        parentFieldId: m['parent_field_id'] as String?,
       );
+
+  /// Display key for checkbox/sharing UI (avoids duplicating this across files).
+  String get checkKey {
+    if (fieldType == FormFieldType.familyTable) return 'Family Composition';
+    if (fieldType == FormFieldType.signature) return 'Signature';
+    if (fieldType == FormFieldType.membershipGroup) return 'Membership Group';
+    if (fieldType == FormFieldType.memberTable) return fieldLabel;
+    return fieldName;
+  }
+
+  /// Create a copy with selected fields overridden.
+  FormFieldModel copyWith({
+    String? fieldId,
+    String? templateId,
+    String? sectionId,
+    String? fieldName,
+    String? fieldLabel,
+    FormFieldType? fieldType,
+    bool? isRequired,
+    Map<String, dynamic>? validationRules,
+    String? defaultValue,
+    int? fieldOrder,
+    String? autofillSource,
+    String? placeholder,
+    List<FieldOption>? options,
+    List<FieldCondition>? conditions,
+    String? parentFieldId,
+    List<FormFieldModel>? columns,
+  }) {
+    return FormFieldModel(
+      fieldId: fieldId ?? this.fieldId,
+      templateId: templateId ?? this.templateId,
+      sectionId: sectionId ?? this.sectionId,
+      fieldName: fieldName ?? this.fieldName,
+      fieldLabel: fieldLabel ?? this.fieldLabel,
+      fieldType: fieldType ?? this.fieldType,
+      isRequired: isRequired ?? this.isRequired,
+      validationRules: validationRules ?? this.validationRules,
+      defaultValue: defaultValue ?? this.defaultValue,
+      fieldOrder: fieldOrder ?? this.fieldOrder,
+      autofillSource: autofillSource ?? this.autofillSource,
+      placeholder: placeholder ?? this.placeholder,
+      options: options ?? this.options,
+      conditions: conditions ?? this.conditions,
+      parentFieldId: parentFieldId ?? this.parentFieldId,
+      columns: columns ?? this.columns,
+    );
+  }
 
   // Returns true if this field should be visible given current form values
   bool isVisible(Map<String, dynamic> formValues) {
@@ -272,11 +328,32 @@ class FormTemplate {
     final rawFields =
         (m['form_fields'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
 
-    final allFields =
+    final allParsed =
         rawFields.map((f) => FormFieldModel.fromMap(f)).toList();
 
+    // Separate child column-definition fields from top-level fields
+    final childFields = allParsed.where((f) => f.parentFieldId != null).toList();
+    final topLevelFields = allParsed.where((f) => f.parentFieldId == null).toList();
+
+    // Group children by parent ID
+    final childrenByParent = <String, List<FormFieldModel>>{};
+    for (final child in childFields) {
+      childrenByParent.putIfAbsent(child.parentFieldId!, () => []).add(child);
+    }
+
+    // Attach columns to memberTable fields
+    final assembledFields = topLevelFields.map((f) {
+      if (f.fieldType == FormFieldType.memberTable &&
+          childrenByParent.containsKey(f.fieldId)) {
+        final cols = childrenByParent[f.fieldId]!
+          ..sort((a, b) => a.fieldOrder.compareTo(b.fieldOrder));
+        return f.copyWith(columns: cols);
+      }
+      return f;
+    }).toList();
+
     final sections = rawSections.map((s) {
-      final sectionFields = allFields
+      final sectionFields = assembledFields
           .where((f) => f.sectionId == s['section_id'])
           .toList();
       return FormSection.fromMap(s, sectionFields);
