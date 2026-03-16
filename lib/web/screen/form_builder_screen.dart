@@ -1,7 +1,7 @@
 // Form Builder Screen
-// Google Forms-like interface for superadmins to create/edit form templates.
+// Dashboard-style interface for superadmins to create/edit form templates.
 //
-// Layout: Template list panel (left) + Builder canvas (center)
+// Layout: Template list panel (left) + Toolbar + Builder canvas (center)
 // Supports: Multiple choice, checkboxes, dropdown, short answer, paragraph,
 //           linear scale, date, time, number, yes/no field types.
 // Workflow: Draft → Publish (to admins) → Push to Mobile
@@ -200,7 +200,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   String _formName = '';
   String _formDesc = '';
   String _formStatus = 'draft';
-  Color _themeColor = const Color(0xFF4C8BF5);
   List<_BuilderSection> _sections = [];
 
   // Selection tracking
@@ -362,25 +361,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       );
     }).toList();
 
-    // Parse theme accent color
-    Color themeColor = const Color(0xFF4C8BF5);
-    if (data['theme_config'] is Map) {
-      final tc = data['theme_config'] as Map<String, dynamic>;
-      if (tc['accent_color'] != null) {
-        try {
-          themeColor = Color(
-              int.parse(tc['accent_color'] as String, radix: 16) |
-                  0xFF000000);
-        } catch (_) {}
-      }
-    }
-
     setState(() {
       _activeTemplateId = templateId;
       _formName = data['form_name'] as String? ?? 'Untitled Form';
       _formDesc = data['form_desc'] as String? ?? '';
       _formStatus = data['status'] as String? ?? 'draft';
-      _themeColor = themeColor;
       _sections = sections;
       _activeSectionIdx = null;
       _activeFieldIdx = null;
@@ -406,7 +391,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       _formName = 'Untitled Form';
       _formDesc = '';
       _formStatus = 'draft';
-      _themeColor = const Color(0xFF4C8BF5);
       _sections = [
         _BuilderSection(
           name: 'Section 1',
@@ -505,15 +489,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       }
     }
 
-    final themeConfig = {
-      'accent_color': _themeColor.value.toRadixString(16).substring(2),
-    };
-
     final success = await _service.saveTemplateStructure(
       templateId: _activeTemplateId!,
       formName: _formName,
       formDesc: _formDesc,
-      themeConfig: themeConfig,
       sections: dbSections,
       fields: dbFields,
       options: dbOptions,
@@ -892,7 +871,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                     .any((f) => f.type == e.key);
                 return ListTile(
                   leading: Icon(block.icon,
-                      color: exists ? AppColors.textMuted : _themeColor),
+                      color: exists ? AppColors.textMuted : AppColors.highlight),
                   title: Text(block.label,
                       style: TextStyle(
                         fontSize: 14,
@@ -1312,26 +1291,92 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   Widget _buildBuilderCanvas() {
     return Container(
       color: AppColors.pageBg,
-      child: SingleChildScrollView(
-        controller: _scrollCtrl,
-        padding: const EdgeInsets.symmetric(vertical: 32),
-        child: Center(
-          child: SizedBox(
-            width: 680,
-            child: Column(
-              children: [
-                _buildTitleCard(),
-                const SizedBox(height: 12),
-                ..._buildAllSections(),
-                const SizedBox(height: 16),
-                _buildAddSectionButton(),
-                const SizedBox(height: 16),
-                _buildStatusCard(),
-                const SizedBox(height: 48),
-              ],
+      child: Column(
+        children: [
+          // ── Static toolbar ──
+          _buildCanvasToolbar(),
+          // ── Scrollable canvas ──
+          Expanded(
+            child: SingleChildScrollView(
+              controller: _scrollCtrl,
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: SizedBox(
+                  width: 680,
+                  child: Column(
+                    children: [
+                      _buildTitleCard(),
+                      const SizedBox(height: 12),
+                      ..._buildAllSections(),
+                      const SizedBox(height: 16),
+                      _buildAddSectionButton(),
+                      const SizedBox(height: 16),
+                      _buildStatusCard(),
+                      const SizedBox(height: 48),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
+        ],
+      ),
+    );
+  }
+
+  // ── Canvas Toolbar (static, top of builder area) ──────────
+  Widget _buildCanvasToolbar() {
+    // Determine the section index to add to: use active section, or last section
+    final targetSi = _activeSectionIdx ?? (_sections.isNotEmpty ? _sections.length - 1 : null);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+      decoration: const BoxDecoration(
+        color: AppColors.cardBg,
+        border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
+      ),
+      child: Row(
+        children: [
+          ElevatedButton.icon(
+            onPressed: targetSi != null ? () => _addField(targetSi) : null,
+            icon: const Icon(Icons.add_circle_outline, size: 18,
+                color: Colors.white),
+            label: const Text('Add Question',
+                style: TextStyle(color: Colors.white, fontSize: 13)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.highlight,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 12),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+              elevation: 0,
+            ),
+          ),
+          const SizedBox(width: 12),
+          OutlinedButton.icon(
+            onPressed: targetSi != null
+                ? () => _showSystemBlockPicker(targetSi)
+                : null,
+            icon: const Icon(Icons.dashboard_customize_outlined, size: 18),
+            label: const Text('Add Intake Module',
+                style: TextStyle(fontSize: 13)),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.highlight,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 12),
+              side: const BorderSide(color: AppColors.highlight),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+            ),
+          ),
+          const Spacer(),
+          if (_activeSectionIdx != null)
+            Text(
+              'Active: ${_sections[_activeSectionIdx!].name}',
+              style: const TextStyle(
+                  fontSize: 12, color: AppColors.textMuted),
+            ),
+        ],
       ),
     );
   }
@@ -1341,116 +1386,60 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.cardBorder),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2))
-        ],
       ),
-      child: Column(
-        children: [
-          // Theme accent bar
-          Container(
-            height: 10,
-            decoration: BoxDecoration(
-              color: _themeColor,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Form name
+            TextField(
+              controller: _ctrl('formName', _formName),
+              style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w400,
+                  color: AppColors.textDark),
+              decoration: const InputDecoration(
+                hintText: 'Untitled Form',
+                hintStyle: TextStyle(color: AppColors.textMuted),
+                border: InputBorder.none,
+                enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: AppColors.cardBorder)),
+                focusedBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(
+                        color: AppColors.highlight, width: 2)),
+              ),
+              onChanged: (v) {
+                _formName = v;
+                _hasUnsavedChanges = true;
+              },
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Form name
-                TextField(
-                  controller: _ctrl('formName', _formName),
-                  style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w400,
-                      color: AppColors.textDark),
-                  decoration: const InputDecoration(
-                    hintText: 'Untitled Form',
-                    hintStyle: TextStyle(color: AppColors.textMuted),
-                    border: InputBorder.none,
-                    enabledBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: AppColors.cardBorder)),
-                    focusedBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(
-                            color: AppColors.highlight, width: 2)),
-                  ),
-                  onChanged: (v) {
-                    _formName = v;
-                    _hasUnsavedChanges = true;
-                  },
-                ),
-                const SizedBox(height: 8),
-                // Description
-                TextField(
-                  controller: _ctrl('formDesc', _formDesc),
-                  style: const TextStyle(
-                      fontSize: 14, color: AppColors.textMuted),
-                  decoration: const InputDecoration(
-                    hintText: 'Form description',
-                    hintStyle:
-                        TextStyle(color: AppColors.textMuted, fontSize: 14),
-                    border: InputBorder.none,
-                    enabledBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: Colors.transparent)),
-                    focusedBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(
-                            color: AppColors.highlight, width: 1)),
-                  ),
-                  onChanged: (v) {
-                    _formDesc = v;
-                    _hasUnsavedChanges = true;
-                  },
-                ),
-                const SizedBox(height: 12),
-                // Theme color picker
-                Row(
-                  children: [
-                    const Text('Theme: ',
-                        style: TextStyle(
-                            fontSize: 12, color: AppColors.textMuted)),
-                    ...[
-                      0xFF4C8BF5,
-                      0xFF673AB7,
-                      0xFFE91E63,
-                      0xFF00BCD4,
-                      0xFF4CAF50,
-                      0xFFFF9800
-                    ].map(
-                      (c) => GestureDetector(
-                        onTap: () => setState(() {
-                          _themeColor = Color(c);
-                          _hasUnsavedChanges = true;
-                        }),
-                        child: Container(
-                          width: 24,
-                          height: 24,
-                          margin: const EdgeInsets.only(left: 8),
-                          decoration: BoxDecoration(
-                            color: Color(c),
-                            shape: BoxShape.circle,
-                            border: _themeColor.value == c
-                                ? Border.all(
-                                    color: AppColors.textDark, width: 2)
-                                : null,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+            const SizedBox(height: 8),
+            // Description
+            TextField(
+              controller: _ctrl('formDesc', _formDesc),
+              style: const TextStyle(
+                  fontSize: 14, color: AppColors.textMuted),
+              decoration: const InputDecoration(
+                hintText: 'Form description',
+                hintStyle:
+                    TextStyle(color: AppColors.textMuted, fontSize: 14),
+                border: InputBorder.none,
+                enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: Colors.transparent)),
+                focusedBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(
+                        color: AppColors.highlight, width: 1)),
+              ),
+              onChanged: (v) {
+                _formDesc = v;
+                _hasUnsavedChanges = true;
+              },
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1473,7 +1462,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 return _buildFieldCard(
                     section.fields[fi], si, fi, isFieldActive);
               }),
-              _buildAddFieldButton(si),
             ],
           ),
         ),
@@ -1493,30 +1481,27 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         margin: const EdgeInsets.only(bottom: 2),
         decoration: BoxDecoration(
           color: AppColors.cardBg,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
-              color: isActive ? _themeColor : AppColors.cardBorder),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.03),
-                blurRadius: 6,
-                offset: const Offset(0, 2))
-          ],
+              color: isActive ? AppColors.highlight : AppColors.cardBorder),
         ),
         child: Row(
           children: [
-            Container(
-              width: 6,
-              height: 72,
-              decoration: BoxDecoration(
-                color: _themeColor,
-                borderRadius: const BorderRadius.horizontal(
-                    left: Radius.circular(12)),
+            // Thin left accent for active state only
+            if (isActive)
+              Container(
+                width: 3,
+                height: 64,
+                decoration: const BoxDecoration(
+                  color: AppColors.highlight,
+                  borderRadius: BorderRadius.horizontal(
+                      left: Radius.circular(8)),
+                ),
               ),
-            ),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+                padding: EdgeInsets.fromLTRB(
+                    isActive ? 13 : 16, 12, 8, 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1527,7 +1512,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                             fontSize: 18,
                             fontWeight: FontWeight.w500,
                             color: AppColors.textDark),
-                        decoration: InputDecoration(
+                        decoration: const InputDecoration(
                           hintText: 'Section Title',
                           border: InputBorder.none,
                           enabledBorder: UnderlineInputBorder(
@@ -1535,7 +1520,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                                   BorderSide(color: AppColors.cardBorder)),
                           focusedBorder: UnderlineInputBorder(
                               borderSide:
-                                  BorderSide(color: _themeColor, width: 2)),
+                                  BorderSide(color: AppColors.highlight, width: 2)),
                         ),
                         onChanged: (v) {
                           section.name = v;
@@ -1610,26 +1595,22 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         margin: const EdgeInsets.only(bottom: 2),
         decoration: BoxDecoration(
           color: AppColors.cardBg,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
-              color: isActive ? _themeColor : AppColors.cardBorder),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.03), blurRadius: 6)
-          ],
+              color: isActive ? AppColors.highlight : AppColors.cardBorder),
         ),
         child: IntrinsicHeight(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Active accent bar
+              // Thin left accent for active state only
               if (isActive)
                 Container(
-                  width: 6,
-                  decoration: BoxDecoration(
-                    color: _themeColor,
-                    borderRadius: const BorderRadius.horizontal(
-                        left: Radius.circular(12)),
+                  width: 3,
+                  decoration: const BoxDecoration(
+                    color: AppColors.highlight,
+                    borderRadius: BorderRadius.horizontal(
+                        left: Radius.circular(8)),
                   ),
                 ),
               Expanded(
@@ -1683,7 +1664,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                   borderSide: BorderSide.none),
               focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: _themeColor)),
+                  borderSide: const BorderSide(color: AppColors.highlight)),
               contentPadding: const EdgeInsets.symmetric(
                   horizontal: 12, vertical: 14),
             ),
@@ -1714,7 +1695,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                     const SizedBox(width: 8),
                     Flexible(
                       child: Text(
-                        'System Field: ${_systemTypeLabels[field.type] ?? field.type.toDbString()}',
+                        'System: ${_systemTypeLabels[field.type] ?? field.type.toDbString()}',
                         style: const TextStyle(
                           fontSize: 13,
                           color: AppColors.textMuted,
@@ -1789,8 +1770,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   }
 
   Widget _buildFieldToolbar(_BuilderField field, int si, int fi) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
+    return Wrap(
+      alignment: WrapAlignment.end,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 0,
+      runSpacing: 4,
       children: [
         IconButton(
           icon: const Icon(Icons.content_copy, size: 18),
@@ -1825,7 +1809,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
         Switch(
           value: field.isRequired,
-          activeColor: _themeColor,
+          activeColor: AppColors.highlight,
           onChanged: (v) => setState(() {
             field.isRequired = v;
             _hasUnsavedChanges = true;
@@ -2267,44 +2251,19 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  // ── Add Buttons ─────────────────────────────────────────────
-  Widget _buildAddFieldButton(int si) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 8, top: 4, bottom: 4),
-      child: Row(
-        children: [
-          TextButton.icon(
-            onPressed: () => _addField(si),
-            icon: Icon(Icons.add_circle_outline,
-                size: 18, color: _themeColor),
-            label: Text('Add question',
-                style: TextStyle(color: _themeColor, fontSize: 13)),
-          ),
-          const SizedBox(width: 8),
-          TextButton.icon(
-            onPressed: () => _showSystemBlockPicker(si),
-            icon: Icon(Icons.dashboard_customize_outlined,
-                size: 18, color: _themeColor),
-            label: Text('Add intake module',
-                style: TextStyle(color: _themeColor, fontSize: 13)),
-          ),
-        ],
-      ),
-    );
-  }
-
+  // ── Add Section Button ─────────────────────────────────────
   Widget _buildAddSectionButton() {
     return OutlinedButton.icon(
       onPressed: _addSection,
       icon: const Icon(Icons.playlist_add, size: 20),
       label: const Text('Add Section'),
       style: OutlinedButton.styleFrom(
-        foregroundColor: _themeColor,
+        foregroundColor: AppColors.highlight,
         padding:
             const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-        side: BorderSide(color: _themeColor.withOpacity(0.5)),
+        side: BorderSide(color: AppColors.highlight.withOpacity(0.5)),
         shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12)),
+            borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
@@ -2343,27 +2302,29 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: clr.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: clr.withOpacity(0.3)),
       ),
       child: Row(
         children: [
           Icon(icon, color: clr, size: 24),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Status: $label',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: clr,
-                      fontSize: 13)),
-              Text(desc,
-                  style: TextStyle(
-                      color: clr.withOpacity(0.8), fontSize: 12)),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Status: $label',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: clr,
+                        fontSize: 13)),
+                Text(desc,
+                    style: TextStyle(
+                        color: clr.withOpacity(0.8), fontSize: 12)),
+              ],
+            ),
           ),
-          const Spacer(),
+          const SizedBox(width: 12),
           // Archive action (available for draft, published, pushed_to_mobile)
           if (_formStatus != 'archived') ...[
             if (_formStatus != 'draft')
