@@ -285,9 +285,9 @@ class FormBuilderService {
         await _supabase.from('form_field_options').insert(options);
       }
 
-      // 6. Delete orphaned fields — rows in DB that are no longer in
-      //    the builder payload. This prevents "ghost" blocks from
-      //    reappearing after save + reload.
+      // 6. Soft-delete orphaned fields — fields removed in the builder
+      //    are marked as archived instead of deleted so that historical
+      //    submission_field_values and user_field_values are preserved.
       final newFieldIds =
           fields.map((f) => f['field_id'] as String).toSet();
       final existingFieldIds =
@@ -296,25 +296,10 @@ class FormBuilderService {
           existingFieldIds.difference(newFieldIds).toList();
 
       if (orphanFieldIds.isNotEmpty) {
-        // Cascade: remove value rows that reference orphan fields,
-        // then remove orphan children, then orphan parents.
-        await _supabase
-            .from('submission_field_values')
-            .delete()
-            .inFilter('field_id', orphanFieldIds);
-        await _supabase
-            .from('user_field_values')
-            .delete()
-            .inFilter('field_id', orphanFieldIds);
-        // Delete child fields (columns) first to avoid FK violation
+        // Mark orphan fields as archived (keeps field + value rows intact)
         await _supabase
             .from('form_fields')
-            .delete()
-            .inFilter('field_id', orphanFieldIds)
-            .not('parent_field_id', 'is', null);
-        await _supabase
-            .from('form_fields')
-            .delete()
+            .update({'validation_rules': {'_archived': true}})
             .inFilter('field_id', orphanFieldIds);
       }
 

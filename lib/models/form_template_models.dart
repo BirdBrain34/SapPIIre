@@ -326,7 +326,12 @@ class FormTemplate {
     final rawSections =
         (m['form_sections'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
     final rawFields =
-        (m['form_fields'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
+        (m['form_fields'] as List<dynamic>? ?? [])
+            .cast<Map<String, dynamic>>()
+            .where((f) {
+      final vr = f['validation_rules'] as Map<String, dynamic>?;
+      return vr == null || vr['_archived'] != true;
+    }).toList();
 
     final allParsed =
         rawFields.map((f) => FormFieldModel.fromMap(f)).toList();

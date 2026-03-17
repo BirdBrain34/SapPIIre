@@ -281,7 +281,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       ..sort((a, b) => ((a['section_order'] as int?) ?? 0)
           .compareTo((b['section_order'] as int?) ?? 0));
     final rawFields = (data['form_fields'] as List<dynamic>? ?? [])
-        .cast<Map<String, dynamic>>();
+        .cast<Map<String, dynamic>>()
+        .where((f) {
+      final vr = f['validation_rules'] as Map<String, dynamic>?;
+      return vr == null || vr['_archived'] != true;
+    }).toList();
 
     // Separate child column-definition fields from top-level fields
     final childFields = rawFields
