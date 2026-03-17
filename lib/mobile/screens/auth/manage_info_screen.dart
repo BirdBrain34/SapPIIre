@@ -229,23 +229,39 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       final addressData = <String, dynamic>{};
       final socioData = <String, dynamic>{};
 
+      // Map of field names to destination (for fields without explicit autofillSource)
+      const profileFieldDefaults = <String>{
+        'blood_type', 'firstname', 'lastname', 'birthdate', 'age', 'middle_name',
+        'gender', 'civil_status', 'religion', 'cellphone_number', 'email',
+        'education', 'birthplace', 'occupation', 'workplace', 'monthly_allowance'
+      };
+
       for (final field in _selectedTemplate!.allFields) {
         final src = field.autofillSource;
-        if (src == null) continue;
         final val = data[field.fieldName];
         if (val == null || val.toString().isEmpty) continue;
 
-        if (src.startsWith('address.')) {
-          addressData[src.substring('address.'.length)] = val;
-        } else if (src.startsWith('socio.')) {
-          socioData[src.substring('socio.'.length)] = val;
-        } else if (src == 'signature_data') {
-          profileData['signature_data'] = val;
-        } else {
-          if (src == 'age') {
-            profileData[src] = int.tryParse(val.toString()) ?? 0;
+        // Route by explicit autofillSource
+        if (src != null) {
+          if (src.startsWith('address.')) {
+            addressData[src.substring('address.'.length)] = val;
+          } else if (src.startsWith('socio.')) {
+            socioData[src.substring('socio.'.length)] = val;
+          } else if (src == 'signature_data') {
+            profileData['signature_data'] = val;
           } else {
-            profileData[src] = val;
+            if (src == 'age') {
+              profileData[src] = int.tryParse(val.toString()) ?? 0;
+            } else {
+              profileData[src] = val;
+            }
+          }
+        } else if (profileFieldDefaults.contains(field.fieldName)) {
+          // Fallback: if field name matches a known profile field, save it as extra_data
+          if (field.fieldName == 'age') {
+            profileData[field.fieldName] = int.tryParse(val.toString()) ?? 0;
+          } else {
+            profileData[field.fieldName] = val;
           }
         }
       }
@@ -465,19 +481,22 @@ PreferredSizeWidget _buildAppBar() {
             child: const Icon(Icons.person_outline, color: Colors.white, size: 18),
           ),
           const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Welcome back,',
-                style: TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.w400),
-              ),
-              Text(
-                _username.isEmpty ? 'User' : _username,
-                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
-              ),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Welcome back,',
+                  style: TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.w400),
+                ),
+                Text(
+                  _username.isEmpty ? 'User' : _username,
+                  style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
         ],
       ),

@@ -156,23 +156,72 @@ class FormTemplateService {
       }
     }
 
+    // Merge extra_data from profile (custom fields added to Basic Info, etc.)
+    if (profile['extra_data'] is Map) {
+      (profile['extra_data'] as Map).forEach((key, value) {
+        if (!result.containsKey(key)) {
+          result[key] = value;
+        }
+      });
+    }
+
+    // Merge extra_data from address
+    if (address['extra_data'] is Map) {
+      (address['extra_data'] as Map).forEach((key, value) {
+        if (!result.containsKey(key)) {
+          result['address.$key'] = value;
+        }
+      });
+    }
+
+    // Merge extra_data from socio_economic_data
+    if (socio['extra_data'] is Map) {
+      (socio['extra_data'] as Map).forEach((key, value) {
+        if (!result.containsKey(key)) {
+          result['socio.$key'] = value;
+        }
+      });
+    }
+
     // Special complex fields
-    result['__family_composition'] = family.map((m) => {
-      'name': m['name'] ?? '',
-      'relationship': m['relationship_of_relative'] ?? '',
-      'birthdate': m['birthdate']?.toString() ?? '',
-      'age': m['age']?.toString() ?? '',
-      'gender': m['gender'] ?? '',
-      'civil_status': m['civil_status'] ?? '',
-      'education': m['education'] ?? '',
-      'occupation': m['occupation'] ?? '',
-      'allowance': m['allowance']?.toString() ?? '',
+    result['__family_composition'] = family.map((m) {
+      final row = {
+        'name': m['name'] ?? '',
+        'relationship': m['relationship_of_relative'] ?? '',
+        'birthdate': m['birthdate']?.toString() ?? '',
+        'age': m['age']?.toString() ?? '',
+        'gender': m['gender'] ?? '',
+        'civil_status': m['civil_status'] ?? '',
+        'education': m['education'] ?? '',
+        'occupation': m['occupation'] ?? '',
+        'allowance': m['allowance']?.toString() ?? '',
+      };
+      // Merge extra_data from family composition rows
+      if (m['extra_data'] is Map) {
+        (m['extra_data'] as Map).forEach((key, value) {
+          if (!row.containsKey(key)) {
+            row[key] = value?.toString() ?? '';
+          }
+        });
+      }
+      return row;
     }).toList();
 
-    result['__supporting_family'] = supporting.map((m) => {
-      'name': m['name'] ?? '',
-      'relationship': m['relationship'] ?? '',
-      'regular_sustento': m['regular_sustento']?.toString() ?? '',
+    result['__supporting_family'] = supporting.map((m) {
+      final row = {
+        'name': m['name'] ?? '',
+        'relationship': m['relationship'] ?? '',
+        'regular_sustento': m['regular_sustento']?.toString() ?? '',
+      };
+      // Merge extra_data from supporting family rows
+      if (m['extra_data'] is Map) {
+        (m['extra_data'] as Map).forEach((key, value) {
+          if (!row.containsKey(key)) {
+            row[key] = value?.toString() ?? '';
+          }
+        });
+      }
+      return row;
     }).toList();
 
     result['__membership'] = {

@@ -318,15 +318,18 @@ class _DateField extends StatelessWidget {
                 const Icon(Icons.calendar_today,
                     size: 16, color: AppColors.primaryBlue),
                 const SizedBox(width: 8),
-                Text(
-                  ctrl.text.isEmpty
-                      ? (field.placeholder ?? 'Select date')
-                      : ctrl.text,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: ctrl.text.isEmpty
-                        ? Colors.black38
-                        : Colors.black87,
+                Expanded(
+                  child: Text(
+                    ctrl.text.isEmpty
+                        ? (field.placeholder ?? 'Select date')
+                        : ctrl.text,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: ctrl.text.isEmpty
+                          ? Colors.black38
+                          : Colors.black87,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
@@ -662,11 +665,12 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            _FieldLabel(label: widget.field.fieldLabel.isNotEmpty
-                ? widget.field.fieldLabel
-                : 'Family Composition'),
+            Expanded(
+              child: _FieldLabel(label: widget.field.fieldLabel.isNotEmpty
+                  ? widget.field.fieldLabel
+                  : 'Family Composition'),
+            ),
             if (!widget.isReadOnly)
               TextButton.icon(
                 onPressed: () {
@@ -714,7 +718,9 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
                             child: Text(_headerAt(col.key),
                                 style: const TextStyle(
                                     fontSize: 11,
-                                    color: Colors.black54)),
+                                    color: Colors.black54),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 2),
                           ),
                           Expanded(
                             child: widget.isReadOnly
@@ -820,12 +826,15 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
                 const Icon(Icons.calendar_today,
                     size: 14, color: AppColors.primaryBlue),
                 const SizedBox(width: 6),
-                Text(
-                  raw.isEmpty ? 'Select date' : raw,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color:
-                        raw.isEmpty ? Colors.black38 : Colors.black87,
+                Expanded(
+                  child: Text(
+                    raw.isEmpty ? 'Select date' : raw,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color:
+                          raw.isEmpty ? Colors.black38 : Colors.black87,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
@@ -1059,9 +1068,10 @@ class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const _FieldLabel(label: 'Supporting Family Members'),
+            const Expanded(
+              child: _FieldLabel(label: 'Supporting Family Members'),
+            ),
             if (!widget.isReadOnly)
               TextButton.icon(
                 onPressed: () {
@@ -1408,11 +1418,12 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
       children: [
         // Header row: label + Add Row button
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            _FieldLabel(
-              label: widget.field.fieldLabel,
-              isRequired: widget.field.isRequired,
+            Expanded(
+              child: _FieldLabel(
+                label: widget.field.fieldLabel,
+                isRequired: widget.field.isRequired,
+              ),
             ),
             if (!widget.isReadOnly)
               TextButton.icon(
@@ -1468,6 +1479,8 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
                                 fontSize: 11,
                                 color: Colors.black54,
                               ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 2,
                             ),
                           ),
                           Expanded(

@@ -7,6 +7,45 @@ class SupabaseService {
   final _supabase = Supabase.instance.client;
 
   // ================================================================
+  // KNOWN COLUMN DEFINITIONS (for extra_data split logic)
+  // ================================================================
+  /// Known columns in user_profiles table. Any other columns go to extra_data.
+  static const _knownProfileColumns = <String>[
+    'user_id', 'profile_id', 'firstname', 'lastname', 'birthdate', 'age',
+    'middle_name', 'gender', 'blood_type', 'civil_status', 'religion',
+    'cellphone_number', 'email', 'education', 'birthplace', 'occupation',
+    'workplace', 'monthly_allowance', 'solo_parent', 'pwd', 'four_ps_member',
+    'phic_member', 'signature_data', 'extra_data'
+  ];
+
+  /// Known columns in user_addresses table
+  static const _knownAddressColumns = <String>[
+    'profile_id', 'address_line', 'subdivision', 'barangay', 'extra_data'
+  ];
+
+  /// Known columns in family_composition table
+  static const _knownFamilyColumns = <String>[
+    'profile_id', 'name', 'relationship_of_relative', 'birthdate', 'age',
+    'gender', 'civil_status', 'education', 'occupation', 'allowance',
+    'created_at', 'extra_data'
+  ];
+
+  /// Known columns in socio_economic_data table
+  static const _knownSocioColumns = <String>[
+    'socio_economic_id', 'profile_id', 'gross_family_income', 'household_size',
+    'monthly_per_capita', 'monthly_expenses', 'net_monthly_income', 'house_rent',
+    'food_items', 'non_food_items', 'utility_bills', 'baby_needs', 'school_needs',
+    'medical_needs', 'transport_expenses', 'loans', 'gas', 'has_support',
+    'housing_status', 'extra_data'
+  ];
+
+  /// Known columns in supporting_family table
+  static const _knownSupportingColumns = <String>[
+    'socio_economic_id', 'name', 'relationship', 'regular_sustento',
+    'monthly_alimony', 'sort_order', 'extra_data'
+  ];
+
+  // ================================================================
   // AUTHENTICATION
   // ================================================================
 
@@ -322,7 +361,24 @@ class SupabaseService {
     required Map<String, dynamic> profileData,
     required Map<String, bool> membershipData,
   }) async {
-    final profileUpdate = {'user_id': userId, ...profileData, ...membershipData};
+    final profileUpdate = <String, dynamic>{'user_id': userId};
+    profileUpdate.addAll(membershipData);
+    final extraData = <String, dynamic>{};
+
+    // Split profileData into known columns and extra_data
+    profileData.forEach((key, value) {
+      if (_knownProfileColumns.contains(key)) {
+        profileUpdate[key] = value;
+      } else {
+        extraData[key] = value;
+      }
+    });
+
+    // Only include extra_data if there are extra fields
+    if (extraData.isNotEmpty) {
+      profileUpdate['extra_data'] = extraData;
+    }
+
     final profileRes = await _supabase
         .from('user_profiles')
         .upsert(profileUpdate, onConflict: 'user_id')
@@ -333,7 +389,23 @@ class SupabaseService {
 
   Future<void> saveUserAddress(String profileId, Map<String, dynamic> addressData) async {
     if (addressData.isNotEmpty) {
-      final addressUpdate = {'profile_id': profileId, ...addressData};
+      final addressUpdate = <String, dynamic>{'profile_id': profileId};
+      final extraData = <String, dynamic>{};
+
+      // Split addressData into known columns and extra_data
+      addressData.forEach((key, value) {
+        if (_knownAddressColumns.contains(key)) {
+          addressUpdate[key] = value;
+        } else {
+          extraData[key] = value;
+        }
+      });
+
+      // Only include extra_data if there are extra fields
+      if (extraData.isNotEmpty) {
+        addressUpdate['extra_data'] = extraData;
+      }
+
       await _supabase.from('user_addresses').upsert(addressUpdate, onConflict: 'profile_id');
     }
   }
@@ -347,7 +419,23 @@ class SupabaseService {
   }
 
   Future<String> saveSocioEconomicData(String profileId, Map<String, dynamic> socioData) async {
-    final socioUpdate = {'profile_id': profileId, ...socioData};
+    final socioUpdate = <String, dynamic>{'profile_id': profileId};
+    final extraData = <String, dynamic>{};
+
+    // Split socioData into known columns and extra_data
+    socioData.forEach((key, value) {
+      if (_knownSocioColumns.contains(key)) {
+        socioUpdate[key] = value;
+      } else {
+        extraData[key] = value;
+      }
+    });
+
+    // Only include extra_data if there are extra fields
+    if (extraData.isNotEmpty) {
+      socioUpdate['extra_data'] = extraData;
+    }
+
     final socioRes = await _supabase
         .from('socio_economic_data')
         .upsert(socioUpdate, onConflict: 'profile_id')
@@ -359,13 +447,31 @@ class SupabaseService {
   Future<void> saveSupportingFamily(String socioEconomicId, List<Map<String, dynamic>> supportData, double monthlyAlimony) async {
     await _supabase.from('supporting_family').delete().eq('socio_economic_id', socioEconomicId);
     if (supportData.isNotEmpty) {
-      final supportList = supportData.asMap().entries.map((entry) => {
-        'socio_economic_id': socioEconomicId,
-        'name': entry.value['name'],
-        'relationship': entry.value['relationship'],
-        'regular_sustento': entry.value['regular_sustento'],
-        'monthly_alimony': monthlyAlimony,
-        'sort_order': entry.key,
+      final supportList = supportData.asMap().entries.map((entry) {
+        final knownFields = {
+          'socio_economic_id': socioEconomicId,
+          'name': entry.value['name'],
+          'relationship': entry.value['relationship'],
+          'regular_sustento': entry.value['regular_sustento'],
+          'monthly_alimony': monthlyAlimony,
+          'sort_order': entry.key,
+        };
+
+        // Collect any extra fields not in knownFields
+        final extraData = <String, dynamic>{};
+        entry.value.forEach((key, value) {
+          if (!_knownSupportingColumns.contains(key) &&
+              !knownFields.containsKey(key)) {
+            extraData[key] = value;
+          }
+        });
+
+        // Add extra_data if there are extra fields
+        if (extraData.isNotEmpty) {
+          knownFields['extra_data'] = extraData;
+        }
+
+        return knownFields;
       }).where((item) => item['name'].toString().isNotEmpty).toList();
       if (supportList.isNotEmpty) {
         await _supabase.from('supporting_family').insert(supportList);
@@ -647,13 +753,19 @@ class SupabaseService {
 
     final mapped = raw.cast<Map<String, dynamic>>().map((memberRow) {
       final dbRow = <String, dynamic>{};
+      final customColumns = <String, dynamic>{};
 
-      // Map present columns from the payload
-      for (final entry in colMap.entries) {
-        final uiKey = entry.key;   // fieldName from template column
-        final dbCol = entry.value; // family_composition DB column
-        dbRow[dbCol] = coerce(dbCol, memberRow[uiKey]);
-      }
+      // Separate known columns from custom columns
+      memberRow.forEach((key, value) {
+        if (colMap.containsKey(key)) {
+          // Known column with a db_map_key
+          final dbCol = colMap[key]!;
+          dbRow[dbCol] = coerce(dbCol, value);
+        } else {
+          // Custom column (no db_map_key) → goes to extra_data
+          customColumns[key] = value;
+        }
+      });
 
       // Best-effort: fill null for any core DB keys NOT present in colMap
       // (i.e. the staff deleted that column from the template)
@@ -661,6 +773,11 @@ class SupabaseService {
         if (!dbRow.containsKey(coreKey)) {
           dbRow[coreKey] = null;
         }
+      }
+
+      // Attach custom columns as extra_data if any exist
+      if (customColumns.isNotEmpty) {
+        dbRow['extra_data'] = customColumns;
       }
 
       return dbRow;
