@@ -512,12 +512,14 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<String>(
                   value: _selectedTemplate?.templateId,
+                  isExpanded: true,
                   items: _templates
                       .map((t) => DropdownMenuItem(
                           value: t.templateId,
                           child: Text(t.formName,
                               style: const TextStyle(
-                                  fontWeight: FontWeight.w600))))
+                                  fontWeight: FontWeight.w600),
+                              overflow: TextOverflow.ellipsis)))
                       .toList(),
                   onChanged: (id) {
                     final tpl =
@@ -584,26 +586,29 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                   style: TextStyle(
                       fontWeight: FontWeight.w700, fontSize: 14)),
               const SizedBox(width: 12),
-              Container(
-                width: 340,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                      color: AppColors.buttonOutlineBlue.withOpacity(0.5)),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedTemplate!.templateId,
-                    items: _templates
-                        .map((t) => DropdownMenuItem(
-                            value: t.templateId,
-                            child: Text(t.formName,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w600))))
-                        .toList(),
-                    onChanged: null, // locked once session started
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: AppColors.buttonOutlineBlue.withOpacity(0.5)),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _selectedTemplate!.templateId,
+                      isExpanded: true,
+                      items: _templates
+                          .map((t) => DropdownMenuItem(
+                              value: t.templateId,
+                              child: Text(t.formName,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w600),
+                                  overflow: TextOverflow.ellipsis)))
+                          .toList(),
+                      onChanged: null, // locked once session started
+                    ),
                   ),
                 ),
               ),

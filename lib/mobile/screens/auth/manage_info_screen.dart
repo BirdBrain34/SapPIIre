@@ -184,7 +184,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     _formCtrl?.familyMembers = family
         .map((m) => {
               'name': m['name'] ?? '',
-              'relationship': m['relationship_of_relative'] ?? '',
+              'relationship_of_relative': m['relationship_of_relative'] ?? '',
               'birthdate': m['birthdate']?.toString() ?? '',
               'age': m['age']?.toString() ?? '',
               'gender': m['gender'] ?? '',
@@ -616,6 +616,7 @@ PreferredSizeWidget _buildAppBar() {
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<String>(
                   value: _selectedTemplate?.templateId,
+                  isExpanded: true,
                   items: _templates
                       .map((t) => DropdownMenuItem(
                             value: t.templateId,
@@ -624,6 +625,7 @@ PreferredSizeWidget _buildAppBar() {
                               style: const TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ))
                       .toList(),
