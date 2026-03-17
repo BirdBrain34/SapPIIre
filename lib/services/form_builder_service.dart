@@ -218,7 +218,8 @@ class FormBuilderService {
   // ================================================================
 
   /// Save the entire template structure (metadata + sections + fields + options).
-  /// Uses upsert-only approach to avoid FK constraint issues with value tables.
+  /// Upserts current data, then deletes orphaned rows (fields/sections that
+  /// were removed in the builder) to prevent ghost blocks on reload.
   Future<bool> saveTemplateStructure({
     required String templateId,
     required String formName,
@@ -255,14 +256,14 @@ class FormBuilderService {
             .inFilter('field_id', existingIds);
       }
 
-      // 3. Upsert sections (never delete — fields reference them)
+      // 3. Upsert sections
       if (sections.isNotEmpty) {
         await _supabase
             .from('form_sections')
             .upsert(sections, onConflict: 'section_id');
       }
 
-      // 4. Upsert fields one-by-one to avoid any bulk DELETE behaviour
+      // 4. Upsert fields (parents first, then children)
       final parentFields =
           fields.where((f) => f['parent_field_id'] == null).toList();
       final childFields =
@@ -282,6 +283,59 @@ class FormBuilderService {
       // 5. Insert fresh options
       if (options.isNotEmpty) {
         await _supabase.from('form_field_options').insert(options);
+      }
+
+      // 6. Delete orphaned fields — rows in DB that are no longer in
+      //    the builder payload. This prevents "ghost" blocks from
+      //    reappearing after save + reload.
+      final newFieldIds =
+          fields.map((f) => f['field_id'] as String).toSet();
+      final existingFieldIds =
+          existingFields.map((f) => f['field_id'] as String).toSet();
+      final orphanFieldIds =
+          existingFieldIds.difference(newFieldIds).toList();
+
+      if (orphanFieldIds.isNotEmpty) {
+        // Cascade: remove value rows that reference orphan fields,
+        // then remove orphan children, then orphan parents.
+        await _supabase
+            .from('submission_field_values')
+            .delete()
+            .inFilter('field_id', orphanFieldIds);
+        await _supabase
+            .from('user_field_values')
+            .delete()
+            .inFilter('field_id', orphanFieldIds);
+        // Delete child fields (columns) first to avoid FK violation
+        await _supabase
+            .from('form_fields')
+            .delete()
+            .inFilter('field_id', orphanFieldIds)
+            .not('parent_field_id', 'is', null);
+        await _supabase
+            .from('form_fields')
+            .delete()
+            .inFilter('field_id', orphanFieldIds);
+      }
+
+      // 7. Delete orphaned sections no longer in the payload
+      final newSectionIds =
+          sections.map((s) => s['section_id'] as String).toSet();
+      final existingSections = await _supabase
+          .from('form_sections')
+          .select('section_id')
+          .eq('template_id', templateId);
+      final existingSectionIds = existingSections
+          .map((s) => s['section_id'] as String)
+          .toSet();
+      final orphanSectionIds =
+          existingSectionIds.difference(newSectionIds).toList();
+
+      if (orphanSectionIds.isNotEmpty) {
+        await _supabase
+            .from('form_sections')
+            .delete()
+            .inFilter('section_id', orphanSectionIds);
       }
 
       return true;

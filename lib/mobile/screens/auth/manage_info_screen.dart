@@ -265,25 +265,13 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       );
 
       await _supabaseService.saveUserAddress(profileId, addressData);
-      await _supabaseService.saveFamilyComposition(
-        profileId,
-        _formCtrl!.familyMembers
-            .map((m) => {
-                  'name': m['name'] ?? '',
-                  'relationship_of_relative': m['relationship'] ?? '',
-                  'birthdate': m['birthdate'],
-                  'age': int.tryParse(m['age']?.toString() ?? '0') ?? 0,
-                  'gender': m['gender'] ?? '',
-                  'civil_status': m['civil_status'] ?? '',
-                  'education': m['education'] ?? '',
-                  'occupation': m['occupation'] ?? '',
-                  'allowance': double.tryParse(m['allowance']
-                              ?.toString()
-                              .replaceAll(',', '') ??
-                          '0') ??
-                      0,
-                })
-            .toList(),
+
+      // ── Submission Interceptor: route familyTable (and future
+      //    system blocks) to their dedicated tables ──
+      await _supabaseService.interceptAndRouteSystemFields(
+        profileId: profileId,
+        template: _selectedTemplate!,
+        formData: data,
       );
 
       if (socioData.isNotEmpty) {

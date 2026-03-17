@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../models/form_template_models.dart';
 
 class SupabaseService {
   final _supabase = Supabase.instance.client;
@@ -527,6 +528,178 @@ class SupabaseService {
     } catch (e) {
         debugPrint('Supabase Update Error: $e');
       return false;
+    }
+  }
+
+  // ================================================================
+  // SUBMISSION INTERCEPTOR
+  // ================================================================
+
+  /// Routes system-block data from a JSON payload to their dedicated
+  /// Supabase tables. Call from any submission path (mobile save,
+  /// web finalize) to ensure familyTable data lands in normalised
+  /// storage instead of only the generic JSONB blob.
+  ///
+  /// [profileId] – the applicant's profile_id (from user_profiles)
+  /// [template]  – the active FormTemplate (tells us which blocks exist)
+  /// [formData]  – the full JSON payload from FormStateController.toJson()
+  ///
+  /// Does NOT remove keys from [formData] so the JSONB audit copy in
+  /// client_submissions stays complete.
+  Future<void> interceptAndRouteSystemFields({
+    required String profileId,
+    required FormTemplate template,
+    required Map<String, dynamic> formData,
+  }) async {
+    for (final field in template.allFields) {
+      if (!field.fieldType.isSystemType) continue;
+
+      switch (field.fieldType) {
+        case FormFieldType.familyTable:
+          await _routeFamilyTable(profileId, field, formData);
+          break;
+        // Future system blocks (supportingFamilyTable, etc.) can be
+        // added here following the same pattern.
+        default:
+          break;
+      }
+    }
+  }
+
+  /// Extracts __family_composition from the payload and uses best-effort
+  /// mapping: whatever db_map_key values are present in the template columns
+  /// get routed to the family_composition table. If a core key (e.g. age,
+  /// name) is missing because the staff deleted that column, null is passed
+  /// to the Supabase upsert (Postgres schema allows NULLs). Custom columns
+  /// (no db_map_key) are ignored here — their data stays in the JSONB audit
+  /// copy in client_submissions.
+  ///
+  /// Falls back to legacy hardcoded mapping when the template has no
+  /// column definitions (backwards compat with pre-migration templates).
+
+  /// The 9 core DB columns for family_composition. Used to fill nulls for
+  /// any keys not present in the template's column list.
+  static const _familyCompositionCoreDbKeys = <String>[
+    'name',
+    'relationship_of_relative',
+    'birthdate',
+    'age',
+    'gender',
+    'civil_status',
+    'education',
+    'occupation',
+    'allowance',
+  ];
+
+  Future<void> _routeFamilyTable(
+    String profileId,
+    FormFieldModel field,
+    Map<String, dynamic> formData,
+  ) async {
+    final raw = formData['__family_composition'];
+    if (raw is! List || raw.isEmpty) {
+      // User deleted all rows → wipe the table for this profile
+      await _supabase
+          .from('family_composition')
+          .delete()
+          .eq('profile_id', profileId);
+      return;
+    }
+
+    // Build a mapping from UI fieldName → DB column name.
+    // Only columns with a db_map_key get routed; custom columns are skipped.
+    final colMap = <String, String>{};
+    if (field.columns.isNotEmpty) {
+      for (final col in field.columns) {
+        final dbKey = col.validationRules?['db_map_key'] as String?;
+        if (dbKey != null) {
+          colMap[col.fieldName] = dbKey;
+        }
+      }
+    } else {
+      // Legacy fallback: hardcoded mapping for templates without columns
+      colMap.addAll({
+        'name': 'name',
+        'relationship': 'relationship_of_relative',
+        'birthdate': 'birthdate',
+        'age': 'age',
+        'gender': 'gender',
+        'civil_status': 'civil_status',
+        'education': 'education',
+        'occupation': 'occupation',
+        'allowance': 'allowance',
+      });
+    }
+
+    // Type coercion helpers for specific DB columns
+    dynamic coerce(String dbCol, dynamic value) {
+      if (value == null) return null;
+      switch (dbCol) {
+        case 'age':
+          return int.tryParse(value.toString());
+        case 'allowance':
+          return double.tryParse(
+                  value.toString().replaceAll(',', ''));
+        default:
+          return value.toString();
+      }
+    }
+
+    final mapped = raw.cast<Map<String, dynamic>>().map((memberRow) {
+      final dbRow = <String, dynamic>{};
+
+      // Map present columns from the payload
+      for (final entry in colMap.entries) {
+        final uiKey = entry.key;   // fieldName from template column
+        final dbCol = entry.value; // family_composition DB column
+        dbRow[dbCol] = coerce(dbCol, memberRow[uiKey]);
+      }
+
+      // Best-effort: fill null for any core DB keys NOT present in colMap
+      // (i.e. the staff deleted that column from the template)
+      for (final coreKey in _familyCompositionCoreDbKeys) {
+        if (!dbRow.containsKey(coreKey)) {
+          dbRow[coreKey] = null;
+        }
+      }
+
+      return dbRow;
+    }).toList();
+
+    await saveFamilyComposition(profileId, mapped);
+  }
+
+  /// Resolves profile_id from a form_submission session row.
+  /// Returns null if the session has no linked user or profile.
+  Future<String?> resolveProfileIdFromSession(String sessionId) async {
+    try {
+      final session = await _supabase
+          .from('form_submission')
+          .select('user_id, profile_id')
+          .eq('id', sessionId)
+          .maybeSingle();
+
+      if (session == null) return null;
+
+      // Prefer explicit profile_id if already set on the session
+      if (session['profile_id'] != null) {
+        return session['profile_id'] as String;
+      }
+
+      // Fall back: look up from user_profiles via user_id
+      final userId = session['user_id'] as String?;
+      if (userId == null) return null;
+
+      final profile = await _supabase
+          .from('user_profiles')
+          .select('profile_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      return profile?['profile_id'] as String?;
+    } catch (e) {
+      debugPrint('resolveProfileIdFromSession error: $e');
+      return null;
     }
   }
 }

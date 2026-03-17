@@ -22,6 +22,7 @@ import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/services/form_template_service.dart';
 import 'package:sappiire/services/form_builder_service.dart';
 import 'package:sappiire/services/display_session_service.dart';
+import 'package:sappiire/services/supabase_service.dart';
 import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/web/widget/web_shell.dart';
@@ -185,6 +186,21 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       await _embedApplicantName(formData);
       formData['__session_id'] = _currentSessionId;
 
+      // ── Submission Interceptor ──────────────────────────────
+      // Route system-block data (familyTable, etc.) to their
+      // dedicated tables BEFORE saving the JSONB audit copy.
+      final svc = SupabaseService();
+      final profileId =
+          await svc.resolveProfileIdFromSession(_currentSessionId);
+      if (profileId != null) {
+        await svc.interceptAndRouteSystemFields(
+          profileId: profileId,
+          template: _selectedTemplate!,
+          formData: formData,
+        );
+      }
+
+      // ── Audit copy (JSONB keeps __family_composition for record) ──
       await _supabase.from('client_submissions').insert({
         'form_type': _selectedTemplate!.formName,
         'data': formData,

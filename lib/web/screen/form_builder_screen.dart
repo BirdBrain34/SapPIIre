@@ -102,6 +102,11 @@ class _BuilderColumn {
   int order;
   List<_BuilderOption> options; // only for dropdown columns
 
+  /// For familyTable core columns only. Maps this UI column to a specific
+  /// column in the `family_composition` DB table (e.g. "relationship_of_relative").
+  /// Null for custom (non-core) columns added by the superadmin.
+  String? dbMapKey;
+
   _BuilderColumn({
     String? id,
     this.label = 'Column',
@@ -109,9 +114,14 @@ class _BuilderColumn {
     this.type = FormFieldType.text,
     this.order = 0,
     List<_BuilderOption>? options,
+    this.dbMapKey,
   })  : id = id ?? _generateUuid(),
         fieldName = fieldName ?? 'col_${_generateUuid().substring(0, 8)}',
         options = options ?? [];
+
+  /// Whether this column has a DB mapping. Used by the interceptor for
+  /// best-effort routing — no longer prevents deletion or editing in the UI.
+  bool get isCoreColumn => dbMapKey != null;
 }
 
 class _BuilderField {
@@ -307,10 +317,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 ..sort((a, b) => ((a['option_order'] as int?) ?? 0)
                     .compareTo((b['option_order'] as int?) ?? 0));
 
-          // Parse columns for member_table fields
+          // Parse columns for member_table and family_table fields
           List<_BuilderColumn> columns = [];
           final fid = f['field_id'] as String;
-          if (f['field_type'] == 'member_table' &&
+          final ftype = f['field_type'] as String? ?? '';
+          if ((ftype == 'member_table' || ftype == 'family_table') &&
               childrenByParent.containsKey(fid)) {
             final childList = childrenByParent[fid]!
               ..sort((a, b) => ((a['field_order'] as int?) ?? 0)
@@ -321,6 +332,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                       .cast<Map<String, dynamic>>()
                     ..sort((a, b) => ((a['option_order'] as int?) ?? 0)
                         .compareTo((b['option_order'] as int?) ?? 0));
+              // Read db_map_key from validation_rules for system table cols
+              final vr = cf['validation_rules'] as Map<String, dynamic>?;
               return _BuilderColumn(
                 id: cf['field_id'] as String,
                 label: cf['field_label'] as String? ?? '',
@@ -328,6 +341,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 type: FormFieldType.fromString(
                     cf['field_type'] as String? ?? 'text'),
                 order: (cf['field_order'] as int?) ?? 0,
+                dbMapKey: vr?['db_map_key'] as String?,
                 options: colOpts
                     .map((o) => _BuilderOption(
                           id: o['option_id'] as String,
@@ -440,7 +454,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         });
 
         // Serialize member table columns as child fields
-        if (field.type == FormFieldType.memberTable) {
+        if (field.type == FormFieldType.memberTable ||
+            field.type == FormFieldType.familyTable) {
           for (var ci = 0; ci < field.columns.length; ci++) {
             final col = field.columns[ci];
             dbFields.add({
@@ -454,6 +469,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               'placeholder': null,
               'field_order': ci,
               'parent_field_id': field.id,
+              // Persist db_map_key so the interceptor knows which DB
+              // column this UI column maps to.
+              if (col.dbMapKey != null)
+                'validation_rules': {'db_map_key': col.dbMapKey},
             });
 
             // Column options (for dropdown columns)
@@ -800,6 +819,25 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     ),
   };
 
+  // The 9 core columns of the family_composition DB table.
+  // Each entry: (label, fieldName, dbMapKey, type)
+  static const _familyTableCoreColumns = <({
+    String label,
+    String fieldName,
+    String dbMapKey,
+    FormFieldType type,
+  })>[
+    (label: 'Name',           fieldName: 'name',                       dbMapKey: 'name',                       type: FormFieldType.text),
+    (label: 'Relationship',   fieldName: 'relationship_of_relative',   dbMapKey: 'relationship_of_relative',   type: FormFieldType.text),
+    (label: 'Birthdate',      fieldName: 'birthdate',                  dbMapKey: 'birthdate',                  type: FormFieldType.date),
+    (label: 'Age',            fieldName: 'age',                        dbMapKey: 'age',                        type: FormFieldType.number),
+    (label: 'Sex',            fieldName: 'gender',                     dbMapKey: 'gender',                     type: FormFieldType.dropdown),
+    (label: 'Civil Status',   fieldName: 'civil_status',               dbMapKey: 'civil_status',               type: FormFieldType.dropdown),
+    (label: 'Education',      fieldName: 'education',                  dbMapKey: 'education',                  type: FormFieldType.dropdown),
+    (label: 'Occupation',     fieldName: 'occupation',                 dbMapKey: 'occupation',                 type: FormFieldType.text),
+    (label: 'Allowance (₱)',  fieldName: 'allowance',                  dbMapKey: 'allowance',                  type: FormFieldType.number),
+  ];
+
   void _addSystemField(int si, FormFieldType type) {
     final block = _systemBlocks[type];
     if (block == null) return;
@@ -822,6 +860,22 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       return;
     }
 
+    // Pre-populate familyTable with its 9 core DB-mapped columns
+    List<_BuilderColumn> columns = [];
+    if (type == FormFieldType.familyTable) {
+      columns = _familyTableCoreColumns
+          .asMap()
+          .entries
+          .map((e) => _BuilderColumn(
+                label: e.value.label,
+                fieldName: e.value.fieldName,
+                type: e.value.type,
+                order: e.key,
+                dbMapKey: e.value.dbMapKey,
+              ))
+          .toList();
+    }
+
     setState(() {
       section.fields.add(_BuilderField(
         label: block.label,
@@ -830,6 +884,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         isRequired: false,
         order: section.fields.length,
         options: [],
+        columns: columns,
       ));
       _activeSectionIdx = si;
       _activeFieldIdx = section.fields.length - 1;
@@ -1842,6 +1897,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         return _buildLinearScaleEditor(field, isActive);
       case FormFieldType.memberTable:
         return _buildColumnEditor(field, isActive);
+      case FormFieldType.familyTable:
+        return _buildSystemTableColumnEditor(field, isActive);
       case FormFieldType.boolean:
         return Column(
           children: [
@@ -2086,6 +2143,219 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         }),
 
         // Dropdown options sub-editors
+        ...field.columns
+            .where((c) => c.type == FormFieldType.dropdown)
+            .map((col) => Padding(
+                  padding: const EdgeInsets.only(left: 24, bottom: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Options for "${col.label}":',
+                          style: const TextStyle(
+                              fontSize: 11, color: AppColors.textMuted)),
+                      ...col.options.asMap().entries.map((oe) {
+                        final opt = oe.value;
+                        return Row(
+                          children: [
+                            const Icon(Icons.arrow_right,
+                                size: 16, color: AppColors.textMuted),
+                            Expanded(
+                              child: TextField(
+                                controller:
+                                    _ctrl('colopt_${opt.id}', opt.label),
+                                style: const TextStyle(fontSize: 12),
+                                decoration: const InputDecoration(
+                                  hintText: 'Option',
+                                  border: InputBorder.none,
+                                  contentPadding:
+                                      EdgeInsets.symmetric(vertical: 6),
+                                ),
+                                onChanged: (v) {
+                                  opt.label = v;
+                                  _hasUnsavedChanges = true;
+                                },
+                              ),
+                            ),
+                            if (col.options.length > 1)
+                              IconButton(
+                                icon: const Icon(Icons.close, size: 14),
+                                onPressed: () => setState(() {
+                                  col.options.removeAt(oe.key);
+                                  _hasUnsavedChanges = true;
+                                }),
+                              ),
+                          ],
+                        );
+                      }),
+                      TextButton.icon(
+                        onPressed: () => setState(() {
+                          col.options.add(_BuilderOption(
+                              label: 'Option ${col.options.length + 1}'));
+                          _hasUnsavedChanges = true;
+                        }),
+                        icon: const Icon(Icons.add, size: 14),
+                        label: const Text('Add option',
+                            style: TextStyle(fontSize: 11)),
+                      ),
+                    ],
+                  ),
+                )),
+
+        // Add column button
+        TextButton.icon(
+          onPressed: () => setState(() {
+            field.columns.add(_BuilderColumn(
+              label: 'Column ${field.columns.length + 1}',
+              order: field.columns.length,
+            ));
+            _hasUnsavedChanges = true;
+          }),
+          icon: const Icon(Icons.add_circle_outline, size: 16),
+          label: const Text('Add Column', style: TextStyle(fontSize: 12)),
+        ),
+      ],
+    );
+  }
+
+  // ── System Table Column Editor (familyTable) ───────────────
+  // Fully dynamic: all columns (including pre-populated DB-mapped ones)
+  // can be relabeled, retyped, or deleted. Staff can also add new columns.
+  // The backend interceptor uses best-effort mapping via db_map_key.
+  Widget _buildSystemTableColumnEditor(_BuilderField field, bool isActive) {
+    const columnTypes = <FormFieldType, String>{
+      FormFieldType.text: 'Text',
+      FormFieldType.number: 'Number',
+      FormFieldType.date: 'Date',
+      FormFieldType.dropdown: 'Dropdown',
+    };
+
+    if (!isActive) {
+      if (field.columns.isEmpty) {
+        return const Text('No columns defined',
+            style: TextStyle(fontSize: 12, color: AppColors.textMuted));
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('${field.columns.length} column(s) defined',
+              style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: field.columns.map((c) {
+              return Chip(
+                label: Text(
+                    '${c.label} (${columnTypes[c.type] ?? c.type.toDbString()})',
+                    style: const TextStyle(fontSize: 11)),
+                visualDensity: VisualDensity.compact,
+              );
+            }).toList(),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Table Columns',
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textMuted)),
+        const SizedBox(height: 4),
+        const Text(
+          'Edit, rename, or remove any column. '
+          'Pre-populated columns map to the database when present.',
+          style: TextStyle(fontSize: 10, color: AppColors.textMuted),
+        ),
+        const SizedBox(height: 8),
+        ...field.columns.asMap().entries.map((entry) {
+          final ci = entry.key;
+          final col = entry.value;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                // Editable label
+                Expanded(
+                  flex: 3,
+                  child: TextField(
+                    controller: _ctrl('col_${col.id}', col.label),
+                    style: const TextStyle(fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: 'Column name',
+                      filled: true,
+                      fillColor: AppColors.pageBg,
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 10),
+                    ),
+                    onChanged: (v) {
+                      col.label = v;
+                      // Only auto-slug columns without a db_map_key
+                      if (col.dbMapKey == null) col.fieldName = _slugify(v);
+                      _hasUnsavedChanges = true;
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Column type: editable for all columns
+                Expanded(
+                  flex: 2,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.cardBorder),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<FormFieldType>(
+                        value: col.type,
+                        isExpanded: true,
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.textDark),
+                        items: columnTypes.entries.map((e) {
+                          return DropdownMenuItem(
+                            value: e.key,
+                            child: Text(e.value),
+                          );
+                        }).toList(),
+                        onChanged: (v) {
+                          if (v == null) return;
+                          setState(() {
+                            col.type = v;
+                            if (v == FormFieldType.dropdown &&
+                                col.options.isEmpty) {
+                              col.options
+                                  .add(_BuilderOption(label: 'Option 1'));
+                            }
+                            _hasUnsavedChanges = true;
+                          });
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                // Delete button: available for ALL columns
+                IconButton(
+                  icon: const Icon(Icons.close,
+                      size: 18, color: AppColors.textMuted),
+                  onPressed: () => setState(() {
+                    field.columns.removeAt(ci);
+                    _hasUnsavedChanges = true;
+                  }),
+                ),
+              ],
+            ),
+          );
+        }),
+
+        // Dropdown options sub-editors (same as _buildColumnEditor)
         ...field.columns
             .where((c) => c.type == FormFieldType.dropdown)
             .map((col) => Padding(

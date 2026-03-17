@@ -68,7 +68,7 @@ class DynamicFieldWidget extends StatelessWidget {
         break;
       case FormFieldType.familyTable:
         fieldWidget = _FamilyTableField(
-            controller: controller, isReadOnly: isReadOnly);
+            field: field, controller: controller, isReadOnly: isReadOnly);
         break;
       case FormFieldType.supportingFamilyTable:
         fieldWidget = _SupportingFamilyField(
@@ -575,32 +575,73 @@ class _MembershipGroupField extends StatelessWidget {
 
 // ── Family Composition table ──────────────────────────────────
 class _FamilyTableField extends StatefulWidget {
+  final FormFieldModel field;
   final FormStateController controller;
   final bool isReadOnly;
   const _FamilyTableField(
-      {required this.controller, required this.isReadOnly});
+      {required this.field,
+       required this.controller,
+       required this.isReadOnly});
 
   @override
   State<_FamilyTableField> createState() => _FamilyTableFieldState();
 }
 
 class _FamilyTableFieldState extends State<_FamilyTableField> {
-  static const _cols = [
+  // Fallback columns used when the template has no column definitions
+  // (backwards compatibility with templates saved before this feature).
+  static const _fallbackCols = [
     'name', 'relationship', 'birthdate', 'age',
     'gender', 'civil_status', 'education', 'occupation', 'allowance',
   ];
-  static const _headers = [
+  static const _fallbackHeaders = [
     'Name', 'Relationship', 'Birthdate', 'Age',
     'Sex', 'Civil Status', 'Education', 'Occupation', 'Allowance (₱)',
   ];
 
+  /// Returns the list of column keys (fieldName) to iterate.
+  List<String> get _cols {
+    if (widget.field.columns.isNotEmpty) {
+      return widget.field.columns.map((c) => c.fieldName).toList();
+    }
+    return _fallbackCols;
+  }
+
+  /// Returns the display header for column at [index].
+  String _headerAt(int index) {
+    if (widget.field.columns.isNotEmpty) {
+      return widget.field.columns[index].fieldLabel;
+    }
+    return _fallbackHeaders[index];
+  }
+
+  /// Returns the db_map_key for a given column fieldName, if any.
+  /// Used by _buildEditCell to select specialised editors.
+  String? _dbMapKeyFor(String colFieldName) {
+    if (widget.field.columns.isEmpty) return colFieldName; // legacy
+    try {
+      final col = widget.field.columns
+          .firstWhere((c) => c.fieldName == colFieldName);
+      return col.validationRules?['db_map_key'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ── Look up options from the template by field_name ───────
-  // For 'gender': the GIS template stores Sex options on the
-  // 'sex' field (Section A). We fall back to 'sex' when 'gender'
-  // is not a standalone field in the template.
   List<FieldOption> _optionsFor(String fieldName) {
+    // First: check if this familyTable column itself has options
+    if (widget.field.columns.isNotEmpty) {
+      try {
+        final col = widget.field.columns
+            .firstWhere((c) => c.fieldName == fieldName);
+        if (col.options.isNotEmpty) return col.options;
+      } catch (_) {}
+    }
+
+    // Fall back to top-level template fields
     final lookupNames = fieldName == 'gender'
-        ? ['gender', 'sex']   // prefer explicit 'gender', fall back to 'sex'
+        ? ['gender', 'sex']
         : [fieldName];
 
     for (final name in lookupNames) {
@@ -616,19 +657,22 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
   @override
   Widget build(BuildContext context) {
     final members = widget.controller.familyMembers;
+    final cols = _cols;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const _FieldLabel(label: 'Family Composition'),
+            _FieldLabel(label: widget.field.fieldLabel.isNotEmpty
+                ? widget.field.fieldLabel
+                : 'Family Composition'),
             if (!widget.isReadOnly)
               TextButton.icon(
                 onPressed: () {
                   widget.controller.familyMembers = [
                     ...members,
-                    {for (final c in _cols) c: ''}
+                    {for (final c in cols) c: ''}
                   ];
                   widget.controller.notifyListeners();
                   setState(() {});
@@ -659,7 +703,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
               padding: const EdgeInsets.all(12),
               child: Column(
                 children: [
-                  ..._cols.asMap().entries.map((col) {
+                  ...cols.asMap().entries.map((col) {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Row(
@@ -667,7 +711,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
                         children: [
                           SizedBox(
                             width: 90,
-                            child: Text(_headers[col.key],
+                            child: Text(_headerAt(col.key),
                                 style: const TextStyle(
                                     fontSize: 11,
                                     color: Colors.black54)),
@@ -711,11 +755,16 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
 
   Widget _buildEditCell(BuildContext context, int i,
       Map<String, dynamic> m, String col) {
-    switch (col) {
+    // Use the db_map_key to decide which specialised editor to show.
+    // This way, even if the superadmin renames "Birthdate" to "Petsa",
+    // the correct date-picker editor still renders.
+    final dbKey = _dbMapKeyFor(col);
+
+    switch (dbKey) {
 
       // ── Birthdate → auto-calculates age ─────────────────
       case 'birthdate':
-        final raw = m['birthdate']?.toString() ?? '';
+        final raw = m[col]?.toString() ?? '';
         return GestureDetector(
           onTap: () async {
             DateTime? initial;
@@ -749,8 +798,10 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
                       today.day < picked.day)) {
                 age--;
               }
-              widget.controller.familyMembers[i]['birthdate'] = formatted;
-              widget.controller.familyMembers[i]['age'] = age.toString();
+              // Find the age column's fieldName (in case it was renamed)
+              final ageCol = _colFieldNameForDbKey('age') ?? 'age';
+              widget.controller.familyMembers[i][col] = formatted;
+              widget.controller.familyMembers[i][ageCol] = age.toString();
               widget.controller.fieldChecks['Family Composition'] = true;
               widget.controller.notifyListeners();
               setState(() {});
@@ -785,28 +836,28 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
       // ── Age — key-bound so it rebuilds when birthdate sets it ─
       case 'age':
         return TextFormField(
-          key: ValueKey('age_${i}_${m['age']}'),
-          initialValue: m['age']?.toString() ?? '',
+          key: ValueKey('age_${i}_${m[col]}'),
+          initialValue: m[col]?.toString() ?? '',
           keyboardType: TextInputType.number,
           decoration: _inputDeco(hint: '0').copyWith(isDense: true),
           style: const TextStyle(fontSize: 12),
           onChanged: (v) {
-            widget.controller.familyMembers[i]['age'] = v;
+            widget.controller.familyMembers[i][col] = v;
             widget.controller.fieldChecks['Family Composition'] = true;
           },
         );
 
-      // ── Gender: radio chips — options from 'sex' field ───
+      // ── Gender: radio chips — options from column or 'sex' field ───
       case 'gender':
-        final opts = _optionsFor('gender'); // falls back to 'sex'
-        final current = m['gender']?.toString() ?? '';
+        final opts = _optionsFor(col);
+        final current = m[col]?.toString() ?? '';
         if (opts.isEmpty) {
           return TextFormField(
             initialValue: current,
             decoration: _inputDeco().copyWith(isDense: true),
             style: const TextStyle(fontSize: 12),
             onChanged: (v) {
-              widget.controller.familyMembers[i]['gender'] = v;
+              widget.controller.familyMembers[i][col] = v;
               widget.controller.fieldChecks['Family Composition'] = true;
             },
           );
@@ -818,7 +869,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
             final isSelected = current == opt.value;
             return GestureDetector(
               onTap: () {
-                widget.controller.familyMembers[i]['gender'] = opt.value;
+                widget.controller.familyMembers[i][col] = opt.value;
                 widget.controller.fieldChecks['Family Composition'] = true;
                 widget.controller.notifyListeners();
                 setState(() {});
@@ -866,36 +917,36 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
           }).toList(),
         );
 
-      // ── Civil Status: dropdown — options from 'civil_status' field ─
+      // ── Civil Status: dropdown ─
       case 'civil_status':
         return _inlineDropdown(
-          opts: _optionsFor('civil_status'),
-          current: m['civil_status']?.toString() ?? '',
+          opts: _optionsFor(col),
+          current: m[col]?.toString() ?? '',
           fallbackHint: 'Civil Status',
           onFallbackChange: (v) {
-            widget.controller.familyMembers[i]['civil_status'] = v;
+            widget.controller.familyMembers[i][col] = v;
             widget.controller.fieldChecks['Family Composition'] = true;
           },
           onDropdownChange: (v) {
-            widget.controller.familyMembers[i]['civil_status'] = v;
+            widget.controller.familyMembers[i][col] = v;
             widget.controller.fieldChecks['Family Composition'] = true;
             widget.controller.notifyListeners();
             setState(() {});
           },
         );
 
-      // ── Education: dropdown — options from 'education' field ─
+      // ── Education: dropdown ─
       case 'education':
         return _inlineDropdown(
-          opts: _optionsFor('education'),
-          current: m['education']?.toString() ?? '',
+          opts: _optionsFor(col),
+          current: m[col]?.toString() ?? '',
           fallbackHint: 'Education',
           onFallbackChange: (v) {
-            widget.controller.familyMembers[i]['education'] = v;
+            widget.controller.familyMembers[i][col] = v;
             widget.controller.fieldChecks['Family Composition'] = true;
           },
           onDropdownChange: (v) {
-            widget.controller.familyMembers[i]['education'] = v;
+            widget.controller.familyMembers[i][col] = v;
             widget.controller.fieldChecks['Family Composition'] = true;
             widget.controller.notifyListeners();
             setState(() {});
@@ -905,21 +956,19 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
       // ── Allowance — triggers B recompute on every keystroke ─
       case 'allowance':
         return TextFormField(
-          initialValue: m['allowance']?.toString() ?? '',
+          initialValue: m[col]?.toString() ?? '',
           keyboardType:
               const TextInputType.numberWithOptions(decimal: true),
           decoration: _inputDeco(hint: '0.00').copyWith(isDense: true),
           style: const TextStyle(fontSize: 12),
           onChanged: (v) {
-            widget.controller.familyMembers[i]['allowance'] = v;
+            widget.controller.familyMembers[i][col] = v;
             widget.controller.fieldChecks['Family Composition'] = true;
-            // recomputeFromFamilyChange calls _recomputeFields (which
-            // sums B) then notifyListeners so computed fields update.
             widget.controller.recomputeFromFamilyChange();
           },
         );
 
-      // ── Default: plain text ──────────────────────────────
+      // ── Default: plain text (covers 'name', 'occupation', and custom cols) ──
       default:
         return TextFormField(
           initialValue: m[col]?.toString() ?? '',
@@ -930,6 +979,19 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
             widget.controller.fieldChecks['Family Composition'] = true;
           },
         );
+    }
+  }
+
+  /// Reverse-lookup: find the column fieldName for a given db_map_key.
+  String? _colFieldNameForDbKey(String targetDbKey) {
+    if (widget.field.columns.isEmpty) return targetDbKey;
+    try {
+      final col = widget.field.columns.firstWhere(
+        (c) => (c.validationRules?['db_map_key'] as String?) == targetDbKey,
+      );
+      return col.fieldName;
+    } catch (_) {
+      return null;
     }
   }
 

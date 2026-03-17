@@ -341,9 +341,10 @@ class FormTemplate {
       childrenByParent.putIfAbsent(child.parentFieldId!, () => []).add(child);
     }
 
-    // Attach columns to memberTable fields
+    // Attach columns to memberTable and familyTable fields
     final assembledFields = topLevelFields.map((f) {
-      if (f.fieldType == FormFieldType.memberTable &&
+      if ((f.fieldType == FormFieldType.memberTable ||
+              f.fieldType == FormFieldType.familyTable) &&
           childrenByParent.containsKey(f.fieldId)) {
         final cols = childrenByParent[f.fieldId]!
           ..sort((a, b) => a.fieldOrder.compareTo(b.fieldOrder));
