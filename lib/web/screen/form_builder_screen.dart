@@ -49,6 +49,7 @@ const _typeLabels = <FormFieldType, String>{
   FormFieldType.time: 'Time',
   FormFieldType.number: 'Number',
   FormFieldType.boolean: 'Yes / No',
+  FormFieldType.signature: 'Signature',
   FormFieldType.memberTable: 'Member Table',
 };
 
@@ -63,6 +64,7 @@ const _typeIcons = <FormFieldType, IconData>{
   FormFieldType.time: Icons.access_time,
   FormFieldType.number: Icons.pin,
   FormFieldType.boolean: Icons.toggle_on_outlined,
+  FormFieldType.signature: Icons.draw_outlined,
   FormFieldType.memberTable: Icons.table_chart_outlined,
 };
 
@@ -818,7 +820,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     FormFieldType.signature: (
       label: 'Signature',
       fieldName: 'signature',
-      desc: 'Signature drawing pad',
+      desc: 'Applicant draws their signature on screen. Saved as a base64 image in field values.',
       icon: Icons.draw_outlined,
     ),
   };
@@ -936,13 +938,15 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                         fontSize: 14,
                         color: exists ? AppColors.textMuted : AppColors.textDark,
                       )),
-                  subtitle: Text(
-                    exists ? 'Already added' : block.desc,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: exists ? AppColors.textMuted : AppColors.textMuted,
-                    ),
-                  ),
+                  subtitle: e.key == FormFieldType.signature
+                      ? Text(
+                          exists ? 'Already added' : block.desc,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textMuted,
+                          ),
+                        )
+                      : null,
                   enabled: !exists || e.key == FormFieldType.computed,
                   onTap: () {
                     Navigator.pop(ctx);
@@ -1788,6 +1792,23 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 }).toList(),
                 onChanged: (v) {
                   if (v == null) return;
+
+                  if (v == FormFieldType.signature) {
+                    final hasOtherSignature = _sections
+                        .expand((s) => s.fields)
+                        .any((f) => f.type == FormFieldType.signature && f.id != field.id);
+                    if (hasOtherSignature) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text(
+                              'A "Signature" block already exists in this form.'),
+                          backgroundColor: Colors.orange.shade700,
+                        ),
+                      );
+                      return;
+                    }
+                  }
+
                   setState(() {
                     field.type = v;
                     if (field.hasOptions && field.options.isEmpty) {

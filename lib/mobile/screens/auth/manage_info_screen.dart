@@ -113,8 +113,19 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       template: _selectedTemplate!,
     );
     ctrl.loadFromJson(loaded);
-    if (loaded['__signature'] != null) {
-      ctrl.signatureBase64 = loaded['__signature'].toString();
+
+    FormFieldModel? sigField;
+    for (final field in _selectedTemplate!.allFields) {
+      if (field.fieldType == FormFieldType.signature) {
+        sigField = field;
+        break;
+      }
+    }
+    if (sigField != null) {
+      final sigValue = loaded[sigField.fieldName];
+      if (sigValue != null && sigValue.toString().isNotEmpty) {
+        ctrl.signatureBase64 = sigValue.toString();
+      }
     }
 
     setState(() => _formCtrl = ctrl);
