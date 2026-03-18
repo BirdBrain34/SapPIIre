@@ -216,6 +216,10 @@ class SupabaseService {
     required String lastName,
     required String dateOfBirth,
     required String phoneNumber,
+    required String birthplace,
+    required String gender,
+    required String civilStatus,
+    required String addressLine,
   }) async {
     try {
       // Set the password now that they've verified their email
@@ -235,7 +239,7 @@ class SupabaseService {
       final birthYear = int.parse(dateParts[2]);
       final age = DateTime.now().year - birthYear;
 
-      await _supabase.from('user_profiles').insert({
+      final profileRes = await _supabase.from('user_profiles').insert({
         'user_id': userId,
         'firstname': firstName,
         'middle_name': middleName,
@@ -244,6 +248,15 @@ class SupabaseService {
         'age': age,
         'email': email,
         'cellphone_number': phoneNumber,
+        'birthplace': birthplace,
+        'gender': gender,
+        'civil_status': civilStatus,
+      }).select('profile_id').single();
+
+      await saveUserAddress(profileRes['profile_id'].toString(), {
+        'address_line': addressLine,
+        'subdivision': '',
+        'barangay': '',
       });
 
       return {

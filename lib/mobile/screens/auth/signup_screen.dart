@@ -314,6 +314,15 @@ Future<void> _handleCreateAccount() async {
       lastName: _lastNameController.text.trim(),
       dateOfBirth: _dobController.text,
       phoneNumber: _phoneController.text.trim(),
+      birthplace: _placeOfBirthController.text.trim(),
+      gender: _sex == 'Male' ? 'M' : _sex == 'Female' ? 'F' : _sex,
+      civilStatus: _maritalStatus == 'Single' ? 'S'
+          : _maritalStatus == 'Married' ? 'M'
+          : _maritalStatus == 'Widowed' ? 'W'
+          : _maritalStatus == 'Separated' ? 'Sep'
+          : _maritalStatus == 'Annulled' ? 'A'
+          : _maritalStatus,
+      addressLine: _addressController.text.trim(),
     );
     setState(() => _isLoading = false);
     if (!mounted) return;
