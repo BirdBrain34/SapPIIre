@@ -23,6 +23,7 @@ import 'package:sappiire/services/form_template_service.dart';
 import 'package:sappiire/services/form_builder_service.dart';
 import 'package:sappiire/services/display_session_service.dart';
 import 'package:sappiire/services/supabase_service.dart';
+import 'package:sappiire/services/field_value_service.dart';
 import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/web/widget/web_shell.dart';
@@ -51,6 +52,7 @@ class ManageFormsScreen extends StatefulWidget {
 class _ManageFormsScreenState extends State<ManageFormsScreen> {
   final _templateService = FormTemplateService();
   final _displayService = DisplaySessionService();
+  final _fieldValueService = FieldValueService();
   final _supabase = Supabase.instance.client;
 
   List<FormTemplate> _templates = [];
@@ -199,6 +201,12 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           formData: formData,
         );
       }
+
+      await _fieldValueService.pushToSubmission(
+        sessionId: _currentSessionId,
+        template: _selectedTemplate!,
+        formData: formData,
+      );
 
       // ── Audit copy (JSONB keeps __family_composition for record) ──
       await _supabase.from('client_submissions').insert({

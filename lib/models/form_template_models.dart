@@ -152,6 +152,7 @@ class FormFieldModel {
   final String? defaultValue;
   final int fieldOrder;
   final String? autofillSource; // e.g. 'lastname', 'address.barangay', 'socio.house_rent'
+  final String? canonicalFieldKey;
   final String? placeholder;
   final List<FieldOption> options;
   final List<FieldCondition> conditions;
@@ -170,6 +171,7 @@ class FormFieldModel {
     this.defaultValue,
     this.fieldOrder = 0,
     this.autofillSource,
+    this.canonicalFieldKey,
     this.placeholder,
     this.options = const [],
     this.conditions = const [],
@@ -189,6 +191,7 @@ class FormFieldModel {
         defaultValue: m['default_value'] as String?,
         fieldOrder: (m['field_order'] as int?) ?? 0,
         autofillSource: m['autofill_source'] as String?,
+        canonicalFieldKey: m['canonical_field_key'] as String?,
         placeholder: m['placeholder'] as String?,
         options: (m['form_field_options'] as List<dynamic>? ?? [])
             .map((o) => FieldOption.fromMap(o as Map<String, dynamic>))

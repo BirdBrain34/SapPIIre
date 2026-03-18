@@ -94,7 +94,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           'Selected template: ${_selectedTemplate?.formName ?? "NONE"}');
 
       if (_selectedTemplate != null) {
-        _initFormController(profileData);
+        await _initFormController(profileData);
       }
     } catch (e, stack) {
       debugPrint('ManageInfoScreen._loadAll error: $e');
@@ -103,69 +103,24 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     if (mounted) setState(() => _isLoading = false);
   }
 
-  // ── Build form controller with autofill + saved field values ──
-  void _initFormController(Map<String, dynamic>? profileData) {
+  // ── Build form controller from user_field_values ──
+  Future<void> _initFormController(Map<String, dynamic>? profileData) async {
     _formCtrl?.dispose();
     final ctrl = FormStateController(template: _selectedTemplate!);
 
-    if (profileData != null) {
-      final address =
-          (profileData['user_addresses'] as Map<String, dynamic>?) ?? {};
-      final socio =
-          (profileData['socio_economic_data'] as Map<String, dynamic>?) ?? {};
-
-      final autofillData = _templateService.buildAutofillMap(
-        template: _selectedTemplate!,
-        profile: profileData,
-        address: address,
-        socio: socio,
-        family: [],
-        supporting: [],
-      );
-      
-      if (profileData['signature_data'] != null) {
-        autofillData['__signature'] = profileData['signature_data'];
-        ctrl.signatureBase64 = profileData['signature_data'];
-      }
-      
-      ctrl.loadFromJson(autofillData);
+    final loaded = await _fieldValueService.loadUserFieldValues(
+      userId: widget.userId,
+      template: _selectedTemplate!,
+    );
+    ctrl.loadFromJson(loaded);
+    if (loaded['__signature'] != null) {
+      ctrl.signatureBase64 = loaded['__signature'].toString();
     }
 
     setState(() => _formCtrl = ctrl);
 
     if (profileData?['profile_id'] != null) {
       _loadComplexData(profileData!['profile_id'], profileData);
-    }
-
-    // Merge saved field values on top (fills fields without autofill_source)
-    _mergeFieldValues(ctrl);
-  }
-
-  /// Loads user_field_values and fills only empty fields after autofill.
-  Future<void> _mergeFieldValues(FormStateController ctrl) async {
-    if (_selectedTemplate == null) return;
-    try {
-      final saved = await _fieldValueService.loadUserFieldValues(
-        userId: widget.userId,
-        template: _selectedTemplate!,
-      );
-      if (saved.isEmpty || !mounted) return;
-
-      // Only fill fields that are currently empty
-      final current = ctrl.toJson();
-      final merged = <String, dynamic>{};
-      for (final entry in saved.entries) {
-        final existing = current[entry.key];
-        if (existing == null ||
-            existing.toString().trim().isEmpty) {
-          merged[entry.key] = entry.value;
-        }
-      }
-      if (merged.isNotEmpty) {
-        ctrl.loadFromJson({...current, ...merged});
-      }
-    } catch (e) {
-      debugPrint('_mergeFieldValues error: $e');
     }
   }
 
@@ -225,106 +180,27 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     try {
       final data = _formCtrl!.toJson();
 
-      final profileData = <String, dynamic>{};
-      final addressData = <String, dynamic>{};
-      final socioData = <String, dynamic>{};
-
-      // Map of field names to destination (for fields without explicit autofillSource)
-      const profileFieldDefaults = <String>{
-        'blood_type', 'firstname', 'lastname', 'birthdate', 'age', 'middle_name',
-        'gender', 'civil_status', 'religion', 'cellphone_number', 'email',
-        'education', 'birthplace', 'occupation', 'workplace', 'monthly_allowance'
-      };
-
-      for (final field in _selectedTemplate!.allFields) {
-        final src = field.autofillSource;
-        final val = data[field.fieldName];
-        if (val == null || val.toString().isEmpty) continue;
-
-        // Route by explicit autofillSource
-        if (src != null) {
-          if (src.startsWith('address.')) {
-            addressData[src.substring('address.'.length)] = val;
-          } else if (src.startsWith('socio.')) {
-            socioData[src.substring('socio.'.length)] = val;
-          } else if (src == 'signature_data') {
-            profileData['signature_data'] = val;
-          } else if (src == 'gender') {
-            final raw = val.toString();
-            profileData['gender'] = raw == 'Lalaki' ? 'M'
-                : raw == 'Babae'  ? 'F'
-                : raw == 'Male'   ? 'M'
-                : raw == 'Female' ? 'F'
-                : raw;
-            continue;
-          } else {
-            if (src == 'age') {
-              profileData[src] = int.tryParse(val.toString()) ?? 0;
-            } else {
-              profileData[src] = val;
-            }
-          }
-        } else if (profileFieldDefaults.contains(field.fieldName)) {
-          // Fallback: if field name matches a known profile field, save it as extra_data
-          if (field.fieldName == 'gender') {
-            final raw = val.toString();
-            profileData['gender'] = raw == 'Lalaki' ? 'M'
-                : raw == 'Babae'  ? 'F'
-                : raw == 'Male'   ? 'M'
-                : raw == 'Female' ? 'F'
-                : raw;
-          } else if (field.fieldName == 'age') {
-            profileData[field.fieldName] = int.tryParse(val.toString()) ?? 0;
-          } else {
-            profileData[field.fieldName] = val;
-          }
-        }
-      }
-
       if (data['__signature'] != null) {
-        profileData['signature_data'] = data['__signature'];
         _formCtrl!.signatureBase64 = data['__signature'];
       }
 
-      final membership = _formCtrl!.membershipData;
-      profileData.addAll(membership);
-
-      final profileId = await _supabaseService.saveUserProfile(
-        userId: widget.userId,
-        profileData: profileData,
-        membershipData: membership,
-      );
-
-      await _supabaseService.saveUserAddress(profileId, addressData);
-
-      // ── Submission Interceptor: route familyTable (and future
-      //    system blocks) to their dedicated tables ──
-      await _supabaseService.interceptAndRouteSystemFields(
-        profileId: profileId,
-        template: _selectedTemplate!,
-        formData: data,
-      );
-
-      if (socioData.isNotEmpty) {
-        socioData['housing_status'] = _formCtrl!.housingStatus ?? '';
-        socioData['has_support'] = _formCtrl!.hasSupport;
-        final socioId = await _supabaseService.saveSocioEconomicData(
-            profileId, socioData);
-        await _supabaseService.saveSupportingFamily(
-          socioId,
-          _formCtrl!.supportingFamily,
-          double.tryParse(
-                  data['monthly_alimony']?.toString() ?? '0') ??
-              0,
-        );
-      }
-
-      // ── Pass 2: Save ALL field values by field_id (works for any template) ──
+      // Pass 1: Save all flat fields by field_id for any template (GIS included)
       await _fieldValueService.saveUserFieldValues(
         userId: widget.userId,
         template: _selectedTemplate!,
         formData: data,
       );
+
+      // Pass 2: Route system blocks (family/supporting-family) via interceptor
+      final profile = await _supabaseService.loadUserProfile(widget.userId);
+      final profileId = profile?['profile_id']?.toString();
+      if (profileId != null && profileId.isNotEmpty) {
+        await _supabaseService.interceptAndRouteSystemFields(
+          profileId: profileId,
+          template: _selectedTemplate!,
+          formData: data,
+        );
+      }
 
       if (mounted) {
         _showFeedback('Profile saved!', Colors.green);
@@ -650,7 +526,7 @@ PreferredSizeWidget _buildAppBar() {
                     setState(() => _selectedTemplate = tpl);
                     final profile =
                         await _supabaseService.loadUserProfile(widget.userId);
-                    _initFormController(profile);
+                    await _initFormController(profile);
                   },
                 ),
               ),

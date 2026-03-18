@@ -39,7 +39,7 @@ class FormTemplateService {
             form_fields(
               field_id, template_id, section_id, field_name, field_label,
               field_type, is_required, validation_rules, default_value,
-              field_order, autofill_source, placeholder, parent_field_id,
+              field_order, autofill_source, canonical_field_key, placeholder, parent_field_id,
               form_field_options(
                 option_id, option_value, option_label, option_order, is_default
               ),
@@ -88,7 +88,7 @@ class FormTemplateService {
             form_fields(
               field_id, template_id, section_id, field_name, field_label,
               field_type, is_required, validation_rules, default_value,
-              field_order, autofill_source, placeholder, parent_field_id,
+              field_order, autofill_source, canonical_field_key, placeholder, parent_field_id,
               form_field_options(
                 option_id, option_value, option_label, option_order, is_default
               ),
@@ -121,8 +121,9 @@ class FormTemplateService {
     }
   }
 
-  // Build autofill map from user profile data
-  // Converts database rows into form field values
+  // DEPRECATED: No longer called. load path now uses
+  // FieldValueService.loadUserFieldValues() directly.
+  // Safe to remove after confirming no other callers exist.
   Map<String, dynamic> buildAutofillMap({
     required FormTemplate template,
     required Map<String, dynamic> profile,       // user_profiles row
