@@ -249,6 +249,14 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
             socioData[src.substring('socio.'.length)] = val;
           } else if (src == 'signature_data') {
             profileData['signature_data'] = val;
+          } else if (src == 'gender') {
+            final raw = val.toString();
+            profileData['gender'] = raw == 'Lalaki' ? 'M'
+                : raw == 'Babae'  ? 'F'
+                : raw == 'Male'   ? 'M'
+                : raw == 'Female' ? 'F'
+                : raw;
+            continue;
           } else {
             if (src == 'age') {
               profileData[src] = int.tryParse(val.toString()) ?? 0;
@@ -258,7 +266,14 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           }
         } else if (profileFieldDefaults.contains(field.fieldName)) {
           // Fallback: if field name matches a known profile field, save it as extra_data
-          if (field.fieldName == 'age') {
+          if (field.fieldName == 'gender') {
+            final raw = val.toString();
+            profileData['gender'] = raw == 'Lalaki' ? 'M'
+                : raw == 'Babae'  ? 'F'
+                : raw == 'Male'   ? 'M'
+                : raw == 'Female' ? 'F'
+                : raw;
+          } else if (field.fieldName == 'age') {
             profileData[field.fieldName] = int.tryParse(val.toString()) ?? 0;
           } else {
             profileData[field.fieldName] = val;

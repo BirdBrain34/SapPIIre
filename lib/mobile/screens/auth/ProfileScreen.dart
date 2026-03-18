@@ -48,6 +48,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.dispose();
   }
 
+  /// Normalize any gender value to 'Male', 'Female', or null.
+  /// Handles both codes (M/F) and display names (Male/Female) and Tagalog (Lalaki/Babae).
+  String? _normalizeGender(String? rawValue) {
+    if (rawValue == null || rawValue.isEmpty) return null;
+    final trimmed = rawValue.toString().trim();
+    final lower = trimmed.toLowerCase();
+    if (trimmed == 'M' || lower == 'male' || lower == 'lalaki') return 'Male';
+    if (trimmed == 'F' || lower == 'female' || lower == 'babae') return 'Female';
+    return null; // any other value → null (shows hint, no crash)
+  }
+
   Future<void> _loadProfile() async {
     setState(() => _isLoading = true);
     try {
@@ -61,10 +72,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _lastNameCtrl.text   = profileData['lastname'] ?? '';
           _firstNameCtrl.text  = profileData['firstname'] ?? '';
           _middleNameCtrl.text = profileData['middle_name'] ?? '';
-          final rawGender = profileData['gender'] ?? '';
-          _sex = (rawGender == 'M') ? 'Male'
-              : (rawGender == 'F') ? 'Female'
-              : rawGender;
+          _sex = _normalizeGender(profileData['gender']) ?? '';
           _bloodType = profileData['blood_type'] ?? '';
           final rawCivil = profileData['civil_status'] ?? '';
           _maritalStatus = (rawCivil == 'S') ? 'Single'
@@ -412,10 +420,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _buildCard([
             _buildDropdownField(
               label: 'Sex',
-              value: _sex.isEmpty ? null : _sex,
+              value: _normalizeGender(_sex),
               icon: Icons.wc_outlined,
               items: const ['Male', 'Female'],
-              onChanged: (v) => setState(() => _sex = v ?? ''),
+              onChanged: (v) => setState(() => _sex = _normalizeGender(v) ?? ''),
             ),
             _buildDivider(),
             _buildDropdownField(
@@ -621,6 +629,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required List<String> items,
     required void Function(String?) onChanged,
   }) {
+    // Defensive: sanitize value to ensure it matches an item or is null
+    String? safeValue = value;
+    if (safeValue != null && !items.contains(safeValue)) {
+      safeValue = null; // discard invalid value
+    }
+    
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Row(
@@ -630,7 +644,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Expanded(
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
-                value: value,
+                value: safeValue,
                 hint: Text(label,
                     style: TextStyle(
                         fontSize: 14, color: Colors.grey.shade400)),
