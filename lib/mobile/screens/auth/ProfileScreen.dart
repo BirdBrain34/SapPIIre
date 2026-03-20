@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/services/supabase_service.dart';
+import 'package:sappiire/services/form_template_service.dart';
+import 'package:sappiire/services/field_value_service.dart';
+import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/mobile/screens/auth/login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -14,6 +17,9 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final _supabaseService = SupabaseService();
+  final _templateService = FormTemplateService();
+  final _fieldValueService = FieldValueService();
+  FormTemplate? _activeTemplate;
   bool _isLoading = true;
   bool _isSaving = false;
   String _username = '';
@@ -25,11 +31,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _dobCtrl           = TextEditingController();
   final _addressCtrl       = TextEditingController();
   final _placeOfBirthCtrl  = TextEditingController();
-  String _sex         = '';
-  String _bloodType   = '';
+  String _sex = '';
   String _maritalStatus = '';
-
-  String? _profileId;
 
   @override
   void initState() {
@@ -48,50 +51,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.dispose();
   }
 
+  /// Normalize any gender value to 'Male', 'Female', or null.
+  /// Handles both codes (M/F) and display names (Male/Female) and Tagalog (Lalaki/Babae).
+  String? _normalizeGender(String? rawValue) {
+    if (rawValue == null || rawValue.isEmpty) return null;
+    final trimmed = rawValue.toString().trim();
+    final lower = trimmed.toLowerCase();
+    if (trimmed == 'M' || lower == 'male' || lower == 'lalaki') return 'Male';
+    if (trimmed == 'F' || lower == 'female' || lower == 'babae') return 'Female';
+    return null; // any other value → null (shows hint, no crash)
+  }
+
   Future<void> _loadProfile() async {
     setState(() => _isLoading = true);
     try {
       final username = await _supabaseService.getUsername(widget.userId);
-      final profileData = await _supabaseService.loadUserProfile(widget.userId);
+      final pii = await _supabaseService.loadPiiFromFieldValues(widget.userId);
+
+      // Cache first active template for saves
+      _activeTemplate ??= await _templateService.fetchActiveTemplates()
+          .then((list) => list.isNotEmpty ? list.first : throw Exception('No template'));
 
       setState(() {
         _username = username ?? '';
-        if (profileData != null) {
-          _profileId = profileData['profile_id'];
-          _lastNameCtrl.text   = profileData['lastname'] ?? '';
-          _firstNameCtrl.text  = profileData['firstname'] ?? '';
-          _middleNameCtrl.text = profileData['middle_name'] ?? '';
-          final rawGender = profileData['gender'] ?? '';
-          _sex = (rawGender == 'M') ? 'Male'
-              : (rawGender == 'F') ? 'Female'
-              : rawGender;
-          _bloodType = profileData['blood_type'] ?? '';
-          final rawCivil = profileData['civil_status'] ?? '';
-          _maritalStatus = (rawCivil == 'S') ? 'Single'
-              : (rawCivil == 'M') ? 'Married'
-              : (rawCivil == 'W') ? 'Widowed'
-              : (rawCivil == 'Sep') ? 'Separated'
-              : (rawCivil == 'A') ? 'Annulled'
-              : rawCivil;
-          _placeOfBirthCtrl.text = profileData['birthplace'] ?? '';
-
-          // Format birthdate
-          final rawDate = profileData['birthdate'];
-          if (rawDate != null) {
-            _dobCtrl.text = rawDate.toString().split('T').first;
-          }
-
-          // Address from nested user_addresses
-          final address = profileData['user_addresses'];
-          if (address != null && address is Map) {
-            final parts = [
-              address['address_line'],
-              address['subdivision'],
-              address['barangay'],
-            ].where((p) => p != null && p.toString().isNotEmpty).join(', ');
-            _addressCtrl.text = parts;
-          }
-        }
+        _lastNameCtrl.text = pii['last_name'] ?? '';
+        _firstNameCtrl.text = pii['first_name'] ?? '';
+        _middleNameCtrl.text = pii['middle_name'] ?? '';
+        _dobCtrl.text = pii['date_of_birth'] ?? '';
+        _placeOfBirthCtrl.text = pii['lugar_ng_kapanganakan_place_of_birth'] ?? '';
+        
+        // Normalize gender from canonical key
+        final rawGender = pii['kasarian_sex'] ?? '';
+        _sex = _normalizeGender(rawGender) ?? '';
+        
+        // Normalize civil status from canonical key
+        final rawCivil = pii['estadong_sibil_civil_status'] ?? '';
+        _maritalStatus = _normalizeCivilStatus(rawCivil);
+        
+        // Reconstruct address from canonical keys
+        final parts = [
+          pii['house_number_street_name_phase_purok'] ?? '',
+          pii['subdivison_'] ?? '',
+          pii['barangay'] ?? '',
+        ].where((s) => s.isNotEmpty).join(', ');
+        _addressCtrl.text = parts;
       });
     } catch (e) {
       debugPrint('ProfileScreen._loadProfile error: $e');
@@ -100,39 +103,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _isLoading = false);
   }
 
+  String _normalizeCivilStatus(String raw) {
+    final lower = raw.toLowerCase();
+    if (lower.contains('single') || lower == 's') return 'Single';
+    if (lower.contains('married') || lower == 'm') return 'Married';
+    if (lower.contains('widow') || lower == 'w') return 'Widowed';
+    if (lower.contains('separated') || lower == 'sep') return 'Separated';
+    if (lower.contains('annul') || lower == 'a') return 'Annulled';
+    return raw;
+  }
+
   Future<void> _saveProfile() async {
+    if (_activeTemplate == null) {
+      _showFeedback('No active form template found', Colors.orange);
+      return;
+    }
     setState(() => _isSaving = true);
     try {
-      // Save main profile fields
-      await _supabaseService.saveUserProfile(
-        userId: widget.userId,
-        profileData: {
-          'lastname':     _lastNameCtrl.text.trim(),
-          'firstname':    _firstNameCtrl.text.trim(),
-          'middle_name':  _middleNameCtrl.text.trim(),
-          'birthdate':    _dobCtrl.text.trim(),
-          'gender': _sex == 'Male' ? 'M' : _sex == 'Female' ? 'F' : _sex,
-          'civil_status': _maritalStatus == 'Single' ? 'S'
-            : _maritalStatus == 'Married' ? 'M'
-            : _maritalStatus == 'Widowed' ? 'W'
-            : _maritalStatus == 'Separated' ? 'Sep'
-            : _maritalStatus == 'Annulled' ? 'A'
-            : _maritalStatus,
-          'blood_type':   _bloodType,
-          'birthplace':   _placeOfBirthCtrl.text.trim(),
-        },
-        membershipData: {},
-      );
+      // Split address back into parts
+      final addressParts = _addressCtrl.text.trim().split(',');
+      final addressLine = addressParts.isNotEmpty ? addressParts[0].trim() : '';
+      final subdivision = addressParts.length > 1 ? addressParts[1].trim() : '';
+      final barangay = addressParts.length > 2 ? addressParts[2].trim() : '';
 
-      // Save address — parse combined address back into parts
-      if (_profileId != null) {
-        final addressParts = _addressCtrl.text.trim().split(',');
-        await _supabaseService.saveUserAddress(_profileId!, {
-          'address_line': addressParts.isNotEmpty ? addressParts[0].trim() : '',
-          'subdivision':  addressParts.length > 1  ? addressParts[1].trim() : '',
-          'barangay':     addressParts.length > 2  ? addressParts[2].trim() : '',
-        });
-      }
+      // Build formData map keyed by field_name (matches GIS v2 template)
+      final formData = {
+        'last_name': _lastNameCtrl.text.trim(),
+        'first_name': _firstNameCtrl.text.trim(),
+        'middle_name': _middleNameCtrl.text.trim(),
+        'date_of_birth': _dobCtrl.text.trim(),
+        'kasarian_sex': _sex,
+        'estadong_sibil_civil_status': _maritalStatus,
+        'lugar_ng_kapanganakan_place_of_birth': _placeOfBirthCtrl.text.trim(),
+        'house_number_street_name_phase_purok': addressLine,
+        'subdivison_': subdivision, // Note: typo in DB field name
+        'barangay': barangay,
+      };
+
+      await _fieldValueService.saveUserFieldValues(
+        userId: widget.userId,
+        template: _activeTemplate!,
+        formData: formData,
+      );
 
       _showFeedback('Profile saved!', Colors.green);
     } catch (e) {
@@ -412,20 +424,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _buildCard([
             _buildDropdownField(
               label: 'Sex',
-              value: _sex.isEmpty ? null : _sex,
+              value: _normalizeGender(_sex),
               icon: Icons.wc_outlined,
               items: const ['Male', 'Female'],
-              onChanged: (v) => setState(() => _sex = v ?? ''),
-            ),
-            _buildDivider(),
-            _buildDropdownField(
-              label: 'Blood Type',
-              value: _bloodType.isEmpty ? null : _bloodType,
-              icon: Icons.water_drop_outlined,
-              items: const [
-                'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'
-              ],
-              onChanged: (v) => setState(() => _bloodType = v ?? ''),
+              onChanged: (v) => setState(() => _sex = _normalizeGender(v) ?? ''),
             ),
             _buildDivider(),
             _buildDropdownField(
@@ -621,6 +623,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required List<String> items,
     required void Function(String?) onChanged,
   }) {
+    // Defensive: sanitize value to ensure it matches an item or is null
+    String? safeValue = value;
+    if (safeValue != null && !items.contains(safeValue)) {
+      safeValue = null; // discard invalid value
+    }
+    
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Row(
@@ -630,7 +638,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Expanded(
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
-                value: value,
+                value: safeValue,
                 hint: Text(label,
                     style: TextStyle(
                         fontSize: 14, color: Colors.grey.shade400)),

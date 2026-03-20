@@ -1,7 +1,7 @@
 // Form Builder Screen
-// Google Forms-like interface for superadmins to create/edit form templates.
+// Dashboard-style interface for superadmins to create/edit form templates.
 //
-// Layout: Template list panel (left) + Builder canvas (center)
+// Layout: Template list panel (left) + Toolbar + Builder canvas (center)
 // Supports: Multiple choice, checkboxes, dropdown, short answer, paragraph,
 //           linear scale, date, time, number, yes/no field types.
 // Workflow: Draft → Publish (to admins) → Push to Mobile
@@ -49,6 +49,7 @@ const _typeLabels = <FormFieldType, String>{
   FormFieldType.time: 'Time',
   FormFieldType.number: 'Number',
   FormFieldType.boolean: 'Yes / No',
+  FormFieldType.signature: 'Signature',
   FormFieldType.memberTable: 'Member Table',
 };
 
@@ -63,6 +64,7 @@ const _typeIcons = <FormFieldType, IconData>{
   FormFieldType.time: Icons.access_time,
   FormFieldType.number: Icons.pin,
   FormFieldType.boolean: Icons.toggle_on_outlined,
+  FormFieldType.signature: Icons.draw_outlined,
   FormFieldType.memberTable: Icons.table_chart_outlined,
 };
 
@@ -102,6 +104,11 @@ class _BuilderColumn {
   int order;
   List<_BuilderOption> options; // only for dropdown columns
 
+  /// For familyTable core columns only. Maps this UI column to a specific
+  /// column in the `family_composition` DB table (e.g. "relationship_of_relative").
+  /// Null for custom (non-core) columns added by the superadmin.
+  String? dbMapKey;
+
   _BuilderColumn({
     String? id,
     this.label = 'Column',
@@ -109,9 +116,14 @@ class _BuilderColumn {
     this.type = FormFieldType.text,
     this.order = 0,
     List<_BuilderOption>? options,
+    this.dbMapKey,
   })  : id = id ?? _generateUuid(),
         fieldName = fieldName ?? 'col_${_generateUuid().substring(0, 8)}',
         options = options ?? [];
+
+  /// Whether this column has a DB mapping. Used by the interceptor for
+  /// best-effort routing — no longer prevents deletion or editing in the UI.
+  bool get isCoreColumn => dbMapKey != null;
 }
 
 class _BuilderField {
@@ -126,6 +138,7 @@ class _BuilderField {
   List<_BuilderColumn> columns; // for memberTable
   int scaleMin;
   int scaleMax;
+  String formula; // for computed fields
 
   _BuilderField({
     String? id,
@@ -139,6 +152,7 @@ class _BuilderField {
     List<_BuilderColumn>? columns,
     this.scaleMin = 1,
     this.scaleMax = 5,
+    this.formula = '',
   })  : id = id ?? _generateUuid(),
         fieldName = fieldName ?? 'field_${_generateUuid().substring(0, 8)}',
         options = options ?? [_BuilderOption(label: 'Option 1', order: 0)],
@@ -200,7 +214,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   String _formName = '';
   String _formDesc = '';
   String _formStatus = 'draft';
-  Color _themeColor = const Color(0xFF4C8BF5);
   List<_BuilderSection> _sections = [];
 
   // Selection tracking
@@ -272,7 +285,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       ..sort((a, b) => ((a['section_order'] as int?) ?? 0)
           .compareTo((b['section_order'] as int?) ?? 0));
     final rawFields = (data['form_fields'] as List<dynamic>? ?? [])
-        .cast<Map<String, dynamic>>();
+        .cast<Map<String, dynamic>>()
+        .where((f) {
+      final vr = f['validation_rules'] as Map<String, dynamic>?;
+      return vr == null || vr['_archived'] != true;
+    }).toList();
 
     // Separate child column-definition fields from top-level fields
     final childFields = rawFields
@@ -308,10 +325,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 ..sort((a, b) => ((a['option_order'] as int?) ?? 0)
                     .compareTo((b['option_order'] as int?) ?? 0));
 
-          // Parse columns for member_table fields
+          // Parse columns for member_table and family_table fields
           List<_BuilderColumn> columns = [];
           final fid = f['field_id'] as String;
-          if (f['field_type'] == 'member_table' &&
+          final ftype = f['field_type'] as String? ?? '';
+          if ((ftype == 'member_table' || ftype == 'family_table') &&
               childrenByParent.containsKey(fid)) {
             final childList = childrenByParent[fid]!
               ..sort((a, b) => ((a['field_order'] as int?) ?? 0)
@@ -322,6 +340,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                       .cast<Map<String, dynamic>>()
                     ..sort((a, b) => ((a['option_order'] as int?) ?? 0)
                         .compareTo((b['option_order'] as int?) ?? 0));
+              // Read db_map_key from validation_rules for system table cols
+              final vr = cf['validation_rules'] as Map<String, dynamic>?;
               return _BuilderColumn(
                 id: cf['field_id'] as String,
                 label: cf['field_label'] as String? ?? '',
@@ -329,6 +349,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 type: FormFieldType.fromString(
                     cf['field_type'] as String? ?? 'text'),
                 order: (cf['field_order'] as int?) ?? 0,
+                dbMapKey: vr?['db_map_key'] as String?,
                 options: colOpts
                     .map((o) => _BuilderOption(
                           id: o['option_id'] as String,
@@ -340,6 +361,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             }).toList();
           }
 
+          final vr = f['validation_rules'] as Map<String, dynamic>?;
           return _BuilderField(
             id: f['field_id'] as String,
             label: f['field_label'] as String? ?? '',
@@ -350,6 +372,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             placeholder: f['placeholder'] as String?,
             order: (f['field_order'] as int?) ?? 0,
             columns: columns,
+            formula: (vr?['formula'] as String?) ?? '',
             options: rawOpts
                 .map((o) => _BuilderOption(
                       id: o['option_id'] as String,
@@ -362,25 +385,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       );
     }).toList();
 
-    // Parse theme accent color
-    Color themeColor = const Color(0xFF4C8BF5);
-    if (data['theme_config'] is Map) {
-      final tc = data['theme_config'] as Map<String, dynamic>;
-      if (tc['accent_color'] != null) {
-        try {
-          themeColor = Color(
-              int.parse(tc['accent_color'] as String, radix: 16) |
-                  0xFF000000);
-        } catch (_) {}
-      }
-    }
-
     setState(() {
       _activeTemplateId = templateId;
       _formName = data['form_name'] as String? ?? 'Untitled Form';
       _formDesc = data['form_desc'] as String? ?? '';
       _formStatus = data['status'] as String? ?? 'draft';
-      _themeColor = themeColor;
       _sections = sections;
       _activeSectionIdx = null;
       _activeFieldIdx = null;
@@ -406,7 +415,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       _formName = 'Untitled Form';
       _formDesc = '';
       _formStatus = 'draft';
-      _themeColor = const Color(0xFF4C8BF5);
       _sections = [
         _BuilderSection(
           name: 'Section 1',
@@ -453,10 +461,13 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           'is_required': field.isRequired,
           'placeholder': field.placeholder,
           'field_order': fi,
+          if (field.type == FormFieldType.computed && field.formula.isNotEmpty)
+            'validation_rules': {'formula': field.formula},
         });
 
         // Serialize member table columns as child fields
-        if (field.type == FormFieldType.memberTable) {
+        if (field.type == FormFieldType.memberTable ||
+            field.type == FormFieldType.familyTable) {
           for (var ci = 0; ci < field.columns.length; ci++) {
             final col = field.columns[ci];
             dbFields.add({
@@ -470,6 +481,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               'placeholder': null,
               'field_order': ci,
               'parent_field_id': field.id,
+              // Persist db_map_key so the interceptor knows which DB
+              // column this UI column maps to.
+              if (col.dbMapKey != null)
+                'validation_rules': {'db_map_key': col.dbMapKey},
             });
 
             // Column options (for dropdown columns)
@@ -505,15 +520,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       }
     }
 
-    final themeConfig = {
-      'accent_color': _themeColor.value.toRadixString(16).substring(2),
-    };
-
     final success = await _service.saveTemplateStructure(
       templateId: _activeTemplateId!,
       formName: _formName,
       formDesc: _formDesc,
-      themeConfig: themeConfig,
       sections: dbSections,
       fields: dbFields,
       options: dbOptions,
@@ -816,10 +826,29 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     FormFieldType.signature: (
       label: 'Signature',
       fieldName: 'signature',
-      desc: 'Signature drawing pad',
+      desc: 'Applicant draws their signature on screen. Saved as a base64 image in field values.',
       icon: Icons.draw_outlined,
     ),
   };
+
+  // The 9 core columns of the family_composition DB table.
+  // Each entry: (label, fieldName, dbMapKey, type)
+  static const _familyTableCoreColumns = <({
+    String label,
+    String fieldName,
+    String dbMapKey,
+    FormFieldType type,
+  })>[
+    (label: 'Name',           fieldName: 'name',                       dbMapKey: 'name',                       type: FormFieldType.text),
+    (label: 'Relationship',   fieldName: 'relationship_of_relative',   dbMapKey: 'relationship_of_relative',   type: FormFieldType.text),
+    (label: 'Birthdate',      fieldName: 'birthdate',                  dbMapKey: 'birthdate',                  type: FormFieldType.date),
+    (label: 'Age',            fieldName: 'age',                        dbMapKey: 'age',                        type: FormFieldType.number),
+    (label: 'Sex',            fieldName: 'gender',                     dbMapKey: 'gender',                     type: FormFieldType.dropdown),
+    (label: 'Civil Status',   fieldName: 'civil_status',               dbMapKey: 'civil_status',               type: FormFieldType.dropdown),
+    (label: 'Education',      fieldName: 'education',                  dbMapKey: 'education',                  type: FormFieldType.dropdown),
+    (label: 'Occupation',     fieldName: 'occupation',                 dbMapKey: 'occupation',                 type: FormFieldType.text),
+    (label: 'Allowance (₱)',  fieldName: 'allowance',                  dbMapKey: 'allowance',                  type: FormFieldType.number),
+  ];
 
   void _addSystemField(int si, FormFieldType type) {
     final block = _systemBlocks[type];
@@ -843,6 +872,22 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       return;
     }
 
+    // Pre-populate familyTable with its 9 core DB-mapped columns
+    List<_BuilderColumn> columns = [];
+    if (type == FormFieldType.familyTable) {
+      columns = _familyTableCoreColumns
+          .asMap()
+          .entries
+          .map((e) => _BuilderColumn(
+                label: e.value.label,
+                fieldName: e.value.fieldName,
+                type: e.value.type,
+                order: e.key,
+                dbMapKey: e.value.dbMapKey,
+              ))
+          .toList();
+    }
+
     setState(() {
       section.fields.add(_BuilderField(
         label: block.label,
@@ -851,6 +896,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         isRequired: false,
         order: section.fields.length,
         options: [],
+        columns: columns,
       ));
       _activeSectionIdx = si;
       _activeFieldIdx = section.fields.length - 1;
@@ -892,19 +938,21 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                     .any((f) => f.type == e.key);
                 return ListTile(
                   leading: Icon(block.icon,
-                      color: exists ? AppColors.textMuted : _themeColor),
+                      color: exists ? AppColors.textMuted : AppColors.highlight),
                   title: Text(block.label,
                       style: TextStyle(
                         fontSize: 14,
                         color: exists ? AppColors.textMuted : AppColors.textDark,
                       )),
-                  subtitle: Text(
-                    exists ? 'Already added' : block.desc,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: exists ? AppColors.textMuted : AppColors.textMuted,
-                    ),
-                  ),
+                  subtitle: e.key == FormFieldType.signature
+                      ? Text(
+                          exists ? 'Already added' : block.desc,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textMuted,
+                          ),
+                        )
+                      : null,
                   enabled: !exists || e.key == FormFieldType.computed,
                   onTap: () {
                     Navigator.pop(ctx);
@@ -1312,26 +1360,92 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   Widget _buildBuilderCanvas() {
     return Container(
       color: AppColors.pageBg,
-      child: SingleChildScrollView(
-        controller: _scrollCtrl,
-        padding: const EdgeInsets.symmetric(vertical: 32),
-        child: Center(
-          child: SizedBox(
-            width: 680,
-            child: Column(
-              children: [
-                _buildTitleCard(),
-                const SizedBox(height: 12),
-                ..._buildAllSections(),
-                const SizedBox(height: 16),
-                _buildAddSectionButton(),
-                const SizedBox(height: 16),
-                _buildStatusCard(),
-                const SizedBox(height: 48),
-              ],
+      child: Column(
+        children: [
+          // ── Static toolbar ──
+          _buildCanvasToolbar(),
+          // ── Scrollable canvas ──
+          Expanded(
+            child: SingleChildScrollView(
+              controller: _scrollCtrl,
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: SizedBox(
+                  width: 680,
+                  child: Column(
+                    children: [
+                      _buildTitleCard(),
+                      const SizedBox(height: 12),
+                      ..._buildAllSections(),
+                      const SizedBox(height: 16),
+                      _buildAddSectionButton(),
+                      const SizedBox(height: 16),
+                      _buildStatusCard(),
+                      const SizedBox(height: 48),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
+        ],
+      ),
+    );
+  }
+
+  // ── Canvas Toolbar (static, top of builder area) ──────────
+  Widget _buildCanvasToolbar() {
+    // Determine the section index to add to: use active section, or last section
+    final targetSi = _activeSectionIdx ?? (_sections.isNotEmpty ? _sections.length - 1 : null);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+      decoration: const BoxDecoration(
+        color: AppColors.cardBg,
+        border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
+      ),
+      child: Row(
+        children: [
+          ElevatedButton.icon(
+            onPressed: targetSi != null ? () => _addField(targetSi) : null,
+            icon: const Icon(Icons.add_circle_outline, size: 18,
+                color: Colors.white),
+            label: const Text('Add Question',
+                style: TextStyle(color: Colors.white, fontSize: 13)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.highlight,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 12),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+              elevation: 0,
+            ),
+          ),
+          const SizedBox(width: 12),
+          OutlinedButton.icon(
+            onPressed: targetSi != null
+                ? () => _showSystemBlockPicker(targetSi)
+                : null,
+            icon: const Icon(Icons.dashboard_customize_outlined, size: 18),
+            label: const Text('Add Intake Module',
+                style: TextStyle(fontSize: 13)),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.highlight,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 12),
+              side: const BorderSide(color: AppColors.highlight),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+            ),
+          ),
+          const Spacer(),
+          if (_activeSectionIdx != null)
+            Text(
+              'Active: ${_sections[_activeSectionIdx!].name}',
+              style: const TextStyle(
+                  fontSize: 12, color: AppColors.textMuted),
+            ),
+        ],
       ),
     );
   }
@@ -1341,116 +1455,60 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.cardBorder),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2))
-        ],
       ),
-      child: Column(
-        children: [
-          // Theme accent bar
-          Container(
-            height: 10,
-            decoration: BoxDecoration(
-              color: _themeColor,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Form name
+            TextField(
+              controller: _ctrl('formName', _formName),
+              style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w400,
+                  color: AppColors.textDark),
+              decoration: const InputDecoration(
+                hintText: 'Untitled Form',
+                hintStyle: TextStyle(color: AppColors.textMuted),
+                border: InputBorder.none,
+                enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: AppColors.cardBorder)),
+                focusedBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(
+                        color: AppColors.highlight, width: 2)),
+              ),
+              onChanged: (v) {
+                _formName = v;
+                _hasUnsavedChanges = true;
+              },
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Form name
-                TextField(
-                  controller: _ctrl('formName', _formName),
-                  style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w400,
-                      color: AppColors.textDark),
-                  decoration: const InputDecoration(
-                    hintText: 'Untitled Form',
-                    hintStyle: TextStyle(color: AppColors.textMuted),
-                    border: InputBorder.none,
-                    enabledBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: AppColors.cardBorder)),
-                    focusedBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(
-                            color: AppColors.highlight, width: 2)),
-                  ),
-                  onChanged: (v) {
-                    _formName = v;
-                    _hasUnsavedChanges = true;
-                  },
-                ),
-                const SizedBox(height: 8),
-                // Description
-                TextField(
-                  controller: _ctrl('formDesc', _formDesc),
-                  style: const TextStyle(
-                      fontSize: 14, color: AppColors.textMuted),
-                  decoration: const InputDecoration(
-                    hintText: 'Form description',
-                    hintStyle:
-                        TextStyle(color: AppColors.textMuted, fontSize: 14),
-                    border: InputBorder.none,
-                    enabledBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(color: Colors.transparent)),
-                    focusedBorder: UnderlineInputBorder(
-                        borderSide: BorderSide(
-                            color: AppColors.highlight, width: 1)),
-                  ),
-                  onChanged: (v) {
-                    _formDesc = v;
-                    _hasUnsavedChanges = true;
-                  },
-                ),
-                const SizedBox(height: 12),
-                // Theme color picker
-                Row(
-                  children: [
-                    const Text('Theme: ',
-                        style: TextStyle(
-                            fontSize: 12, color: AppColors.textMuted)),
-                    ...[
-                      0xFF4C8BF5,
-                      0xFF673AB7,
-                      0xFFE91E63,
-                      0xFF00BCD4,
-                      0xFF4CAF50,
-                      0xFFFF9800
-                    ].map(
-                      (c) => GestureDetector(
-                        onTap: () => setState(() {
-                          _themeColor = Color(c);
-                          _hasUnsavedChanges = true;
-                        }),
-                        child: Container(
-                          width: 24,
-                          height: 24,
-                          margin: const EdgeInsets.only(left: 8),
-                          decoration: BoxDecoration(
-                            color: Color(c),
-                            shape: BoxShape.circle,
-                            border: _themeColor.value == c
-                                ? Border.all(
-                                    color: AppColors.textDark, width: 2)
-                                : null,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+            const SizedBox(height: 8),
+            // Description
+            TextField(
+              controller: _ctrl('formDesc', _formDesc),
+              style: const TextStyle(
+                  fontSize: 14, color: AppColors.textMuted),
+              decoration: const InputDecoration(
+                hintText: 'Form description',
+                hintStyle:
+                    TextStyle(color: AppColors.textMuted, fontSize: 14),
+                border: InputBorder.none,
+                enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: Colors.transparent)),
+                focusedBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(
+                        color: AppColors.highlight, width: 1)),
+              ),
+              onChanged: (v) {
+                _formDesc = v;
+                _hasUnsavedChanges = true;
+              },
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1473,7 +1531,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 return _buildFieldCard(
                     section.fields[fi], si, fi, isFieldActive);
               }),
-              _buildAddFieldButton(si),
             ],
           ),
         ),
@@ -1493,30 +1550,27 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         margin: const EdgeInsets.only(bottom: 2),
         decoration: BoxDecoration(
           color: AppColors.cardBg,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
-              color: isActive ? _themeColor : AppColors.cardBorder),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.03),
-                blurRadius: 6,
-                offset: const Offset(0, 2))
-          ],
+              color: isActive ? AppColors.highlight : AppColors.cardBorder),
         ),
         child: Row(
           children: [
-            Container(
-              width: 6,
-              height: 72,
-              decoration: BoxDecoration(
-                color: _themeColor,
-                borderRadius: const BorderRadius.horizontal(
-                    left: Radius.circular(12)),
+            // Thin left accent for active state only
+            if (isActive)
+              Container(
+                width: 3,
+                height: 64,
+                decoration: const BoxDecoration(
+                  color: AppColors.highlight,
+                  borderRadius: BorderRadius.horizontal(
+                      left: Radius.circular(8)),
+                ),
               ),
-            ),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+                padding: EdgeInsets.fromLTRB(
+                    isActive ? 13 : 16, 12, 8, 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1527,7 +1581,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                             fontSize: 18,
                             fontWeight: FontWeight.w500,
                             color: AppColors.textDark),
-                        decoration: InputDecoration(
+                        decoration: const InputDecoration(
                           hintText: 'Section Title',
                           border: InputBorder.none,
                           enabledBorder: UnderlineInputBorder(
@@ -1535,7 +1589,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                                   BorderSide(color: AppColors.cardBorder)),
                           focusedBorder: UnderlineInputBorder(
                               borderSide:
-                                  BorderSide(color: _themeColor, width: 2)),
+                                  BorderSide(color: AppColors.highlight, width: 2)),
                         ),
                         onChanged: (v) {
                           section.name = v;
@@ -1610,26 +1664,22 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         margin: const EdgeInsets.only(bottom: 2),
         decoration: BoxDecoration(
           color: AppColors.cardBg,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
-              color: isActive ? _themeColor : AppColors.cardBorder),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.03), blurRadius: 6)
-          ],
+              color: isActive ? AppColors.highlight : AppColors.cardBorder),
         ),
         child: IntrinsicHeight(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Active accent bar
+              // Thin left accent for active state only
               if (isActive)
                 Container(
-                  width: 6,
-                  decoration: BoxDecoration(
-                    color: _themeColor,
-                    borderRadius: const BorderRadius.horizontal(
-                        left: Radius.circular(12)),
+                  width: 3,
+                  decoration: const BoxDecoration(
+                    color: AppColors.highlight,
+                    borderRadius: BorderRadius.horizontal(
+                        left: Radius.circular(8)),
                   ),
                 ),
               Expanded(
@@ -1671,28 +1721,28 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         Expanded(
           flex: 3,
           child: TextField(
-            controller: _ctrl('fld_${field.id}', field.label),
-            style: const TextStyle(
-                fontSize: 15, color: AppColors.textDark),
-            decoration: InputDecoration(
-              hintText: 'Question',
-              filled: true,
-              fillColor: AppColors.pageBg,
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide.none),
-              focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: _themeColor)),
-              contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 14),
-            ),
-            onChanged: (v) {
-              field.label = v;
-              field.fieldName = _slugify(v);
-              _hasUnsavedChanges = true;
-            },
-          ),
+                  controller: _ctrl('fld_${field.id}', field.label),
+                  style: const TextStyle(
+                      fontSize: 15, color: AppColors.textDark),
+                  decoration: InputDecoration(
+                    hintText: 'Question',
+                    filled: true,
+                    fillColor: AppColors.pageBg,
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none),
+                    focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide:
+                            const BorderSide(color: AppColors.highlight)),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 14),
+                  ),
+                  onChanged: (v) {
+                    field.label = v;
+                    _hasUnsavedChanges = true;
+                  },
+                ),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -1703,7 +1753,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: AppColors.cardBorder),
             ),
-            child: field.type.isSystemType
+            child: field.type.isSystemType || field.type == FormFieldType.computed
               ? Row(
                   children: [
                     Icon(
@@ -1714,7 +1764,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                     const SizedBox(width: 8),
                     Flexible(
                       child: Text(
-                        'System Field: ${_systemTypeLabels[field.type] ?? field.type.toDbString()}',
+                        'System: ${_systemTypeLabels[field.type] ?? field.type.toDbString()}',
                         style: const TextStyle(
                           fontSize: 13,
                           color: AppColors.textMuted,
@@ -1748,6 +1798,23 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 }).toList(),
                 onChanged: (v) {
                   if (v == null) return;
+
+                  if (v == FormFieldType.signature) {
+                    final hasOtherSignature = _sections
+                        .expand((s) => s.fields)
+                        .any((f) => f.type == FormFieldType.signature && f.id != field.id);
+                    if (hasOtherSignature) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text(
+                              'A "Signature" block already exists in this form.'),
+                          backgroundColor: Colors.orange.shade700,
+                        ),
+                      );
+                      return;
+                    }
+                  }
+
                   setState(() {
                     field.type = v;
                     if (field.hasOptions && field.options.isEmpty) {
@@ -1789,8 +1856,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   }
 
   Widget _buildFieldToolbar(_BuilderField field, int si, int fi) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
+    return Wrap(
+      alignment: WrapAlignment.end,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 0,
+      runSpacing: 4,
       children: [
         IconButton(
           icon: const Icon(Icons.content_copy, size: 18),
@@ -1825,7 +1895,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
         Switch(
           value: field.isRequired,
-          activeColor: _themeColor,
+          activeColor: AppColors.highlight,
           onChanged: (v) => setState(() {
             field.isRequired = v;
             _hasUnsavedChanges = true;
@@ -1858,6 +1928,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         return _buildLinearScaleEditor(field, isActive);
       case FormFieldType.memberTable:
         return _buildColumnEditor(field, isActive);
+      case FormFieldType.familyTable:
+        return _buildSystemTableColumnEditor(field, isActive);
+      case FormFieldType.computed:
+        return _buildFormulaEditor(field, isActive);
       case FormFieldType.boolean:
         return Column(
           children: [
@@ -2176,6 +2250,219 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
+  // ── System Table Column Editor (familyTable) ───────────────
+  // Fully dynamic: all columns (including pre-populated DB-mapped ones)
+  // can be relabeled, retyped, or deleted. Staff can also add new columns.
+  // The backend interceptor uses best-effort mapping via db_map_key.
+  Widget _buildSystemTableColumnEditor(_BuilderField field, bool isActive) {
+    const columnTypes = <FormFieldType, String>{
+      FormFieldType.text: 'Text',
+      FormFieldType.number: 'Number',
+      FormFieldType.date: 'Date',
+      FormFieldType.dropdown: 'Dropdown',
+    };
+
+    if (!isActive) {
+      if (field.columns.isEmpty) {
+        return const Text('No columns defined',
+            style: TextStyle(fontSize: 12, color: AppColors.textMuted));
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('${field.columns.length} column(s) defined',
+              style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: field.columns.map((c) {
+              return Chip(
+                label: Text(
+                    '${c.label} (${columnTypes[c.type] ?? c.type.toDbString()})',
+                    style: const TextStyle(fontSize: 11)),
+                visualDensity: VisualDensity.compact,
+              );
+            }).toList(),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Table Columns',
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textMuted)),
+        const SizedBox(height: 4),
+        const Text(
+          'Edit, rename, or remove any column. '
+          'Pre-populated columns map to the database when present.',
+          style: TextStyle(fontSize: 10, color: AppColors.textMuted),
+        ),
+        const SizedBox(height: 8),
+        ...field.columns.asMap().entries.map((entry) {
+          final ci = entry.key;
+          final col = entry.value;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                // Editable label
+                Expanded(
+                  flex: 3,
+                  child: TextField(
+                    controller: _ctrl('col_${col.id}', col.label),
+                    style: const TextStyle(fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: 'Column name',
+                      filled: true,
+                      fillColor: AppColors.pageBg,
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 10),
+                    ),
+                    onChanged: (v) {
+                      col.label = v;
+                      // Only auto-slug columns without a db_map_key
+                      if (col.dbMapKey == null) col.fieldName = _slugify(v);
+                      _hasUnsavedChanges = true;
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Column type: editable for all columns
+                Expanded(
+                  flex: 2,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.cardBorder),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<FormFieldType>(
+                        value: col.type,
+                        isExpanded: true,
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.textDark),
+                        items: columnTypes.entries.map((e) {
+                          return DropdownMenuItem(
+                            value: e.key,
+                            child: Text(e.value),
+                          );
+                        }).toList(),
+                        onChanged: (v) {
+                          if (v == null) return;
+                          setState(() {
+                            col.type = v;
+                            if (v == FormFieldType.dropdown &&
+                                col.options.isEmpty) {
+                              col.options
+                                  .add(_BuilderOption(label: 'Option 1'));
+                            }
+                            _hasUnsavedChanges = true;
+                          });
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                // Delete button: available for ALL columns
+                IconButton(
+                  icon: const Icon(Icons.close,
+                      size: 18, color: AppColors.textMuted),
+                  onPressed: () => setState(() {
+                    field.columns.removeAt(ci);
+                    _hasUnsavedChanges = true;
+                  }),
+                ),
+              ],
+            ),
+          );
+        }),
+
+        // Dropdown options sub-editors (same as _buildColumnEditor)
+        ...field.columns
+            .where((c) => c.type == FormFieldType.dropdown)
+            .map((col) => Padding(
+                  padding: const EdgeInsets.only(left: 24, bottom: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Options for "${col.label}":',
+                          style: const TextStyle(
+                              fontSize: 11, color: AppColors.textMuted)),
+                      ...col.options.asMap().entries.map((oe) {
+                        final opt = oe.value;
+                        return Row(
+                          children: [
+                            const Icon(Icons.arrow_right,
+                                size: 16, color: AppColors.textMuted),
+                            Expanded(
+                              child: TextField(
+                                controller:
+                                    _ctrl('colopt_${opt.id}', opt.label),
+                                style: const TextStyle(fontSize: 12),
+                                decoration: const InputDecoration(
+                                  hintText: 'Option',
+                                  border: InputBorder.none,
+                                  contentPadding:
+                                      EdgeInsets.symmetric(vertical: 6),
+                                ),
+                                onChanged: (v) {
+                                  opt.label = v;
+                                  _hasUnsavedChanges = true;
+                                },
+                              ),
+                            ),
+                            if (col.options.length > 1)
+                              IconButton(
+                                icon: const Icon(Icons.close, size: 14),
+                                onPressed: () => setState(() {
+                                  col.options.removeAt(oe.key);
+                                  _hasUnsavedChanges = true;
+                                }),
+                              ),
+                          ],
+                        );
+                      }),
+                      TextButton.icon(
+                        onPressed: () => setState(() {
+                          col.options.add(_BuilderOption(
+                              label: 'Option ${col.options.length + 1}'));
+                          _hasUnsavedChanges = true;
+                        }),
+                        icon: const Icon(Icons.add, size: 14),
+                        label: const Text('Add option',
+                            style: TextStyle(fontSize: 11)),
+                      ),
+                    ],
+                  ),
+                )),
+
+        // Add column button
+        TextButton.icon(
+          onPressed: () => setState(() {
+            field.columns.add(_BuilderColumn(
+              label: 'Column ${field.columns.length + 1}',
+              order: field.columns.length,
+            ));
+            _hasUnsavedChanges = true;
+          }),
+          icon: const Icon(Icons.add_circle_outline, size: 16),
+          label: const Text('Add Column', style: TextStyle(fontSize: 12)),
+        ),
+      ],
+    );
+  }
+
   // ── Options Editor (radio/checkbox/dropdown) ────────────────
   Widget _buildOptionsEditor(_BuilderField field, bool isActive) {
     final isRadio = field.type == FormFieldType.radio;
@@ -2267,44 +2554,250 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  // ── Add Buttons ─────────────────────────────────────────────
-  Widget _buildAddFieldButton(int si) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 8, top: 4, bottom: 4),
-      child: Row(
-        children: [
-          TextButton.icon(
-            onPressed: () => _addField(si),
-            icon: Icon(Icons.add_circle_outline,
-                size: 18, color: _themeColor),
-            label: Text('Add question',
-                style: TextStyle(color: _themeColor, fontSize: 13)),
+  // ── Formula Editor (computed fields) ──────────────────────
+  // Formula is stored as space-separated tokens, e.g. "field_a + field_b"
+  // Tokens are displayed as removable chips — no free-text editing.
+  List<String> _formulaTokens(_BuilderField field) =>
+      field.formula.trim().isEmpty
+          ? []
+          : field.formula.trim().split(RegExp(r'\s+'));
+
+  void _appendFormulaToken(_BuilderField field, String token) {
+    final tokens = _formulaTokens(field);
+    tokens.add(token);
+    setState(() {
+      field.formula = tokens.join(' ');
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  void _removeFormulaToken(_BuilderField field, int index) {
+    final tokens = _formulaTokens(field);
+    tokens.removeAt(index);
+    setState(() {
+      field.formula = tokens.join(' ');
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  Widget _buildFormulaEditor(_BuilderField field, bool isActive) {
+    final tokens = _formulaTokens(field);
+    final numericFields = _sections
+        .expand((s) => s.fields)
+        .where((f) =>
+            f.id != field.id &&
+            (f.type == FormFieldType.number ||
+                f.type == FormFieldType.computed))
+        .toList();
+
+    // Build a lookup: fieldName → label for display in tokens
+    final fieldLabelMap = {
+      for (final f in _sections.expand((s) => s.fields)
+          .where((f) => f.id != field.id))
+        f.fieldName: (f.label.isNotEmpty ? f.label : f.fieldName)
+    };
+
+    // ── Inactive preview ──
+    if (!isActive) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF0F4FF),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.buttonOutlineBlue.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.calculate_outlined,
+                size: 14, color: AppColors.primaryBlue),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                tokens.isEmpty
+                    ? 'No formula set'
+                    : tokens
+                        .map((t) => fieldLabelMap[t] ?? t)
+                        .join(' '),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: tokens.isEmpty
+                      ? AppColors.textMuted
+                      : AppColors.primaryBlue,
+                  fontFamily: 'monospace',
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // ── Active editor ──
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Formula',
+          style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textMuted),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Tap field names and operators below to build the formula. Tap × on a token to remove it.',
+          style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+        ),
+        const SizedBox(height: 8),
+        // Token display area
+        Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(minHeight: 44),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF0F4FF),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+                color: AppColors.buttonOutlineBlue.withOpacity(0.4)),
           ),
-          const SizedBox(width: 8),
-          TextButton.icon(
-            onPressed: () => _showSystemBlockPicker(si),
-            icon: Icon(Icons.dashboard_customize_outlined,
-                size: 18, color: _themeColor),
-            label: Text('Add intake module',
-                style: TextStyle(color: _themeColor, fontSize: 13)),
+          child: tokens.isEmpty
+              ? const Text(
+                  'Empty — add fields and operators below',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textMuted,
+                      fontStyle: FontStyle.italic),
+                )
+              : Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: tokens.asMap().entries.map((e) {
+                    final i = e.key;
+                    final tok = e.value;
+                    final isOp = const {'+', '-', '*', '/', '(', ')'}
+                        .contains(tok);
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isOp
+                            ? const Color(0xFFE8EEFF)
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: isOp
+                              ? AppColors.primaryBlue.withOpacity(0.3)
+                              : AppColors.buttonOutlineBlue,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            isOp ? tok : (fieldLabelMap[tok] ?? tok),
+                            style: TextStyle(
+                              fontSize: isOp ? 14 : 12,
+                              fontFamily: 'monospace',
+                              fontWeight: isOp
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                              color: AppColors.primaryBlue,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          GestureDetector(
+                            onTap: () => _removeFormulaToken(field, i),
+                            child: const Icon(
+                              Icons.close,
+                              size: 13,
+                              color: AppColors.primaryBlue,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+        ),
+        if (numericFields.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          const Text('Available fields:',
+              style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: numericFields.map((f) {
+              return ElevatedButton.icon(
+                onPressed: () => _appendFormulaToken(field, f.fieldName),
+                icon: const Icon(Icons.add, size: 14),
+                label: Text(
+                    f.label.isNotEmpty ? f.label : f.fieldName,
+                    style: const TextStyle(
+                        fontSize: 11, fontFamily: 'monospace')),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: AppColors.primaryBlue,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 6),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    side: const BorderSide(
+                        color: AppColors.buttonOutlineBlue, width: 1),
+                  ),
+                ),
+              );
+            }).toList(),
           ),
         ],
-      ),
+        const SizedBox(height: 8),
+        const Text('Operators:',
+            style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: ['+', '-', '*', '/', '(', ')'].map((op) {
+            return ElevatedButton(
+              onPressed: () => _appendFormulaToken(field, op),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE8EEFF),
+                foregroundColor: AppColors.primaryBlue,
+                elevation: 0,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                minimumSize: const Size(36, 32),
+              ),
+              child: Text(op,
+                  style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'monospace')),
+            );
+          }).toList(),
+        ),
+      ],
     );
   }
 
+  // ── Add Section Button ─────────────────────────────────────
   Widget _buildAddSectionButton() {
     return OutlinedButton.icon(
       onPressed: _addSection,
       icon: const Icon(Icons.playlist_add, size: 20),
       label: const Text('Add Section'),
       style: OutlinedButton.styleFrom(
-        foregroundColor: _themeColor,
+        foregroundColor: AppColors.highlight,
         padding:
             const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-        side: BorderSide(color: _themeColor.withOpacity(0.5)),
+        side: BorderSide(color: AppColors.highlight.withOpacity(0.5)),
         shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12)),
+            borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
@@ -2343,27 +2836,29 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: clr.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: clr.withOpacity(0.3)),
       ),
       child: Row(
         children: [
           Icon(icon, color: clr, size: 24),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Status: $label',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: clr,
-                      fontSize: 13)),
-              Text(desc,
-                  style: TextStyle(
-                      color: clr.withOpacity(0.8), fontSize: 12)),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Status: $label',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: clr,
+                        fontSize: 13)),
+                Text(desc,
+                    style: TextStyle(
+                        color: clr.withOpacity(0.8), fontSize: 12)),
+              ],
+            ),
           ),
-          const Spacer(),
+          const SizedBox(width: 12),
           // Archive action (available for draft, published, pushed_to_mobile)
           if (_formStatus != 'archived') ...[
             if (_formStatus != 'draft')

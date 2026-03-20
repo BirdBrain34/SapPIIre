@@ -67,8 +67,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           await _templateService.fetchActiveTemplates(forceRefresh: true);
       debugPrint('Received ${templates.length} templates');
 
-      final profileData =
-          await _supabaseService.loadUserProfile(widget.userId);
       final username = await _supabaseService.getUsername(widget.userId);
 
       if (!mounted) return;
@@ -94,7 +92,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           'Selected template: ${_selectedTemplate?.formName ?? "NONE"}');
 
       if (_selectedTemplate != null) {
-        _initFormController(profileData);
+        await _initFormController();
       }
     } catch (e, stack) {
       debugPrint('ManageInfoScreen._loadAll error: $e');
@@ -103,119 +101,31 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     if (mounted) setState(() => _isLoading = false);
   }
 
-  // ── Build form controller with autofill + saved field values ──
-  void _initFormController(Map<String, dynamic>? profileData) {
+  // ── Build form controller from user_field_values ──
+  Future<void> _initFormController() async {
     _formCtrl?.dispose();
     final ctrl = FormStateController(template: _selectedTemplate!);
 
-    if (profileData != null) {
-      final address =
-          (profileData['user_addresses'] as Map<String, dynamic>?) ?? {};
-      final socio =
-          (profileData['socio_economic_data'] as Map<String, dynamic>?) ?? {};
+    final loaded = await _fieldValueService.loadUserFieldValues(
+      userId: widget.userId,
+      template: _selectedTemplate!,
+    );
+    ctrl.loadFromJson(loaded);
 
-      final autofillData = _templateService.buildAutofillMap(
-        template: _selectedTemplate!,
-        profile: profileData,
-        address: address,
-        socio: socio,
-        family: [],
-        supporting: [],
-      );
-      
-      if (profileData['signature_data'] != null) {
-        autofillData['__signature'] = profileData['signature_data'];
-        ctrl.signatureBase64 = profileData['signature_data'];
+    // Load signature if present
+    for (final field in _selectedTemplate!.allFields) {
+      if (field.fieldType == FormFieldType.signature) {
+        final sigVal = loaded[field.fieldName];
+        if (sigVal != null && sigVal.toString().isNotEmpty) {
+          ctrl.signatureBase64 = sigVal.toString();
+        }
+        break;
       }
-      
-      ctrl.loadFromJson(autofillData);
     }
 
     setState(() => _formCtrl = ctrl);
-
-    if (profileData?['profile_id'] != null) {
-      _loadComplexData(profileData!['profile_id'], profileData);
-    }
-
-    // Merge saved field values on top (fills fields without autofill_source)
-    _mergeFieldValues(ctrl);
-  }
-
-  /// Loads user_field_values and fills only empty fields after autofill.
-  Future<void> _mergeFieldValues(FormStateController ctrl) async {
-    if (_selectedTemplate == null) return;
-    try {
-      final saved = await _fieldValueService.loadUserFieldValues(
-        userId: widget.userId,
-        template: _selectedTemplate!,
-      );
-      if (saved.isEmpty || !mounted) return;
-
-      // Only fill fields that are currently empty
-      final current = ctrl.toJson();
-      final merged = <String, dynamic>{};
-      for (final entry in saved.entries) {
-        final existing = current[entry.key];
-        if (existing == null ||
-            existing.toString().trim().isEmpty) {
-          merged[entry.key] = entry.value;
-        }
-      }
-      if (merged.isNotEmpty) {
-        ctrl.loadFromJson({...current, ...merged});
-      }
-    } catch (e) {
-      debugPrint('_mergeFieldValues error: $e');
-    }
-  }
-
-  Future<void> _loadComplexData(
-      String profileId, Map<String, dynamic> profileData) async {
-    final family = await _supabaseService.loadFamilyComposition(profileId);
-    final socio =
-        (profileData['socio_economic_data'] as Map<String, dynamic>?) ?? {};
-    final socioId = socio['socio_economic_id']?.toString();
-    final supporting = socioId != null
-        ? await _supabaseService.loadSupportingFamily(socioId)
-        : <Map<String, dynamic>>[];
-
-    if (!mounted) return;
-
-    _formCtrl?.familyMembers = family
-        .map((m) => {
-              'name': m['name'] ?? '',
-              'relationship': m['relationship_of_relative'] ?? '',
-              'birthdate': m['birthdate']?.toString() ?? '',
-              'age': m['age']?.toString() ?? '',
-              'gender': m['gender'] ?? '',
-              'civil_status': m['civil_status'] ?? '',
-              'education': m['education'] ?? '',
-              'occupation': m['occupation'] ?? '',
-              'allowance': m['allowance']?.toString() ?? '',
-            })
-        .toList();
-
-    _formCtrl?.supportingFamily = supporting
-        .map((m) => {
-              'name': m['name'] ?? '',
-              'relationship': m['relationship'] ?? '',
-              'regular_sustento': m['regular_sustento']?.toString() ?? '',
-            })
-        .toList();
-
-    // Load alimony from first supporting family row
-    if (supporting.isNotEmpty && supporting.first['monthly_alimony'] != null) {
-      final monthlyAlimony = supporting.first['monthly_alimony'].toString();
-      if (_formCtrl != null) {
-        _formCtrl!.setValue('monthly_alimony', monthlyAlimony, notify: false);
-      }
-    }
-
-    _formCtrl?.hasSupport = (socio['has_support'] as bool?) ?? false;
-    _formCtrl?.housingStatus = socio['housing_status']?.toString();
-
-    // Recompute fields now that family data is loaded
-    _formCtrl?.recomputeFromFamilyChange();
+    // No _loadComplexData — family/supporting family data now live in
+    // user_field_values via the familyTable field type in the GIS template.
   }
 
   // ── Save to Supabase ──────────────────────────────────────
@@ -225,82 +135,11 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     try {
       final data = _formCtrl!.toJson();
 
-      final profileData = <String, dynamic>{};
-      final addressData = <String, dynamic>{};
-      final socioData = <String, dynamic>{};
-
-      for (final field in _selectedTemplate!.allFields) {
-        final src = field.autofillSource;
-        if (src == null) continue;
-        final val = data[field.fieldName];
-        if (val == null || val.toString().isEmpty) continue;
-
-        if (src.startsWith('address.')) {
-          addressData[src.substring('address.'.length)] = val;
-        } else if (src.startsWith('socio.')) {
-          socioData[src.substring('socio.'.length)] = val;
-        } else if (src == 'signature_data') {
-          profileData['signature_data'] = val;
-        } else {
-          if (src == 'age') {
-            profileData[src] = int.tryParse(val.toString()) ?? 0;
-          } else {
-            profileData[src] = val;
-          }
-        }
-      }
-
       if (data['__signature'] != null) {
-        profileData['signature_data'] = data['__signature'];
         _formCtrl!.signatureBase64 = data['__signature'];
       }
 
-      final membership = _formCtrl!.membershipData;
-      profileData.addAll(membership);
-
-      final profileId = await _supabaseService.saveUserProfile(
-        userId: widget.userId,
-        profileData: profileData,
-        membershipData: membership,
-      );
-
-      await _supabaseService.saveUserAddress(profileId, addressData);
-      await _supabaseService.saveFamilyComposition(
-        profileId,
-        _formCtrl!.familyMembers
-            .map((m) => {
-                  'name': m['name'] ?? '',
-                  'relationship_of_relative': m['relationship'] ?? '',
-                  'birthdate': m['birthdate'],
-                  'age': int.tryParse(m['age']?.toString() ?? '0') ?? 0,
-                  'gender': m['gender'] ?? '',
-                  'civil_status': m['civil_status'] ?? '',
-                  'education': m['education'] ?? '',
-                  'occupation': m['occupation'] ?? '',
-                  'allowance': double.tryParse(m['allowance']
-                              ?.toString()
-                              .replaceAll(',', '') ??
-                          '0') ??
-                      0,
-                })
-            .toList(),
-      );
-
-      if (socioData.isNotEmpty) {
-        socioData['housing_status'] = _formCtrl!.housingStatus ?? '';
-        socioData['has_support'] = _formCtrl!.hasSupport;
-        final socioId = await _supabaseService.saveSocioEconomicData(
-            profileId, socioData);
-        await _supabaseService.saveSupportingFamily(
-          socioId,
-          _formCtrl!.supportingFamily,
-          double.tryParse(
-                  data['monthly_alimony']?.toString() ?? '0') ??
-              0,
-        );
-      }
-
-      // ── Pass 2: Save ALL field values by field_id (works for any template) ──
+      // ONLY path: save all field values to user_field_values
       await _fieldValueService.saveUserFieldValues(
         userId: widget.userId,
         template: _selectedTemplate!,
@@ -344,11 +183,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
     if (sessionId != null && mounted) {
       // Push field values + JSONB to web session
-      final success = await _fieldValueService.pushToSubmission(
-        sessionId: sessionId,
-        template: _selectedTemplate!,
-        formData: dataToTransmit,
-      );
+      final success = await _supabaseService.sendDataToWebSession(sessionId, dataToTransmit);
       _showFeedback(
         success ? 'Data transmitted!' : 'Failed to send data.',
         success ? Colors.green : Colors.red,
@@ -477,19 +312,22 @@ PreferredSizeWidget _buildAppBar() {
             child: const Icon(Icons.person_outline, color: Colors.white, size: 18),
           ),
           const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Welcome back,',
-                style: TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.w400),
-              ),
-              Text(
-                _username.isEmpty ? 'User' : _username,
-                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
-              ),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Welcome back,',
+                  style: TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.w400),
+                ),
+                Text(
+                  _username.isEmpty ? 'User' : _username,
+                  style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -609,6 +447,7 @@ PreferredSizeWidget _buildAppBar() {
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<String>(
                   value: _selectedTemplate?.templateId,
+                  isExpanded: true,
                   items: _templates
                       .map((t) => DropdownMenuItem(
                             value: t.templateId,
@@ -617,6 +456,7 @@ PreferredSizeWidget _buildAppBar() {
                               style: const TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ))
                       .toList(),
@@ -624,9 +464,7 @@ PreferredSizeWidget _buildAppBar() {
                     final tpl =
                         _templates.firstWhere((t) => t.templateId == id);
                     setState(() => _selectedTemplate = tpl);
-                    final profile =
-                        await _supabaseService.loadUserProfile(widget.userId);
-                    _initFormController(profile);
+                    await _initFormController();
                   },
                 ),
               ),

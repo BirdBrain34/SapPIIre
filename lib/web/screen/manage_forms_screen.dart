@@ -22,6 +22,8 @@ import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/services/form_template_service.dart';
 import 'package:sappiire/services/form_builder_service.dart';
 import 'package:sappiire/services/display_session_service.dart';
+import 'package:sappiire/services/supabase_service.dart';
+import 'package:sappiire/services/field_value_service.dart';
 import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/web/widget/web_shell.dart';
@@ -50,6 +52,7 @@ class ManageFormsScreen extends StatefulWidget {
 class _ManageFormsScreenState extends State<ManageFormsScreen> {
   final _templateService = FormTemplateService();
   final _displayService = DisplaySessionService();
+  final _fieldValueService = FieldValueService();
   final _supabase = Supabase.instance.client;
 
   List<FormTemplate> _templates = [];
@@ -185,6 +188,14 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       await _embedApplicantName(formData);
       formData['__session_id'] = _currentSessionId;
 
+      // Save field values to submission_field_values
+      await _fieldValueService.pushToSubmission(
+        sessionId: _currentSessionId,
+        template: _selectedTemplate!,
+        formData: formData,
+      );
+
+      // ── Audit copy (JSONB keeps __family_composition for record) ──
       await _supabase.from('client_submissions').insert({
         'form_type': _selectedTemplate!.formName,
         'data': formData,
@@ -496,12 +507,14 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<String>(
                   value: _selectedTemplate?.templateId,
+                  isExpanded: true,
                   items: _templates
                       .map((t) => DropdownMenuItem(
                           value: t.templateId,
                           child: Text(t.formName,
                               style: const TextStyle(
-                                  fontWeight: FontWeight.w600))))
+                                  fontWeight: FontWeight.w600),
+                              overflow: TextOverflow.ellipsis)))
                       .toList(),
                   onChanged: (id) {
                     final tpl =
@@ -568,26 +581,29 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                   style: TextStyle(
                       fontWeight: FontWeight.w700, fontSize: 14)),
               const SizedBox(width: 12),
-              Container(
-                width: 340,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                      color: AppColors.buttonOutlineBlue.withOpacity(0.5)),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedTemplate!.templateId,
-                    items: _templates
-                        .map((t) => DropdownMenuItem(
-                            value: t.templateId,
-                            child: Text(t.formName,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w600))))
-                        .toList(),
-                    onChanged: null, // locked once session started
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: AppColors.buttonOutlineBlue.withOpacity(0.5)),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _selectedTemplate!.templateId,
+                      isExpanded: true,
+                      items: _templates
+                          .map((t) => DropdownMenuItem(
+                              value: t.templateId,
+                              child: Text(t.formName,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w600),
+                                  overflow: TextOverflow.ellipsis)))
+                          .toList(),
+                      onChanged: null, // locked once session started
+                    ),
                   ),
                 ),
               ),

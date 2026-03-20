@@ -19,8 +19,6 @@ class FieldValueService {
     FormFieldType.familyTable,
     FormFieldType.supportingFamilyTable,
     FormFieldType.membershipGroup,
-    FormFieldType.signature,
-    FormFieldType.computed,
   };
 
   // ── SAVE: upsert all field values to user_field_values ────
@@ -89,6 +87,10 @@ class FieldValueService {
 
         result[name] = fval;
       }
+      // NOTE: For signature fields, the caller must also set
+      // controller.signatureBase64 = result[signatureFieldName]
+      // after calling loadFromJson() so the drawing widget
+      // renders the saved signature correctly.
       return result;
     } catch (e) {
       debugPrint('loadUserFieldValues error: $e');
@@ -153,6 +155,16 @@ class FieldValueService {
     for (final field in template.allFields) {
       if (_skipTypes.contains(field.fieldType)) continue;
       if (field.parentFieldId != null) continue; // skip child column-definitions
+
+      if (field.fieldType == FormFieldType.signature) {
+        final sigVal =
+            (formData[field.fieldName] ?? formData['__signature'])
+                ?.toString() ??
+            '';
+        if (sigVal.trim().isEmpty) continue;
+        rows.add(rowBuilder(field, sigVal));
+        continue;
+      }
 
       if (field.fieldType == FormFieldType.memberTable) {
         final val = formData[field.fieldName];

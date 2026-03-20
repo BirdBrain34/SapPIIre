@@ -317,42 +317,81 @@ class FormStateController extends ChangeNotifier {
     return field.isVisible(triggerMap);
   }
 
-  // Auto-compute calculated fields
-  // Formula: D = A + B + C
-  //   A = monthly_income (client's own income)
-  //   B = Sum of family member allowances
-  //   C = monthly_alimony (support from others, only if hasSupport is true)
-  //   D = gross_family_income (computed)
+  // Dynamically evaluate all computed fields using their stored formula.
+  // Supports: + - * / ( ) and field_name tokens.
+  // Field names resolve to their current numeric value (0 if blank/non-numeric).
   void _recomputeFields() {
-    final a = _parseNum('monthly_income');
-    final c = hasSupport ? _parseNum('monthly_alimony') : 0.0;
+    final computedFields = template.allFields
+        .where((f) => f.fieldType == FormFieldType.computed)
+        .toList();
 
-    // B — sum every family member's allowance field
-    final b = familyMembers.fold<double>(0.0, (sum, m) {
-      final raw = m['allowance']?.toString().replaceAll(',', '') ?? '0';
-      final parsed = double.tryParse(raw) ?? 0.0;
-      return sum + parsed;
-    });
+    for (final field in computedFields) {
+      final formula =
+          field.validationRules?['formula'] as String? ?? '';
+      if (formula.trim().isEmpty) continue;
+      try {
+        final result = _evalFormula(formula);
+        _setComputed(field.fieldName, result);
+      } catch (_) {
+        // Leave field blank if formula is invalid
+      }
+    }
+  }
 
-    debugPrint('Recompute: A=$a, B=$b (${familyMembers.length} members), C=$c, hasSupport=$hasSupport');
+  /// Tokenise and evaluate a simple arithmetic formula.
+  /// Supported: numeric literals, field_name identifiers, + - * / ( )
+  double _evalFormula(String formula) {
+    // Replace every identifier with its current numeric value
+    final resolved = formula.replaceAllMapped(
+      RegExp(r'[a-zA-Z_][a-zA-Z0-9_]*'),
+      (m) {
+        final name = m.group(0)!;
+        return _parseNum(name).toString();
+      },
+    );
+    return _evalExpr(resolved.replaceAll(' ', ''), _Pos(0));
+  }
 
-    final gross = a + b + c; // D = A + B + C (C is 0 if hasSupport is false)
+  /// Recursive-descent parser: handles +/- at expression level,
+  /// */÷ at term level, and parentheses/unary minus at factor level.
+  double _evalExpr(String s, _Pos p) {
+    var result = _evalTerm(s, p);
+    while (p.i < s.length && (s[p.i] == '+' || s[p.i] == '-')) {
+      final op = s[p.i++];
+      final right = _evalTerm(s, p);
+      result = op == '+' ? result + right : result - right;
+    }
+    return result;
+  }
 
-    final hhSize = _parseNum('household_size');
-    final perCapita = hhSize > 0 ? gross / hhSize : 0.0;
+  double _evalTerm(String s, _Pos p) {
+    var result = _evalFactor(s, p);
+    while (p.i < s.length && (s[p.i] == '*' || s[p.i] == '/')) {
+      final op = s[p.i++];
+      final right = _evalFactor(s, p);
+      result = op == '*' ? result * right : (right != 0 ? result / right : 0);
+    }
+    return result;
+  }
 
-    final expenses = [
-      'house_rent', 'food_items', 'non_food_items', 'utility_bills',
-      'baby_needs', 'school_needs', 'medical_needs',
-      'transport_expenses', 'loans', 'gas', 'misc',
-    ].fold<double>(0.0, (sum, key) => sum + _parseNum(key));
-
-    final net = gross - expenses;
-
-    _setComputed('gross_family_income', gross);
-    _setComputed('monthly_per_capita', perCapita);
-    _setComputed('total_monthly_expense', expenses);
-    _setComputed('net_monthly_income', net);
+  double _evalFactor(String s, _Pos p) {
+    if (p.i < s.length && s[p.i] == '(') {
+      p.i++; // consume '('
+      final result = _evalExpr(s, p);
+      if (p.i < s.length && s[p.i] == ')') p.i++; // consume ')'
+      return result;
+    }
+    if (p.i < s.length && s[p.i] == '-') {
+      p.i++;
+      return -_evalFactor(s, p);
+    }
+    // Parse number
+    final start = p.i;
+    while (p.i < s.length &&
+        (s[p.i] == '.' || (s[p.i].codeUnitAt(0) >= 48 && s[p.i].codeUnitAt(0) <= 57))) {
+      p.i++;
+    }
+    return double.tryParse(s.substring(start, p.i)) ?? 0.0;
   }
 
   double _parseNum(String key) {
@@ -413,4 +452,10 @@ class FormStateController extends ChangeNotifier {
     for (final ctrl in textControllers.values) ctrl.dispose();
     super.dispose();
   }
+}
+
+/// Mutable position pointer used by the recursive-descent formula parser.
+class _Pos {
+  int i;
+  _Pos(this.i);
 }

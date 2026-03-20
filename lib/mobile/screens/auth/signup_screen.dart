@@ -314,6 +314,15 @@ Future<void> _handleCreateAccount() async {
       lastName: _lastNameController.text.trim(),
       dateOfBirth: _dobController.text,
       phoneNumber: _phoneController.text.trim(),
+      birthplace: _placeOfBirthController.text.trim(),
+      gender: _sex == 'Male' ? 'M' : _sex == 'Female' ? 'F' : _sex,
+      civilStatus: _maritalStatus == 'Single' ? 'S'
+          : _maritalStatus == 'Married' ? 'M'
+          : _maritalStatus == 'Widowed' ? 'W'
+          : _maritalStatus == 'Separated' ? 'Sep'
+          : _maritalStatus == 'Annulled' ? 'A'
+          : _maritalStatus,
+      addressLine: _addressController.text.trim(),
     );
     setState(() => _isLoading = false);
     if (!mounted) return;
@@ -525,10 +534,35 @@ Widget _buildEmailPage() {
             controller: _otpController,
           ),
           const SizedBox(height: 16),
-          TextButton(
-            onPressed: _isLoading ? null : _handleResendOtp,
-            child: const Text('Resend Code',
-                style: TextStyle(color: Colors.white60, fontSize: 13)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              TextButton(
+                onPressed: _isLoading ? null : _handleResendOtp,
+                child: const Text('Resend Code',
+                    style: TextStyle(color: Colors.white60, fontSize: 13)),
+              ),
+              const SizedBox(width: 16),
+              // TESTING ONLY: Skip OTP verification
+              TextButton(
+                onPressed: _isLoading ? null : () {
+                  // Skip OTP verification for testing
+                  setState(() {
+                    if (_verifiedUserId == null) {
+                      // Generate a test user ID if not set
+                      _verifiedUserId = Supabase.instance.client.auth.currentUser?.id;
+                    }
+                  });
+                  _goNext();
+                },
+                style: TextButton.styleFrom(
+                  backgroundColor: Colors.orange.withOpacity(0.2),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                child: const Text('Skip (Testing)',
+                    style: TextStyle(color: Colors.orange, fontSize: 13)),
+              ),
+            ],
           ),
         ],
       ),
@@ -567,10 +601,28 @@ Widget _buildEmailPage() {
               controller: _phoneOtpController,
             ),
             const SizedBox(height: 8),
-            TextButton(
-              onPressed: _isLoading ? null : _handleSendPhoneOtp,
-              child: const Text('Resend Code',
-                  style: TextStyle(color: Colors.white60, fontSize: 13)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                TextButton(
+                  onPressed: _isLoading ? null : _handleSendPhoneOtp,
+                  child: const Text('Resend Code',
+                      style: TextStyle(color: Colors.white60, fontSize: 13)),
+                ),
+                const SizedBox(width: 16),
+                // TESTING ONLY: Skip phone OTP verification
+                TextButton(
+                  onPressed: _isLoading ? null : () {
+                    _goNext();
+                  },
+                  style: TextButton.styleFrom(
+                    backgroundColor: Colors.orange.withOpacity(0.2),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  child: const Text('Skip (Testing)',
+                      style: TextStyle(color: Colors.orange, fontSize: 13)),
+                ),
+              ],
             ),
           ],
         ],

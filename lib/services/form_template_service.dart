@@ -39,7 +39,7 @@ class FormTemplateService {
             form_fields(
               field_id, template_id, section_id, field_name, field_label,
               field_type, is_required, validation_rules, default_value,
-              field_order, autofill_source, placeholder, parent_field_id,
+              field_order, autofill_source, canonical_field_key, placeholder, parent_field_id,
               form_field_options(
                 option_id, option_value, option_label, option_order, is_default
               ),
@@ -48,7 +48,8 @@ class FormTemplateService {
               )
             )
           ''')
-          .eq('is_active', true);
+          .eq('is_active', true)
+          .order('created_at', ascending: false);
 
       debugPrint('Raw response: ${res.toString().substring(0, res.toString().length > 200 ? 200 : res.toString().length)}...');
 
@@ -88,7 +89,7 @@ class FormTemplateService {
             form_fields(
               field_id, template_id, section_id, field_name, field_label,
               field_type, is_required, validation_rules, default_value,
-              field_order, autofill_source, placeholder, parent_field_id,
+              field_order, autofill_source, canonical_field_key, placeholder, parent_field_id,
               form_field_options(
                 option_id, option_value, option_label, option_order, is_default
               ),
@@ -121,8 +122,9 @@ class FormTemplateService {
     }
   }
 
-  // Build autofill map from user profile data
-  // Converts database rows into form field values
+  // DEPRECATED: No longer called. load path now uses
+  // FieldValueService.loadUserFieldValues() directly.
+  // Safe to remove after confirming no other callers exist.
   Map<String, dynamic> buildAutofillMap({
     required FormTemplate template,
     required Map<String, dynamic> profile,       // user_profiles row
@@ -156,23 +158,72 @@ class FormTemplateService {
       }
     }
 
+    // Merge extra_data from profile (custom fields added to Basic Info, etc.)
+    if (profile['extra_data'] is Map) {
+      (profile['extra_data'] as Map).forEach((key, value) {
+        if (!result.containsKey(key)) {
+          result[key] = value;
+        }
+      });
+    }
+
+    // Merge extra_data from address
+    if (address['extra_data'] is Map) {
+      (address['extra_data'] as Map).forEach((key, value) {
+        if (!result.containsKey(key)) {
+          result['address.$key'] = value;
+        }
+      });
+    }
+
+    // Merge extra_data from socio_economic_data
+    if (socio['extra_data'] is Map) {
+      (socio['extra_data'] as Map).forEach((key, value) {
+        if (!result.containsKey(key)) {
+          result['socio.$key'] = value;
+        }
+      });
+    }
+
     // Special complex fields
-    result['__family_composition'] = family.map((m) => {
-      'name': m['name'] ?? '',
-      'relationship': m['relationship_of_relative'] ?? '',
-      'birthdate': m['birthdate']?.toString() ?? '',
-      'age': m['age']?.toString() ?? '',
-      'gender': m['gender'] ?? '',
-      'civil_status': m['civil_status'] ?? '',
-      'education': m['education'] ?? '',
-      'occupation': m['occupation'] ?? '',
-      'allowance': m['allowance']?.toString() ?? '',
+    result['__family_composition'] = family.map((m) {
+      final row = {
+        'name': m['name'] ?? '',
+        'relationship': m['relationship_of_relative'] ?? '',
+        'birthdate': m['birthdate']?.toString() ?? '',
+        'age': m['age']?.toString() ?? '',
+        'gender': m['gender'] ?? '',
+        'civil_status': m['civil_status'] ?? '',
+        'education': m['education'] ?? '',
+        'occupation': m['occupation'] ?? '',
+        'allowance': m['allowance']?.toString() ?? '',
+      };
+      // Merge extra_data from family composition rows
+      if (m['extra_data'] is Map) {
+        (m['extra_data'] as Map).forEach((key, value) {
+          if (!row.containsKey(key)) {
+            row[key] = value?.toString() ?? '';
+          }
+        });
+      }
+      return row;
     }).toList();
 
-    result['__supporting_family'] = supporting.map((m) => {
-      'name': m['name'] ?? '',
-      'relationship': m['relationship'] ?? '',
-      'regular_sustento': m['regular_sustento']?.toString() ?? '',
+    result['__supporting_family'] = supporting.map((m) {
+      final row = {
+        'name': m['name'] ?? '',
+        'relationship': m['relationship'] ?? '',
+        'regular_sustento': m['regular_sustento']?.toString() ?? '',
+      };
+      // Merge extra_data from supporting family rows
+      if (m['extra_data'] is Map) {
+        (m['extra_data'] as Map).forEach((key, value) {
+          if (!row.containsKey(key)) {
+            row[key] = value?.toString() ?? '';
+          }
+        });
+      }
+      return row;
     }).toList();
 
     result['__membership'] = {

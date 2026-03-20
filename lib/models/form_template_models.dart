@@ -57,7 +57,6 @@ enum FormFieldType {
   /// Whether this type is a system/custom type that should not be changed
   /// by the user in the form builder (e.g. familyTable, computed, signature).
   bool get isSystemType => const {
-    FormFieldType.computed,
     FormFieldType.membershipGroup,
     FormFieldType.familyTable,
     FormFieldType.supportingFamilyTable,
@@ -152,6 +151,7 @@ class FormFieldModel {
   final String? defaultValue;
   final int fieldOrder;
   final String? autofillSource; // e.g. 'lastname', 'address.barangay', 'socio.house_rent'
+  final String? canonicalFieldKey;
   final String? placeholder;
   final List<FieldOption> options;
   final List<FieldCondition> conditions;
@@ -170,6 +170,7 @@ class FormFieldModel {
     this.defaultValue,
     this.fieldOrder = 0,
     this.autofillSource,
+    this.canonicalFieldKey,
     this.placeholder,
     this.options = const [],
     this.conditions = const [],
@@ -189,6 +190,7 @@ class FormFieldModel {
         defaultValue: m['default_value'] as String?,
         fieldOrder: (m['field_order'] as int?) ?? 0,
         autofillSource: m['autofill_source'] as String?,
+        canonicalFieldKey: m['canonical_field_key'] as String?,
         placeholder: m['placeholder'] as String?,
         options: (m['form_field_options'] as List<dynamic>? ?? [])
             .map((o) => FieldOption.fromMap(o as Map<String, dynamic>))
@@ -326,7 +328,12 @@ class FormTemplate {
     final rawSections =
         (m['form_sections'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
     final rawFields =
-        (m['form_fields'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
+        (m['form_fields'] as List<dynamic>? ?? [])
+            .cast<Map<String, dynamic>>()
+            .where((f) {
+      final vr = f['validation_rules'] as Map<String, dynamic>?;
+      return vr == null || vr['_archived'] != true;
+    }).toList();
 
     final allParsed =
         rawFields.map((f) => FormFieldModel.fromMap(f)).toList();
@@ -341,9 +348,10 @@ class FormTemplate {
       childrenByParent.putIfAbsent(child.parentFieldId!, () => []).add(child);
     }
 
-    // Attach columns to memberTable fields
+    // Attach columns to memberTable and familyTable fields
     final assembledFields = topLevelFields.map((f) {
-      if (f.fieldType == FormFieldType.memberTable &&
+      if ((f.fieldType == FormFieldType.memberTable ||
+              f.fieldType == FormFieldType.familyTable) &&
           childrenByParent.containsKey(f.fieldId)) {
         final cols = childrenByParent[f.fieldId]!
           ..sort((a, b) => a.fieldOrder.compareTo(b.fieldOrder));
