@@ -67,8 +67,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           await _templateService.fetchActiveTemplates(forceRefresh: true);
       debugPrint('Received ${templates.length} templates');
 
-      final profileData =
-          await _supabaseService.loadUserProfile(widget.userId);
       final username = await _supabaseService.getUsername(widget.userId);
 
       if (!mounted) return;
@@ -94,7 +92,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           'Selected template: ${_selectedTemplate?.formName ?? "NONE"}');
 
       if (_selectedTemplate != null) {
-        await _initFormController(profileData);
+        await _initFormController();
       }
     } catch (e, stack) {
       debugPrint('ManageInfoScreen._loadAll error: $e');
@@ -104,7 +102,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   }
 
   // ── Build form controller from user_field_values ──
-  Future<void> _initFormController(Map<String, dynamic>? profileData) async {
+  Future<void> _initFormController() async {
     _formCtrl?.dispose();
     final ctrl = FormStateController(template: _selectedTemplate!);
 
@@ -114,74 +112,20 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
     ctrl.loadFromJson(loaded);
 
-    FormFieldModel? sigField;
+    // Load signature if present
     for (final field in _selectedTemplate!.allFields) {
       if (field.fieldType == FormFieldType.signature) {
-        sigField = field;
+        final sigVal = loaded[field.fieldName];
+        if (sigVal != null && sigVal.toString().isNotEmpty) {
+          ctrl.signatureBase64 = sigVal.toString();
+        }
         break;
-      }
-    }
-    if (sigField != null) {
-      final sigValue = loaded[sigField.fieldName];
-      if (sigValue != null && sigValue.toString().isNotEmpty) {
-        ctrl.signatureBase64 = sigValue.toString();
       }
     }
 
     setState(() => _formCtrl = ctrl);
-
-    if (profileData?['profile_id'] != null) {
-      _loadComplexData(profileData!['profile_id'], profileData);
-    }
-  }
-
-  Future<void> _loadComplexData(
-      String profileId, Map<String, dynamic> profileData) async {
-    final family = await _supabaseService.loadFamilyComposition(profileId);
-    final socio =
-        (profileData['socio_economic_data'] as Map<String, dynamic>?) ?? {};
-    final socioId = socio['socio_economic_id']?.toString();
-    final supporting = socioId != null
-        ? await _supabaseService.loadSupportingFamily(socioId)
-        : <Map<String, dynamic>>[];
-
-    if (!mounted) return;
-
-    _formCtrl?.familyMembers = family
-        .map((m) => {
-              'name': m['name'] ?? '',
-              'relationship_of_relative': m['relationship_of_relative'] ?? '',
-              'birthdate': m['birthdate']?.toString() ?? '',
-              'age': m['age']?.toString() ?? '',
-              'gender': m['gender'] ?? '',
-              'civil_status': m['civil_status'] ?? '',
-              'education': m['education'] ?? '',
-              'occupation': m['occupation'] ?? '',
-              'allowance': m['allowance']?.toString() ?? '',
-            })
-        .toList();
-
-    _formCtrl?.supportingFamily = supporting
-        .map((m) => {
-              'name': m['name'] ?? '',
-              'relationship': m['relationship'] ?? '',
-              'regular_sustento': m['regular_sustento']?.toString() ?? '',
-            })
-        .toList();
-
-    // Load alimony from first supporting family row
-    if (supporting.isNotEmpty && supporting.first['monthly_alimony'] != null) {
-      final monthlyAlimony = supporting.first['monthly_alimony'].toString();
-      if (_formCtrl != null) {
-        _formCtrl!.setValue('monthly_alimony', monthlyAlimony, notify: false);
-      }
-    }
-
-    _formCtrl?.hasSupport = (socio['has_support'] as bool?) ?? false;
-    _formCtrl?.housingStatus = socio['housing_status']?.toString();
-
-    // Recompute fields now that family data is loaded
-    _formCtrl?.recomputeFromFamilyChange();
+    // No _loadComplexData — family/supporting family data now live in
+    // user_field_values via the familyTable field type in the GIS template.
   }
 
   // ── Save to Supabase ──────────────────────────────────────
@@ -195,23 +139,12 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         _formCtrl!.signatureBase64 = data['__signature'];
       }
 
-      // Pass 1: Save all flat fields by field_id for any template (GIS included)
+      // ONLY path: save all field values to user_field_values
       await _fieldValueService.saveUserFieldValues(
         userId: widget.userId,
         template: _selectedTemplate!,
         formData: data,
       );
-
-      // Pass 2: Route system blocks (family/supporting-family) via interceptor
-      final profile = await _supabaseService.loadUserProfile(widget.userId);
-      final profileId = profile?['profile_id']?.toString();
-      if (profileId != null && profileId.isNotEmpty) {
-        await _supabaseService.interceptAndRouteSystemFields(
-          profileId: profileId,
-          template: _selectedTemplate!,
-          formData: data,
-        );
-      }
 
       if (mounted) {
         _showFeedback('Profile saved!', Colors.green);
@@ -250,11 +183,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
     if (sessionId != null && mounted) {
       // Push field values + JSONB to web session
-      final success = await _fieldValueService.pushToSubmission(
-        sessionId: sessionId,
-        template: _selectedTemplate!,
-        formData: dataToTransmit,
-      );
+      final success = await _supabaseService.sendDataToWebSession(sessionId, dataToTransmit);
       _showFeedback(
         success ? 'Data transmitted!' : 'Failed to send data.',
         success ? Colors.green : Colors.red,
@@ -535,9 +464,7 @@ PreferredSizeWidget _buildAppBar() {
                     final tpl =
                         _templates.firstWhere((t) => t.templateId == id);
                     setState(() => _selectedTemplate = tpl);
-                    final profile =
-                        await _supabaseService.loadUserProfile(widget.userId);
-                    await _initFormController(profile);
+                    await _initFormController();
                   },
                 ),
               ),

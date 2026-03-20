@@ -2,48 +2,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/form_template_models.dart';
+import 'package:sappiire/services/form_template_service.dart';
 
 class SupabaseService {
   final _supabase = Supabase.instance.client;
 
-  // ================================================================
-  // KNOWN COLUMN DEFINITIONS (for extra_data split logic)
-  // ================================================================
-  /// Known columns in user_profiles table. Any other columns go to extra_data.
-  static const _knownProfileColumns = <String>[
-    'user_id', 'profile_id', 'firstname', 'lastname', 'birthdate', 'age',
-    'middle_name', 'gender', 'blood_type', 'civil_status', 'religion',
-    'cellphone_number', 'email', 'education', 'birthplace', 'occupation',
-    'workplace', 'monthly_allowance', 'solo_parent', 'pwd', 'four_ps_member',
-    'phic_member', 'signature_data', 'extra_data'
-  ];
-
-  /// Known columns in user_addresses table
-  static const _knownAddressColumns = <String>[
-    'profile_id', 'address_line', 'subdivision', 'barangay', 'extra_data'
-  ];
-
-  /// Known columns in family_composition table
-  static const _knownFamilyColumns = <String>[
-    'profile_id', 'name', 'relationship_of_relative', 'birthdate', 'age',
-    'gender', 'civil_status', 'education', 'occupation', 'allowance',
-    'created_at', 'extra_data'
-  ];
-
-  /// Known columns in socio_economic_data table
-  static const _knownSocioColumns = <String>[
-    'socio_economic_id', 'profile_id', 'gross_family_income', 'household_size',
-    'monthly_per_capita', 'monthly_expenses', 'net_monthly_income', 'house_rent',
-    'food_items', 'non_food_items', 'utility_bills', 'baby_needs', 'school_needs',
-    'medical_needs', 'transport_expenses', 'loans', 'gas', 'has_support',
-    'housing_status', 'extra_data'
-  ];
-
-  /// Known columns in supporting_family table
-  static const _knownSupportingColumns = <String>[
-    'socio_economic_id', 'name', 'relationship', 'regular_sustento',
-    'monthly_alimony', 'sort_order', 'extra_data'
-  ];
+  // Legacy column definitions removed - no longer needed with user_field_values architecture
 
   // ================================================================
   // AUTHENTICATION
@@ -53,6 +17,7 @@ class SupabaseService {
   /// Supabase sends an OTP to the email automatically.
   Future<Map<String, dynamic>> signUpWithEmail({
     required String email,
+    String? password, // Optional: if provided, use it; otherwise generate temp
   }) async {
     try {
       // Check user_accounts for this email
@@ -65,14 +30,15 @@ class SupabaseService {
       if (existing != null) {
         final userId = existing['user_id'] as String?;
         if (userId != null && userId.isNotEmpty) {
-          // Check if they finished signup (have a profile)
-          final profile = await _supabase
-              .from('user_profiles')
-              .select('profile_id')
+          // Check if they finished signup (have field values)
+          final fieldValues = await _supabase
+              .from('user_field_values')
+              .select('id')
               .eq('user_id', userId)
+              .limit(1)
               .maybeSingle();
 
-          if (profile != null) {
+          if (fieldValues != null) {
             // Fully registered — block
             return {
               'success': false,
@@ -94,14 +60,27 @@ class SupabaseService {
         }
       }
 
-      // Brand new email — use signUp which sends OTP only
+      // Brand new email — create user and send OTP
+      final signupPassword = password ?? DateTime.now().millisecondsSinceEpoch.toString();
       final res = await _supabase.auth.signUp(
         email: email,
-        password: DateTime.now().millisecondsSinceEpoch.toString(),
+        password: signupPassword,
+        emailRedirectTo: null, // Disable email confirmation link
       );
 
       if (res.user == null) {
         return {'success': false, 'message': 'Sign-up failed. Try again.'};
+      }
+
+      // Explicitly send OTP after signup
+      try {
+        await _supabase.auth.signInWithOtp(
+          email: email,
+          shouldCreateUser: false,
+        );
+      } catch (e) {
+        debugPrint('⚠️ OTP send failed: $e');
+        // Continue anyway - user can use resend button
       }
 
       return {
@@ -206,10 +185,11 @@ class SupabaseService {
   }
 
   /// Step 4 of signup: save profile data after OTP is verified.
+  /// Writes all PII to user_field_values by dynamically matching field_name from GIS v2.
   Future<Map<String, dynamic>> saveProfileAfterVerification({
     required String userId,
     required String username,
-    required String password,   // ← new param
+    required String password,
     required String email,
     required String firstName,
     required String middleName,
@@ -222,42 +202,118 @@ class SupabaseService {
     required String addressLine,
   }) async {
     try {
-      // Set the password now that they've verified their email
-      await _supabase.auth.updateUser(
-        UserAttributes(password: password),
-      );
+      // 1. Set password in Supabase Auth (user should be authenticated after OTP verification)
+      try {
+        await _supabase.auth.updateUser(UserAttributes(password: password));
+        debugPrint('✅ Password set successfully');
+      } catch (e) {
+        debugPrint('⚠️ Password update failed: $e');
+        // Continue anyway - user can reset password later
+      }
 
-      // Update username in user_accounts
+      // 2. Ensure user_accounts row exists (upsert username and email)
       await _supabase
           .from('user_accounts')
-          .update({'username': username})
-          .eq('user_id', userId);
+          .upsert({
+            'user_id': userId,
+            'username': username,
+            'email': email,
+            'is_active': true,
+          }, onConflict: 'user_id');
+      
+      debugPrint('✅ user_accounts row created/updated');
 
+      // 3. Parse birthdate M/D/YYYY → YYYY-MM-DD
       final dateParts = dateOfBirth.split('/');
-      final formattedDate =
-          '${dateParts[2]}-${dateParts[0].padLeft(2, '0')}-${dateParts[1].padLeft(2, '0')}';
-      final birthYear = int.parse(dateParts[2]);
-      final age = DateTime.now().year - birthYear;
+      final formattedDate = dateParts.length == 3
+          ? '${dateParts[2]}-'
+            '${dateParts[0].padLeft(2, '0')}-'
+            '${dateParts[1].padLeft(2, '0')}'
+          : dateOfBirth;
+      final birthYear = dateParts.length == 3 ? int.tryParse(dateParts[2]) : null;
+      final age = birthYear != null ? DateTime.now().year - birthYear : null;
 
-      final profileRes = await _supabase.from('user_profiles').insert({
-        'user_id': userId,
-        'firstname': firstName,
+      // 4. Fetch ALL templates to save data across all matching canonical keys
+      final templateSvc = FormTemplateService();
+      final templates = await templateSvc.fetchActiveTemplates();
+      
+      if (templates.isEmpty) {
+        debugPrint('❌ No templates found - check RLS policies on form_templates table');
+        return {
+          'success': false,
+          'message': 'System error: No form templates available. Contact administrator.',
+        };
+      }
+      
+      debugPrint('✅ Found ${templates.length} active templates');
+      
+      // Collect ALL fields across ALL templates
+      final allFields = templates.expand((t) => t.allFields).toList();
+      debugPrint('📋 Total fields across all templates: ${allFields.length}');
+
+      // 5. Build canonical_field_key → value map
+      final piiData = {
+        'first_name': firstName,
         'middle_name': middleName,
-        'lastname': lastName,
-        'birthdate': formattedDate,
-        'age': age,
-        'email': email,
-        'cellphone_number': phoneNumber,
-        'birthplace': birthplace,
-        'gender': gender,
-        'civil_status': civilStatus,
-      }).select('profile_id').single();
+        'last_name': lastName,
+        'date_of_birth': formattedDate,
+        if (age != null) 'age': age.toString(),
+        'kasarian_sex': gender, // Already converted in signup (M/F or Male/Female)
+        'estadong_sibil_civil_status': civilStatus, // Already converted in signup
+        'lugar_ng_kapanganakan_place_of_birth': birthplace,
+        'cp_number': phoneNumber,
+        'email_address': email,
+        'house_number_street_name_phase_purok': addressLine,
+      };
 
-      await saveUserAddress(profileRes['profile_id'].toString(), {
-        'address_line': addressLine,
-        'subdivision': '',
-        'barangay': '',
-      });
+      // 6. Match canonical_field_key → field_id across ALL templates and save
+      final now = DateTime.now().toIso8601String();
+      final rows = <Map<String, dynamic>>[];
+      
+      debugPrint('🔍 Attempting to match ${piiData.length} signup fields...');
+      
+      for (final entry in piiData.entries) {
+        if (entry.value.toString().isEmpty) {
+          debugPrint('⏭️ Skipping empty field: ${entry.key}');
+          continue;
+        }
+        
+        debugPrint('🔎 Looking for canonical_field_key: ${entry.key}');
+        
+        // Find ALL fields with this canonical key across ALL templates
+        final matchingFields = allFields.where(
+          (f) => f.canonicalFieldKey == entry.key
+        ).toList();
+        
+        if (matchingFields.isEmpty) {
+          debugPrint('❌ No fields found with canonical_field_key: ${entry.key}');
+          continue;
+        }
+
+        debugPrint('✅ Found ${matchingFields.length} field(s) with canonical_field_key: ${entry.key}');
+        
+        // Save to ALL matching fields (across all templates)
+        for (final field in matchingFields) {
+          debugPrint('   → Saving to template: ${templates.firstWhere((t) => t.templateId == field.templateId).formName}');
+          rows.add({
+            'user_id': userId,
+            'field_id': field.fieldId,
+            'field_value': entry.value.toString(),
+            'updated_at': now,
+          });
+        }
+      }
+
+      debugPrint('💾 Saving ${rows.length} rows to user_field_values...');
+      
+      if (rows.isNotEmpty) {
+        await _supabase
+            .from('user_field_values')
+            .upsert(rows, onConflict: 'user_id,field_id');
+        debugPrint('✅ Successfully saved ${rows.length} field values across all templates');
+      } else {
+        debugPrint('⚠️ No rows to save - all fields were empty or not matched');
+      }
 
       return {
         'success': true,
@@ -265,6 +321,7 @@ class SupabaseService {
         'user_id': userId,
       };
     } catch (e) {
+      debugPrint('saveProfileAfterVerification error: $e');
       return {
         'success': false,
         'message': 'Error saving profile: ${e.toString()}',
@@ -304,19 +361,12 @@ class SupabaseService {
         return {'success': false, 'message': 'Invalid username or password'};
       }
 
-      final profileResponse = await _supabase
-          .from('user_profiles')
-          .select()
-          .eq('user_id', account['user_id'])
-          .maybeSingle();
-
       return {
         'success': true,
         'message': 'Login successful',
         'user_id': account['user_id'],
         'username': account['username'],
         'email': account['email'],
-        'profile': profileResponse,
       };
     } on AuthException catch (e) {
       return {'success': false, 'message': e.message};
@@ -343,290 +393,69 @@ class SupabaseService {
     }
   }
 
-  Future<Map<String, dynamic>?> loadUserProfile(String userId) async {
-    return await _supabase
-        .from('user_profiles')
-        .select('*, user_addresses(*), socio_economic_data(*)')
-        .eq('user_id', userId)
-        .maybeSingle();
-  }
-
-  Future<List<Map<String, dynamic>>> loadFamilyComposition(String profileId) async {
-    final response = await _supabase
-        .from('family_composition')
-        .select()
-        .eq('profile_id', profileId)
-        .order('created_at');
-    return List<Map<String, dynamic>>.from(response);
-  }
-
-  Future<List<Map<String, dynamic>>> loadSupportingFamily(String socioEconomicId) async {
-    final response = await _supabase
-        .from('supporting_family')
-        .select()
-        .eq('socio_economic_id', socioEconomicId)
-        .order('sort_order');
-    return List<Map<String, dynamic>>.from(response);
-  }
-
-  Future<String> saveUserProfile({
-    required String userId,
-    required Map<String, dynamic> profileData,
-    required Map<String, bool> membershipData,
-  }) async {
-    final profileUpdate = <String, dynamic>{'user_id': userId};
-    profileUpdate.addAll(membershipData);
-    final extraData = <String, dynamic>{};
-
-    // Split profileData into known columns and extra_data
-    profileData.forEach((key, value) {
-      if (_knownProfileColumns.contains(key)) {
-        profileUpdate[key] = value;
-      } else {
-        extraData[key] = value;
-      }
-    });
-
-    // Only include extra_data if there are extra fields
-    if (extraData.isNotEmpty) {
-      profileUpdate['extra_data'] = extraData;
-    }
-
-    final profileRes = await _supabase
-        .from('user_profiles')
-        .upsert(profileUpdate, onConflict: 'user_id')
-        .select('profile_id')
-        .single();
-    return profileRes['profile_id'];
-  }
-
-  Future<void> saveUserAddress(String profileId, Map<String, dynamic> addressData) async {
-    if (addressData.isNotEmpty) {
-      final addressUpdate = <String, dynamic>{'profile_id': profileId};
-      final extraData = <String, dynamic>{};
-
-      // Split addressData into known columns and extra_data
-      addressData.forEach((key, value) {
-        if (_knownAddressColumns.contains(key)) {
-          addressUpdate[key] = value;
-        } else {
-          extraData[key] = value;
-        }
-      });
-
-      // Only include extra_data if there are extra fields
-      if (extraData.isNotEmpty) {
-        addressUpdate['extra_data'] = extraData;
-      }
-
-      await _supabase.from('user_addresses').upsert(addressUpdate, onConflict: 'profile_id');
-    }
-  }
-
-  Future<void> saveFamilyComposition(String profileId, List<Map<String, dynamic>> familyData) async {
-    await _supabase.from('family_composition').delete().eq('profile_id', profileId);
-    if (familyData.isNotEmpty) {
-      final familyPayload = familyData.map((member) => {'profile_id': profileId, ...member}).toList();
-      await _supabase.from('family_composition').insert(familyPayload);
-    }
-  }
-
-  Future<String> saveSocioEconomicData(String profileId, Map<String, dynamic> socioData) async {
-    final socioUpdate = <String, dynamic>{'profile_id': profileId};
-    final extraData = <String, dynamic>{};
-
-    // Split socioData into known columns and extra_data
-    socioData.forEach((key, value) {
-      if (_knownSocioColumns.contains(key)) {
-        socioUpdate[key] = value;
-      } else {
-        extraData[key] = value;
-      }
-    });
-
-    // Only include extra_data if there are extra fields
-    if (extraData.isNotEmpty) {
-      socioUpdate['extra_data'] = extraData;
-    }
-
-    final socioRes = await _supabase
-        .from('socio_economic_data')
-        .upsert(socioUpdate, onConflict: 'profile_id')
-        .select('socio_economic_id')
-        .single();
-    return socioRes['socio_economic_id'].toString();
-  }
-
-  Future<void> saveSupportingFamily(String socioEconomicId, List<Map<String, dynamic>> supportData, double monthlyAlimony) async {
-    await _supabase.from('supporting_family').delete().eq('socio_economic_id', socioEconomicId);
-    if (supportData.isNotEmpty) {
-      final supportList = supportData.asMap().entries.map((entry) {
-        final knownFields = {
-          'socio_economic_id': socioEconomicId,
-          'name': entry.value['name'],
-          'relationship': entry.value['relationship'],
-          'regular_sustento': entry.value['regular_sustento'],
-          'monthly_alimony': monthlyAlimony,
-          'sort_order': entry.key,
-        };
-
-        // Collect any extra fields not in knownFields
-        final extraData = <String, dynamic>{};
-        entry.value.forEach((key, value) {
-          if (!_knownSupportingColumns.contains(key) &&
-              !knownFields.containsKey(key)) {
-            extraData[key] = value;
-          }
-        });
-
-        // Add extra_data if there are extra fields
-        if (extraData.isNotEmpty) {
-          knownFields['extra_data'] = extraData;
-        }
-
-        return knownFields;
-      }).where((item) => item['name'].toString().isNotEmpty).toList();
-      if (supportList.isNotEmpty) {
-        await _supabase.from('supporting_family').insert(supportList);
-      }
-    }
-  }
-
-  Future<void> savePiiData({
-    required Map<String, dynamic> personalInfo,
-    required Map<String, dynamic> addressInfo,
-    required List<Map<String, dynamic>> familyMembers,
-    required Map<String, dynamic>? socioData,
-  }) async {
-    final user = _supabase.auth.currentUser;
-    if (user == null) return;
-
-    final profileResponse = await _supabase.from('user_profiles').upsert({
-      'user_id': user.id,
-      ...personalInfo,
-    }).select('profile_id').single();
-
-    final profileId = profileResponse['profile_id'];
-
-    await _supabase.from('user_addresses').upsert({'profile_id': profileId, ...addressInfo});
-
-    if (familyMembers.isNotEmpty) {
-      final familyWithId = familyMembers.map((m) => {'profile_id': profileId, ...m}).toList();
-      await _supabase.from('family_composition').upsert(familyWithId);
-    }
-
-    if (socioData != null) {
-      await _supabase.from('socio_economic_data').upsert({'profile_id': profileId, ...socioData});
-    }
-  }
-
-  Future<bool> pushProfileToSession({required String sessionId, required String userId}) async {
+  /// Load all PII for a user from user_field_values.
+  /// Returns a Map<String, dynamic> keyed by field_name.
+  /// Loads from ALL templates and uses canonical_field_key for deduplication.
+  Future<Map<String, dynamic>> loadPiiFromFieldValues(String userId) async {
     try {
-      final profile = await _supabase
-          .from('user_profiles')
-          .select('*, user_addresses(*), socio_economic_data(*)')
-          .eq('user_id', userId)
-          .single();
-
-      final familyResponse = await _supabase
-          .from('family_composition')
-          .select()
-          .eq('profile_id', profile['profile_id'])
-          .order('created_at');
-
-      final address = (profile['user_addresses'] as Map<String, dynamic>?) ?? {};
-      final socio = (profile['socio_economic_data'] as Map<String, dynamic>?) ?? {};
-      final family = List<Map<String, dynamic>>.from(familyResponse);
-
-      List<Map<String, dynamic>> supportingFamily = [];
-      if (socio['socio_economic_id'] != null) {
-        final supportResponse = await _supabase
-            .from('supporting_family')
-            .select()
-            .eq('socio_economic_id', socio['socio_economic_id'])
-            .order('sort_order');
-        supportingFamily = List<Map<String, dynamic>>.from(supportResponse);
+      final templateSvc = FormTemplateService();
+      final templates = await templateSvc.fetchActiveTemplates();
+      
+      if (templates.isEmpty) {
+        debugPrint('❌ No templates found');
+        return {};
       }
+      
+      debugPrint('✅ Loading from ${templates.length} templates');
+      
+      // Collect all fields across all templates
+      final allFields = templates.expand((t) => t.allFields).toList();
+      final fieldIds = allFields
+          .where((f) => f.parentFieldId == null)
+          .map((f) => f.fieldId)
+          .toList();
 
-      final formData = <String, dynamic>{
-        'Last Name': profile['lastname'] ?? '',
-        'First Name': profile['firstname'] ?? '',
-        'Middle Name': profile['middle_name'] ?? '',
-        'Date of Birth': profile['birthdate'] ?? '',
-        'Age': profile['age']?.toString() ?? '',
-        'House number, street name, phase/purok': address['address_line'] ?? '',
-        'Subdivision': address['subdivision'] ?? '',
-        'Barangay': address['barangay'] ?? '',
-        'Kasarian': profile['gender'] ?? '',
-        'Kasarian / Sex': profile['gender'] ?? '',
-        'Uri ng Dugo / Blood Type': profile['blood_type'] ?? '',
-        'Estadong Sibil': profile['civil_status'] ?? '',
-        'Estadong Sibil / Martial Status': profile['civil_status'] ?? '',
-        'Relihiyon': profile['religion'] ?? '',
-        'CP Number': profile['cellphone_number'] ?? '',
-        'Email Address': profile['email'] ?? '',
-        'Natapos o naabot sa pag-aaral': profile['education'] ?? '',
-        'Lugar ng Kapanganakan': profile['birthplace'] ?? '',
-        'Lugar ng Kapanganakan / Place of Birth': profile['birthplace'] ?? '',
-        'Trabaho/Pinagkakakitaan': profile['occupation'] ?? '',
-        'Kumpanyang Pinagtratrabuhan': profile['workplace'] ?? '',
-        'Buwanang Kita (A)': profile['monthly_allowance']?.toString() ?? '',
-        '__membership': {
-          'solo_parent': profile['solo_parent'] ?? false,
-          'pwd': profile['pwd'] ?? false,
-          'four_ps_member': profile['four_ps_member'] ?? false,
-          'phic_member': profile['phic_member'] ?? false,
-        },
-        'Total Gross Family Income (A+B+C)=(D)': socio['gross_family_income']?.toString() ?? '',
-        'Household Size (E)': socio['household_size']?.toString() ?? '',
-        'Monthly Per Capita Income (D/E)': socio['monthly_per_capita']?.toString() ?? '',
-        'Total Monthly Expense (F)': socio['monthly_expenses']?.toString() ?? '',
-        'Net Monthly Income (D-F)': socio['net_monthly_income']?.toString() ?? '',
-        'Bayad sa bahay': socio['house_rent']?.toString() ?? '',
-        'Food items': socio['food_items']?.toString() ?? '',
-        'Non-food items': socio['non_food_items']?.toString() ?? '',
-        'Utility bills': socio['utility_bills']?.toString() ?? '',
-        "Baby's needs": socio['baby_needs']?.toString() ?? '',
-        'School needs': socio['school_needs']?.toString() ?? '',
-        'Medical needs': socio['medical_needs']?.toString() ?? '',
-        'Transpo expense': socio['transport_expenses']?.toString() ?? '',
-        'Loans': socio['loans']?.toString() ?? '',
-        'Gasul': socio['gas']?.toString() ?? '',
-        'Kabuuang Tulong/Sustento kada Buwan (C)': supportingFamily.isNotEmpty
-            ? supportingFamily[0]['monthly_alimony']?.toString() ?? ''
-            : '',
-        '__has_support': socio['has_support'] ?? false,
-        '__housing_status': socio['housing_status'] ?? '',
-        '__supporting_family': supportingFamily.map((m) => {
-          'name': m['name'] ?? '',
-          'relationship': m['relationship'] ?? '',
-          'regular_sustento': m['regular_sustento']?.toString() ?? '',
-        }).toList(),
-        '__family_composition': family.map((m) => {
-          'name': m['name'] ?? '',
-          'relationship': m['relationship_of_relative'] ?? '',
-          'birthdate': m['birthdate']?.toString() ?? '',
-          'age': m['age']?.toString() ?? '',
-          'gender': m['gender'] ?? '',
-          'civil_status': m['civil_status'] ?? '',
-          'education': m['education'] ?? '',
-          'occupation': m['occupation'] ?? '',
-          'allowance': m['allowance']?.toString() ?? '',
-        }).toList(),
-        '__signature': profile['signature_data'] ?? '',
-      };
+      if (fieldIds.isEmpty) return {};
 
-      await _supabase
-          .from('form_submission')
-          .update({'form_data': formData, 'status': 'scanned'})
-          .eq('id', sessionId)
-          .eq('status', 'active');
+      final rows = await _supabase
+          .from('user_field_values')
+          .select('field_id, field_value')
+          .eq('user_id', userId)
+          .inFilter('field_id', fieldIds);
 
-      return true;
+      // Map field_id → canonical_field_key (for deduplication)
+      // If multiple templates have same canonical key, use first value found
+      final idToCanonicalKey = {for (final f in allFields) f.fieldId: f.canonicalFieldKey};
+      final result = <String, dynamic>{};
+      
+      for (final row in rows) {
+        final fid = row['field_id'] as String?;
+        final fval = row['field_value'] as String?;
+        if (fid == null || fval == null) continue;
+        
+        final canonicalKey = idToCanonicalKey[fid];
+        if (canonicalKey != null && canonicalKey.isNotEmpty) {
+          // Use canonical_field_key as the key (deduplicates across templates)
+          if (!result.containsKey(canonicalKey)) {
+            result[canonicalKey] = fval;
+          }
+        }
+      }
+      
+      debugPrint('✅ Loaded ${result.length} unique fields via canonical keys');
+      return result;
     } catch (e) {
-      debugPrint('pushProfileToSession error: $e');
-      return false;
+      debugPrint('loadPiiFromFieldValues error: $e');
+      return {};
     }
+  }
+
+  // Legacy PII save methods removed - all PII now saved to user_field_values via FieldValueService
+
+  @Deprecated('Legacy method - use FieldValueService.pushToSubmission instead')
+  Future<bool> pushProfileToSession({required String sessionId, required String userId}) async {
+    debugPrint('⚠️ pushProfileToSession is deprecated - use FieldValueService.pushToSubmission');
+    return false;
   }
   /// Sends the specific filtered data selected by the user to the web session.
   /// This allows the user to choose exactly which fields to transmit via checkboxes.
@@ -651,185 +480,9 @@ class SupabaseService {
   }
 
   // ================================================================
-  // SUBMISSION INTERCEPTOR
+  // SUBMISSION INTERCEPTOR - REMOVED
   // ================================================================
-
-  /// Routes system-block data from a JSON payload to their dedicated
-  /// Supabase tables. Call from any submission path (mobile save,
-  /// web finalize) to ensure familyTable data lands in normalised
-  /// storage instead of only the generic JSONB blob.
-  ///
-  /// [profileId] – the applicant's profile_id (from user_profiles)
-  /// [template]  – the active FormTemplate (tells us which blocks exist)
-  /// [formData]  – the full JSON payload from FormStateController.toJson()
-  ///
-  /// Does NOT remove keys from [formData] so the JSONB audit copy in
-  /// client_submissions stays complete.
-  Future<void> interceptAndRouteSystemFields({
-    required String profileId,
-    required FormTemplate template,
-    required Map<String, dynamic> formData,
-  }) async {
-    for (final field in template.allFields) {
-      if (!field.fieldType.isSystemType) continue;
-
-      switch (field.fieldType) {
-        case FormFieldType.familyTable:
-          await _routeFamilyTable(profileId, field, formData);
-          break;
-        // Future system blocks (supportingFamilyTable, etc.) can be
-        // added here following the same pattern.
-        default:
-          break;
-      }
-    }
-  }
-
-  /// Extracts __family_composition from the payload and uses best-effort
-  /// mapping: whatever db_map_key values are present in the template columns
-  /// get routed to the family_composition table. If a core key (e.g. age,
-  /// name) is missing because the staff deleted that column, null is passed
-  /// to the Supabase upsert (Postgres schema allows NULLs). Custom columns
-  /// (no db_map_key) are ignored here — their data stays in the JSONB audit
-  /// copy in client_submissions.
-  ///
-  /// Falls back to legacy hardcoded mapping when the template has no
-  /// column definitions (backwards compat with pre-migration templates).
-
-  /// The 9 core DB columns for family_composition. Used to fill nulls for
-  /// any keys not present in the template's column list.
-  static const _familyCompositionCoreDbKeys = <String>[
-    'name',
-    'relationship_of_relative',
-    'birthdate',
-    'age',
-    'gender',
-    'civil_status',
-    'education',
-    'occupation',
-    'allowance',
-  ];
-
-  Future<void> _routeFamilyTable(
-    String profileId,
-    FormFieldModel field,
-    Map<String, dynamic> formData,
-  ) async {
-    final raw = formData['__family_composition'];
-    if (raw is! List || raw.isEmpty) {
-      // User deleted all rows → wipe the table for this profile
-      await _supabase
-          .from('family_composition')
-          .delete()
-          .eq('profile_id', profileId);
-      return;
-    }
-
-    // Build a mapping from UI fieldName → DB column name.
-    // Only columns with a db_map_key get routed; custom columns are skipped.
-    final colMap = <String, String>{};
-    if (field.columns.isNotEmpty) {
-      for (final col in field.columns) {
-        final dbKey = col.validationRules?['db_map_key'] as String?;
-        if (dbKey != null) {
-          colMap[col.fieldName] = dbKey;
-        }
-      }
-    } else {
-      // Legacy fallback: hardcoded mapping for templates without columns
-      colMap.addAll({
-        'name': 'name',
-        'relationship': 'relationship_of_relative',
-        'birthdate': 'birthdate',
-        'age': 'age',
-        'gender': 'gender',
-        'civil_status': 'civil_status',
-        'education': 'education',
-        'occupation': 'occupation',
-        'allowance': 'allowance',
-      });
-    }
-
-    // Type coercion helpers for specific DB columns
-    dynamic coerce(String dbCol, dynamic value) {
-      if (value == null) return null;
-      switch (dbCol) {
-        case 'age':
-          return int.tryParse(value.toString());
-        case 'allowance':
-          return double.tryParse(
-                  value.toString().replaceAll(',', ''));
-        default:
-          return value.toString();
-      }
-    }
-
-    final mapped = raw.cast<Map<String, dynamic>>().map((memberRow) {
-      final dbRow = <String, dynamic>{};
-      final customColumns = <String, dynamic>{};
-
-      // Separate known columns from custom columns
-      memberRow.forEach((key, value) {
-        if (colMap.containsKey(key)) {
-          // Known column with a db_map_key
-          final dbCol = colMap[key]!;
-          dbRow[dbCol] = coerce(dbCol, value);
-        } else {
-          // Custom column (no db_map_key) → goes to extra_data
-          customColumns[key] = value;
-        }
-      });
-
-      // Best-effort: fill null for any core DB keys NOT present in colMap
-      // (i.e. the staff deleted that column from the template)
-      for (final coreKey in _familyCompositionCoreDbKeys) {
-        if (!dbRow.containsKey(coreKey)) {
-          dbRow[coreKey] = null;
-        }
-      }
-
-      // Attach custom columns as extra_data if any exist
-      if (customColumns.isNotEmpty) {
-        dbRow['extra_data'] = customColumns;
-      }
-
-      return dbRow;
-    }).toList();
-
-    await saveFamilyComposition(profileId, mapped);
-  }
-
-  /// Resolves profile_id from a form_submission session row.
-  /// Returns null if the session has no linked user or profile.
-  Future<String?> resolveProfileIdFromSession(String sessionId) async {
-    try {
-      final session = await _supabase
-          .from('form_submission')
-          .select('user_id, profile_id')
-          .eq('id', sessionId)
-          .maybeSingle();
-
-      if (session == null) return null;
-
-      // Prefer explicit profile_id if already set on the session
-      if (session['profile_id'] != null) {
-        return session['profile_id'] as String;
-      }
-
-      // Fall back: look up from user_profiles via user_id
-      final userId = session['user_id'] as String?;
-      if (userId == null) return null;
-
-      final profile = await _supabase
-          .from('user_profiles')
-          .select('profile_id')
-          .eq('user_id', userId)
-          .maybeSingle();
-
-      return profile?['profile_id'] as String?;
-    } catch (e) {
-      debugPrint('resolveProfileIdFromSession error: $e');
-      return null;
-    }
-  }
+  // Legacy methods removed - all data now flows through user_field_values
+  // and submission_field_values. No more writes to family_composition or
+  // other legacy tables.
 }

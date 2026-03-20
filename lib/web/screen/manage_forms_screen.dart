@@ -188,20 +188,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       await _embedApplicantName(formData);
       formData['__session_id'] = _currentSessionId;
 
-      // ── Submission Interceptor ──────────────────────────────
-      // Route system-block data (familyTable, etc.) to their
-      // dedicated tables BEFORE saving the JSONB audit copy.
-      final svc = SupabaseService();
-      final profileId =
-          await svc.resolveProfileIdFromSession(_currentSessionId);
-      if (profileId != null) {
-        await svc.interceptAndRouteSystemFields(
-          profileId: profileId,
-          template: _selectedTemplate!,
-          formData: formData,
-        );
-      }
-
+      // Save field values to submission_field_values
       await _fieldValueService.pushToSubmission(
         sessionId: _currentSessionId,
         template: _selectedTemplate!,
