@@ -19,7 +19,6 @@ class FieldValueService {
     FormFieldType.familyTable,
     FormFieldType.supportingFamilyTable,
     FormFieldType.membershipGroup,
-    FormFieldType.computed,
   };
 
   // ── SAVE: upsert all field values to user_field_values ────

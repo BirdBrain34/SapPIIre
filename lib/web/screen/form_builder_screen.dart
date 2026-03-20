@@ -138,6 +138,7 @@ class _BuilderField {
   List<_BuilderColumn> columns; // for memberTable
   int scaleMin;
   int scaleMax;
+  String formula; // for computed fields
 
   _BuilderField({
     String? id,
@@ -151,6 +152,7 @@ class _BuilderField {
     List<_BuilderColumn>? columns,
     this.scaleMin = 1,
     this.scaleMax = 5,
+    this.formula = '',
   })  : id = id ?? _generateUuid(),
         fieldName = fieldName ?? 'field_${_generateUuid().substring(0, 8)}',
         options = options ?? [_BuilderOption(label: 'Option 1', order: 0)],
@@ -359,6 +361,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             }).toList();
           }
 
+          final vr = f['validation_rules'] as Map<String, dynamic>?;
           return _BuilderField(
             id: f['field_id'] as String,
             label: f['field_label'] as String? ?? '',
@@ -369,6 +372,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             placeholder: f['placeholder'] as String?,
             order: (f['field_order'] as int?) ?? 0,
             columns: columns,
+            formula: (vr?['formula'] as String?) ?? '',
             options: rawOpts
                 .map((o) => _BuilderOption(
                       id: o['option_id'] as String,
@@ -457,6 +461,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           'is_required': field.isRequired,
           'placeholder': field.placeholder,
           'field_order': fi,
+          if (field.type == FormFieldType.computed && field.formula.isNotEmpty)
+            'validation_rules': {'formula': field.formula},
         });
 
         // Serialize member table columns as child fields
@@ -1715,28 +1721,28 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         Expanded(
           flex: 3,
           child: TextField(
-            controller: _ctrl('fld_${field.id}', field.label),
-            style: const TextStyle(
-                fontSize: 15, color: AppColors.textDark),
-            decoration: InputDecoration(
-              hintText: 'Question',
-              filled: true,
-              fillColor: AppColors.pageBg,
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide.none),
-              focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: AppColors.highlight)),
-              contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 14),
-            ),
-            onChanged: (v) {
-              field.label = v;
-              field.fieldName = _slugify(v);
-              _hasUnsavedChanges = true;
-            },
-          ),
+                  controller: _ctrl('fld_${field.id}', field.label),
+                  style: const TextStyle(
+                      fontSize: 15, color: AppColors.textDark),
+                  decoration: InputDecoration(
+                    hintText: 'Question',
+                    filled: true,
+                    fillColor: AppColors.pageBg,
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none),
+                    focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide:
+                            const BorderSide(color: AppColors.highlight)),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 14),
+                  ),
+                  onChanged: (v) {
+                    field.label = v;
+                    _hasUnsavedChanges = true;
+                  },
+                ),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -1747,7 +1753,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: AppColors.cardBorder),
             ),
-            child: field.type.isSystemType
+            child: field.type.isSystemType || field.type == FormFieldType.computed
               ? Row(
                   children: [
                     Icon(
@@ -1924,6 +1930,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         return _buildColumnEditor(field, isActive);
       case FormFieldType.familyTable:
         return _buildSystemTableColumnEditor(field, isActive);
+      case FormFieldType.computed:
+        return _buildFormulaEditor(field, isActive);
       case FormFieldType.boolean:
         return Column(
           children: [
@@ -2542,6 +2550,237 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               ],
             ),
           ),
+      ],
+    );
+  }
+
+  // ── Formula Editor (computed fields) ──────────────────────
+  // Formula is stored as space-separated tokens, e.g. "field_a + field_b"
+  // Tokens are displayed as removable chips — no free-text editing.
+  List<String> _formulaTokens(_BuilderField field) =>
+      field.formula.trim().isEmpty
+          ? []
+          : field.formula.trim().split(RegExp(r'\s+'));
+
+  void _appendFormulaToken(_BuilderField field, String token) {
+    final tokens = _formulaTokens(field);
+    tokens.add(token);
+    setState(() {
+      field.formula = tokens.join(' ');
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  void _removeFormulaToken(_BuilderField field, int index) {
+    final tokens = _formulaTokens(field);
+    tokens.removeAt(index);
+    setState(() {
+      field.formula = tokens.join(' ');
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  Widget _buildFormulaEditor(_BuilderField field, bool isActive) {
+    final tokens = _formulaTokens(field);
+    final numericFields = _sections
+        .expand((s) => s.fields)
+        .where((f) =>
+            f.id != field.id &&
+            (f.type == FormFieldType.number ||
+                f.type == FormFieldType.computed))
+        .toList();
+
+    // Build a lookup: fieldName → label for display in tokens
+    final fieldLabelMap = {
+      for (final f in _sections.expand((s) => s.fields)
+          .where((f) => f.id != field.id))
+        f.fieldName: (f.label.isNotEmpty ? f.label : f.fieldName)
+    };
+
+    // ── Inactive preview ──
+    if (!isActive) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF0F4FF),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.buttonOutlineBlue.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.calculate_outlined,
+                size: 14, color: AppColors.primaryBlue),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                tokens.isEmpty
+                    ? 'No formula set'
+                    : tokens
+                        .map((t) => fieldLabelMap[t] ?? t)
+                        .join(' '),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: tokens.isEmpty
+                      ? AppColors.textMuted
+                      : AppColors.primaryBlue,
+                  fontFamily: 'monospace',
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // ── Active editor ──
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Formula',
+          style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textMuted),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Tap field names and operators below to build the formula. Tap × on a token to remove it.',
+          style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+        ),
+        const SizedBox(height: 8),
+        // Token display area
+        Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(minHeight: 44),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF0F4FF),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+                color: AppColors.buttonOutlineBlue.withOpacity(0.4)),
+          ),
+          child: tokens.isEmpty
+              ? const Text(
+                  'Empty — add fields and operators below',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textMuted,
+                      fontStyle: FontStyle.italic),
+                )
+              : Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: tokens.asMap().entries.map((e) {
+                    final i = e.key;
+                    final tok = e.value;
+                    final isOp = const {'+', '-', '*', '/', '(', ')'}
+                        .contains(tok);
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isOp
+                            ? const Color(0xFFE8EEFF)
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: isOp
+                              ? AppColors.primaryBlue.withOpacity(0.3)
+                              : AppColors.buttonOutlineBlue,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            isOp ? tok : (fieldLabelMap[tok] ?? tok),
+                            style: TextStyle(
+                              fontSize: isOp ? 14 : 12,
+                              fontFamily: 'monospace',
+                              fontWeight: isOp
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                              color: AppColors.primaryBlue,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          GestureDetector(
+                            onTap: () => _removeFormulaToken(field, i),
+                            child: const Icon(
+                              Icons.close,
+                              size: 13,
+                              color: AppColors.primaryBlue,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+        ),
+        if (numericFields.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          const Text('Available fields:',
+              style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: numericFields.map((f) {
+              return ElevatedButton.icon(
+                onPressed: () => _appendFormulaToken(field, f.fieldName),
+                icon: const Icon(Icons.add, size: 14),
+                label: Text(
+                    f.label.isNotEmpty ? f.label : f.fieldName,
+                    style: const TextStyle(
+                        fontSize: 11, fontFamily: 'monospace')),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: AppColors.primaryBlue,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 6),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    side: const BorderSide(
+                        color: AppColors.buttonOutlineBlue, width: 1),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+        const SizedBox(height: 8),
+        const Text('Operators:',
+            style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: ['+', '-', '*', '/', '(', ')'].map((op) {
+            return ElevatedButton(
+              onPressed: () => _appendFormulaToken(field, op),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE8EEFF),
+                foregroundColor: AppColors.primaryBlue,
+                elevation: 0,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                minimumSize: const Size(36, 32),
+              ),
+              child: Text(op,
+                  style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'monospace')),
+            );
+          }).toList(),
+        ),
       ],
     );
   }
