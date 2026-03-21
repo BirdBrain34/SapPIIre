@@ -470,7 +470,8 @@ class _BooleanField extends StatelessWidget {
     if (field.fieldName == 'has_support') {
       current = controller.hasSupport;
     } else {
-      current = (controller.getValue(field.fieldName) as bool?) ?? false;
+      final raw = controller.getValue(field.fieldName); // FIX: Safely handle boolean or string values.
+      current = raw == true || raw == 'true'; // FIX: Coerce string "true" to boolean true.
     }
     return Row(
       children: [
@@ -706,50 +707,54 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   ...cols.asMap().entries.map((col) {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
+                      child: Column( // FIX: always vertical — eliminates overflow regardless of screen width
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          SizedBox(
-                            width: 90,
-                            child: Text(_headerAt(col.key),
-                                style: const TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.black54),
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 2),
+                          Text(
+                            _headerAt(col.key),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600, // FIX: slightly bolder so label reads well above field
+                              color: Colors.black54,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                           ),
-                          Expanded(
-                            child: widget.isReadOnly
-                                ? Text(m[col.value]?.toString() ?? '—',
-                                    style: const TextStyle(fontSize: 13))
-                                : _buildEditCell(
-                                    context, i, m, col.value),
-                          ),
+                          const SizedBox(height: 4), // FIX: gap between label and field
+                          widget.isReadOnly
+                              ? Text(
+                                  m[col.value]?.toString() ?? '—',
+                                  style: const TextStyle(fontSize: 13),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                )
+                              : _buildEditCell(context, i, m, col.value),
                         ],
                       ),
                     );
                   }),
-                  if (!widget.isReadOnly)
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton.icon(
-                        onPressed: () {
-                          widget.controller.familyMembers =
-                              List.from(members)..removeAt(i);
-                          widget.controller.recomputeFromFamilyChange();
-                          setState(() {});
-                        },
-                        icon: const Icon(Icons.delete_outline,
-                            size: 14, color: Colors.red),
-                        label: const Text('Remove',
-                            style: TextStyle(
-                                fontSize: 11, color: Colors.red)),
+                    if (!widget.isReadOnly)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: () {
+                            widget.controller.familyMembers =
+                                List.from(members)..removeAt(i);
+                            widget.controller.recomputeFromFamilyChange();
+                            setState(() {});
+                          },
+                          icon: const Icon(Icons.delete_outline,
+                              size: 14, color: Colors.red),
+                          label: const Text('Remove',
+                              style: TextStyle(
+                                  fontSize: 11, color: Colors.red)),
+                        ),
                       ),
-                    ),
                 ],
               ),
             ),
@@ -918,6 +923,8 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
                             ? Colors.white
                             : Colors.black87,
                       ),
+                      overflow: TextOverflow.ellipsis, // FIX: clip long option labels
+                      maxLines: 1,
                     ),
                   ],
                 ),
@@ -1030,15 +1037,31 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: opts.any((o) => o.value == current) ? current : null,
-          hint: const Text('Select...',
-              style: TextStyle(fontSize: 12, color: Colors.black38)),
+          hint: const Text(
+            'Select...',
+            style: TextStyle(fontSize: 12, color: Colors.black38),
+            overflow: TextOverflow.ellipsis, // FIX: prevent hint overflow
+          ),
           isExpanded: true,
-          items: opts
-              .map((o) => DropdownMenuItem(
-                  value: o.value,
-                  child:
-                      Text(o.label, style: const TextStyle(fontSize: 12))))
-              .toList(),
+          // FIX: selected value display must also be clipped
+          selectedItemBuilder: (context) => opts.map((o) => Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              o.label,
+              style: const TextStyle(fontSize: 12, color: Colors.black87),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
+          )).toList(),
+          items: opts.map((o) => DropdownMenuItem(
+            value: o.value,
+            child: Text(
+              o.label,
+              style: const TextStyle(fontSize: 12),
+              overflow: TextOverflow.ellipsis, // FIX: prevent item text overflow
+              maxLines: 1,
+            ),
+          )).toList(),
           onChanged: (v) {
             if (v != null) onDropdownChange(v);
           },
@@ -1122,42 +1145,29 @@ class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
                                     .supportingFamily[i]['name'] = v,
                               ),
                               const SizedBox(height: 4),
-                              Row(children: [
-                                Expanded(
-                                  child: TextFormField(
-                                    initialValue:
-                                        m['relationship']?.toString() ??
-                                            '',
-                                    decoration:
-                                        _inputDeco(hint: 'Relationship')
-                                            .copyWith(isDense: true),
-                                    style:
-                                        const TextStyle(fontSize: 12),
+                              // FIX: always vertical — eliminates overflow regardless of screen width
+                              Column(
+                                children: [
+                                  TextFormField(
+                                    initialValue: m['relationship']?.toString() ?? '',
+                                    decoration: _inputDeco(hint: 'Relationship')
+                                        .copyWith(isDense: true),
+                                    style: const TextStyle(fontSize: 12),
                                     onChanged: (v) => widget.controller
-                                        .supportingFamily[i]
-                                        ['relationship'] = v,
+                                        .supportingFamily[i]['relationship'] = v,
                                   ),
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: TextFormField(
-                                    initialValue: m['regular_sustento']
-                                            ?.toString() ??
-                                        '',
-                                    keyboardType:
-                                        const TextInputType.numberWithOptions(
-                                            decimal: true),
-                                    decoration:
-                                        _inputDeco(hint: 'Monthly Amt')
-                                            .copyWith(isDense: true),
-                                    style:
-                                        const TextStyle(fontSize: 12),
+                                  const SizedBox(height: 4), // FIX: gap between fields
+                                  TextFormField(
+                                    initialValue: m['regular_sustento']?.toString() ?? '',
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                    decoration: _inputDeco(hint: 'Monthly Amt')
+                                        .copyWith(isDense: true),
+                                    style: const TextStyle(fontSize: 12),
                                     onChanged: (v) => widget.controller
-                                        .supportingFamily[i]
-                                        ['regular_sustento'] = v,
+                                        .supportingFamily[i]['regular_sustento'] = v,
                                   ),
-                                ),
-                              ]),
+                                ],
+                              ),
                             ],
                           ),
                   ),
@@ -1468,29 +1478,28 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
                   ..._columns.map((col) {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
+                      child: Column( // FIX: always vertical to prevent overflow on narrow screens
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          SizedBox(
-                            width: 100,
-                            child: Text(
-                              col.fieldLabel,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: Colors.black54,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 2,
+                          Text(
+                            col.fieldLabel,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600, // FIX: bolder label for vertical layout
+                              color: Colors.black54,
                             ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                           ),
-                          Expanded(
-                            child: widget.isReadOnly
-                                ? Text(
-                                    rowData[col.fieldName]?.toString() ?? '',
-                                    style: const TextStyle(fontSize: 13),
-                                  )
-                                : _buildCellEditor(col, rowData, rowIdx),
-                          ),
+                          const SizedBox(height: 4), // FIX: spacing between label and field
+                          widget.isReadOnly
+                              ? Text(
+                                  rowData[col.fieldName]?.toString() ?? '',
+                                  style: const TextStyle(fontSize: 13),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                )
+                              : _buildCellEditor(col, rowData, rowIdx),
                         ],
                       ),
                     );

@@ -103,9 +103,12 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
   // ── Build form controller from user_field_values ──
   Future<void> _initFormController() async {
-    _formCtrl?.dispose();
-    final ctrl = FormStateController(template: _selectedTemplate!);
+    final oldCtrl = _formCtrl; // FIX: Detach the widget tree from the old controller BEFORE disposing it
+    // Set to null first so AnimatedBuilder unsubscribes before disposal
+    setState(() => _formCtrl = null); // FIX: Set to null to allow UI to unsubscribe
+    oldCtrl?.dispose(); // FIX: Dispose after unsubscription
 
+    final ctrl = FormStateController(template: _selectedTemplate!);
     final loaded = await _fieldValueService.loadUserFieldValues(
       userId: widget.userId,
       template: _selectedTemplate!,
@@ -123,7 +126,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       }
     }
 
-    setState(() => _formCtrl = ctrl);
+    if (mounted) setState(() => _formCtrl = ctrl);
     // No _loadComplexData — family/supporting family data now live in
     // user_field_values via the familyTable field type in the GIS template.
   }

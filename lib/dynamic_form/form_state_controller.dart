@@ -173,13 +173,18 @@ class FormStateController extends ChangeNotifier {
                 .map((e) => Map<String, dynamic>.from(e as Map))
                 .toList();
           } else {
-            _values[field.fieldName] = value;
-            if (textControllers.containsKey(field.fieldName)) {
-              textControllers[field.fieldName]!.text = value?.toString() ?? '';
-            }
-            if (field.fieldType == FormFieldType.radio ||
+            // FIX: Normalize boolean values from strings to bools
+            if (field.fieldType == FormFieldType.boolean) {
+              _values[field.fieldName] = value == true || value == 'true';
+            } else if (field.fieldType == FormFieldType.radio ||
                 field.fieldType == FormFieldType.dropdown) {
               _values[field.fieldName] = value?.toString();
+            } else {
+              _values[field.fieldName] = value;
+            }
+
+            if (textControllers.containsKey(field.fieldName)) {
+              textControllers[field.fieldName]!.text = value?.toString() ?? '';
             }
             if (field.fieldName == 'housing_status') {
               housingStatus = value?.toString();
@@ -217,7 +222,9 @@ class FormStateController extends ChangeNotifier {
           if (val != null) result[field.fieldName] = val;
           break;
         case FormFieldType.boolean:
-          result[field.fieldName] = _values[field.fieldName] ?? false;
+          // FIX: Ensure the value is serialized as a boolean, not a string.
+          final raw = _values[field.fieldName];
+          result[field.fieldName] = raw == true || raw == 'true';
           break;
         case FormFieldType.memberTable:
           final rows = memberTableData[field.fieldName];
