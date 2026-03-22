@@ -63,8 +63,9 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     if (isFirstLoad) setState(() => _isLoading = true);
     try {
       debugPrint('ManageInfoScreen: Loading templates...');
-      final templates =
-          await _templateService.fetchActiveTemplates(forceRefresh: true);
+      final templates = await _templateService.fetchActiveTemplates(
+        forceRefresh: true,
+      );
       debugPrint('Received ${templates.length} templates');
 
       final username = await _supabaseService.getUsername(widget.userId);
@@ -78,18 +79,19 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         } else if (previousTemplateId != null &&
             templates.any((t) => t.templateId == previousTemplateId)) {
           // Stay on the same template after refresh
-          _selectedTemplate = templates
-              .firstWhere((t) => t.templateId == previousTemplateId);
+          _selectedTemplate = templates.firstWhere(
+            (t) => t.templateId == previousTemplateId,
+          );
         } else {
           // First load — default to General Intake Sheet
           _selectedTemplate = templates.firstWhere(
-              (t) => t.formName == 'General Intake Sheet',
-              orElse: () => templates.first);
+            (t) => t.formName == 'General Intake Sheet',
+            orElse: () => templates.first,
+          );
         }
       });
 
-      debugPrint(
-          'Selected template: ${_selectedTemplate?.formName ?? "NONE"}');
+      debugPrint('Selected template: ${_selectedTemplate?.formName ?? "NONE"}');
 
       if (_selectedTemplate != null) {
         await _initFormController();
@@ -103,16 +105,20 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
   // ── Build form controller from user_field_values ──
   Future<void> _initFormController() async {
-    final oldCtrl = _formCtrl; // FIX: Detach the widget tree from the old controller BEFORE disposing it
+    final oldCtrl =
+        _formCtrl; // FIX: Detach the widget tree from the old controller BEFORE disposing it
     // Set to null first so AnimatedBuilder unsubscribes before disposal
-    setState(() => _formCtrl = null); // FIX: Set to null to allow UI to unsubscribe
+    setState(
+      () => _formCtrl = null,
+    ); // FIX: Set to null to allow UI to unsubscribe
     oldCtrl?.dispose(); // FIX: Dispose after unsubscription
 
     final ctrl = FormStateController(template: _selectedTemplate!);
-    final loaded = await _fieldValueService.loadUserFieldValues(
-      userId: widget.userId,
-      template: _selectedTemplate!,
-    );
+    final loaded = await _fieldValueService
+        .loadUserFieldValuesWithCrossFormFill(
+          userId: widget.userId,
+          template: _selectedTemplate!,
+        );
     ctrl.loadFromJson(loaded);
 
     // Load signature if present
@@ -164,11 +170,15 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     if (_formCtrl == null) return;
 
     // Require at least one checkbox selected
-    final hasAnyChecked = _formCtrl!.selectAll || 
+    final hasAnyChecked =
+        _formCtrl!.selectAll ||
         _formCtrl!.fieldChecks.values.any((checked) => checked == true);
-    
+
     if (!hasAnyChecked) {
-      _showFeedback('Please select at least one field to transmit', AppColors.dangerRed);
+      _showFeedback(
+        'Please select at least one field to transmit',
+        AppColors.dangerRed,
+      );
       return;
     }
 
@@ -186,7 +196,10 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
     if (sessionId != null && mounted) {
       // Push field values + JSONB to web session
-      final success = await _supabaseService.sendDataToWebSession(sessionId, dataToTransmit);
+      final success = await _supabaseService.sendDataToWebSession(
+        sessionId,
+        dataToTransmit,
+      );
       _showFeedback(
         success ? 'Data transmitted!' : 'Failed to send data.',
         success ? Colors.green : Colors.red,
@@ -211,8 +224,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.dangerRed,
             ),
-            child: const Text('Log Out',
-                style: TextStyle(color: Colors.white)),
+            child: const Text('Log Out', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -242,9 +254,9 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           if (mounted) setState(() => _currentNavIndex = 0);
         });
         break;
-        case 2:
-          setState(() => _currentNavIndex = 2);
-          break;
+      case 2:
+        setState(() => _currentNavIndex = 2);
+        break;
     }
   }
 
@@ -273,71 +285,89 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     return Scaffold(
       backgroundColor: AppColors.pageBg,
       appBar: _buildAppBar(),
-      floatingActionButton: (_formCtrl != null && _currentNavIndex == 0) ? _buildSelectAllFAB() : null,
+      floatingActionButton: (_formCtrl != null && _currentNavIndex == 0)
+          ? _buildSelectAllFAB()
+          : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: _buildBottomNav(),
       body: _currentNavIndex == 2
           ? HistoryScreen(userId: widget.userId, embedded: true)
           : _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _templates.isEmpty
-                  ? _buildEmptyState()
-                  : _buildFormContent(),
+          ? const Center(child: CircularProgressIndicator())
+          : _templates.isEmpty
+          ? _buildEmptyState()
+          : _buildFormContent(),
     );
   }
 
   // ── AppBar: logout left, camera + save right ──────────────
-PreferredSizeWidget _buildAppBar() {
-  return AppBar(
-    backgroundColor: AppColors.primaryBlue,
-    elevation: 0,
-    automaticallyImplyLeading: false,
-    leading: IconButton(
-      icon: const Icon(Icons.logout_rounded, color: Colors.white70, size: 22),
-      onPressed: _handleLogout,
-      tooltip: 'Log out',
-    ),
-    title: GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ProfileScreen(userId: widget.userId),
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      backgroundColor: AppColors.primaryBlue,
+      elevation: 0,
+      automaticallyImplyLeading: false,
+      leading: IconButton(
+        icon: const Icon(Icons.logout_rounded, color: Colors.white70, size: 22),
+        onPressed: _handleLogout,
+        tooltip: 'Log out',
+      ),
+      title: GestureDetector(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ProfileScreen(userId: widget.userId),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.person_outline,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Welcome back,',
+                    style: TextStyle(
+                      color: Colors.white60,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                  Text(
+                    _username.isEmpty ? 'User' : _username,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(7),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(Icons.person_outline, color: Colors.white, size: 18),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Welcome back,',
-                  style: TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.w400),
-                ),
-                Text(
-                  _username.isEmpty ? 'User' : _username,
-                  style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.camera_alt_outlined, color: Colors.white, size: 22),
+          icon: const Icon(
+            Icons.camera_alt_outlined,
+            color: Colors.white,
+            size: 22,
+          ),
           onPressed: _openCamera,
           tooltip: 'Scan ID',
         ),
@@ -346,7 +376,10 @@ PreferredSizeWidget _buildAppBar() {
               ? const SizedBox(
                   height: 20,
                   width: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
                 )
               : const Icon(Icons.save_outlined, color: Colors.white, size: 22),
           onPressed: _isSaving ? null : _saveProfile,
@@ -356,8 +389,6 @@ PreferredSizeWidget _buildAppBar() {
       ],
     );
   }
-
-
 
   // ── Empty / error state ───────────────────────────────────
   Widget _buildEmptyState() {
@@ -452,20 +483,24 @@ PreferredSizeWidget _buildAppBar() {
                   value: _selectedTemplate?.templateId,
                   isExpanded: true,
                   items: _templates
-                      .map((t) => DropdownMenuItem(
-                            value: t.templateId,
-                            child: Text(
-                              t.formName,
-                              style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600),
-                              overflow: TextOverflow.ellipsis,
+                      .map(
+                        (t) => DropdownMenuItem(
+                          value: t.templateId,
+                          child: Text(
+                            t.formName,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
                             ),
-                          ))
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
                       .toList(),
                   onChanged: (id) async {
-                    final tpl =
-                        _templates.firstWhere((t) => t.templateId == id);
+                    final tpl = _templates.firstWhere(
+                      (t) => t.templateId == id,
+                    );
                     setState(() => _selectedTemplate = tpl);
                     await _initFormController();
                   },
@@ -486,7 +521,9 @@ PreferredSizeWidget _buildAppBar() {
         _formCtrl?.setSelectAll(!isSelectAll);
         setState(() {});
       },
-      backgroundColor: isSelectAll ? AppColors.highlight : AppColors.primaryBlue,
+      backgroundColor: isSelectAll
+          ? AppColors.highlight
+          : AppColors.primaryBlue,
       elevation: 6,
       icon: Icon(
         isSelectAll ? Icons.deselect_rounded : Icons.select_all_rounded,
@@ -496,9 +533,10 @@ PreferredSizeWidget _buildAppBar() {
       label: Text(
         isSelectAll ? 'Deselect All' : 'Select All',
         style: const TextStyle(
-            color: Colors.white,
-            fontSize: 12,
-            fontWeight: FontWeight.bold),
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
   }

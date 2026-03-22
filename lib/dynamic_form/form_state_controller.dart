@@ -132,7 +132,11 @@ class FormStateController extends ChangeNotifier {
   }
 
   void updateMemberTableCell(
-      String fieldName, int rowIndex, String colName, dynamic value) {
+    String fieldName,
+    int rowIndex,
+    String colName,
+    dynamic value,
+  ) {
     final rows = memberTableData[fieldName];
     if (rows != null && rowIndex >= 0 && rowIndex < rows.length) {
       rows[rowIndex][colName] = value;
@@ -161,7 +165,9 @@ class FormStateController extends ChangeNotifier {
       } else if (key == '__housing_status') {
         housingStatus = value?.toString();
       } else if (key == '__signature') {
-        debugPrint('Loading signature from JSON: ${value?.toString().substring(0, 50)}...');
+        debugPrint(
+          'Loading signature from JSON: ${value?.toString().substring(0, 50)}...',
+        );
         signatureBase64 = value?.toString();
         signaturePoints = null;
         debugPrint('Signature loaded, length: ${signatureBase64?.length}');
@@ -178,7 +184,15 @@ class FormStateController extends ChangeNotifier {
               _values[field.fieldName] = value == true || value == 'true';
             } else if (field.fieldType == FormFieldType.radio ||
                 field.fieldType == FormFieldType.dropdown) {
-              _values[field.fieldName] = value?.toString();
+              _values[field.fieldName] =
+                  _normalizeChoiceValue(field, value) ?? value?.toString();
+            } else if (field.fieldType == FormFieldType.signature) {
+              final signature = value?.toString();
+              if (signature != null && signature.isNotEmpty) {
+                signatureBase64 = signature;
+                signaturePoints = null;
+              }
+              _values[field.fieldName] = signature;
             } else {
               _values[field.fieldName] = value;
             }
@@ -287,10 +301,12 @@ class FormStateController extends ChangeNotifier {
     }
     if (signatureBase64 != null &&
         (fieldChecks['Signature'] == true || selectAll)) {
-      debugPrint('Including signature in transmission: ${signatureBase64!.substring(0, 50)}...');
+      debugPrint(
+        'Including signature in transmission: ${signatureBase64!.substring(0, 50)}...',
+      );
       result['__signature'] = signatureBase64;
     }
-    
+
     // Only include these if explicitly checked or selectAll
     if (selectAll || fieldChecks.values.any((v) => v == true)) {
       result['__has_support'] = hasSupport;
@@ -298,9 +314,11 @@ class FormStateController extends ChangeNotifier {
         result['__housing_status'] = housingStatus;
       }
     }
-    
+
     // Only include supporting family if has_support is true
-    if (hasSupport && supportingFamily.isNotEmpty && (selectAll || fieldChecks.values.any((v) => v == true))) {
+    if (hasSupport &&
+        supportingFamily.isNotEmpty &&
+        (selectAll || fieldChecks.values.any((v) => v == true))) {
       result['__supporting_family'] = supportingFamily;
     }
 
@@ -333,8 +351,7 @@ class FormStateController extends ChangeNotifier {
         .toList();
 
     for (final field in computedFields) {
-      final formula =
-          field.validationRules?['formula'] as String? ?? '';
+      final formula = field.validationRules?['formula'] as String? ?? '';
       if (formula.trim().isEmpty) continue;
       try {
         final result = _evalFormula(formula);
@@ -395,14 +412,16 @@ class FormStateController extends ChangeNotifier {
     // Parse number
     final start = p.i;
     while (p.i < s.length &&
-        (s[p.i] == '.' || (s[p.i].codeUnitAt(0) >= 48 && s[p.i].codeUnitAt(0) <= 57))) {
+        (s[p.i] == '.' ||
+            (s[p.i].codeUnitAt(0) >= 48 && s[p.i].codeUnitAt(0) <= 57))) {
       p.i++;
     }
     return double.tryParse(s.substring(start, p.i)) ?? 0.0;
   }
 
   double _parseNum(String key) {
-    final raw = textControllers[key]?.text.replaceAll(',', '') ??
+    final raw =
+        textControllers[key]?.text.replaceAll(',', '') ??
         _values[key]?.toString() ??
         '0';
     return double.tryParse(raw) ?? 0.0;
@@ -430,8 +449,10 @@ class FormStateController extends ChangeNotifier {
     _values.clear();
     for (final ctrl in textControllers.values) ctrl.clear();
     membershipData = {
-      'solo_parent': false, 'pwd': false,
-      'four_ps_member': false, 'phic_member': false,
+      'solo_parent': false,
+      'pwd': false,
+      'four_ps_member': false,
+      'phic_member': false,
     };
     familyMembers = [];
     supportingFamily = [];
@@ -445,10 +466,67 @@ class FormStateController extends ChangeNotifier {
     if (notify) notifyListeners();
   }
 
+  String? _normalizeChoiceValue(FormFieldModel field, dynamic value) {
+    final raw = value?.toString().trim();
+    if (raw == null || raw.isEmpty) return null;
+    if (field.options.isEmpty) return raw;
+
+    bool eq(String a, String b) =>
+        a.trim().toLowerCase() == b.trim().toLowerCase();
+
+    for (final opt in field.options) {
+      if (eq(opt.value, raw)) return opt.value;
+    }
+
+    for (final opt in field.options) {
+      if (eq(opt.label, raw)) return opt.value;
+    }
+
+    String? matchByAliases(List<String> aliases) {
+      for (final opt in field.options) {
+        final ov = opt.value.toLowerCase();
+        final ol = opt.label.toLowerCase();
+        if (aliases.contains(ov) || aliases.contains(ol)) {
+          return opt.value;
+        }
+      }
+      return null;
+    }
+
+    final normalized = raw.toLowerCase();
+    if (normalized == 'm') {
+      final gender = matchByAliases(['m', 'male', 'lalaki']);
+      if (gender != null) return gender;
+      final civil = matchByAliases(['m', 'married']);
+      if (civil != null) return civil;
+    }
+
+    final aliasGroups = <List<String>>[
+      if (normalized == 'male' || normalized == 'lalaki')
+        ['m', 'male', 'lalaki'],
+      if (normalized == 'f' || normalized == 'female' || normalized == 'babae')
+        ['f', 'female', 'babae'],
+      if (normalized == 's' || normalized == 'single') ['s', 'single'],
+      if (normalized == 'married') ['m', 'married'],
+      if (normalized == 'w' || normalized == 'widowed') ['w', 'widowed'],
+      if (normalized == 'sep' || normalized == 'separated')
+        ['sep', 'separated'],
+      if (normalized == 'a' || normalized == 'annulled') ['a', 'annulled'],
+    ];
+
+    for (final aliases in aliasGroups) {
+      final match = matchByAliases(aliases);
+      if (match != null) return match;
+    }
+
+    return raw;
+  }
+
   FormFieldModel? _findByLabel(String label) {
     try {
-      return template.allFields
-          .firstWhere((f) => f.fieldLabel.toLowerCase() == label.toLowerCase());
+      return template.allFields.firstWhere(
+        (f) => f.fieldLabel.toLowerCase() == label.toLowerCase(),
+      );
     } catch (_) {
       return null;
     }

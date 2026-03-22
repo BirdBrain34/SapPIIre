@@ -106,6 +106,7 @@ class FormBuilderService {
               field_id, template_id, section_id, field_name, field_label,
               field_type, is_required, validation_rules, default_value,
               field_order, autofill_source, placeholder, parent_field_id,
+              canonical_field_key,
               form_field_options(
                 option_id, field_id, option_value, option_label,
                 option_order, is_default

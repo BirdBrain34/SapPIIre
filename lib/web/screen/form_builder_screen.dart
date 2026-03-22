@@ -86,6 +86,31 @@ const _systemTypeIcons = <FormFieldType, IconData>{
   FormFieldType.unknown: Icons.help_outline,
 };
 
+const _knownCanonicalKeys = <({String key, String label})>[
+  (key: 'last_name',                            label: 'Last Name'),
+  (key: 'first_name',                           label: 'First Name'),
+  (key: 'middle_name',                          label: 'Middle Name'),
+  (key: 'date_of_birth',                        label: 'Date of Birth'),
+  (key: 'age',                                  label: 'Age'),
+  (key: 'kasarian_sex',                         label: 'Sex / Kasarian'),
+  (key: 'estadong_sibil_civil_status',          label: 'Civil Status / Estadong Sibil'),
+  (key: 'lugar_ng_kapanganakan_place_of_birth', label: 'Place of Birth'),
+  (key: 'cp_number',                            label: 'Phone Number / CP Number'),
+  (key: 'email_address',                        label: 'Email Address'),
+  (key: 'house_number_street_name_phase_purok', label: 'House No. / Street / Purok'),
+  (key: 'barangay',                             label: 'Barangay'),
+  (key: 'subdivison_',                          label: 'Subdivision'),
+];
+
+const _canonicalKeyEligibleTypes = <FormFieldType>{
+  FormFieldType.text,
+  FormFieldType.number,
+  FormFieldType.date,
+  FormFieldType.dropdown,
+  FormFieldType.radio,
+  FormFieldType.boolean,
+};
+
 // ── Mutable builder models (file-private) ───────────────────
 class _BuilderOption {
   String id;
@@ -133,6 +158,7 @@ class _BuilderField {
   FormFieldType type;
   bool isRequired;
   String? placeholder;
+  String? canonicalFieldKey;
   int order;
   List<_BuilderOption> options;
   List<_BuilderColumn> columns; // for memberTable
@@ -147,6 +173,7 @@ class _BuilderField {
     this.type = FormFieldType.radio,
     this.isRequired = false,
     this.placeholder,
+    this.canonicalFieldKey,
     this.order = 0,
     List<_BuilderOption>? options,
     List<_BuilderColumn>? columns,
@@ -370,6 +397,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 f['field_type'] as String? ?? 'text'),
             isRequired: (f['is_required'] as bool?) ?? false,
             placeholder: f['placeholder'] as String?,
+            canonicalFieldKey: f['canonical_field_key'] as String?,
             order: (f['field_order'] as int?) ?? 0,
             columns: columns,
             formula: (vr?['formula'] as String?) ?? '',
@@ -460,6 +488,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           'field_type': field.type.toDbString(),
           'is_required': field.isRequired,
           'placeholder': field.placeholder,
+          'canonical_field_key': field.canonicalFieldKey,
           'field_order': fi,
           if (field.type == FormFieldType.computed && field.formula.isNotEmpty)
             'validation_rules': {'formula': field.formula},
@@ -995,6 +1024,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           type: src.type,
           isRequired: src.isRequired,
           placeholder: src.placeholder,
+          canonicalFieldKey: src.canonicalFieldKey,
           order: fi + 1,
           options: src.options
               .map((o) => _BuilderOption(label: o.label))
@@ -1715,119 +1745,170 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   }
 
   Widget _buildFieldHeaderActive(_BuilderField field) {
-    return Row(
+    final canLinkCanonicalKey =
+        _canonicalKeyEligibleTypes.contains(field.type);
+
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          flex: 3,
-          child: TextField(
-                  controller: _ctrl('fld_${field.id}', field.label),
-                  style: const TextStyle(
-                      fontSize: 15, color: AppColors.textDark),
-                  decoration: InputDecoration(
-                    hintText: 'Question',
-                    filled: true,
-                    fillColor: AppColors.pageBg,
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none),
-                    focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide:
-                            const BorderSide(color: AppColors.highlight)),
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 14),
-                  ),
-                  onChanged: (v) {
-                    field.label = v;
-                    _hasUnsavedChanges = true;
-                  },
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 3,
+              child: TextField(
+                      controller: _ctrl('fld_${field.id}', field.label),
+                      style: const TextStyle(
+                          fontSize: 15, color: AppColors.textDark),
+                      decoration: InputDecoration(
+                        hintText: 'Question',
+                        filled: true,
+                        fillColor: AppColors.pageBg,
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide.none),
+                        focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide:
+                                const BorderSide(color: AppColors.highlight)),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 14),
+                      ),
+                      onChanged: (v) {
+                        field.label = v;
+                        _hasUnsavedChanges = true;
+                      },
+                    ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 2,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.cardBorder),
                 ),
+                child: field.type.isSystemType || field.type == FormFieldType.computed
+                  ? Row(
+                      children: [
+                        Icon(
+                          _systemTypeIcons[field.type] ?? Icons.help_outline,
+                          size: 18,
+                          color: AppColors.textMuted,
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'System: ${_systemTypeLabels[field.type] ?? field.type.toDbString()}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textMuted,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    )
+                  : DropdownButtonHideUnderline(
+                  child: DropdownButton<FormFieldType>(
+                    value: field.type,
+                    isExpanded: true,
+                    icon: const Icon(Icons.arrow_drop_down),
+                    style: const TextStyle(
+                        fontSize: 13, color: AppColors.textDark),
+                    items: _typeLabels.entries.map((e) {
+                      return DropdownMenuItem(
+                        value: e.key,
+                        child: Row(
+                          children: [
+                            Icon(_typeIcons[e.key],
+                                size: 18, color: AppColors.textMuted),
+                            const SizedBox(width: 8),
+                            Flexible(
+                                child: Text(e.value,
+                                    overflow: TextOverflow.ellipsis)),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (v) {
+                      if (v == null) return;
+
+                      if (v == FormFieldType.signature) {
+                        final hasOtherSignature = _sections
+                            .expand((s) => s.fields)
+                            .any((f) => f.type == FormFieldType.signature && f.id != field.id);
+                        if (hasOtherSignature) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: const Text(
+                                  'A "Signature" block already exists in this form.'),
+                              backgroundColor: Colors.orange.shade700,
+                            ),
+                          );
+                          return;
+                        }
+                      }
+
+                      setState(() {
+                        field.type = v;
+                        if (field.hasOptions && field.options.isEmpty) {
+                          field.options
+                              .add(_BuilderOption(label: 'Option 1'));
+                        }
+                        _hasUnsavedChanges = true;
+                      });
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          flex: 2,
-          child: Container(
+        if (canLinkCanonicalKey) ...[
+          const SizedBox(height: 10),
+          const Text(
+            'Autofill Key (cross-form)',
+            style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 4),
+          Container(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: AppColors.cardBorder),
             ),
-            child: field.type.isSystemType || field.type == FormFieldType.computed
-              ? Row(
-                  children: [
-                    Icon(
-                      _systemTypeIcons[field.type] ?? Icons.help_outline,
-                      size: 18,
-                      color: AppColors.textMuted,
-                    ),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        'System: ${_systemTypeLabels[field.type] ?? field.type.toDbString()}',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textMuted,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                )
-              : DropdownButtonHideUnderline(
-              child: DropdownButton<FormFieldType>(
-                value: field.type,
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String?>(
+                value: field.canonicalFieldKey,
                 isExpanded: true,
-                icon: const Icon(Icons.arrow_drop_down),
-                style: const TextStyle(
-                    fontSize: 13, color: AppColors.textDark),
-                items: _typeLabels.entries.map((e) {
-                  return DropdownMenuItem(
-                    value: e.key,
-                    child: Row(
-                      children: [
-                        Icon(_typeIcons[e.key],
-                            size: 18, color: AppColors.textMuted),
-                        const SizedBox(width: 8),
-                        Flexible(
-                            child: Text(e.value,
-                                overflow: TextOverflow.ellipsis)),
-                      ],
+                hint: const Text(
+                  'Link to known field (optional)',
+                  style: TextStyle(fontSize: 13, color: AppColors.textMuted),
+                ),
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('— None —'),
+                  ),
+                  ..._knownCanonicalKeys.map(
+                    (entry) => DropdownMenuItem<String?>(
+                      value: entry.key,
+                      child: Text('${entry.label} (${entry.key})'),
                     ),
-                  );
-                }).toList(),
-                onChanged: (v) {
-                  if (v == null) return;
-
-                  if (v == FormFieldType.signature) {
-                    final hasOtherSignature = _sections
-                        .expand((s) => s.fields)
-                        .any((f) => f.type == FormFieldType.signature && f.id != field.id);
-                    if (hasOtherSignature) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: const Text(
-                              'A "Signature" block already exists in this form.'),
-                          backgroundColor: Colors.orange.shade700,
-                        ),
-                      );
-                      return;
-                    }
-                  }
-
+                  ),
+                ],
+                onChanged: (value) {
                   setState(() {
-                    field.type = v;
-                    if (field.hasOptions && field.options.isEmpty) {
-                      field.options
-                          .add(_BuilderOption(label: 'Option 1'));
-                    }
+                    field.canonicalFieldKey = value;
                     _hasUnsavedChanges = true;
                   });
                 },
               ),
             ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -1843,9 +1924,33 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             size: 16, color: AppColors.textMuted),
         const SizedBox(width: 8),
         Expanded(
-          child: Text(field.label,
-              style: const TextStyle(
-                  fontSize: 14, color: AppColors.textDark)),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(field.label,
+                    style: const TextStyle(
+                        fontSize: 14, color: AppColors.textDark),
+                    overflow: TextOverflow.ellipsis),
+              ),
+              if (field.canonicalFieldKey != null) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.highlight.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                    border:
+                        Border.all(color: AppColors.highlight.withOpacity(0.4)),
+                  ),
+                  child: Text(
+                    '⟷ ${field.canonicalFieldKey}',
+                    style:
+                        const TextStyle(fontSize: 10, color: AppColors.highlight),
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
         if (field.isRequired)
           const Text(' *',
