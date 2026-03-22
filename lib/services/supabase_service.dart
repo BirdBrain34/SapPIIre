@@ -459,25 +459,43 @@ class SupabaseService {
   }
   /// Sends the specific filtered data selected by the user to the web session.
   /// This allows the user to choose exactly which fields to transmit via checkboxes.
-  Future<bool> sendDataToWebSession(String sessionId, Map<String, dynamic> data) async {
-    try {
-      final response = await _supabase
+Future<bool> sendDataToWebSession(String sessionId, Map<String, dynamic> data, {String? userId}) async {
+  try {
+    final response = await _supabase
+        .from('form_submission')
+        .update({
+          'form_data': data,
+          'status': 'scanned',
+          'scanned_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', sessionId)
+        .select()
+        .maybeSingle();
+
+    // Also write to client_submissions so history screen can show it
+    if (userId != null) {
+      // Get form_type from form_submission
+      final session = await _supabase
           .from('form_submission')
-          .update({
-            'form_data': data,
-            'status': 'scanned',
-            'scanned_at': DateTime.now().toIso8601String(),
-          })
+          .select('form_type')
           .eq('id', sessionId)
-          .select()
           .maybeSingle();
 
-      return response != null;
-    } catch (e) {
-        debugPrint('Supabase Update Error: $e');
-      return false;
+      final formType = session?['form_type'] as String? ?? 'Unknown Form';
+
+      await _supabase.from('client_submissions').insert({
+        'created_by': userId,
+        'form_type': formType,
+        'data': data,
+      });
     }
+
+    return response != null;
+  } catch (e) {
+    debugPrint('Supabase Update Error: $e');
+    return false;
   }
+}
 
   // ================================================================
   // SUBMISSION INTERCEPTOR - REMOVED

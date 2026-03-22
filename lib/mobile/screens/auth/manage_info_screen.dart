@@ -199,6 +199,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       final success = await _supabaseService.sendDataToWebSession(
         sessionId,
         dataToTransmit,
+        userId: widget.userId,
       );
       _showFeedback(
         success ? 'Data transmitted!' : 'Failed to send data.',

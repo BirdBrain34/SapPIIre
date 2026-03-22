@@ -6,7 +6,7 @@ import 'package:sappiire/services/supabase_service.dart';
 
 class HistoryScreen extends StatefulWidget {
   final String userId;
-  final bool embedded;  // ← add this
+  final bool embedded;
   const HistoryScreen({super.key, required this.userId, this.embedded = false});
 
   @override
@@ -29,13 +29,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Future<void> _loadHistory() async {
     setState(() => _isLoading = true);
+    
     try {
       final username = await _supabaseService.getUsername(widget.userId);
       final response = await _supabase
-          .from('form_submission')
-          .select('id, form_type, scanned_at')
-          .not('scanned_at', 'is', null)
-          .eq('user_id', widget.userId)
+          .from('client_submissions')
+          .select('id, form_type, created_at')
+          .eq('created_by', widget.userId)
           .order('created_at', ascending: false);
 
       setState(() {
@@ -64,8 +64,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.dangerRed,
             ),
-            child: const Text('Log Out',
-                style: TextStyle(color: Colors.white)),
+            child: const Text('Log Out', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -79,8 +78,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
       );
     }
   }
-
-  // ── Helpers ───────────────────────────────────────────────
 
   String _formatDate(String? raw) {
     if (raw == null) return '—';
@@ -99,43 +96,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
-  Color _statusColor(String status) {
-    switch (status) {
-      case 'scanned':    return const Color(0xFF2196F3);
-      case 'completed':  return const Color(0xFF4CAF50);
-      case 'closed':     return const Color(0xFF9E9E9E);
-      case 'expired':    return const Color(0xFFFF5722);
-      default:           return const Color(0xFFFF9800);
-    }
-  }
-
-  IconData _statusIcon(String status) {
-    switch (status) {
-      case 'scanned':    return Icons.qr_code_scanner;
-      case 'completed':  return Icons.check_circle_outline;
-      case 'closed':     return Icons.archive_outlined;
-      case 'expired':    return Icons.timer_off_outlined;
-      default:           return Icons.pending_outlined;
-    }
-  }
-
-  String _statusLabel(String status) {
-    switch (status) {
-      case 'scanned':    return 'Transmitted';
-      case 'completed':  return 'Completed';
-      case 'closed':     return 'Closed';
-      case 'expired':    return 'Expired';
-      default:           return 'Pending';
-    }
-  }
-
-  // ── Build ─────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.pageBg,
-      appBar: widget.embedded ? null : _buildAppBar(),  // ← hide when embedded
+      appBar: widget.embedded ? null : _buildAppBar(),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _submissions.isEmpty
@@ -228,10 +193,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           const SizedBox(height: 8),
           Text(
             'Your form transmissions will appear here.',
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.grey.shade500,
-            ),
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
           ),
         ],
       ),
@@ -245,17 +207,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         itemCount: _submissions.length,
-        itemBuilder: (context, index) {
-          final item = _submissions[index];
-          return _buildCard(item, index);
-        },
+        itemBuilder: (context, index) => _buildCard(_submissions[index]),
       ),
     );
   }
 
-  Widget _buildCard(Map<String, dynamic> item, int index) {
+  Widget _buildCard(Map<String, dynamic> item) {
     final formType = item['form_type'] as String? ?? 'Unknown Form';
-    final scannedAt = item['scanned_at'] as String?;
+    final createdAt = item['created_at'] as String?;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -276,7 +235,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Left icon
             Container(
               width: 44,
               height: 44,
@@ -291,8 +249,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
               ),
             ),
             const SizedBox(width: 14),
-
-            // Content
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -331,13 +287,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      Icon(Icons.qr_code_scanner,
+                      Icon(Icons.access_time,
                           size: 12, color: Colors.grey.shade400),
                       const SizedBox(width: 5),
                       Text(
-                        scannedAt != null
-                            ? 'Transmitted: ${_formatDate(scannedAt)}'
-                            : 'Transmission date unavailable',
+                        createdAt != null
+                            ? _formatDate(createdAt)
+                            : 'Date unavailable',
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.grey.shade500,
