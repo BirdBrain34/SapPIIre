@@ -1,13 +1,4 @@
-// Dynamic Form State Controller
-// Manages form state, field values, and computed fields for dynamic forms.
-// Used by both mobile and web renderers to maintain consistent state.
-//
-// Key responsibilities:
-// - Store field values and text controllers
-// - Handle complex fields (family, supporting family, membership, signature)
-// - Compute derived fields (gross income, per capita, expenses)
-// - Manage field selection checkboxes for mobile QR transmission
-// - Export/import form data as JSON for database storage and QR transfer
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:sappiire/models/form_template_models.dart';
@@ -18,8 +9,14 @@ class FormStateController extends ChangeNotifier {
   // ── Core value store ──────────────────────────────────────
   final Map<String, dynamic> _values = {};
 
+  // Per-field notifier — avoids full form repaint on each change
+  final Map<String, ValueNotifier<dynamic>> _fieldNotifiers = {};
+
   // ── TextEditingControllers for text/number/date fields ───
   final Map<String, TextEditingController> textControllers = {};
+
+  // Debounce prevents formula recalc on every single keystroke
+  Timer? _recomputeDebounce;
 
   // ── Complex field state ───────────────────────────────────
   Map<String, bool> membershipData = {
@@ -46,7 +43,6 @@ class FormStateController extends ChangeNotifier {
     _initControllers();
   }
 
-  // ── Initialise one TextEditingController per text-like field ──
   void _initControllers() {
     for (final field in template.allFields) {
       switch (field.fieldType) {
@@ -55,10 +51,13 @@ class FormStateController extends ChangeNotifier {
         case FormFieldType.number:
         case FormFieldType.computed:
           textControllers[field.fieldName] = TextEditingController();
+          _initFieldNotifier(field.fieldName, null);
           fieldChecks[field.fieldName] = false;
           break;
         case FormFieldType.dropdown:
         case FormFieldType.radio:
+        case FormFieldType.boolean:
+          _initFieldNotifier(field.fieldName, null);
           fieldChecks[field.fieldName] = false;
           break;
         case FormFieldType.familyTable:
@@ -82,25 +81,60 @@ class FormStateController extends ChangeNotifier {
     }
   }
 
-  // ── Get / set values ──────────────────────────────────────
+  void _initFieldNotifier(String fieldName, dynamic initialValue) {
+    if (!_fieldNotifiers.containsKey(fieldName)) {
+      _fieldNotifiers[fieldName] = ValueNotifier(initialValue);
+    }
+  }
+
+  ValueNotifier<dynamic>? getFieldNotifier(String fieldName) =>
+      _fieldNotifiers[fieldName];
+
   dynamic getValue(String fieldName) => _values[fieldName];
 
   void setValue(String fieldName, dynamic value, {bool notify = true}) {
     _values[fieldName] = value;
+    _fieldNotifiers[fieldName]?.value = value; // Update per-field notifier
+
     if (textControllers.containsKey(fieldName)) {
       final ctrl = textControllers[fieldName]!;
       final strVal = value?.toString() ?? '';
       if (ctrl.text != strVal) ctrl.text = strVal;
     }
-    _recomputeFields();
-    if (notify) notifyListeners();
+
+    _recomputeDebounce?.cancel();
+    _recomputeDebounce =
+        Timer(const Duration(milliseconds: 150), _recomputeFields);
+
+    // Only structural changes (conditions, computed cascades) trigger full repaint
+    if (notify || _hasStructuralDependencies(fieldName)) {
+      notifyListeners();
+    }
   }
 
-  // ── Called when family member allowances change ───────────
-  // Triggers a full recompute (B is derived from familyMembers)
-  // then notifies listeners so computed fields update on screen.
+  /// Checks if a changed field triggers conditional visibility on other fields.
+  bool _hasStructuralDependencies(String fieldName) {
+    final changedField = template.fieldByName(fieldName);
+    if (changedField == null) return false;
+
+    // Check if any field's visibility condition is bound to the changed field.
+    for (final field in template.allFields) {
+      if (field.conditions
+          .any((cond) => cond.triggerFieldId == changedField.fieldId)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Notifies listeners so computed fields update on screen.
   void recomputeFromFamilyChange() {
     _recomputeFields();
+    notifyListeners();
+  }
+
+  // Public notifier wrapper for widgets that need a full form refresh.
+  void notifyFormChanged() {
     notifyListeners();
   }
 
@@ -165,12 +199,8 @@ class FormStateController extends ChangeNotifier {
       } else if (key == '__housing_status') {
         housingStatus = value?.toString();
       } else if (key == '__signature') {
-        debugPrint(
-          'Loading signature from JSON: ${value?.toString().substring(0, 50)}...',
-        );
         signatureBase64 = value?.toString();
         signaturePoints = null;
-        debugPrint('Signature loaded, length: ${signatureBase64?.length}');
       } else {
         final field = template.fieldByName(key) ?? _findByLabel(key);
         if (field != null) {
@@ -179,12 +209,12 @@ class FormStateController extends ChangeNotifier {
                 .map((e) => Map<String, dynamic>.from(e as Map))
                 .toList();
           } else {
-            // FIX: Normalize boolean values from strings to bools
+            dynamic parsedValue = value;
             if (field.fieldType == FormFieldType.boolean) {
-              _values[field.fieldName] = value == true || value == 'true';
+              parsedValue = value == true || value == 'true';
             } else if (field.fieldType == FormFieldType.radio ||
                 field.fieldType == FormFieldType.dropdown) {
-              _values[field.fieldName] =
+              parsedValue =
                   _normalizeChoiceValue(field, value) ?? value?.toString();
             } else if (field.fieldType == FormFieldType.signature) {
               final signature = value?.toString();
@@ -192,14 +222,11 @@ class FormStateController extends ChangeNotifier {
                 signatureBase64 = signature;
                 signaturePoints = null;
               }
-              _values[field.fieldName] = signature;
-            } else {
-              _values[field.fieldName] = value;
+              parsedValue = signature;
             }
 
-            if (textControllers.containsKey(field.fieldName)) {
-              textControllers[field.fieldName]!.text = value?.toString() ?? '';
-            }
+            setValue(field.fieldName, parsedValue, notify: false);
+
             if (field.fieldName == 'housing_status') {
               housingStatus = value?.toString();
             }
@@ -236,7 +263,6 @@ class FormStateController extends ChangeNotifier {
           if (val != null) result[field.fieldName] = val;
           break;
         case FormFieldType.boolean:
-          // FIX: Ensure the value is serialized as a boolean, not a string.
           final raw = _values[field.fieldName];
           result[field.fieldName] = raw == true || raw == 'true';
           break;
@@ -301,13 +327,9 @@ class FormStateController extends ChangeNotifier {
     }
     if (signatureBase64 != null &&
         (fieldChecks['Signature'] == true || selectAll)) {
-      debugPrint(
-        'Including signature in transmission: ${signatureBase64!.substring(0, 50)}...',
-      );
       result['__signature'] = signatureBase64;
     }
 
-    // Only include these if explicitly checked or selectAll
     if (selectAll || fieldChecks.values.any((v) => v == true)) {
       result['__has_support'] = hasSupport;
       if (housingStatus != null && housingStatus!.isNotEmpty) {
@@ -315,7 +337,6 @@ class FormStateController extends ChangeNotifier {
       }
     }
 
-    // Only include supporting family if has_support is true
     if (hasSupport &&
         supportingFamily.isNotEmpty &&
         (selectAll || fieldChecks.values.any((v) => v == true))) {
@@ -342,9 +363,6 @@ class FormStateController extends ChangeNotifier {
     return field.isVisible(triggerMap);
   }
 
-  // Dynamically evaluate all computed fields using their stored formula.
-  // Supports: + - * / ( ) and field_name tokens.
-  // Field names resolve to their current numeric value (0 if blank/non-numeric).
   void _recomputeFields() {
     final computedFields = template.allFields
         .where((f) => f.fieldType == FormFieldType.computed)
@@ -363,9 +381,7 @@ class FormStateController extends ChangeNotifier {
   }
 
   /// Tokenise and evaluate a simple arithmetic formula.
-  /// Supported: numeric literals, field_name identifiers, + - * / ( )
   double _evalFormula(String formula) {
-    // Replace every identifier with its current numeric value
     final resolved = formula.replaceAllMapped(
       RegExp(r'[a-zA-Z_][a-zA-Z0-9_]*'),
       (m) {
@@ -376,8 +392,6 @@ class FormStateController extends ChangeNotifier {
     return _evalExpr(resolved.replaceAll(' ', ''), _Pos(0));
   }
 
-  /// Recursive-descent parser: handles +/- at expression level,
-  /// */÷ at term level, and parentheses/unary minus at factor level.
   double _evalExpr(String s, _Pos p) {
     var result = _evalTerm(s, p);
     while (p.i < s.length && (s[p.i] == '+' || s[p.i] == '-')) {
@@ -420,8 +434,7 @@ class FormStateController extends ChangeNotifier {
   }
 
   double _parseNum(String key) {
-    final raw =
-        textControllers[key]?.text.replaceAll(',', '') ??
+    final raw = textControllers[key]?.text.replaceAll(',', '') ??
         _values[key]?.toString() ??
         '0';
     return double.tryParse(raw) ?? 0.0;
@@ -432,6 +445,7 @@ class FormStateController extends ChangeNotifier {
     if (textControllers.containsKey(key)) {
       if (textControllers[key]!.text != str) {
         textControllers[key]!.text = str;
+        _fieldNotifiers[key]?.value = str; // Also update notifier
       }
     }
     _values[key] = str;
@@ -448,6 +462,9 @@ class FormStateController extends ChangeNotifier {
   void clearAll({bool notify = true}) {
     _values.clear();
     for (final ctrl in textControllers.values) ctrl.clear();
+    for (final notifier in _fieldNotifiers.values) {
+      notifier.value = null;
+    }
     membershipData = {
       'solo_parent': false,
       'pwd': false,
@@ -534,7 +551,11 @@ class FormStateController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _recomputeDebounce?.cancel();
     for (final ctrl in textControllers.values) ctrl.dispose();
+    for (final notifier in _fieldNotifiers.values) {
+      notifier.dispose();
+    }
     super.dispose();
   }
 }

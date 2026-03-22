@@ -2,21 +2,16 @@
 // Loads templates + profile, renders dynamic form, saves to Supabase,
 // and transmits selected fields to the web portal via QR.
 
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:sappiire/constants/app_colors.dart';
-import 'package:sappiire/models/form_template_models.dart';
-import 'package:sappiire/services/form_template_service.dart';
 import 'package:sappiire/services/supabase_service.dart';
-import '../../../services/field_value_service.dart';
 import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
-import 'package:sappiire/dynamic_form/form_state_controller.dart';
+import 'package:sappiire/mobile/controllers/manage_info_controller.dart';
 import 'package:sappiire/mobile/screens/auth/qr_scanner_screen.dart';
 import 'package:sappiire/mobile/screens/auth/login_screen.dart';
 import 'package:sappiire/mobile/screens/auth/InfoScannerScreen.dart';
-import 'package:sappiire/mobile/widgets/bottom_navbar.dart';
 import 'package:sappiire/mobile/screens/auth/ProfileScreen.dart';
 import 'package:sappiire/mobile/screens/auth/HistoryScreen.dart';
 
@@ -29,160 +24,53 @@ class ManageInfoScreen extends StatefulWidget {
 }
 
 class _ManageInfoScreenState extends State<ManageInfoScreen> {
-  final _templateService = FormTemplateService();
   final _supabaseService = SupabaseService();
-  final _fieldValueService = FieldValueService();
-
-  List<FormTemplate> _templates = [];
-  FormTemplate? _selectedTemplate;
-  FormStateController? _formCtrl;
-
-  bool _isLoading = true;
-  bool _isSaving = false;
-  String _username = '';
+  late final ManageInfoController _controller;
   int _currentNavIndex = 0;
 
   // ── Lifecycle ─────────────────────────────────────────────
   @override
   void initState() {
     super.initState();
+    _controller = ManageInfoController(userId: widget.userId);
     _loadAll();
   }
 
   @override
   void dispose() {
-    _formCtrl?.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
   // ── Data Loading ──────────────────────────────────────────
   Future<void> _loadAll() async {
-    final previousTemplateId = _selectedTemplate?.templateId;
-    // Only show full-screen spinner on first load, not on pull-to-refresh
-    final isFirstLoad = _templates.isEmpty && _selectedTemplate == null;
-    if (isFirstLoad) setState(() => _isLoading = true);
-    try {
-      debugPrint('ManageInfoScreen: Loading templates...');
-      final templates = await _templateService.fetchActiveTemplates(
-        forceRefresh: true,
-      );
-      debugPrint('Received ${templates.length} templates');
-
-      final username = await _supabaseService.getUsername(widget.userId);
-
-      if (!mounted) return;
-      setState(() {
-        _templates = templates;
-        _username = username ?? '';
-        if (templates.isEmpty) {
-          _selectedTemplate = null;
-        } else if (previousTemplateId != null &&
-            templates.any((t) => t.templateId == previousTemplateId)) {
-          // Stay on the same template after refresh
-          _selectedTemplate = templates.firstWhere(
-            (t) => t.templateId == previousTemplateId,
-          );
-        } else {
-          // First load — default to General Intake Sheet
-          _selectedTemplate = templates.firstWhere(
-            (t) => t.formName == 'General Intake Sheet',
-            orElse: () => templates.first,
-          );
-        }
-      });
-
-      debugPrint('Selected template: ${_selectedTemplate?.formName ?? "NONE"}');
-
-      if (_selectedTemplate != null) {
-        await _initFormController();
-      }
-    } catch (e, stack) {
-      debugPrint('ManageInfoScreen._loadAll error: $e');
-      debugPrint('Stack: $stack');
-    }
-    if (mounted) setState(() => _isLoading = false);
-  }
-
-  // ── Build form controller from user_field_values ──
-  Future<void> _initFormController() async {
-    final oldCtrl =
-        _formCtrl; // FIX: Detach the widget tree from the old controller BEFORE disposing it
-    // Set to null first so AnimatedBuilder unsubscribes before disposal
-    setState(
-      () => _formCtrl = null,
-    ); // FIX: Set to null to allow UI to unsubscribe
-    oldCtrl?.dispose(); // FIX: Dispose after unsubscription
-
-    final ctrl = FormStateController(template: _selectedTemplate!);
-    final loaded = await _fieldValueService
-        .loadUserFieldValuesWithCrossFormFill(
-          userId: widget.userId,
-          template: _selectedTemplate!,
-        );
-    ctrl.loadFromJson(loaded);
-
-    // Load signature if present
-    for (final field in _selectedTemplate!.allFields) {
-      if (field.fieldType == FormFieldType.signature) {
-        final sigVal = loaded[field.fieldName];
-        if (sigVal != null && sigVal.toString().isNotEmpty) {
-          ctrl.signatureBase64 = sigVal.toString();
-        }
-        break;
-      }
-    }
-
-    if (mounted) setState(() => _formCtrl = ctrl);
-    // No _loadComplexData — family/supporting family data now live in
-    // user_field_values via the familyTable field type in the GIS template.
+    await _controller.loadAll(forceRefresh: true);
   }
 
   // ── Save to Supabase ──────────────────────────────────────
   Future<void> _saveProfile() async {
-    if (_formCtrl == null) return;
-    setState(() => _isSaving = true);
-    try {
-      final data = _formCtrl!.toJson();
-
-      if (data['__signature'] != null) {
-        _formCtrl!.signatureBase64 = data['__signature'];
-      }
-
-      // ONLY path: save all field values to user_field_values
-      await _fieldValueService.saveUserFieldValues(
-        userId: widget.userId,
-        template: _selectedTemplate!,
-        formData: data,
+    final ok = await _controller.saveProfile();
+    if (!mounted) return;
+    if (ok) {
+      _showFeedback('Profile saved!', Colors.green);
+    } else {
+      _showFeedback(
+        'Save failed: ${_controller.errorMessage ?? 'Unknown error'}',
+        Colors.red,
       );
-
-      if (mounted) {
-        _showFeedback('Profile saved!', Colors.green);
-      }
-    } catch (e) {
-      debugPrint('Save error: $e');
-      if (mounted) _showFeedback('Save failed: $e', Colors.red);
     }
-    if (mounted) setState(() => _isSaving = false);
   }
 
   // ── QR Transmit ───────────────────────────────────────────
   Future<void> _scanAndTransmit() async {
-    if (_formCtrl == null) return;
-
-    // Require at least one checkbox selected
-    final hasAnyChecked =
-        _formCtrl!.selectAll ||
-        _formCtrl!.fieldChecks.values.any((checked) => checked == true);
-
-    if (!hasAnyChecked) {
+    final dataToTransmit = _controller.buildTransmitPayload();
+    if (dataToTransmit == null) {
       _showFeedback(
         'Please select at least one field to transmit',
         AppColors.dangerRed,
       );
       return;
     }
-
-    final dataToTransmit = _formCtrl!.toFilteredJson();
 
     final sessionId = await Navigator.push<String>(
       context,
@@ -282,21 +170,25 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   // ── Build ─────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.pageBg,
-      appBar: _buildAppBar(),
-      floatingActionButton: (_formCtrl != null && _currentNavIndex == 0)
-          ? _buildSelectAllFAB()
-          : null,
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      bottomNavigationBar: _buildBottomNav(),
-      body: _currentNavIndex == 2
-          ? HistoryScreen(userId: widget.userId, embedded: true)
-          : _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _templates.isEmpty
-          ? _buildEmptyState()
-          : _buildFormContent(),
+    return ListenableBuilder(
+      listenable: _controller,
+      builder: (context, _) => Scaffold(
+        backgroundColor: AppColors.pageBg,
+        appBar: _buildAppBar(),
+        floatingActionButton:
+            (_controller.formController != null && _currentNavIndex == 0)
+            ? _buildSelectAllFAB()
+            : null,
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        bottomNavigationBar: _buildBottomNav(),
+        body: _currentNavIndex == 2
+            ? HistoryScreen(userId: widget.userId, embedded: true)
+            : _controller.isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _controller.templates.isEmpty
+            ? _buildEmptyState()
+            : _buildFormContent(),
+      ),
     );
   }
 
@@ -347,7 +239,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                     ),
                   ),
                   Text(
-                    _username.isEmpty ? 'User' : _username,
+                    _controller.username.isEmpty ? 'User' : _controller.username,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 14,
@@ -372,7 +264,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           tooltip: 'Scan ID',
         ),
         IconButton(
-          icon: _isSaving
+          icon: _controller.isSaving
               ? const SizedBox(
                   height: 20,
                   width: 20,
@@ -382,7 +274,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                   ),
                 )
               : const Icon(Icons.save_outlined, color: Colors.white, size: 22),
-          onPressed: _isSaving ? null : _saveProfile,
+          onPressed: _controller.isSaving ? null : _saveProfile,
           tooltip: 'Save Profile',
         ),
         const SizedBox(width: 8),
@@ -441,16 +333,13 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
-              child: _formCtrl == null
+              child: _controller.formController == null
                   ? const Center(child: CircularProgressIndicator())
-                  : AnimatedBuilder(
-                      animation: _formCtrl!,
-                      builder: (context, _) => DynamicFormRenderer(
-                        template: _selectedTemplate!,
-                        controller: _formCtrl!,
-                        mode: 'mobile',
-                        showCheckboxes: true,
-                      ),
+                  : DynamicFormRenderer(
+                      template: _controller.selectedTemplate!,
+                      controller: _controller.formController!,
+                      mode: 'mobile',
+                      showCheckboxes: true,
                     ),
             ),
           ),
@@ -480,9 +369,9 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
               ),
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<String>(
-                  value: _selectedTemplate?.templateId,
+                  value: _controller.selectedTemplate?.templateId,
                   isExpanded: true,
-                  items: _templates
+                  items: _controller.templates
                       .map(
                         (t) => DropdownMenuItem(
                           value: t.templateId,
@@ -498,11 +387,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                       )
                       .toList(),
                   onChanged: (id) async {
-                    final tpl = _templates.firstWhere(
-                      (t) => t.templateId == id,
-                    );
-                    setState(() => _selectedTemplate = tpl);
-                    await _initFormController();
+                    if (id == null) return;
+                    await _controller.switchTemplate(id);
                   },
                 ),
               ),
@@ -515,10 +401,10 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
   // ── Floating Select All Button ────────────────────────────────
   Widget _buildSelectAllFAB() {
-    final isSelectAll = _formCtrl?.selectAll ?? false;
+    final isSelectAll = _controller.formController?.selectAll ?? false;
     return FloatingActionButton.extended(
       onPressed: () {
-        _formCtrl?.setSelectAll(!isSelectAll);
+        _controller.formController?.setSelectAll(!isSelectAll);
         setState(() {});
       },
       backgroundColor: isSelectAll

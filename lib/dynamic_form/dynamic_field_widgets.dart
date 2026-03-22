@@ -8,6 +8,7 @@
 
 import 'dart:ui' as ui;
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/models/form_template_models.dart';
@@ -99,7 +100,7 @@ class DynamicFieldWidget extends StatelessWidget {
           value: controller.fieldChecks[checkKey] ?? false,
           onChanged: (v) {
             controller.fieldChecks[checkKey] = v ?? false;
-            controller.notifyListeners();
+            controller.notifyFormChanged();
           },
           activeColor: AppColors.primaryBlue,
           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -190,7 +191,7 @@ class _TextField extends StatelessWidget {
           decoration:
               _inputDeco(hint: field.placeholder, readOnly: isReadOnly),
           style: const TextStyle(fontSize: 13),
-          onChanged: (v) => controller.setValue(field.fieldName, v),
+          onChanged: (v) => controller.setValue(field.fieldName, v, notify: false),
         ),
       ],
     );
@@ -222,7 +223,7 @@ class _NumberField extends StatelessWidget {
               const TextInputType.numberWithOptions(decimal: true),
           decoration: _inputDeco(hint: '0.00', readOnly: isReadOnly),
           style: const TextStyle(fontSize: 13),
-          onChanged: (v) => controller.setValue(field.fieldName, v),
+          onChanged: (v) => controller.setValue(field.fieldName, v, notify: false),
         ),
       ],
     );
@@ -302,7 +303,7 @@ class _DateField extends StatelessWidget {
                   );
                   if (picked != null) {
                     controller.setValue(field.fieldName,
-                        DatePickerHelper.formatDate(picked));
+                        DatePickerHelper.formatDate(picked), notify: true);
                   }
                 },
           child: Container(
@@ -382,7 +383,7 @@ class _DropdownField extends StatelessWidget {
                   .toList(),
               onChanged: isReadOnly
                   ? null
-                  : (v) => controller.setValue(field.fieldName, v),
+                  : (v) => controller.setValue(field.fieldName, v, notify: true),
             ),
           ),
         ),
@@ -420,7 +421,7 @@ class _RadioField extends StatelessWidget {
                       if (field.fieldName == 'housing_status') {
                         controller.housingStatus = o.value;
                       }
-                      controller.setValue(field.fieldName, o.value);
+                      controller.setValue(field.fieldName, o.value, notify: true);
                     },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
@@ -483,7 +484,7 @@ class _BooleanField extends StatelessWidget {
                   if (field.fieldName == 'has_support') {
                     controller.hasSupport = v;
                   }
-                  controller.setValue(field.fieldName, v);
+                  controller.setValue(field.fieldName, v, notify: true);
                 },
           activeColor: AppColors.primaryBlue,
         ),
@@ -530,7 +531,7 @@ class _MembershipGroupField extends StatelessWidget {
                   ? null
                   : () {
                       controller.membershipData[item.$1] = !selected;
-                      controller.notifyListeners();
+                      controller.notifyFormChanged();
                     },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
@@ -679,7 +680,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
                     ...members,
                     {for (final c in cols) c: ''}
                   ];
-                  widget.controller.notifyListeners();
+                  widget.controller.notifyFormChanged();
                   setState(() {});
                 },
                 icon: const Icon(Icons.add, size: 16),
@@ -814,7 +815,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
               widget.controller.familyMembers[i][col] = formatted;
               widget.controller.familyMembers[i][ageCol] = age.toString();
               widget.controller.fieldChecks['Family Composition'] = true;
-              widget.controller.notifyListeners();
+              widget.controller.notifyFormChanged();
               setState(() {});
             }
           },
@@ -885,7 +886,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
               onTap: () {
                 widget.controller.familyMembers[i][col] = opt.value;
                 widget.controller.fieldChecks['Family Composition'] = true;
-                widget.controller.notifyListeners();
+                widget.controller.notifyFormChanged();
                 setState(() {});
               },
               child: AnimatedContainer(
@@ -946,7 +947,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
           onDropdownChange: (v) {
             widget.controller.familyMembers[i][col] = v;
             widget.controller.fieldChecks['Family Composition'] = true;
-            widget.controller.notifyListeners();
+            widget.controller.notifyFormChanged();
             setState(() {});
           },
         );
@@ -964,7 +965,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
           onDropdownChange: (v) {
             widget.controller.familyMembers[i][col] = v;
             widget.controller.fieldChecks['Family Composition'] = true;
-            widget.controller.notifyListeners();
+            widget.controller.notifyFormChanged();
             setState(() {});
           },
         );
@@ -1106,7 +1107,7 @@ class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
                       'regular_sustento': ''
                     }
                   ];
-                  widget.controller.notifyListeners();
+                  widget.controller.notifyFormChanged();
                   setState(() {});
                 },
                 icon: const Icon(Icons.add, size: 16),
@@ -1179,7 +1180,7 @@ class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
                       onPressed: () {
                         widget.controller.supportingFamily =
                             List.from(members)..removeAt(i);
-                        widget.controller.notifyListeners();
+                        widget.controller.notifyFormChanged();
                         setState(() {});
                       },
                     ),
@@ -1209,23 +1210,17 @@ class _SignatureField extends StatefulWidget {
 
 class _SignatureFieldState extends State<_SignatureField> {
   final List<Offset?> _points = [];
-  bool _showPad = false;
 
   @override
   void initState() {
     super.initState();
-    final sig = widget.controller.signatureBase64;
-    _showPad = (sig == null || sig.isEmpty);
   }
 
   @override
   Widget build(BuildContext context) {
-    // Always read from controller for latest signature
     final savedSignature = widget.controller.signatureBase64;
     final hasSignature = savedSignature != null && savedSignature.isNotEmpty;
-    
-        debugPrint('Signature widget build: hasSignature=$hasSignature, _showPad=$_showPad, sigLength=${savedSignature?.length ?? 0}');
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1259,10 +1254,8 @@ class _SignatureFieldState extends State<_SignatureField> {
             _points.clear();
             widget.controller.signatureBase64 = null;
             widget.controller.signaturePoints = null;
-            widget.controller.notifyListeners();
-            setState(() {
-              _showPad = true;
-            });
+            widget.controller.notifyFormChanged();
+            setState(() {});
           },
           child: const Text('Clear', style: TextStyle(color: Colors.red)),
         ),
@@ -1321,14 +1314,17 @@ class _SignatureFieldState extends State<_SignatureField> {
             onPanEnd: (_) async {
               _points.add(null);
               setState(() {});
-              
+
               if (_points.whereType<Offset>().length >= 2) {
-                final b64 = await _convertToBase64(_points);
+                final b64 = await compute(
+                  convertSignatureToBase64,
+                  List<Offset?>.from(_points),
+                );
                 if (b64 != null) {
                   widget.controller.signatureBase64 = b64;
                   widget.controller.signaturePoints = List.from(_points);
                   widget.controller.fieldChecks['Signature'] = true;
-                  widget.controller.notifyListeners();
+                  widget.controller.notifyFormChanged();
                 }
               }
             },
@@ -1348,36 +1344,36 @@ class _SignatureFieldState extends State<_SignatureField> {
       ],
     );
   }
+}
 
-  Future<String?> _convertToBase64(List<Offset?> points) async {
-    final realPoints = points.whereType<Offset>().toList();
-    if (realPoints.length < 2) return null;
+Future<String?> convertSignatureToBase64(List<Offset?> points) async {
+  final realPoints = points.whereType<Offset>().toList();
+  if (realPoints.length < 2) return null;
 
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
 
-    canvas.drawRect(
-      const Rect.fromLTWH(0, 0, 300, 200),
-      Paint()..color = Colors.white,
-    );
+  canvas.drawRect(
+    const Rect.fromLTWH(0, 0, 300, 200),
+    Paint()..color = Colors.white,
+  );
 
-    final pen = Paint()
-      ..color = Colors.black
-      ..strokeWidth = 3.0
-      ..strokeCap = StrokeCap.round;
+  final pen = Paint()
+    ..color = Colors.black
+    ..strokeWidth = 3.0
+    ..strokeCap = StrokeCap.round;
 
-    for (int i = 0; i < points.length - 1; i++) {
-      if (points[i] != null && points[i + 1] != null) {
-        canvas.drawLine(points[i]!, points[i + 1]!, pen);
-      }
+  for (int i = 0; i < points.length - 1; i++) {
+    if (points[i] != null && points[i + 1] != null) {
+      canvas.drawLine(points[i]!, points[i + 1]!, pen);
     }
-
-    final picture = recorder.endRecording();
-    final img = await picture.toImage(300, 200);
-    final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
-    if (bytes == null) return null;
-    return 'data:image/png;base64,${base64Encode(bytes.buffer.asUint8List())}';
   }
+
+  final picture = recorder.endRecording();
+  final img = await picture.toImage(300, 200);
+  final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
+  if (bytes == null) return null;
+  return 'data:image/png;base64,${base64Encode(bytes.buffer.asUint8List())}';
 }
 
 class _SignaturePainter extends CustomPainter {
