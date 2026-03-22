@@ -49,8 +49,9 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _ctrl,
+    // Rebuilds only on structural changes (visibility, pagination)
+    return ListenableBuilder(
+      listenable: _ctrl,
       builder: (context, _) {
         if (widget.mode == 'mobile') {
           return _buildMobileLayout();
@@ -188,7 +189,7 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
     for (final f in section.fields) {
       _ctrl.fieldChecks[f.checkKey] = v;
     }
-    _ctrl.notifyListeners();
+    _ctrl.notifyFormChanged();
   }
 }
 

@@ -152,6 +152,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         .from('form_submission')
         .stream(primaryKey: ['id'])
         .eq('id', sessionId)
+        .timeout(const Duration(minutes: 30), onTimeout: (sink) => sink.close())
         .listen((List<Map<String, dynamic>> data) {
           debugPrint('Web: Realtime update received');
           if (data.isEmpty) {
@@ -173,7 +174,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           _formCtrl?.loadFromJson(incoming);
           setState(() {}); // refresh UI
           debugPrint('Web: Form updated successfully');
-        });
+        },
+        onError: (e) => debugPrint('Session stream error: $e'),
+        cancelOnError: false,
+        );
   }
 
   // ── Finalize: save form data to client_submissions ───────
