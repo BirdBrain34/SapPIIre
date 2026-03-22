@@ -86,7 +86,7 @@ const _systemTypeIcons = <FormFieldType, IconData>{
   FormFieldType.unknown: Icons.help_outline,
 };
 
-const _knownCanonicalKeys = <({String key, String label})>[
+const _standardProfileCanonicalKeys = <({String key, String label})>[
   (key: 'last_name',                            label: 'Last Name'),
   (key: 'first_name',                           label: 'First Name'),
   (key: 'middle_name',                          label: 'Middle Name'),
@@ -251,6 +251,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   bool _isSaving = false;
   bool _isLoadingTemplate = false;
   bool _hasUnsavedChanges = false;
+  List<({String key, String label})> _availableCanonicalKeys = const [];
+  bool _isLoadingCanonicalKeys = false;
 
   // Text controller cache (prevents cursor jump on rebuild)
   final Map<String, TextEditingController> _ctrls = {};
@@ -270,6 +272,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   @override
   void initState() {
     super.initState();
+    _loadCanonicalKeys();
     _loadTemplateList().then((_) {
       if (widget.editTemplateId != null) {
         _loadTemplate(widget.editTemplateId!);
@@ -293,6 +296,49 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       _templates = templates;
       _isLoadingList = false;
     });
+  }
+
+  Future<void> _loadCanonicalKeys() async {
+    if (mounted) setState(() => _isLoadingCanonicalKeys = true);
+    try {
+      final res = await _supabase
+          .from('form_fields')
+          .select('canonical_field_key')
+          .not('canonical_field_key', 'is', null);
+
+      final dbKeys = <String>{};
+      for (final row in (res as List<dynamic>)) {
+        final key = (row['canonical_field_key'] as String?)?.trim();
+        if (key != null && key.isNotEmpty) dbKeys.add(key);
+      }
+
+      for (final s in _standardProfileCanonicalKeys) {
+        dbKeys.add(s.key);
+      }
+
+      final labelMap = {
+        for (final s in _standardProfileCanonicalKeys) s.key: s.label,
+      };
+      final merged = dbKeys.map((k) {
+        return (key: k, label: labelMap[k] ?? k);
+      }).toList()
+        ..sort((a, b) => a.key.compareTo(b.key));
+
+      if (mounted) {
+        setState(() {
+          _availableCanonicalKeys = merged;
+          _isLoadingCanonicalKeys = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('_loadCanonicalKeys error: $e');
+      if (mounted) {
+        setState(() {
+          _availableCanonicalKeys = List.of(_standardProfileCanonicalKeys);
+          _isLoadingCanonicalKeys = false;
+        });
+      }
+    }
   }
 
   Future<void> _loadTemplate(String templateId) async {
@@ -1892,10 +1938,15 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                     value: null,
                     child: Text('— None —'),
                   ),
-                  ..._knownCanonicalKeys.map(
+                  ..._availableCanonicalKeys.map(
                     (entry) => DropdownMenuItem<String?>(
                       value: entry.key,
-                      child: Text('${entry.label} (${entry.key})'),
+                      child: Text(
+                        entry.key == entry.label
+                            ? entry.key
+                            : '${entry.label}  (${entry.key})',
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ),
                 ],
