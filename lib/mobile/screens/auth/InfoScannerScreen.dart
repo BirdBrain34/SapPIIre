@@ -6,9 +6,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/mobile/screens/auth/manage_info_screen.dart';
 import 'package:sappiire/models/id_information.dart';
+import 'package:sappiire/services/form_template_service.dart';
 
 class InfoScannerScreen extends StatefulWidget {
-  const InfoScannerScreen({super.key});
+  /// If true, tapping Confirm returns IdInformation to the caller
+  /// instead of saving to Supabase (used during signup flow).
+  final bool returnOnly;
+
+  const InfoScannerScreen({super.key, this.returnOnly = false});
 
   @override
   State<InfoScannerScreen> createState() => _InfoScannerScreenState();
@@ -180,6 +185,34 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
               ),
             ),
 
+          // Re-scan Front (shown after front scanned but before back scanned)
+          if (_frontScanned && !_backScanned)
+            Positioned(
+              bottom: 110,
+              left: 32,
+              right: 32,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Colors.white54),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                icon: const Icon(Icons.refresh, color: Colors.white70),
+                label: const Text('Re-scan Front',
+                    style: TextStyle(color: Colors.white70)),
+                onPressed: () => setState(() {
+                  _frontScanned = false;
+                  // Clear front data so it gets re-parsed fresh
+                  _data.lastName = '';
+                  _data.firstName = '';
+                  _data.middleName = '';
+                  _data.dateOfBirth = '';
+                  _data.address = '';
+                }),
+              ),
+            ),
+
           // Re-scan back
           if (_backScanned)
             Positioned(
@@ -221,7 +254,15 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
                       fontSize: 16,
                       fontWeight: FontWeight.bold),
                 ),
-                onPressed: _saveToSupabase,
+                onPressed: () {
+                  if (widget.returnOnly) {
+                    // Return scanned data to caller (signup flow)
+                    Navigator.pop(context, _data);
+                  } else {
+                    // Save to Supabase directly (standalone mode)
+                    _saveToSupabase();
+                  }
+                },
               ),
             ),
         ],
@@ -323,25 +364,6 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
       debugPrint('=== OCR LINES ===');
       for (final l in lines) debugPrint(l);
       debugPrint('=================');
-
-      // Show raw OCR lines in a dialog for on-device debugging
-      if (mounted) {
-        await showDialog(
-          context: context,
-          builder: (_) => AlertDialog(
-            title: Text(!_frontScanned ? 'RAW OCR — Front' : 'RAW OCR — Back'),
-            content: SingleChildScrollView(
-              child: SelectableText(lines.join('\n')),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('OK — Continue'),
-              ),
-            ],
-          ),
-        );
-      }
 
       if (!_frontScanned) {
         _parseFront(lines);
@@ -498,23 +520,27 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
   }
 
   /// Address collector — from the OCR, address lines come AFTER the junk header lines.
-  /// Structure observed: "Tirahan/Address" → junk lines → address lines → PHL
-  /// So we SKIP junk lines and collect until we hit a label or PHL.
+  /// Address collector: scans ALL remaining lines after label, skipping junk anywhere.
+  /// Collects lines that look like address content (uppercase, contains digits or commas).
+  /// Stops at next label or PHL.
   String _addressValue(List<String> lines, int i) {
     final List<String> collected = [];
-    bool pastJunk = false;
-    for (int j = i + 1; j < lines.length && j < i + 12; j++) {
+    for (int j = i + 1; j < lines.length; j++) {
       final l = lines[j].trim();
       if (l.isEmpty) continue;
-      if (_isLabel(l)) break; // next field started
-      if (l == 'PHL' || RegExp(r'^[0-9]{4}-[0-9]{4}').hasMatch(l)) break;
-      if (_isJunk(l)) {
-        // Skip junk header lines (REPUBLIKA NG PILIPINAS etc)
-        // but once we've seen real address content, stop
-        if (pastJunk) break;
-        continue;
-      }
-      pastJunk = true;
+      if (_isLabel(l)) break;
+      if (l == 'PHL') break;
+      if (RegExp(r'^[0-9]{4}-[0-9]{4}').hasMatch(l)) continue; // skip ID number
+      if (_isJunk(l)) continue; // skip all junk, don't stop
+      // Skip lines that look like garbage from background text
+      if (l.toLowerCase().contains('examination') ||
+          l.toLowerCase().contains('booklet') ||
+          l.toLowerCase().contains('reserved') ||
+          l.toLowerCase().contains('mapua') ||
+          l.toLowerCase().contains('mmcl') ||
+          l.toLowerCase().contains('rights') ||
+          l.toLowerCase().contains('exclusively') ||
+          l.toLowerCase().contains('distributed')) continue;
       collected.add(l);
     }
     return collected.join(' ').trim();
@@ -567,39 +593,62 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
     }
 
     try {
-      await Supabase.instance.client.from('user_profiles').upsert({
-        'user_id': userId,
-        'lastname': _data.lastName,
-        'firstname': _data.firstName,
+      // Load all templates to find matching field_ids by canonical_field_key
+      final templateSvc = FormTemplateService();
+      final templates = await templateSvc.fetchActiveTemplates();
+
+      if (templates.isEmpty) {
+        _showSnack('No form templates found.', Colors.red);
+        return;
+      }
+
+      final allFields = templates.expand((t) => t.allFields).toList();
+
+      // Map canonical_field_key → value from scanned ID
+      // Only keys that exist in form_fields are included
+      final sexValue = _data.sex.isNotEmpty
+          ? (_data.sex.toLowerCase().startsWith('f') ? 'Female' : 'Male')
+          : '';
+      final civilValue = _civilStatusWord(_data.maritalStatus);
+      final dobFormatted = _data.dateOfBirth.isNotEmpty
+          ? (_parseDateOfBirth(_data.dateOfBirth) ?? _data.dateOfBirth)
+          : '';
+
+      final piiMap = <String, String>{
+        'last_name': _data.lastName,
+        'first_name': _data.firstName,
         'middle_name': _data.middleName,
-        'birthdate': _data.dateOfBirth.isNotEmpty
-            ? _parseDateOfBirth(_data.dateOfBirth)
-            : null,
-        'gender': _data.sex.isNotEmpty
-            ? (_data.sex.toLowerCase().startsWith('f') ? 'F' : 'M')
-            : null,
-        'blood_type': _data.bloodType.isNotEmpty ? _data.bloodType : null,
-        'civil_status': _data.maritalStatus.isNotEmpty
-            ? _civilStatusCode(_data.maritalStatus)
-            : null,
-        'birthplace': _data.placeOfBirth.isNotEmpty ? _data.placeOfBirth : null,
-      }, onConflict: 'user_id');
+        'date_of_birth': dobFormatted,
+        'kasarian_sex': sexValue,
+        'estadong_sibil_civil_status': civilValue,
+        'house_number_street_name_phase_purok': _data.address,
+      };
 
-      // Save address — check what column user_addresses uses
-      if (_data.address.isNotEmpty) {
-        // First get the profile_id since user_addresses links by profile_id
-        final profile = await Supabase.instance.client
-            .from('user_profiles')
-            .select('profile_id')
-            .eq('user_id', userId)
-            .maybeSingle();
+      final now = DateTime.now().toIso8601String();
+      final rows = <Map<String, dynamic>>[];
 
-        if (profile != null) {
-          await Supabase.instance.client.from('user_addresses').upsert({
-            'profile_id': profile['profile_id'],
-            'address_line': _data.address,
-          }, onConflict: 'profile_id');
+      for (final entry in piiMap.entries) {
+        if (entry.value.isEmpty) continue;
+
+        // Find ALL fields with this canonical key across ALL templates
+        final matchingFields = allFields
+            .where((f) => f.canonicalFieldKey == entry.key)
+            .toList();
+
+        for (final field in matchingFields) {
+          rows.add({
+            'user_id': userId,
+            'field_id': field.fieldId,
+            'field_value': entry.value,
+            'updated_at': now,
+          });
         }
+      }
+
+      if (rows.isNotEmpty) {
+        await Supabase.instance.client
+            .from('user_field_values')
+            .upsert(rows, onConflict: 'user_id,field_id');
       }
 
       if (!mounted) return;
@@ -657,14 +706,15 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
     return null;
   }
 
-  String? _civilStatusCode(String raw) {
+  /// Returns full display word for civil status (matches user_field_values format)
+  String _civilStatusWord(String raw) {
     final l = raw.toLowerCase();
-    if (l.contains('single')) return 'S';
-    if (l.contains('married')) return 'M';
-    if (l.contains('widow') || l.contains('widower')) return 'W';
-    if (l.contains('separated')) return 'Sep';
-    if (l.contains('annul')) return 'A';
-    return null;
+    if (l.contains('single')) return 'Single';
+    if (l.contains('married')) return 'Married';
+    if (l.contains('widow') || l.contains('widower')) return 'Widowed';
+    if (l.contains('separated')) return 'Separated';
+    if (l.contains('annul')) return 'Annulled';
+    return raw; // return as-is if unrecognized
   }
 
   void _showSnack(String msg, Color color) {

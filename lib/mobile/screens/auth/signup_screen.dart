@@ -146,7 +146,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Future<void> _handleInfoScan() async {
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const InfoScannerScreen()),
+      MaterialPageRoute(builder: (_) => const InfoScannerScreen(returnOnly: true)),
     );
     if (result != null && result is IdInformation) {
       setState(() {
@@ -154,6 +154,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
         _middleNameController.text = result.middleName;
         _lastNameController.text   = result.lastName;
         _dobController.text        = result.dateOfBirth;
+        if (result.address.isNotEmpty) _addressController.text = result.address;
+        if (result.sex.isNotEmpty) {
+          _sex = result.sex.toLowerCase().startsWith('f') ? 'Female' : 'Male';
+        }
+        if (result.maritalStatus.isNotEmpty) {
+          final l = result.maritalStatus.toLowerCase();
+          if (l.contains('single')) _maritalStatus = 'Single';
+          else if (l.contains('married')) _maritalStatus = 'Married';
+          else if (l.contains('widow')) _maritalStatus = 'Widowed';
+          else if (l.contains('separated')) _maritalStatus = 'Separated';
+          else if (l.contains('annul')) _maritalStatus = 'Annulled';
+        }
       });
     }
   }
@@ -343,7 +355,38 @@ Future<void> _handleCreateAccount() async {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+    canPop: false,
+    onPopInvokedWithResult: (didPop, result) async {
+      if (didPop) return;
+      if (_currentPage == 0) {
+        Navigator.pop(context);
+        return;
+      }
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Cancel sign up?'),
+          content: const Text(
+              'Going back will lose your progress. Are you sure you want to cancel?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Stay'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.dangerRed),
+              child: const Text('Cancel Sign Up',
+                  style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+      if (confirmed == true && context.mounted) Navigator.pop(context);
+    }, 
+    child: Scaffold(
       backgroundColor: AppColors.primaryBlue,
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
@@ -352,9 +395,32 @@ Future<void> _handleCreateAccount() async {
         iconTheme: const IconThemeData(color: Colors.white),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () {
+          onPressed: () async {
             if (_currentPage > 0) {
-              _goPrev();
+              // Warn before going back mid-signup
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Cancel sign up?'),
+                  content: const Text(
+                    'Going back will lose your progress. Are you sure you want to cancel?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Stay'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.dangerRed,
+                      ),
+                      child: const Text('Cancel Sign Up',
+                          style: TextStyle(color: Colors.white)),
+                    ),
+                  ],
+                ),
+              );
+              if (confirmed == true && mounted) Navigator.pop(context);
             } else {
               Navigator.pop(context);
             }
@@ -402,6 +468,7 @@ Future<void> _handleCreateAccount() async {
           ],
         ),
       ),
+    ),
     );
   }
 

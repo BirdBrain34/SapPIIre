@@ -171,9 +171,43 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   // ── Build ─────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: _controller,
-      builder: (context, _) => Scaffold(
+  return ListenableBuilder(
+    listenable: _controller,
+    builder: (context, _) => PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Log out?'),
+            content: const Text('Are you sure you want to log out?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.dangerRed),
+                child: const Text('Log Out',
+                    style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+        );
+        if (confirmed == true && context.mounted) {
+          await Supabase.instance.client.auth.signOut();
+          if (context.mounted) {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const LoginScreen()),
+              (route) => false,
+            );
+          }
+        }
+      }, 
+    child: Scaffold(
         backgroundColor: AppColors.pageBg,
         appBar: _buildAppBar(),
         floatingActionButton:
@@ -190,7 +224,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
             ? _buildEmptyState()
             : _buildFormContent(),
       ),
-    );
+    ),
+  );
   }
 
   // ── AppBar: logout left, camera + save right ──────────────
