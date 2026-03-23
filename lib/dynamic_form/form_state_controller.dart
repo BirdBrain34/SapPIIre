@@ -264,6 +264,9 @@ class FormStateController extends ChangeNotifier {
     final result = <String, dynamic>{};
 
     for (final field in template.allFields) {
+      // Do not persist values for fields that are currently hidden by conditions.
+      if (!isFieldVisible(field)) continue;
+
       switch (field.fieldType) {
         case FormFieldType.text:
         case FormFieldType.conditional:
@@ -314,6 +317,9 @@ class FormStateController extends ChangeNotifier {
     final result = <String, dynamic>{};
 
     for (final field in template.allFields) {
+      // Hidden fields should never be part of transmitted shared data.
+      if (!isFieldVisible(field)) continue;
+
       final checkKey = field.checkKey;
       if (fieldChecks[checkKey] != true && !selectAll) continue;
 
