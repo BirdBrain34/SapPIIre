@@ -47,6 +47,7 @@ class FormStateController extends ChangeNotifier {
     for (final field in template.allFields) {
       switch (field.fieldType) {
         case FormFieldType.text:
+        case FormFieldType.conditional:
         case FormFieldType.date:
         case FormFieldType.number:
         case FormFieldType.computed:
@@ -56,6 +57,7 @@ class FormStateController extends ChangeNotifier {
           break;
         case FormFieldType.dropdown:
         case FormFieldType.radio:
+        case FormFieldType.checkbox:
         case FormFieldType.boolean:
           _initFieldNotifier(field.fieldName, null);
           fieldChecks[field.fieldName] = false;
@@ -216,6 +218,19 @@ class FormStateController extends ChangeNotifier {
                 field.fieldType == FormFieldType.dropdown) {
               parsedValue =
                   _normalizeChoiceValue(field, value) ?? value?.toString();
+            } else if (field.fieldType == FormFieldType.checkbox) {
+              if (value is List) {
+                parsedValue = value.map((e) => e.toString()).toList();
+              } else {
+                final raw = value?.toString() ?? '';
+                parsedValue = raw.trim().isEmpty
+                    ? <String>[]
+                    : raw
+                        .split(',')
+                        .map((s) => s.trim())
+                        .where((s) => s.isNotEmpty)
+                        .toList();
+              }
             } else if (field.fieldType == FormFieldType.signature) {
               final signature = value?.toString();
               if (signature != null && signature.isNotEmpty) {
@@ -251,6 +266,7 @@ class FormStateController extends ChangeNotifier {
     for (final field in template.allFields) {
       switch (field.fieldType) {
         case FormFieldType.text:
+        case FormFieldType.conditional:
         case FormFieldType.date:
         case FormFieldType.number:
         case FormFieldType.computed:
@@ -261,6 +277,12 @@ class FormStateController extends ChangeNotifier {
         case FormFieldType.radio:
           final val = _values[field.fieldName];
           if (val != null) result[field.fieldName] = val;
+          break;
+        case FormFieldType.checkbox:
+          final val = _values[field.fieldName];
+          if (val is List && val.isNotEmpty) {
+            result[field.fieldName] = val;
+          }
           break;
         case FormFieldType.boolean:
           final raw = _values[field.fieldName];
@@ -297,6 +319,7 @@ class FormStateController extends ChangeNotifier {
 
       switch (field.fieldType) {
         case FormFieldType.text:
+        case FormFieldType.conditional:
         case FormFieldType.date:
         case FormFieldType.number:
         case FormFieldType.computed:
@@ -307,6 +330,12 @@ class FormStateController extends ChangeNotifier {
         case FormFieldType.radio:
           final val = _values[field.fieldName];
           if (val != null) result[field.fieldName] = val;
+          break;
+        case FormFieldType.checkbox:
+          final val = _values[field.fieldName];
+          if (val is List && val.isNotEmpty) {
+            result[field.fieldName] = val;
+          }
           break;
         case FormFieldType.memberTable:
           final rows = memberTableData[field.fieldName];
@@ -352,6 +381,19 @@ class FormStateController extends ChangeNotifier {
     for (final f in template.allFields) {
       if (f.fieldType == FormFieldType.boolean) {
         triggerMap[f.fieldId] = (_values[f.fieldName] ?? false).toString();
+      } else if (f.fieldType == FormFieldType.checkbox) {
+        final raw = _values[f.fieldName];
+        if (raw is List) {
+          triggerMap[f.fieldId] = raw.map((e) => e.toString()).toList();
+        } else {
+          triggerMap[f.fieldId] = const <String>[];
+        }
+      } else if (f.fieldType == FormFieldType.membershipGroup) {
+        final selected = membershipData.entries
+            .where((e) => e.value)
+            .map((e) => e.key)
+            .toList();
+        triggerMap[f.fieldId] = selected;
       } else {
         triggerMap[f.fieldId] = _values[f.fieldName]?.toString() ?? '';
       }

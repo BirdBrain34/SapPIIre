@@ -25,6 +25,7 @@ enum FormFieldType {
   boolean,
   linearScale,
   computed,
+  conditional,
   membershipGroup,
   familyTable,
   supportingFamilyTable,
@@ -45,6 +46,7 @@ enum FormFieldType {
       case 'boolean':                 return FormFieldType.boolean;
       case 'linear_scale':            return FormFieldType.linearScale;
       case 'computed':                return FormFieldType.computed;
+      case 'conditional':             return FormFieldType.conditional;
       case 'membership_group':        return FormFieldType.membershipGroup;
       case 'family_table':            return FormFieldType.familyTable;
       case 'supporting_family_table': return FormFieldType.supportingFamilyTable;
@@ -57,6 +59,7 @@ enum FormFieldType {
   /// Whether this type is a system/custom type that should not be changed
   /// by the user in the form builder (e.g. familyTable, computed, signature).
   bool get isSystemType => const {
+    FormFieldType.conditional,
     FormFieldType.membershipGroup,
     FormFieldType.familyTable,
     FormFieldType.supportingFamilyTable,
@@ -78,6 +81,7 @@ enum FormFieldType {
       case FormFieldType.boolean:                 return 'boolean';
       case FormFieldType.linearScale:             return 'linear_scale';
       case FormFieldType.computed:                return 'computed';
+      case FormFieldType.conditional:             return 'conditional';
       case FormFieldType.membershipGroup:         return 'membership_group';
       case FormFieldType.familyTable:             return 'family_table';
       case FormFieldType.supportingFamilyTable:   return 'supporting_family_table';
@@ -256,9 +260,21 @@ class FormFieldModel {
     // If ANY condition says "show", evaluate it
     final showConditions = conditions.where((c) => c.action == 'show').toList();
     if (showConditions.isEmpty) return true;
+
+    String normalize(dynamic v) {
+      final s = (v ?? '').toString().trim().toLowerCase();
+      if (const {'true', 'yes', 'y', '1', 'on'}.contains(s)) return 'true';
+      if (const {'false', 'no', 'n', '0', 'off'}.contains(s)) return 'false';
+      return s;
+    }
+
     return showConditions.any((c) {
-      final currentVal = formValues[c.triggerFieldId]?.toString() ?? '';
-      return currentVal == (c.triggerValue ?? '');
+      final currentVal = formValues[c.triggerFieldId];
+      if (currentVal is List) {
+        final expected = normalize(c.triggerValue);
+        return currentVal.any((v) => normalize(v) == expected);
+      }
+      return normalize(currentVal) == normalize(c.triggerValue);
     });
   }
 }
