@@ -53,10 +53,12 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message),
-      backgroundColor: isError ? AppColors.dangerRed : AppColors.successGreen,
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? AppColors.dangerRed : AppColors.successGreen,
+      ),
+    );
   }
 
   void _clearCreateForm() {
@@ -95,6 +97,15 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
         return;
       }
 
+      if (_selectedRole == 'superadmin') {
+        _showSnackBar(
+          'Superadmin cannot be created through this interface.',
+          isError: true,
+        );
+        setState(() => _isCreatingAccount = false);
+        return;
+      }
+
       // Generate temporary password
       final tempPassword = _generateTemporaryPassword();
 
@@ -116,7 +127,10 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
       final String? cswdId = accountResponse['cswd_id']?.toString();
 
       if (cswdId == null || cswdId.isEmpty) {
-        _showSnackBar('Account created but failed to get ID. Contact developer.', isError: true);
+        _showSnackBar(
+          'Account created but failed to get ID. Contact developer.',
+          isError: true,
+        );
         setState(() => _isCreatingAccount = false);
         return;
       }
@@ -126,9 +140,15 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
         'cswd_id': cswdId,
         'first_name': _firstNameController.text.trim(),
         'last_name': _lastNameController.text.trim(),
-        'position': _positionController.text.trim().isEmpty ? null : _positionController.text.trim(),
-        'department': _departmentController.text.trim().isEmpty ? null : _departmentController.text.trim(),
-        'phone_number': _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(),
+        'position': _positionController.text.trim().isEmpty
+            ? null
+            : _positionController.text.trim(),
+        'department': _departmentController.text.trim().isEmpty
+            ? null
+            : _departmentController.text.trim(),
+        'phone_number': _phoneController.text.trim().isEmpty
+            ? null
+            : _phoneController.text.trim(),
       });
 
       if (!mounted) return;
@@ -145,13 +165,20 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
               children: [
                 const Text('Share these credentials with the staff member:'),
                 const SizedBox(height: 20),
-                _buildCredentialField('Username', _usernameController.text.trim()),
+                _buildCredentialField(
+                  'Username',
+                  _usernameController.text.trim(),
+                ),
                 const SizedBox(height: 12),
                 _buildCredentialField('Temporary Password', tempPassword),
                 const SizedBox(height: 20),
                 const Text(
                   '⚠️ Note: Save these credentials now. The password will not be displayed again.',
-                  style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.orange),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                    color: Colors.orange,
+                  ),
                 ),
               ],
             ),
@@ -184,14 +211,15 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: const TextStyle(fontSize: 12, color: Colors.grey),
-          ),
+          Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
           const SizedBox(height: 4),
           Text(
             value,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, fontFamily: 'Courier'),
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              fontFamily: 'Courier',
+            ),
           ),
         ],
       ),
@@ -479,7 +507,9 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                           borderRadius: BorderRadius.circular(10),
                         ),
                       ),
-                      onPressed: _isCreatingAccount ? null : _createStaffAccount,
+                      onPressed: _isCreatingAccount
+                          ? null
+                          : _createStaffAccount,
                       child: _isCreatingAccount
                           ? const SizedBox(
                               height: 20,
@@ -544,8 +574,6 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
         return;
     }
 
-    Navigator.of(context).pushReplacement(
-      ContentFadeRoute(page: nextScreen),
-    );
+    Navigator.of(context).pushReplacement(ContentFadeRoute(page: nextScreen));
   }
 }

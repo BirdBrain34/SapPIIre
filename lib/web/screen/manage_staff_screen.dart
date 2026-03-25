@@ -65,24 +65,38 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
   }
 
   Future<void> _approveAccount(String cswd_id, String requestedRole) async {
-    await _supabase.from('staff_accounts').update({
-      'role': requestedRole,
-      'account_status': 'active',
-      'is_active': true,
-    }).eq('cswd_id', cswd_id);
+    await _supabase
+        .from('staff_accounts')
+        .update({
+          'role': requestedRole,
+          'account_status': 'active',
+          'is_active': true,
+        })
+        .eq('cswd_id', cswd_id);
     _loadAccounts();
   }
 
   Future<void> _rejectAccount(String cswd_id) async {
-    await _supabase.from('staff_accounts').update({
-      'account_status': 'deactivated',
-      'is_active': false,
-    }).eq('cswd_id', cswd_id);
+    await _supabase
+        .from('staff_accounts')
+        .update({'account_status': 'deactivated', 'is_active': false})
+        .eq('cswd_id', cswd_id);
     _loadAccounts();
   }
 
   Future<void> _updateRole(String cswd_id, String newRole) async {
-    await _supabase.from('staff_accounts')
+    // Prevent role escalation to superadmin from this UI.
+    if (newRole == 'superadmin') return;
+
+    // Prevent editing the protected superadmin account.
+    final targetAccount = _activeAccounts.firstWhere(
+      (a) => a['cswd_id'] == cswd_id,
+      orElse: () => <String, dynamic>{},
+    );
+    if (targetAccount['role'] == 'superadmin') return;
+
+    await _supabase
+        .from('staff_accounts')
         .update({'role': newRole})
         .eq('cswd_id', cswd_id);
     _loadAccounts();
@@ -121,63 +135,67 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      ..._pendingAccounts.map((acc) => Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppColors.cardBg,
-                          border: Border.all(color: AppColors.cardBorder),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    acc['username'] ?? '',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.textDark,
+                      ..._pendingAccounts.map(
+                        (acc) => Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: AppColors.cardBg,
+                            border: Border.all(color: AppColors.cardBorder),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      acc['username'] ?? '',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.textDark,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '${acc['email']}  •  Requested: ${acc['requested_role']}',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: AppColors.textMuted,
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${acc['email']}  •  Requested: ${acc['requested_role']}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textMuted,
+                                      ),
                                     ),
+                                  ],
+                                ),
+                              ),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.successGreen,
+                                ),
+                                onPressed: () => _approveAccount(
+                                  acc['cswd_id'],
+                                  acc['requested_role'] ?? 'viewer',
+                                ),
+                                child: const Text(
+                                  "Approve",
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: AppColors.dangerRed,
+                                  side: const BorderSide(
+                                    color: AppColors.dangerRed,
                                   ),
-                                ],
+                                ),
+                                onPressed: () => _rejectAccount(acc['cswd_id']),
+                                child: const Text("Reject"),
                               ),
-                            ),
-                            ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.successGreen,
-                              ),
-                              onPressed: () => _approveAccount(
-                                acc['cswd_id'],
-                                acc['requested_role'] ?? 'viewer',
-                              ),
-                              child: const Text(
-                                "Approve",
-                                style: TextStyle(color: Colors.white),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            OutlinedButton(
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: AppColors.dangerRed,
-                                side: const BorderSide(color: AppColors.dangerRed),
-                              ),
-                              onPressed: () => _rejectAccount(acc['cswd_id']),
-                              child: const Text("Reject"),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      )),
+                      ),
                       const SizedBox(height: 32),
                     ],
 
@@ -201,10 +219,8 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
                         itemCount: _activeAccounts.length,
-                        separatorBuilder: (_, __) => Divider(
-                          height: 1,
-                          color: AppColors.cardBorder,
-                        ),
+                        separatorBuilder: (_, __) =>
+                            Divider(height: 1, color: AppColors.cardBorder),
                         itemBuilder: (_, i) {
                           final acc = _activeAccounts[i];
                           return Padding(
@@ -215,7 +231,9 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                                   width: 40,
                                   height: 40,
                                   decoration: BoxDecoration(
-                                    color: AppColors.highlight.withOpacity(0.15),
+                                    color: AppColors.highlight.withOpacity(
+                                      0.15,
+                                    ),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: const Icon(
@@ -226,14 +244,43 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                                 const SizedBox(width: 16),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        acc['username'] ?? '',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: AppColors.textDark,
-                                        ),
+                                      Row(
+                                        children: [
+                                          Text(
+                                            acc['username'] ?? '',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: AppColors.textDark,
+                                            ),
+                                          ),
+                                          if (acc['role'] == 'superadmin')
+                                            Container(
+                                              margin: const EdgeInsets.only(
+                                                left: 8,
+                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 6,
+                                                    vertical: 2,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.highlight,
+                                                borderRadius:
+                                                    BorderRadius.circular(4),
+                                              ),
+                                              child: const Text(
+                                                'SYSTEM',
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
                                       ),
                                       Text(
                                         acc['email'] ?? '',
@@ -245,20 +292,48 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                                     ],
                                   ),
                                 ),
-                                DropdownButton<String>(
-                                  value: acc['role'] ?? 'viewer',
-                                  items: ['viewer', 'form_editor', 'admin', 'superadmin']
-                                      .map((r) => DropdownMenuItem(
-                                            value: r,
-                                            child: Text(r),
-                                          ))
-                                      .toList(),
-                                  onChanged: (newRole) {
-                                    if (newRole != null) {
-                                      _updateRole(acc['cswd_id'], newRole);
-                                    }
-                                  },
-                                ),
+                                acc['role'] == 'superadmin'
+                                    ? Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 8,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.highlight
+                                              .withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'superadmin',
+                                          style: TextStyle(
+                                            color: AppColors.highlight,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      )
+                                    : DropdownButton<String>(
+                                        value: acc['role'] ?? 'viewer',
+                                        items:
+                                            ['viewer', 'form_editor', 'admin']
+                                                .map(
+                                                  (r) => DropdownMenuItem(
+                                                    value: r,
+                                                    child: Text(r),
+                                                  ),
+                                                )
+                                                .toList(),
+                                        onChanged: (newRole) {
+                                          if (newRole != null) {
+                                            _updateRole(
+                                              acc['cswd_id'],
+                                              newRole,
+                                            );
+                                          }
+                                        },
+                                      ),
                               ],
                             ),
                           );
@@ -315,8 +390,6 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
         return;
     }
 
-    Navigator.of(context).pushReplacement(
-      ContentFadeRoute(page: nextScreen),
-    );
+    Navigator.of(context).pushReplacement(ContentFadeRoute(page: nextScreen));
   }
 }

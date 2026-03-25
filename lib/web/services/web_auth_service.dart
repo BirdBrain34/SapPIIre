@@ -16,28 +16,25 @@ class WebAuthService {
     required String password,
   }) async {
     try {
+      final normalizedUsername = username.trim().toLowerCase();
       final hashedPassword = _hashPassword(password);
 
       // Query staff_accounts — NOT user_accounts
       final accountResponse = await _supabase
           .from('staff_accounts')
-          .select('cswd_id, username, email, is_active, role, account_status, password_hash')
-          .eq('username', username)
+          .select(
+            'cswd_id, username, email, is_active, role, account_status, password_hash',
+          )
+          .ilike('username', normalizedUsername)
           .maybeSingle();
 
       if (accountResponse == null) {
-        return {
-          'success': false,
-          'message': 'Invalid username or password',
-        };
+        return {'success': false, 'message': 'Invalid username or password'};
       }
 
       final storedHash = accountResponse['password_hash'];
       if (hashedPassword != storedHash) {
-        return {
-          'success': false,
-          'message': 'Invalid username or password',
-        };
+        return {'success': false, 'message': 'Invalid username or password'};
       }
 
       if (accountResponse['is_active'] == false) {
@@ -75,10 +72,7 @@ class WebAuthService {
         'profile': profileResponse,
       };
     } catch (e) {
-      return {
-        'success': false,
-        'message': 'Login error: ${e.toString()}',
-      };
+      return {'success': false, 'message': 'Login error: ${e.toString()}'};
     }
   }
 }
