@@ -13,11 +13,13 @@ import 'package:sappiire/web/widget/web_shell.dart';
 class ChangePasswordScreen extends StatefulWidget {
   final String cswd_id;
   final String role;
+  final String displayName;
 
   const ChangePasswordScreen({
     super.key,
     required this.cswd_id,
     required this.role,
+    this.displayName = '',
   });
 
   @override
@@ -108,6 +110,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       pageSubtitle: 'Update your account password',
       role: widget.role,
       cswd_id: widget.cswd_id,
+      displayName: widget.displayName,
       onLogout: () => Navigator.pop(context),
       onNavigate: (path) => _handleNavigation(context, path),
       child: Center(
@@ -441,6 +444,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         next = DashboardScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
+          displayName: widget.displayName,
           onLogout: () => Navigator.pop(context),
         );
         break;
@@ -448,24 +452,28 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         next = ManageFormsScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
+          displayName: widget.displayName,
         );
         break;
       case 'Staff':
         next = ManageStaffScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
+          displayName: widget.displayName,
         );
         break;
       case 'CreateStaff':
         next = CreateStaffScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
+          displayName: widget.displayName,
         );
         break;
       case 'Applicants':
         next = ApplicantsScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
+          displayName: widget.displayName,
         );
         break;
       case 'FormBuilder':
@@ -473,6 +481,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         next = FormBuilderScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
+          displayName: widget.displayName,
         );
         break;
       default:

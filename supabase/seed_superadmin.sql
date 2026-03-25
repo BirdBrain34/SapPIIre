@@ -30,3 +30,20 @@ INSERT INTO public.staff_accounts (
   true
 )
 ON CONFLICT (username) DO NOTHING;
+
+INSERT INTO public.staff_profiles (
+  cswd_id,
+  first_name,
+  last_name,
+  position,
+  department
+)
+SELECT
+  cswd_id,
+  'System',
+  'Administrator',
+  'IT Administrator',
+  'Information Technology'
+FROM public.staff_accounts
+WHERE username = 'superadmin'
+ON CONFLICT (cswd_id) DO NOTHING;

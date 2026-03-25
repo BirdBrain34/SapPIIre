@@ -16,11 +16,13 @@ import 'dart:convert';
 class CreateStaffScreen extends StatefulWidget {
   final String role;
   final String cswd_id;
+  final String displayName;
 
   const CreateStaffScreen({
     super.key,
     required this.role,
     required this.cswd_id,
+    this.displayName = '',
   });
 
   @override
@@ -246,6 +248,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
       pageSubtitle: 'Add a new team member to the system',
       role: widget.role,
       cswd_id: widget.cswd_id,
+      displayName: widget.displayName,
       onLogout: () => Navigator.pop(context),
       onNavigate: (screenPath) => _navigateToScreen(context, screenPath),
       child: Padding(
@@ -549,6 +552,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
         nextScreen = DashboardScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
+          displayName: widget.displayName,
           onLogout: () => Navigator.pop(context),
         );
         break;
@@ -556,12 +560,14 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
         nextScreen = ManageFormsScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
+          displayName: widget.displayName,
         );
         break;
       case 'Staff':
         nextScreen = ManageStaffScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
+          displayName: widget.displayName,
         );
         break;
       case 'FormBuilder':
@@ -569,6 +575,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
         nextScreen = FormBuilderScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
+          displayName: widget.displayName,
         );
         break;
       default:

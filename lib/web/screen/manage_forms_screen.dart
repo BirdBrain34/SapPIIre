@@ -38,11 +38,13 @@ import 'package:sappiire/web/screen/form_builder_screen.dart';
 class ManageFormsScreen extends StatefulWidget {
   final String cswd_id;
   final String role;
+  final String displayName;
 
   const ManageFormsScreen({
     super.key,
     required this.cswd_id,
     required this.role,
+    this.displayName = '',
   });
 
   @override
@@ -372,24 +374,33 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         next = DashboardScreen(
             cswd_id: widget.cswd_id,
             role: widget.role,
+            displayName: widget.displayName,
             onLogout: _handleLogout);
         break;
       case 'Staff':
         next = ManageStaffScreen(
-            cswd_id: widget.cswd_id, role: widget.role);
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
         break;
       case 'CreateStaff':
         next = CreateStaffScreen(
-            cswd_id: widget.cswd_id, role: widget.role);
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
         break;
       case 'Applicants':
         next = ApplicantsScreen(
-            cswd_id: widget.cswd_id, role: widget.role);
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
         break;
       case 'FormBuilder':
         if (widget.role != 'superadmin') return;
         next = FormBuilderScreen(
-            cswd_id: widget.cswd_id, role: widget.role);
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
         break;
       default:
         return;
@@ -411,6 +422,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           : 'Start a session to generate a QR code',
       role: widget.role,
       cswd_id: widget.cswd_id,
+      displayName: widget.displayName,
       onLogout: _handleLogout,
       headerActions: [
         // "Open Customer Display" button — always visible

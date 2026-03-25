@@ -231,12 +231,14 @@ class _BuilderSection {
 class FormBuilderScreen extends StatefulWidget {
   final String cswd_id;
   final String role;
+  final String displayName;
   final String? editTemplateId;
 
   const FormBuilderScreen({
     super.key,
     required this.cswd_id,
     required this.role,
+    this.displayName = '',
     this.editTemplateId,
   });
 
@@ -1200,23 +1202,32 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         next = DashboardScreen(
             cswd_id: widget.cswd_id,
             role: widget.role,
+            displayName: widget.displayName,
             onLogout: _handleLogout);
         break;
       case 'Forms':
         next = ManageFormsScreen(
-            cswd_id: widget.cswd_id, role: widget.role);
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
         break;
       case 'Staff':
         next = ManageStaffScreen(
-            cswd_id: widget.cswd_id, role: widget.role);
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
         break;
       case 'CreateStaff':
         next = CreateStaffScreen(
-            cswd_id: widget.cswd_id, role: widget.role);
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
         break;
       case 'Applicants':
         next = ApplicantsScreen(
-            cswd_id: widget.cswd_id, role: widget.role);
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
         break;
       default:
         return;
@@ -1240,6 +1251,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           : 'Create and manage form templates',
       role: widget.role,
       cswd_id: widget.cswd_id,
+      displayName: widget.displayName,
       onLogout: _handleLogout,
       headerActions: _buildHeaderActions(),
       onNavigate: (path) => _navigateToScreen(context, path),

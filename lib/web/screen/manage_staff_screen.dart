@@ -13,11 +13,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class ManageStaffScreen extends StatefulWidget {
   final String role;
   final String cswd_id;
+  final String displayName;
 
   const ManageStaffScreen({
     super.key,
     required this.role,
     required this.cswd_id,
+    this.displayName = '',
   });
 
   @override
@@ -115,6 +117,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
       pageSubtitle: 'Review and manage staff access',
       role: widget.role,
       cswd_id: widget.cswd_id,
+      displayName: widget.displayName,
       onLogout: () => Navigator.pop(context),
       onNavigate: (screenPath) => _navigateToScreen(context, screenPath),
       child: Padding(
@@ -359,6 +362,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
         nextScreen = DashboardScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
+          displayName: widget.displayName,
           onLogout: () => Navigator.pop(context),
         );
         break;
@@ -366,18 +370,21 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
         nextScreen = ManageFormsScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
+          displayName: widget.displayName,
         );
         break;
       case 'CreateStaff':
         nextScreen = CreateStaffScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
+          displayName: widget.displayName,
         );
         break;
       case 'Applicants':
         nextScreen = ApplicantsScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
+          displayName: widget.displayName,
         );
         break;
       case 'FormBuilder':
@@ -385,6 +392,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
         nextScreen = FormBuilderScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
+          displayName: widget.displayName,
         );
         break;
       default:

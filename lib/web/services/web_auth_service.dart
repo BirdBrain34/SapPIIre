@@ -62,6 +62,16 @@ class WebAuthService {
           .eq('cswd_id', cswdId)
           .maybeSingle();
 
+      // Fall back to username when no profile row exists (e.g., seeded superadmin).
+      String displayName = accountResponse['username'] as String;
+      if (profileResponse != null) {
+        final first = (profileResponse['first_name'] ?? '').toString().trim();
+        final last = (profileResponse['last_name'] ?? '').toString().trim();
+        if (first.isNotEmpty || last.isNotEmpty) {
+          displayName = '$first $last'.trim();
+        }
+      }
+
       return {
         'success': true,
         'message': 'Login successful',
@@ -69,6 +79,7 @@ class WebAuthService {
         'username': accountResponse['username'],
         'email': accountResponse['email'],
         'role': accountResponse['role'] ?? 'viewer',
+        'display_name': displayName,
         'profile': profileResponse,
       };
     } catch (e) {
