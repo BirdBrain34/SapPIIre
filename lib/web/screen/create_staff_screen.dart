@@ -245,6 +245,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
       pageTitle: 'Create Staff Account',
       pageSubtitle: 'Add a new team member to the system',
       role: widget.role,
+      cswd_id: widget.cswd_id,
       onLogout: () => Navigator.pop(context),
       onNavigate: (screenPath) => _navigateToScreen(context, screenPath),
       child: Padding(

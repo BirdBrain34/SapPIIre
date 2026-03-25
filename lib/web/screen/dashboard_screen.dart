@@ -98,6 +98,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       pageTitle: 'Intake Analytics Dashboard',
       pageSubtitle: 'Comprehensive insights from General Intake submissions',
       role: widget.role,
+      cswd_id: widget.cswd_id,
       onLogout: widget.onLogout,
       onNavigate: (screenPath) => _navigateToScreen(context, screenPath),
       child: Padding(

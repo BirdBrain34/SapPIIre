@@ -3,6 +3,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
+import 'package:sappiire/web/screen/change_password_screen.dart';
+import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/web/widget/side_menu.dart';
 
 class WebShell extends StatelessWidget {
@@ -10,6 +12,7 @@ class WebShell extends StatelessWidget {
   final String pageTitle;
   final String pageSubtitle;
   final String role;
+  final String cswd_id;
   final Widget child;
   final VoidCallback onLogout;
   final List<Widget>? headerActions;
@@ -21,6 +24,7 @@ class WebShell extends StatelessWidget {
     required this.pageTitle,
     required this.pageSubtitle,
     required this.role,
+    required this.cswd_id,
     required this.child,
     required this.onLogout,
     this.headerActions,
@@ -84,18 +88,31 @@ class WebShell extends StatelessWidget {
                       // Header action buttons (optional)
                       if (headerActions != null) ...headerActions!,
                       const SizedBox(width: 16),
-                      // Staff avatar placeholder
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: AppColors.highlight.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(
-                          Icons.person_outline,
-                          color: AppColors.highlight,
-                          size: 20,
+                      Tooltip(
+                        message: 'Change Password',
+                        child: GestureDetector(
+                          onTap: () => Navigator.push(
+                            context,
+                            ContentFadeRoute(
+                              page: ChangePasswordScreen(
+                                cswd_id: cswd_id,
+                                role: role,
+                              ),
+                            ),
+                          ),
+                          child: Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: AppColors.highlight.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.person_outline,
+                              color: AppColors.highlight,
+                              size: 20,
+                            ),
+                          ),
                         ),
                       ),
                     ],

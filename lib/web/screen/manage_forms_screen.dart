@@ -410,6 +410,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           ? 'Session active — client can scan the QR code'
           : 'Start a session to generate a QR code',
       role: widget.role,
+      cswd_id: widget.cswd_id,
       onLogout: _handleLogout,
       headerActions: [
         // "Open Customer Display" button — always visible

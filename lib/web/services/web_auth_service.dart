@@ -75,4 +75,57 @@ class WebAuthService {
       return {'success': false, 'message': 'Login error: ${e.toString()}'};
     }
   }
+
+  /// Changes the password for a staff account.
+  /// Verifies the current password before updating.
+  /// Returns { 'success': bool, 'message': String }
+  Future<Map<String, dynamic>> changePassword({
+    required String cswd_id,
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      final account = await _supabase
+          .from('staff_accounts')
+          .select('password_hash')
+          .eq('cswd_id', cswd_id)
+          .maybeSingle();
+
+      if (account == null) {
+        return {'success': false, 'message': 'Account not found.'};
+      }
+
+      final currentHash = _hashPassword(currentPassword);
+      if (currentHash != account['password_hash']) {
+        return {
+          'success': false,
+          'message': 'Current password is incorrect.',
+        };
+      }
+
+      if (newPassword.length < 8) {
+        return {
+          'success': false,
+          'message': 'New password must be at least 8 characters.',
+        };
+      }
+
+      final newHash = _hashPassword(newPassword);
+      if (newHash == account['password_hash']) {
+        return {
+          'success': false,
+          'message': 'New password must be different from your current password.',
+        };
+      }
+
+      await _supabase
+          .from('staff_accounts')
+          .update({'password_hash': newHash})
+          .eq('cswd_id', cswd_id);
+
+      return {'success': true, 'message': 'Password changed successfully.'};
+    } catch (e) {
+      return {'success': false, 'message': 'Error: ${e.toString()}'};
+    }
+  }
 }

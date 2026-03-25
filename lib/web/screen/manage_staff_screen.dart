@@ -114,6 +114,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
       pageTitle: 'Manage Staff Accounts',
       pageSubtitle: 'Review and manage staff access',
       role: widget.role,
+      cswd_id: widget.cswd_id,
       onLogout: () => Navigator.pop(context),
       onNavigate: (screenPath) => _navigateToScreen(context, screenPath),
       child: Padding(

@@ -1239,6 +1239,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           ? '$_formName${_hasUnsavedChanges ? '  •  unsaved changes' : ''}'
           : 'Create and manage form templates',
       role: widget.role,
+      cswd_id: widget.cswd_id,
       onLogout: _handleLogout,
       headerActions: _buildHeaderActions(),
       onNavigate: (path) => _navigateToScreen(context, path),

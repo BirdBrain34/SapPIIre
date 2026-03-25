@@ -399,6 +399,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       pageTitle: 'Applicants',
       pageSubtitle: 'Review submitted client intake forms',
       role: widget.role,
+      cswd_id: widget.cswd_id,
       onLogout: _handleLogout,
       headerActions: [
         _buildHeaderButton('Refresh', Icons.refresh,
