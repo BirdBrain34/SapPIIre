@@ -170,13 +170,9 @@ class _BuilderColumn {
   String id;
   String label;
   String fieldName;
-  FormFieldType type; // text, number, date, dropdown
+  FormFieldType type;
   int order;
-  List<_BuilderOption> options; // only for dropdown columns
-
-  /// For familyTable core columns only. Maps this UI column to a specific
-  /// column in the `family_composition` DB table (e.g. "relationship_of_relative").
-  /// Null for custom (non-core) columns added by the superadmin.
+  List<_BuilderOption> options;
   String? dbMapKey;
 
   _BuilderColumn({
@@ -191,8 +187,6 @@ class _BuilderColumn {
        fieldName = fieldName ?? 'col_${_generateUuid().substring(0, 8)}',
        options = options ?? [];
 
-  /// Whether this column has a DB mapping. Used by the interceptor for
-  /// best-effort routing — no longer prevents deletion or editing in the UI.
   bool get isCoreColumn => dbMapKey != null;
 }
 
@@ -218,11 +212,11 @@ class _BuilderField {
   String? canonicalFieldKey;
   int order;
   List<_BuilderOption> options;
-  List<_BuilderColumn> columns; // for memberTable
+  List<_BuilderColumn> columns;
   int scaleMin;
   int scaleMax;
-  String formula; // for computed fields
-  String? ageFromFieldId; // for number fields auto-computed from a date field
+  String formula;
+  String? ageFromFieldId;
   _BuilderCondition condition;
 
   _BuilderField({
@@ -311,6 +305,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   String _formStatus = 'draft';
   List<_BuilderSection> _sections = [];
 
+  // ── Popup intro state (new) ────────────────────────────────
+  bool _popupEnabled = false;
+  String _popupSubtitle = '';
+  String _popupDescription = '';
+
   // Selection tracking
   int? _activeSectionIdx;
   int? _activeFieldIdx;
@@ -393,35 +392,15 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     ref = ref.replaceAll(
       '{MON}',
       const [
-        'JAN',
-        'FEB',
-        'MAR',
-        'APR',
-        'MAY',
-        'JUN',
-        'JUL',
-        'AUG',
-        'SEP',
-        'OCT',
-        'NOV',
-        'DEC',
+        'JAN','FEB','MAR','APR','MAY','JUN',
+        'JUL','AUG','SEP','OCT','NOV','DEC',
       ][now.month - 1],
     );
     ref = ref.replaceAll(
       '{MONTH}',
       const [
-        'JANUARY',
-        'FEBRUARY',
-        'MARCH',
-        'APRIL',
-        'MAY',
-        'JUNE',
-        'JULY',
-        'AUGUST',
-        'SEPTEMBER',
-        'OCTOBER',
-        'NOVEMBER',
-        'DECEMBER',
+        'JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE',
+        'JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER',
       ][now.month - 1],
     );
     ref = ref.replaceAll('{DD}', pad(now.day, 2));
@@ -432,7 +411,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     ref = ref.replaceAll('{HH24}', pad(now.hour, 2));
     ref = ref.replaceAll('{MI}', pad(now.minute, 2));
     ref = ref.replaceAll('{SS}', pad(now.second, 2));
-
     ref = ref.replaceAll('{########}', '????????');
     ref = ref.replaceAll('{######}', '??????');
     ref = ref.replaceAll('{####}', '????');
@@ -524,7 +502,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       return;
     }
 
-    // Parse sections & fields into builder models
     final rawSections =
         (data['form_sections'] as List<dynamic>? ?? [])
             .cast<Map<String, dynamic>>()
@@ -541,7 +518,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         })
         .toList();
 
-    // Separate child column-definition fields from top-level fields
     final childFields = rawFields
         .where((f) => f['parent_field_id'] != null)
         .toList();
@@ -549,7 +525,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         .where((f) => f['parent_field_id'] == null)
         .toList();
 
-    // Group children by parent_field_id
     final childrenByParent = <String, List<Map<String, dynamic>>>{};
     for (final cf in childFields) {
       final pid = cf['parent_field_id'] as String;
@@ -582,7 +557,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                   ),
                 );
 
-          // Parse columns for member_table and family_table fields
           List<_BuilderColumn> columns = [];
           final fid = f['field_id'] as String;
           final ftype = f['field_type'] as String? ?? '';
@@ -603,7 +577,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                         (b['option_order'] as int?) ?? 0,
                       ),
                     );
-              // Read db_map_key from validation_rules for system table cols
               final vr = cf['validation_rules'] as Map<String, dynamic>?;
               return _BuilderColumn(
                 id: cf['field_id'] as String,
@@ -696,6 +669,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       _requiresReference = (data['requires_reference'] as bool?) ?? true;
       _formStatus = data['status'] as String? ?? 'draft';
       _sections = sections;
+      // ── Load popup fields ──
+      _popupEnabled = (data['popup_enabled'] as bool?) ?? false;
+      _popupSubtitle = data['popup_subtitle'] as String? ?? '';
+      _popupDescription = data['popup_description'] as String? ?? '';
       _activeSectionIdx = null;
       _activeFieldIdx = null;
       _hasUnsavedChanges = false;
@@ -719,7 +696,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     await _loadTemplateList();
     _clearCtrls();
 
-    // Start with one section and one question
     setState(() {
       _activeTemplateId = id;
       _formName = 'Untitled Form';
@@ -729,6 +705,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       _referenceFormat = defaultFormat;
       _requiresReference = true;
       _formStatus = 'draft';
+      // ── Reset popup fields ──
+      _popupEnabled = false;
+      _popupSubtitle = '';
+      _popupDescription = '';
       _sections = [
         _BuilderSection(
           name: 'Section 1',
@@ -747,7 +727,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     if (_activeTemplateId == null) return;
     setState(() => _isSaving = true);
 
-    // Build DB payloads from builder state
     final dbSections = <Map<String, dynamic>>[];
     final dbFields = <Map<String, dynamic>>[];
     final dbOptions = <Map<String, dynamic>>[];
@@ -789,7 +768,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           if (validationRules.isNotEmpty) 'validation_rules': validationRules,
         });
 
-        // Serialize member table columns as child fields
         if (field.type == FormFieldType.memberTable ||
             field.type == FormFieldType.familyTable) {
           for (var ci = 0; ci < field.columns.length; ci++) {
@@ -805,13 +783,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               'placeholder': null,
               'field_order': ci,
               'parent_field_id': field.id,
-              // Persist db_map_key so the interceptor knows which DB
-              // column this UI column maps to.
               if (col.dbMapKey != null)
                 'validation_rules': {'db_map_key': col.dbMapKey},
             });
 
-            // Column options (for dropdown columns)
             if (col.type == FormFieldType.dropdown) {
               for (var oi = 0; oi < col.options.length; oi++) {
                 final opt = col.options[oi];
@@ -879,6 +854,25 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       conditions: dbConditions,
     );
 
+    // ── Save popup fields to form_templates directly ──────────
+    // Popup data is template metadata, not a field row, so it is
+    // written separately to form_templates after the main save.
+    if (success) {
+      try {
+        await _supabase.from('form_templates').update({
+          'popup_enabled': _popupEnabled,
+          'popup_subtitle': _popupSubtitle.trim().isEmpty
+              ? null
+              : _popupSubtitle.trim(),
+          'popup_description': _popupDescription.trim().isEmpty
+              ? null
+              : _popupDescription.trim(),
+        }).eq('template_id', _activeTemplateId!);
+      } catch (e) {
+        debugPrint('Popup metadata save error: $e');
+      }
+    }
+
     if (!mounted) return;
     setState(() {
       _isSaving = false;
@@ -902,7 +896,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   Future<void> _publishTemplate() async {
     if (_activeTemplateId == null) return;
 
-    // Validate: must have at least one section with one field
     final hasFields = _sections.any((s) => s.fields.isNotEmpty);
     if (!hasFields) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1012,7 +1005,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       details: {'force_delete': false},
     );
 
-    // First check for submissions
     final result = await _service.deleteTemplate(_activeTemplateId!);
     if (!mounted) return;
 
@@ -1023,13 +1015,15 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         _sections.clear();
         _formName = '';
         _formDesc = '';
+        _popupEnabled = false;
+        _popupSubtitle = '';
+        _popupDescription = '';
         _hasUnsavedChanges = false;
       });
       await _loadTemplateList();
       return;
     }
 
-    // Has submissions — offer archive or force-delete
     final subCount = result['submissionCount'] as int? ?? 0;
     final choice = await showDialog<String>(
       context: context,
@@ -1098,6 +1092,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           _sections.clear();
           _formName = '';
           _formDesc = '';
+          _popupEnabled = false;
+          _popupSubtitle = '';
+          _popupDescription = '';
           _hasUnsavedChanges = false;
         });
         await _loadTemplateList();
@@ -1154,7 +1151,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(success ? 'Form restored to draft ✓' : 'Error restoring'),
+        content: Text(
+            success ? 'Form restored to draft ✓' : 'Error restoring'),
         backgroundColor: success ? Colors.green : Colors.red,
         behavior: SnackBarBehavior.floating,
       ),
@@ -1239,12 +1237,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     });
   }
 
-  // ── System block definitions ───────────────────────────────
   static const _systemBlocks =
-      <
-        FormFieldType,
-        ({String label, String fieldName, String desc, IconData icon})
-      >{
+      <FormFieldType,
+          ({String label, String fieldName, String desc, IconData icon})>{
         FormFieldType.membershipGroup: (
           label: 'Membership Group',
           fieldName: 'membership_group',
@@ -1278,64 +1273,17 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         ),
       };
 
-  // The 9 core columns of the family_composition DB table.
-  // Each entry: (label, fieldName, dbMapKey, type)
   static const _familyTableCoreColumns =
       <({String label, String fieldName, String dbMapKey, FormFieldType type})>[
-        (
-          label: 'Name',
-          fieldName: 'name',
-          dbMapKey: 'name',
-          type: FormFieldType.text,
-        ),
-        (
-          label: 'Relationship',
-          fieldName: 'relationship_of_relative',
-          dbMapKey: 'relationship_of_relative',
-          type: FormFieldType.text,
-        ),
-        (
-          label: 'Birthdate',
-          fieldName: 'birthdate',
-          dbMapKey: 'birthdate',
-          type: FormFieldType.date,
-        ),
-        (
-          label: 'Age',
-          fieldName: 'age',
-          dbMapKey: 'age',
-          type: FormFieldType.number,
-        ),
-        (
-          label: 'Sex',
-          fieldName: 'gender',
-          dbMapKey: 'gender',
-          type: FormFieldType.dropdown,
-        ),
-        (
-          label: 'Civil Status',
-          fieldName: 'civil_status',
-          dbMapKey: 'civil_status',
-          type: FormFieldType.dropdown,
-        ),
-        (
-          label: 'Education',
-          fieldName: 'education',
-          dbMapKey: 'education',
-          type: FormFieldType.dropdown,
-        ),
-        (
-          label: 'Occupation',
-          fieldName: 'occupation',
-          dbMapKey: 'occupation',
-          type: FormFieldType.text,
-        ),
-        (
-          label: 'Allowance (₱)',
-          fieldName: 'allowance',
-          dbMapKey: 'allowance',
-          type: FormFieldType.number,
-        ),
+        (label: 'Name', fieldName: 'name', dbMapKey: 'name', type: FormFieldType.text),
+        (label: 'Relationship', fieldName: 'relationship_of_relative', dbMapKey: 'relationship_of_relative', type: FormFieldType.text),
+        (label: 'Birthdate', fieldName: 'birthdate', dbMapKey: 'birthdate', type: FormFieldType.date),
+        (label: 'Age', fieldName: 'age', dbMapKey: 'age', type: FormFieldType.number),
+        (label: 'Sex', fieldName: 'gender', dbMapKey: 'gender', type: FormFieldType.dropdown),
+        (label: 'Civil Status', fieldName: 'civil_status', dbMapKey: 'civil_status', type: FormFieldType.dropdown),
+        (label: 'Education', fieldName: 'education', dbMapKey: 'education', type: FormFieldType.dropdown),
+        (label: 'Occupation', fieldName: 'occupation', dbMapKey: 'occupation', type: FormFieldType.text),
+        (label: 'Allowance (₱)', fieldName: 'allowance', dbMapKey: 'allowance', type: FormFieldType.number),
       ];
 
   void _addSystemField(int si, FormFieldType type) {
@@ -1343,7 +1291,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     if (block == null) return;
     final section = _sections[si];
 
-    // Prevent duplicates for one-per-form blocks
     final allFields = _sections.expand((s) => s.fields);
     if (const {
           FormFieldType.membershipGroup,
@@ -1355,15 +1302,13 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'A "${block.label}" block already exists in this form.',
-          ),
+              'A "${block.label}" block already exists in this form.'),
           backgroundColor: Colors.orange.shade700,
         ),
       );
       return;
     }
 
-    // Pre-populate familyTable with its 9 core DB-mapped columns
     List<_BuilderColumn> columns = [];
     if (type == FormFieldType.familyTable) {
       columns = _familyTableCoreColumns
@@ -1497,9 +1442,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           canonicalFieldKey: src.canonicalFieldKey,
           ageFromFieldId: src.ageFromFieldId,
           order: fi + 1,
-          options: src.options
-              .map((o) => _BuilderOption(label: o.label))
-              .toList(),
+          options: src.options.map((o) => _BuilderOption(label: o.label)).toList(),
           condition: _BuilderCondition(
             triggerFieldId: src.condition.triggerFieldId,
             triggerValue: src.condition.triggerValue,
@@ -1736,10 +1679,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           : Icon(icon, color: Colors.white, size: 18),
       label: Text(
         label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
-        ),
+        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
       ),
       style: ElevatedButton.styleFrom(
         backgroundColor: color ?? AppColors.primaryBlue,
@@ -1750,7 +1690,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   }
 
   // ═══════════════════════════════════════════════════════════
-  // TEMPLATE LIST PANEL (left sidebar)
+  // TEMPLATE LIST PANEL
   // ═══════════════════════════════════════════════════════════
   Widget _buildTemplateListPanel() {
     return Container(
@@ -1766,11 +1706,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             padding: const EdgeInsets.all(20),
             child: Row(
               children: [
-                const Icon(
-                  Icons.description_outlined,
-                  color: AppColors.textDark,
-                  size: 20,
-                ),
+                const Icon(Icons.description_outlined,
+                    color: AppColors.textDark, size: 20),
                 const SizedBox(width: 8),
                 const Expanded(
                   child: Text(
@@ -1797,9 +1734,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             child: _isLoadingList
                 ? const Center(
                     child: CircularProgressIndicator(
-                      color: AppColors.highlight,
-                    ),
-                  )
+                        color: AppColors.highlight))
                 : _templates.isEmpty
                 ? _buildNoTemplates()
                 : ListView.builder(
@@ -1819,16 +1754,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.note_add_outlined,
-            size: 48,
-            color: AppColors.textMuted.withOpacity(0.5),
-          ),
+          Icon(Icons.note_add_outlined,
+              size: 48, color: AppColors.textMuted.withOpacity(0.5)),
           const SizedBox(height: 12),
-          const Text(
-            'No templates yet',
-            style: TextStyle(color: AppColors.textMuted),
-          ),
+          const Text('No templates yet',
+              style: TextStyle(color: AppColors.textMuted)),
           const SizedBox(height: 8),
           TextButton.icon(
             onPressed: _createNewTemplate,
@@ -1866,7 +1796,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       ),
       child: ListTile(
         dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         leading: Icon(
           Icons.description_outlined,
           color: isActive ? AppColors.highlight : AppColors.textMuted,
@@ -1887,13 +1818,12 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             Container(
               width: 6,
               height: 6,
-              decoration: BoxDecoration(
-                color: statusClr,
-                shape: BoxShape.circle,
-              ),
+              decoration:
+                  BoxDecoration(color: statusClr, shape: BoxShape.circle),
             ),
             const SizedBox(width: 4),
-            Text(statusLbl, style: TextStyle(fontSize: 11, color: statusClr)),
+            Text(statusLbl,
+                style: TextStyle(fontSize: 11, color: statusClr)),
           ],
         ),
         onTap: () async {
@@ -1913,11 +1843,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.edit_note,
-            size: 80,
-            color: AppColors.highlight.withOpacity(0.3),
-          ),
+          Icon(Icons.edit_note,
+              size: 80, color: AppColors.highlight.withOpacity(0.3)),
           const SizedBox(height: 24),
           const Text(
             'Select a template or create a new one',
@@ -1931,16 +1858,14 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           ElevatedButton.icon(
             onPressed: _createNewTemplate,
             icon: const Icon(Icons.add, color: Colors.white),
-            label: const Text(
-              'New Form',
-              style: TextStyle(color: Colors.white),
-            ),
+            label: const Text('New Form',
+                style: TextStyle(color: Colors.white)),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.highlight,
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+                  borderRadius: BorderRadius.circular(12)),
             ),
           ),
         ],
@@ -1956,9 +1881,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       color: AppColors.pageBg,
       child: Column(
         children: [
-          // ── Static toolbar ──
           _buildCanvasToolbar(),
-          // ── Scrollable canvas ──
           Expanded(
             child: SingleChildScrollView(
               controller: _scrollCtrl,
@@ -1987,9 +1910,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  // ── Canvas Toolbar (static, top of builder area) ──────────
   Widget _buildCanvasToolbar() {
-    // Determine the section index to add to: use active section, or last section
     final targetSi =
         _activeSectionIdx ??
         (_sections.isNotEmpty ? _sections.length - 1 : null);
@@ -2004,21 +1925,16 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         children: [
           ElevatedButton.icon(
             onPressed: targetSi != null ? () => _addField(targetSi) : null,
-            icon: const Icon(
-              Icons.add_circle_outline,
-              size: 18,
-              color: Colors.white,
-            ),
-            label: const Text(
-              'Add Question',
-              style: TextStyle(color: Colors.white, fontSize: 13),
-            ),
+            icon: const Icon(Icons.add_circle_outline,
+                size: 18, color: Colors.white),
+            label: const Text('Add Question',
+                style: TextStyle(color: Colors.white, fontSize: 13)),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.highlight,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
+                  borderRadius: BorderRadius.circular(8)),
               elevation: 0,
             ),
           ),
@@ -2028,31 +1944,32 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 ? () => _showSystemBlockPicker(targetSi)
                 : null,
             icon: const Icon(Icons.dashboard_customize_outlined, size: 18),
-            label: const Text(
-              'Add Intake Module',
-              style: TextStyle(fontSize: 13),
-            ),
+            label: const Text('Add Intake Module',
+                style: TextStyle(fontSize: 13)),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.highlight,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               side: const BorderSide(color: AppColors.highlight),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
+                  borderRadius: BorderRadius.circular(8)),
             ),
           ),
           const Spacer(),
           if (_activeSectionIdx != null)
             Text(
               'Active: ${_sections[_activeSectionIdx!].name}',
-              style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+              style:
+                  const TextStyle(fontSize: 12, color: AppColors.textMuted),
             ),
         ],
       ),
     );
   }
 
-  // ── Title Card ──────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════
+  // TITLE CARD  (includes the popup section at the bottom)
+  // ═══════════════════════════════════════════════════════════
   Widget _buildTitleCard() {
     return Container(
       decoration: BoxDecoration(
@@ -2065,7 +1982,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Form name
+            // ── Form name ──────────────────────────────────
             TextField(
               controller: _ctrl('formName', _formName),
               style: const TextStyle(
@@ -2081,7 +1998,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                   borderSide: BorderSide(color: AppColors.cardBorder),
                 ),
                 focusedBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: AppColors.highlight, width: 2),
+                  borderSide:
+                      BorderSide(color: AppColors.highlight, width: 2),
                 ),
               ),
               onChanged: (v) {
@@ -2090,19 +2008,22 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               },
             ),
             const SizedBox(height: 8),
-            // Description
+            // ── Description ────────────────────────────────
             TextField(
               controller: _ctrl('formDesc', _formDesc),
-              style: const TextStyle(fontSize: 14, color: AppColors.textMuted),
+              style:
+                  const TextStyle(fontSize: 14, color: AppColors.textMuted),
               decoration: const InputDecoration(
                 hintText: 'Form description',
-                hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 14),
+                hintStyle:
+                    TextStyle(color: AppColors.textMuted, fontSize: 14),
                 border: InputBorder.none,
                 enabledBorder: UnderlineInputBorder(
                   borderSide: BorderSide(color: Colors.transparent),
                 ),
                 focusedBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: AppColors.highlight, width: 1),
+                  borderSide:
+                      BorderSide(color: AppColors.highlight, width: 1),
                 ),
               ),
               onChanged: (v) {
@@ -2142,7 +2063,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: TextField(
-                    controller: _ctrl('referencePrefix', _referencePrefix),
+                    controller:
+                        _ctrl('referencePrefix', _referencePrefix),
                     decoration: InputDecoration(
                       labelText: 'Reference Prefix',
                       hintText: 'GIS',
@@ -2186,9 +2108,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               ],
             ),
             const SizedBox(height: 10),
+            // ── Reference Format ───────────────────────────
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: AppColors.pageBg,
                 borderRadius: BorderRadius.circular(8),
@@ -2219,17 +2143,17 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                               ),
                             ),
                           ]
-                        : List.generate(_referenceFormatParts().length, (i) {
+                        : List.generate(
+                            _referenceFormatParts().length, (i) {
                             final part = _referenceFormatParts()[i];
                             return Container(
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 6,
-                              ),
+                                  horizontal: 8, vertical: 6),
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: AppColors.cardBorder),
+                                border: Border.all(
+                                    color: AppColors.cardBorder),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -2245,15 +2169,15 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                                   ),
                                   const SizedBox(width: 6),
                                   InkWell(
-                                    borderRadius: BorderRadius.circular(10),
-                                    onTap: () => _removeReferencePartAt(i),
+                                    borderRadius:
+                                        BorderRadius.circular(10),
+                                    onTap: () =>
+                                        _removeReferencePartAt(i),
                                     child: const Padding(
                                       padding: EdgeInsets.all(1),
-                                      child: Icon(
-                                        Icons.close,
-                                        size: 14,
-                                        color: AppColors.textMuted,
-                                      ),
+                                      child: Icon(Icons.close,
+                                          size: 14,
+                                          color: AppColors.textMuted),
                                     ),
                                   ),
                                 ],
@@ -2289,23 +2213,21 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                       children: groupTokens
                           .map(
                             (t) => OutlinedButton(
-                              onPressed: () => _appendReferenceToken(t.token),
+                              onPressed: () =>
+                                  _appendReferenceToken(t.token),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: AppColors.primaryBlue,
                                 side: const BorderSide(
-                                  color: AppColors.cardBorder,
-                                ),
+                                    color: AppColors.cardBorder),
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 8,
-                                ),
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    horizontal: 10, vertical: 8),
+                                tapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
                                 visualDensity: VisualDensity.compact,
                               ),
-                              child: Text(
-                                t.label,
-                                style: const TextStyle(fontSize: 11),
-                              ),
+                              child: Text(t.label,
+                                  style:
+                                      const TextStyle(fontSize: 11)),
                             ),
                           )
                           .toList(),
@@ -2338,23 +2260,21 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                       foregroundColor: AppColors.textMuted,
                       side: const BorderSide(color: AppColors.cardBorder),
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
+                          horizontal: 10, vertical: 8),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       visualDensity: VisualDensity.compact,
                     ),
-                    child: Text(
-                      sep == ' ' ? 'space' : sep,
-                      style: const TextStyle(fontSize: 11),
-                    ),
+                    child: Text(sep == ' ' ? 'space' : sep,
+                        style: const TextStyle(fontSize: 11)),
                   ),
               ],
             ),
             const SizedBox(height: 8),
+            // ── Reference preview ──────────────────────────
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: const Color(0xFFF8FAFF),
                 borderRadius: BorderRadius.circular(8),
@@ -2362,11 +2282,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               ),
               child: Row(
                 children: [
-                  const Icon(
-                    Icons.visibility_outlined,
-                    size: 16,
-                    color: AppColors.textMuted,
-                  ),
+                  const Icon(Icons.visibility_outlined,
+                      size: 16, color: AppColors.textMuted),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -2387,6 +2304,203 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 ],
               ),
             ),
+
+            // ══════════════════════════════════════════════
+            // FORM INTRODUCTION POPUP SECTION
+            // Sits at the bottom of the title card so it
+            // feels like part of the form's metadata, not
+            // a field. Saved to form_templates, not form_fields.
+            // ══════════════════════════════════════════════
+            const SizedBox(height: 16),
+            const Divider(color: AppColors.cardBorder),
+            const SizedBox(height: 4),
+
+            // ── Toggle row ────────────────────────────────
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: _popupEnabled
+                        ? AppColors.primaryBlue.withOpacity(0.1)
+                        : AppColors.pageBg,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.info_outline_rounded,
+                    size: 18,
+                    color: _popupEnabled
+                        ? AppColors.primaryBlue
+                        : AppColors.textMuted,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Form Introduction Popup',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: _popupEnabled
+                              ? AppColors.textDark
+                              : AppColors.textMuted,
+                        ),
+                      ),
+                      Text(
+                        _popupEnabled
+                            ? 'Shown on mobile before the user scans the QR'
+                            : 'Disabled — mobile goes straight to QR scan',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: _popupEnabled
+                              ? AppColors.primaryBlue.withOpacity(0.75)
+                              : AppColors.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: _popupEnabled,
+                  activeColor: AppColors.primaryBlue,
+                  onChanged: (v) => setState(() {
+                    _popupEnabled = v;
+                    _hasUnsavedChanges = true;
+                  }),
+                ),
+              ],
+            ),
+
+            // ── Editable fields (shown only when enabled) ─
+            if (_popupEnabled) ...[
+              const SizedBox(height: 14),
+
+              // Subtitle
+              TextField(
+                controller: _ctrl('popupSubtitle', _popupSubtitle),
+                style: const TextStyle(
+                    fontSize: 13, color: AppColors.textDark),
+                decoration: InputDecoration(
+                  labelText: 'Subtitle',
+                  hintText: 'e.g. Before you proceed…',
+                  hintStyle: const TextStyle(
+                      fontSize: 12, color: AppColors.textMuted),
+                  filled: true,
+                  fillColor: AppColors.pageBg,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(
+                        color: AppColors.primaryBlue),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 12),
+                ),
+                onChanged: (v) {
+                  _popupSubtitle = v;
+                  _hasUnsavedChanges = true;
+                },
+              ),
+              const SizedBox(height: 10),
+
+              // Description (multiline)
+              TextField(
+                controller:
+                    _ctrl('popupDesc', _popupDescription),
+                style: const TextStyle(
+                    fontSize: 13, color: AppColors.textDark),
+                maxLines: 5,
+                decoration: InputDecoration(
+                  labelText: 'Description',
+                  hintText:
+                      'Explain what this form is for, what data is '
+                      'being collected, and how it will be used…',
+                  hintStyle: const TextStyle(
+                      fontSize: 12, color: AppColors.textMuted),
+                  filled: true,
+                  fillColor: AppColors.pageBg,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(
+                        color: AppColors.primaryBlue),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 12),
+                  alignLabelWithHint: true,
+                ),
+                onChanged: (v) {
+                  _popupDescription = v;
+                  _hasUnsavedChanges = true;
+                },
+              ),
+              const SizedBox(height: 10),
+
+              // ── Live preview badge ─────────────────────
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryBlue.withOpacity(0.04),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                      color: AppColors.primaryBlue.withOpacity(0.15)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.phone_android,
+                        size: 14, color: AppColors.textMuted),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: RichText(
+                        text: TextSpan(
+                          style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textMuted),
+                          children: [
+                            const TextSpan(
+                              text: 'Preview  ',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600),
+                            ),
+                            TextSpan(
+                              text: _formName.trim().isEmpty
+                                  ? 'Untitled Form'
+                                  : _formName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textDark,
+                              ),
+                            ),
+                            if (_popupSubtitle.trim().isNotEmpty)
+                              TextSpan(
+                                  text:
+                                      '  ·  ${_popupSubtitle.trim()}'),
+                            if (_popupDescription.trim().isNotEmpty)
+                              TextSpan(
+                                text:
+                                    '\n${_popupDescription.trim().length > 100 ? '${_popupDescription.trim().substring(0, 100)}…' : _popupDescription.trim()}',
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            // ── END POPUP SECTION ─────────────────────────
           ],
         ),
       ),
@@ -2423,7 +2537,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     return items;
   }
 
-  Widget _buildSectionHeader(_BuilderSection section, int si, bool isActive) {
+  Widget _buildSectionHeader(
+      _BuilderSection section, int si, bool isActive) {
     return GestureDetector(
       onTap: () => setState(() {
         _activeSectionIdx = si;
@@ -2435,12 +2550,12 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           color: AppColors.cardBg,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isActive ? AppColors.highlight : AppColors.cardBorder,
+            color:
+                isActive ? AppColors.highlight : AppColors.cardBorder,
           ),
         ),
         child: Row(
           children: [
-            // Thin left accent for active state only
             if (isActive)
               Container(
                 width: 3,
@@ -2448,19 +2563,20 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 decoration: const BoxDecoration(
                   color: AppColors.highlight,
                   borderRadius: BorderRadius.horizontal(
-                    left: Radius.circular(8),
-                  ),
+                      left: Radius.circular(8)),
                 ),
               ),
             Expanded(
               child: Padding(
-                padding: EdgeInsets.fromLTRB(isActive ? 13 : 16, 12, 8, 12),
+                padding: EdgeInsets.fromLTRB(
+                    isActive ? 13 : 16, 12, 8, 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (isActive)
                       TextField(
-                        controller: _ctrl('sec_${section.id}', section.name),
+                        controller:
+                            _ctrl('sec_${section.id}', section.name),
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w500,
@@ -2470,13 +2586,12 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                           hintText: 'Section Title',
                           border: InputBorder.none,
                           enabledBorder: UnderlineInputBorder(
-                            borderSide: BorderSide(color: AppColors.cardBorder),
+                            borderSide:
+                                BorderSide(color: AppColors.cardBorder),
                           ),
                           focusedBorder: UnderlineInputBorder(
                             borderSide: BorderSide(
-                              color: AppColors.highlight,
-                              width: 2,
-                            ),
+                                color: AppColors.highlight, width: 2),
                           ),
                         ),
                         onChanged: (v) {
@@ -2500,9 +2615,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                           section.description ?? '',
                         ),
                         style: const TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textMuted,
-                        ),
+                            fontSize: 13, color: AppColors.textMuted),
                         decoration: const InputDecoration(
                           hintText: 'Section description (optional)',
                           hintStyle: TextStyle(fontSize: 13),
@@ -2520,7 +2633,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             if (isActive) ...[
               IconButton(
                 icon: const Icon(Icons.arrow_upward, size: 18),
-                onPressed: si > 0 ? () => _moveSection(si, -1) : null,
+                onPressed:
+                    si > 0 ? () => _moveSection(si, -1) : null,
                 tooltip: 'Move up',
               ),
               IconButton(
@@ -2531,11 +2645,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 tooltip: 'Move down',
               ),
               IconButton(
-                icon: const Icon(
-                  Icons.delete_outline,
-                  size: 18,
-                  color: Colors.red,
-                ),
+                icon: const Icon(Icons.delete_outline,
+                    size: 18, color: Colors.red),
                 onPressed: () => _removeSection(si),
                 tooltip: 'Delete section',
               ),
@@ -2549,7 +2660,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   // ═══════════════════════════════════════════════════════════
   // FIELD CARD
   // ═══════════════════════════════════════════════════════════
-  Widget _buildFieldCard(_BuilderField field, int si, int fi, bool isActive) {
+  Widget _buildFieldCard(
+      _BuilderField field, int si, int fi, bool isActive) {
     return GestureDetector(
       onTap: () => setState(() {
         _activeSectionIdx = si;
@@ -2561,39 +2673,36 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           color: AppColors.cardBg,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isActive ? AppColors.highlight : AppColors.cardBorder,
+            color:
+                isActive ? AppColors.highlight : AppColors.cardBorder,
           ),
         ),
         child: IntrinsicHeight(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Thin left accent for active state only
               if (isActive)
                 Container(
                   width: 3,
                   decoration: const BoxDecoration(
                     color: AppColors.highlight,
                     borderRadius: BorderRadius.horizontal(
-                      left: Radius.circular(8),
-                    ),
+                        left: Radius.circular(8)),
                   ),
                 ),
               Expanded(
                 child: Padding(
-                  padding: EdgeInsets.fromLTRB(isActive ? 18 : 24, 16, 16, 8),
+                  padding: EdgeInsets.fromLTRB(
+                      isActive ? 18 : 24, 16, 16, 8),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ── Label + Type selector ──
                       if (isActive)
                         _buildFieldHeaderActive(field)
                       else
                         _buildFieldHeaderInactive(field),
                       const SizedBox(height: 12),
-                      // ── Type-specific content ──
                       _buildFieldContent(field, isActive),
-                      // ── Bottom toolbar ──
                       if (isActive) ...[
                         const SizedBox(height: 8),
                         const Divider(color: AppColors.cardBorder),
@@ -2611,7 +2720,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   }
 
   Widget _buildFieldHeaderActive(_BuilderField field) {
-    final canLinkCanonicalKey = _canonicalKeyEligibleTypes.contains(field.type);
+    final canLinkCanonicalKey =
+        _canonicalKeyEligibleTypes.contains(field.type);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2623,7 +2733,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               flex: 3,
               child: TextField(
                 controller: _ctrl('fld_${field.id}', field.label),
-                style: const TextStyle(fontSize: 15, color: AppColors.textDark),
+                style: const TextStyle(
+                    fontSize: 15, color: AppColors.textDark),
                 decoration: InputDecoration(
                   hintText: 'Question',
                   filled: true,
@@ -2634,12 +2745,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: AppColors.highlight),
+                    borderSide:
+                        const BorderSide(color: AppColors.highlight),
                   ),
                   contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 14,
-                  ),
+                      horizontal: 12, vertical: 14),
                 ),
                 onChanged: (v) {
                   field.label = v;
@@ -2651,18 +2761,19 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             Expanded(
               flex: 2,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: AppColors.cardBorder),
                 ),
-                child:
-                    field.type.isSystemType ||
+                child: field.type.isSystemType ||
                         field.type == FormFieldType.computed
                     ? Row(
                         children: [
                           Icon(
-                            _systemTypeIcons[field.type] ?? Icons.help_outline,
+                            _systemTypeIcons[field.type] ??
+                                Icons.help_outline,
                             size: 18,
                             color: AppColors.textMuted,
                           ),
@@ -2683,7 +2794,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                         child: DropdownButton<FormFieldType>(
                           value: field.type,
                           isExpanded: true,
-                          icon: const Icon(Icons.arrow_drop_down),
+                          icon:
+                              const Icon(Icons.arrow_drop_down),
                           style: const TextStyle(
                             fontSize: 13,
                             color: AppColors.textDark,
@@ -2693,17 +2805,14 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                               value: e.key,
                               child: Row(
                                 children: [
-                                  Icon(
-                                    _typeIcons[e.key],
-                                    size: 18,
-                                    color: AppColors.textMuted,
-                                  ),
+                                  Icon(_typeIcons[e.key],
+                                      size: 18,
+                                      color: AppColors.textMuted),
                                   const SizedBox(width: 8),
                                   Flexible(
-                                    child: Text(
-                                      e.value,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
+                                    child: Text(e.value,
+                                        overflow:
+                                            TextOverflow.ellipsis),
                                   ),
                                 ],
                               ),
@@ -2711,37 +2820,37 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                           }).toList(),
                           onChanged: (v) {
                             if (v == null) return;
-
                             if (v == FormFieldType.signature) {
                               final hasOtherSignature = _sections
                                   .expand((s) => s.fields)
                                   .any(
                                     (f) =>
-                                        f.type == FormFieldType.signature &&
+                                        f.type ==
+                                            FormFieldType.signature &&
                                         f.id != field.id,
                                   );
                               if (hasOtherSignature) {
-                                ScaffoldMessenger.of(context).showSnackBar(
+                                ScaffoldMessenger.of(context)
+                                    .showSnackBar(
                                   SnackBar(
                                     content: const Text(
-                                      'A "Signature" block already exists in this form.',
-                                    ),
-                                    backgroundColor: Colors.orange.shade700,
+                                        'A "Signature" block already exists in this form.'),
+                                    backgroundColor:
+                                        Colors.orange.shade700,
                                   ),
                                 );
                                 return;
                               }
                             }
-
                             setState(() {
                               field.type = v;
                               if (v != FormFieldType.number) {
                                 field.ageFromFieldId = null;
                               }
-                              if (field.hasOptions && field.options.isEmpty) {
+                              if (field.hasOptions &&
+                                  field.options.isEmpty) {
                                 field.options.add(
-                                  _BuilderOption(label: 'Option 1'),
-                                );
+                                    _BuilderOption(label: 'Option 1'));
                               }
                               _hasUnsavedChanges = true;
                             });
@@ -2754,10 +2863,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         ),
         if (canLinkCanonicalKey) ...[
           const SizedBox(height: 10),
-          const Text(
-            'Autofill Key (cross-form)',
-            style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-          ),
+          const Text('Autofill Key (cross-form)',
+              style: TextStyle(
+                  fontSize: 12, color: AppColors.textMuted)),
           const SizedBox(height: 4),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -2771,13 +2879,12 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 isExpanded: true,
                 hint: const Text(
                   'Link to known field (optional)',
-                  style: TextStyle(fontSize: 13, color: AppColors.textMuted),
+                  style: TextStyle(
+                      fontSize: 13, color: AppColors.textMuted),
                 ),
                 items: [
                   const DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('— None —'),
-                  ),
+                      value: null, child: Text('— None —')),
                   ..._availableCanonicalKeys.map(
                     (entry) => DropdownMenuItem<String?>(
                       value: entry.key,
@@ -2823,9 +2930,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 child: Text(
                   field.label,
                   style: const TextStyle(
-                    fontSize: 14,
-                    color: AppColors.textDark,
-                  ),
+                      fontSize: 14, color: AppColors.textDark),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -2833,22 +2938,17 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
+                      horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: AppColors.highlight.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(
-                      color: AppColors.highlight.withOpacity(0.4),
-                    ),
+                        color: AppColors.highlight.withOpacity(0.4)),
                   ),
                   child: Text(
                     '⟷ ${field.canonicalFieldKey}',
                     style: const TextStyle(
-                      fontSize: 10,
-                      color: AppColors.highlight,
-                    ),
+                        fontSize: 10, color: AppColors.highlight),
                   ),
                 ),
               ],
@@ -2856,10 +2956,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           ),
         ),
         if (field.isRequired)
-          const Text(
-            ' *',
-            style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-          ),
+          const Text(' *',
+              style: TextStyle(
+                  color: Colors.red, fontWeight: FontWeight.bold)),
       ],
     );
   }
@@ -2882,21 +2981,20 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               onPressed: () => _duplicateField(si, fi),
             ),
             IconButton(
-              icon: const Icon(
-                Icons.delete_outline,
-                size: 18,
-                color: Colors.red,
-              ),
+              icon: const Icon(Icons.delete_outline,
+                  size: 18, color: Colors.red),
               tooltip: 'Delete',
               onPressed: () => _removeField(si, fi),
             ),
             const SizedBox(width: 8),
-            Container(width: 1, height: 24, color: AppColors.cardBorder),
+            Container(
+                width: 1, height: 24, color: AppColors.cardBorder),
             const SizedBox(width: 8),
             IconButton(
               icon: const Icon(Icons.arrow_upward, size: 18),
               tooltip: 'Move up',
-              onPressed: fi > 0 ? () => _moveField(si, fi, -1) : null,
+              onPressed:
+                  fi > 0 ? () => _moveField(si, fi, -1) : null,
             ),
             IconButton(
               icon: const Icon(Icons.arrow_downward, size: 18),
@@ -2906,12 +3004,12 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                   : null,
             ),
             const SizedBox(width: 8),
-            Container(width: 1, height: 24, color: AppColors.cardBorder),
+            Container(
+                width: 1, height: 24, color: AppColors.cardBorder),
             const SizedBox(width: 4),
-            const Text(
-              'Required',
-              style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-            ),
+            const Text('Required',
+                style: TextStyle(
+                    fontSize: 12, color: AppColors.textMuted)),
             Switch(
               value: field.isRequired,
               activeColor: AppColors.highlight,
@@ -2968,16 +3066,12 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.device_hub_outlined,
-                size: 15,
-                color: AppColors.textMuted,
-              ),
+              const Icon(Icons.device_hub_outlined,
+                  size: 15, color: AppColors.textMuted),
               const SizedBox(width: 6),
-              const Text(
-                'Show only if...',
-                style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-              ),
+              const Text('Show only if…',
+                  style: TextStyle(
+                      fontSize: 12, color: AppColors.textMuted)),
               const Spacer(),
               Switch(
                 value: hasCondition,
@@ -3019,18 +3113,16 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                             : field.condition.triggerFieldId,
                         isExpanded: true,
                         style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textDark,
-                        ),
-                        hint: const Text(
-                          'Pick a field',
-                          style: TextStyle(fontSize: 12),
-                        ),
+                            fontSize: 12, color: AppColors.textDark),
+                        hint: const Text('Pick a field',
+                            style: TextStyle(fontSize: 12)),
                         items: triggerCandidates.map((f) {
                           return DropdownMenuItem<String>(
                             value: f.id,
                             child: Text(
-                              f.label.isNotEmpty ? f.label : f.fieldName,
+                              f.label.isNotEmpty
+                                  ? f.label
+                                  : f.fieldName,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(fontSize: 12),
                             ),
@@ -3048,86 +3140,78 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 ),
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 8),
-                  child: Text(
-                    '=',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textMuted,
-                    ),
-                  ),
+                  child: Text('=',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textMuted)),
                 ),
                 Expanded(
                   flex: 2,
-                  child:
-                      triggerField != null &&
+                  child: triggerField != null &&
                           (triggerField.hasOptions ||
-                              triggerField.type == FormFieldType.boolean ||
+                              triggerField.type ==
+                                  FormFieldType.boolean ||
                               triggerField.type ==
                                   FormFieldType.membershipGroup)
                       ? Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: AppColors.cardBorder),
+                            border: Border.all(
+                                color: AppColors.cardBorder),
                           ),
                           child: DropdownButtonHideUnderline(
                             child: DropdownButton<String>(
-                              value: field.condition.triggerValue.isEmpty
+                              value: field.condition.triggerValue
+                                      .isEmpty
                                   ? null
                                   : field.condition.triggerValue,
                               isExpanded: true,
                               style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textDark,
-                              ),
-                              hint: const Text(
-                                'Pick a value',
-                                style: TextStyle(fontSize: 12),
-                              ),
-                              items: triggerField.type == FormFieldType.boolean
+                                  fontSize: 12,
+                                  color: AppColors.textDark),
+                              hint: const Text('Pick a value',
+                                  style: TextStyle(fontSize: 12)),
+                              items: triggerField.type ==
+                                      FormFieldType.boolean
                                   ? const [
                                       DropdownMenuItem(
-                                        value: 'yes',
-                                        child: Text('Yes'),
-                                      ),
+                                          value: 'yes',
+                                          child: Text('Yes')),
                                       DropdownMenuItem(
-                                        value: 'no',
-                                        child: Text('No'),
-                                      ),
+                                          value: 'no',
+                                          child: Text('No')),
                                     ]
                                   : triggerField.type ==
-                                        FormFieldType.membershipGroup
+                                          FormFieldType.membershipGroup
                                   ? const [
                                       DropdownMenuItem(
-                                        value: 'solo_parent',
-                                        child: Text('Solo Parent'),
-                                      ),
+                                          value: 'solo_parent',
+                                          child: Text('Solo Parent')),
                                       DropdownMenuItem(
-                                        value: 'pwd',
-                                        child: Text('PWD'),
-                                      ),
+                                          value: 'pwd',
+                                          child: Text('PWD')),
                                       DropdownMenuItem(
-                                        value: 'four_ps_member',
-                                        child: Text('4Ps Member'),
-                                      ),
+                                          value: 'four_ps_member',
+                                          child: Text('4Ps Member')),
                                       DropdownMenuItem(
-                                        value: 'phic_member',
-                                        child: Text('PHIC Member'),
-                                      ),
+                                          value: 'phic_member',
+                                          child: Text('PHIC Member')),
                                     ]
                                   : triggerField.options.map((o) {
                                       return DropdownMenuItem<String>(
                                         value: _slugify(o.label),
-                                        child: Text(
-                                          o.label,
-                                          style: const TextStyle(fontSize: 12),
-                                        ),
+                                        child: Text(o.label,
+                                            style: const TextStyle(
+                                                fontSize: 12)),
                                       );
                                     }).toList(),
                               onChanged: (v) => setState(() {
-                                field.condition.triggerValue = v ?? '';
+                                field.condition.triggerValue =
+                                    v ?? '';
                                 field.condition.action = 'show';
                                 _hasUnsavedChanges = true;
                               }),
@@ -3151,13 +3235,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
                               borderSide: const BorderSide(
-                                color: Colors.orange,
-                              ),
+                                  color: Colors.orange),
                             ),
                             contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 10,
-                            ),
+                                horizontal: 10, vertical: 10),
                           ),
                           onChanged: (v) => setState(() {
                             field.condition.triggerValue = v;
@@ -3173,7 +3254,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               field.condition.triggerValue.isEmpty
                   ? 'Pick a value to complete the condition.'
                   : 'This field shows when "${triggerField?.label ?? "?"}" = "${field.condition.triggerValue}"',
-              style: TextStyle(fontSize: 11, color: Colors.orange.shade700),
+              style:
+                  TextStyle(fontSize: 11, color: Colors.orange.shade700),
             ),
           ],
           if (!hasCondition && triggerCandidates.isEmpty)
@@ -3181,7 +3263,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               padding: EdgeInsets.only(top: 4),
               child: Text(
                 'Add a Yes/No, radio, dropdown, checkbox, or Membership Group field first to use this.',
-                style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                style: TextStyle(
+                    fontSize: 11, color: AppColors.textMuted),
               ),
             ),
         ],
@@ -3190,7 +3273,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   }
 
   // ═══════════════════════════════════════════════════════════
-  // FIELD TYPE CONTENT (type-specific editors/previews)
+  // FIELD TYPE CONTENT
   // ═══════════════════════════════════════════════════════════
   Widget _buildFieldContent(_BuilderField field, bool isActive) {
     switch (field.type) {
@@ -3239,29 +3322,28 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         .toList();
     final hasLink =
         field.ageFromFieldId != null && field.ageFromFieldId!.isNotEmpty;
-    final selectedValid =
-        hasLink && dateCandidates.any((f) => f.id == field.ageFromFieldId);
+    final selectedValid = hasLink &&
+        dateCandidates.any((f) => f.id == field.ageFromFieldId);
     final selectedValue = selectedValid ? field.ageFromFieldId : null;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
+        border:
+            Border(bottom: BorderSide(color: AppColors.cardBorder)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Auto-compute from field',
-            style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-          ),
+          const Text('Auto-compute from field',
+              style: TextStyle(
+                  fontSize: 12, color: AppColors.textMuted)),
           const SizedBox(height: 6),
           Row(
             children: [
-              const Text(
-                'Enable',
-                style: TextStyle(fontSize: 12, color: AppColors.textDark),
-              ),
+              const Text('Enable',
+                  style: TextStyle(
+                      fontSize: 12, color: AppColors.textDark)),
               const SizedBox(width: 8),
               Switch(
                 value: hasLink,
@@ -3292,14 +3374,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 child: DropdownButton<String>(
                   value: selectedValue,
                   isExpanded: true,
-                  hint: const Text(
-                    'Select date field',
-                    style: TextStyle(fontSize: 12),
-                  ),
+                  hint: const Text('Select date field',
+                      style: TextStyle(fontSize: 12)),
                   style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textDark,
-                  ),
+                      fontSize: 12, color: AppColors.textDark),
                   items: dateCandidates
                       .map(
                         (f) => DropdownMenuItem<String>(
@@ -3325,7 +3403,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 padding: EdgeInsets.only(top: 6),
                 child: Text(
                   'Add at least one Date field to link this Age field.',
-                  style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                  style: TextStyle(
+                      fontSize: 11, color: AppColors.textMuted),
                 ),
               ),
           ],
@@ -3338,14 +3417,14 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
+        border:
+            Border(bottom: BorderSide(color: AppColors.cardBorder)),
       ),
       child: Align(
         alignment: Alignment.centerLeft,
-        child: Text(
-          hint,
-          style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
-        ),
+        child: Text(hint,
+            style: const TextStyle(
+                color: AppColors.textMuted, fontSize: 13)),
       ),
     );
   }
@@ -3354,14 +3433,14 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
+        border:
+            Border(bottom: BorderSide(color: AppColors.cardBorder)),
       ),
       child: Row(
         children: [
-          Text(
-            hint,
-            style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
-          ),
+          Text(hint,
+              style: const TextStyle(
+                  color: AppColors.textMuted, fontSize: 13)),
           const Spacer(),
           Icon(icon, size: 18, color: AppColors.textMuted),
         ],
@@ -3376,24 +3455,21 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         children: [
           Icon(icon, size: 20, color: AppColors.textMuted),
           const SizedBox(width: 10),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 13, color: AppColors.textDark),
-          ),
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 13, color: AppColors.textDark)),
         ],
       ),
     );
   }
 
-  // ── Linear Scale Editor ─────────────────────────────────────
   Widget _buildLinearScaleEditor(_BuilderField field, bool isActive) {
     if (!isActive) {
       return Row(
         children: [
-          Text(
-            '${field.scaleMin}',
-            style: const TextStyle(fontSize: 13, color: AppColors.textMuted),
-          ),
+          Text('${field.scaleMin}',
+              style: const TextStyle(
+                  fontSize: 13, color: AppColors.textMuted)),
           Expanded(
             child: Container(
               height: 2,
@@ -3401,43 +3477,38 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               color: AppColors.cardBorder,
             ),
           ),
-          Text(
-            '${field.scaleMax}',
-            style: const TextStyle(fontSize: 13, color: AppColors.textMuted),
-          ),
+          Text('${field.scaleMax}',
+              style: const TextStyle(
+                  fontSize: 13, color: AppColors.textMuted)),
         ],
       );
     }
     return Row(
       children: [
-        const Text(
-          'From:',
-          style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-        ),
+        const Text('From:',
+            style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
         const SizedBox(width: 8),
         DropdownButton<int>(
           value: field.scaleMin,
-          items: [
-            0,
-            1,
-          ].map((v) => DropdownMenuItem(value: v, child: Text('$v'))).toList(),
+          items: [0, 1]
+              .map((v) =>
+                  DropdownMenuItem(value: v, child: Text('$v')))
+              .toList(),
           onChanged: (v) => setState(() {
             field.scaleMin = v!;
             _hasUnsavedChanges = true;
           }),
         ),
         const SizedBox(width: 24),
-        const Text(
-          'To:',
-          style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-        ),
+        const Text('To:',
+            style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
         const SizedBox(width: 8),
         DropdownButton<int>(
           value: field.scaleMax,
-          items: List.generate(
-            9,
-            (i) => i + 2,
-          ).map((v) => DropdownMenuItem(value: v, child: Text('$v'))).toList(),
+          items: List.generate(9, (i) => i + 2)
+              .map((v) =>
+                  DropdownMenuItem(value: v, child: Text('$v')))
+              .toList(),
           onChanged: (v) => setState(() {
             field.scaleMax = v!;
             _hasUnsavedChanges = true;
@@ -3447,7 +3518,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  // ── Column Editor (member table) ──────────────────────────────
   Widget _buildColumnEditor(_BuilderField field, bool isActive) {
     const columnTypes = <FormFieldType, String>{
       FormFieldType.text: 'Text',
@@ -3458,18 +3528,16 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
 
     if (!isActive) {
       if (field.columns.isEmpty) {
-        return const Text(
-          'No columns defined',
-          style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-        );
+        return const Text('No columns defined',
+            style: TextStyle(
+                fontSize: 12, color: AppColors.textMuted));
       }
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '${field.columns.length} column(s) defined',
-            style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
-          ),
+          Text('${field.columns.length} column(s) defined',
+              style: const TextStyle(
+                  fontSize: 11, color: AppColors.textMuted)),
           const SizedBox(height: 4),
           Wrap(
             spacing: 8,
@@ -3491,14 +3559,12 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Table Columns',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textMuted,
-          ),
-        ),
+        const Text('Table Columns',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textMuted,
+            )),
         const SizedBox(height: 8),
         ...field.columns.asMap().entries.map((entry) {
           final ci = entry.key;
@@ -3521,9 +3587,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                         borderSide: BorderSide.none,
                       ),
                       contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 10,
-                      ),
+                          horizontal: 10, vertical: 10),
                     ),
                     onChanged: (v) {
                       col.label = v;
@@ -3546,14 +3610,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                         value: col.type,
                         isExpanded: true,
                         style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textDark,
-                        ),
+                            fontSize: 12, color: AppColors.textDark),
                         items: columnTypes.entries.map((e) {
                           return DropdownMenuItem(
-                            value: e.key,
-                            child: Text(e.value),
-                          );
+                              value: e.key, child: Text(e.value));
                         }).toList(),
                         onChanged: (v) {
                           if (v == null) return;
@@ -3562,8 +3622,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                             if (v == FormFieldType.dropdown &&
                                 col.options.isEmpty) {
                               col.options.add(
-                                _BuilderOption(label: 'Option 1'),
-                              );
+                                  _BuilderOption(label: 'Option 1'));
                             }
                             _hasUnsavedChanges = true;
                           });
@@ -3574,11 +3633,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 ),
                 const SizedBox(width: 4),
                 IconButton(
-                  icon: const Icon(
-                    Icons.close,
-                    size: 18,
-                    color: AppColors.textMuted,
-                  ),
+                  icon: const Icon(Icons.close,
+                      size: 18, color: AppColors.textMuted),
                   onPressed: () => setState(() {
                     field.columns.removeAt(ci);
                     _hasUnsavedChanges = true;
@@ -3588,8 +3644,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             ),
           );
         }),
-
-        // Dropdown options sub-editors
         ...field.columns
             .where((c) => c.type == FormFieldType.dropdown)
             .map(
@@ -3598,32 +3652,25 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Options for "${col.label}":',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textMuted,
-                      ),
-                    ),
+                    Text('Options for "${col.label}":',
+                        style: const TextStyle(
+                            fontSize: 11, color: AppColors.textMuted)),
                     ...col.options.asMap().entries.map((oe) {
                       final opt = oe.value;
                       return Row(
                         children: [
-                          const Icon(
-                            Icons.arrow_right,
-                            size: 16,
-                            color: AppColors.textMuted,
-                          ),
+                          const Icon(Icons.arrow_right,
+                              size: 16, color: AppColors.textMuted),
                           Expanded(
                             child: TextField(
-                              controller: _ctrl('colopt_${opt.id}', opt.label),
+                              controller:
+                                  _ctrl('colopt_${opt.id}', opt.label),
                               style: const TextStyle(fontSize: 12),
                               decoration: const InputDecoration(
                                 hintText: 'Option',
                                 border: InputBorder.none,
                                 contentPadding: EdgeInsets.symmetric(
-                                  vertical: 6,
-                                ),
+                                    vertical: 6),
                               ),
                               onChanged: (v) {
                                 opt.label = v;
@@ -3644,47 +3691,37 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                     }),
                     TextButton.icon(
                       onPressed: () => setState(() {
-                        col.options.add(
-                          _BuilderOption(
-                            label: 'Option ${col.options.length + 1}',
-                          ),
-                        );
+                        col.options.add(_BuilderOption(
+                            label:
+                                'Option ${col.options.length + 1}'));
                         _hasUnsavedChanges = true;
                       }),
                       icon: const Icon(Icons.add, size: 14),
-                      label: const Text(
-                        'Add option',
-                        style: TextStyle(fontSize: 11),
-                      ),
+                      label: const Text('Add option',
+                          style: TextStyle(fontSize: 11)),
                     ),
                   ],
                 ),
               ),
             ),
-
-        // Add column button
         TextButton.icon(
           onPressed: () => setState(() {
-            field.columns.add(
-              _BuilderColumn(
-                label: 'Column ${field.columns.length + 1}',
-                order: field.columns.length,
-              ),
-            );
+            field.columns.add(_BuilderColumn(
+              label: 'Column ${field.columns.length + 1}',
+              order: field.columns.length,
+            ));
             _hasUnsavedChanges = true;
           }),
           icon: const Icon(Icons.add_circle_outline, size: 16),
-          label: const Text('Add Column', style: TextStyle(fontSize: 12)),
+          label: const Text('Add Column',
+              style: TextStyle(fontSize: 12)),
         ),
       ],
     );
   }
 
-  // ── System Table Column Editor (familyTable) ───────────────
-  // Fully dynamic: all columns (including pre-populated DB-mapped ones)
-  // can be relabeled, retyped, or deleted. Staff can also add new columns.
-  // The backend interceptor uses best-effort mapping via db_map_key.
-  Widget _buildSystemTableColumnEditor(_BuilderField field, bool isActive) {
+  Widget _buildSystemTableColumnEditor(
+      _BuilderField field, bool isActive) {
     const columnTypes = <FormFieldType, String>{
       FormFieldType.text: 'Text',
       FormFieldType.number: 'Number',
@@ -3694,18 +3731,16 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
 
     if (!isActive) {
       if (field.columns.isEmpty) {
-        return const Text(
-          'No columns defined',
-          style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-        );
+        return const Text('No columns defined',
+            style: TextStyle(
+                fontSize: 12, color: AppColors.textMuted));
       }
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '${field.columns.length} column(s) defined',
-            style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
-          ),
+          Text('${field.columns.length} column(s) defined',
+              style: const TextStyle(
+                  fontSize: 11, color: AppColors.textMuted)),
           const SizedBox(height: 4),
           Wrap(
             spacing: 8,
@@ -3727,14 +3762,12 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Table Columns',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textMuted,
-          ),
-        ),
+        const Text('Table Columns',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textMuted,
+            )),
         const SizedBox(height: 4),
         const Text(
           'Edit, rename, or remove any column. '
@@ -3749,7 +3782,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             padding: const EdgeInsets.only(bottom: 8),
             child: Row(
               children: [
-                // Editable label
                 Expanded(
                   flex: 3,
                   child: TextField(
@@ -3764,20 +3796,17 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                         borderSide: BorderSide.none,
                       ),
                       contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 10,
-                      ),
+                          horizontal: 10, vertical: 10),
                     ),
                     onChanged: (v) {
                       col.label = v;
-                      // Only auto-slug columns without a db_map_key
-                      if (col.dbMapKey == null) col.fieldName = _slugify(v);
+                      if (col.dbMapKey == null)
+                        col.fieldName = _slugify(v);
                       _hasUnsavedChanges = true;
                     },
                   ),
                 ),
                 const SizedBox(width: 8),
-                // Column type: editable for all columns
                 Expanded(
                   flex: 2,
                   child: Container(
@@ -3791,14 +3820,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                         value: col.type,
                         isExpanded: true,
                         style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textDark,
-                        ),
+                            fontSize: 12, color: AppColors.textDark),
                         items: columnTypes.entries.map((e) {
                           return DropdownMenuItem(
-                            value: e.key,
-                            child: Text(e.value),
-                          );
+                              value: e.key, child: Text(e.value));
                         }).toList(),
                         onChanged: (v) {
                           if (v == null) return;
@@ -3807,8 +3832,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                             if (v == FormFieldType.dropdown &&
                                 col.options.isEmpty) {
                               col.options.add(
-                                _BuilderOption(label: 'Option 1'),
-                              );
+                                  _BuilderOption(label: 'Option 1'));
                             }
                             _hasUnsavedChanges = true;
                           });
@@ -3818,13 +3842,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                   ),
                 ),
                 const SizedBox(width: 4),
-                // Delete button: available for ALL columns
                 IconButton(
-                  icon: const Icon(
-                    Icons.close,
-                    size: 18,
-                    color: AppColors.textMuted,
-                  ),
+                  icon: const Icon(Icons.close,
+                      size: 18, color: AppColors.textMuted),
                   onPressed: () => setState(() {
                     field.columns.removeAt(ci);
                     _hasUnsavedChanges = true;
@@ -3834,8 +3854,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             ),
           );
         }),
-
-        // Dropdown options sub-editors (same as _buildColumnEditor)
         ...field.columns
             .where((c) => c.type == FormFieldType.dropdown)
             .map(
@@ -3844,32 +3862,25 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Options for "${col.label}":',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textMuted,
-                      ),
-                    ),
+                    Text('Options for "${col.label}":',
+                        style: const TextStyle(
+                            fontSize: 11, color: AppColors.textMuted)),
                     ...col.options.asMap().entries.map((oe) {
                       final opt = oe.value;
                       return Row(
                         children: [
-                          const Icon(
-                            Icons.arrow_right,
-                            size: 16,
-                            color: AppColors.textMuted,
-                          ),
+                          const Icon(Icons.arrow_right,
+                              size: 16, color: AppColors.textMuted),
                           Expanded(
                             child: TextField(
-                              controller: _ctrl('colopt_${opt.id}', opt.label),
+                              controller:
+                                  _ctrl('colopt_${opt.id}', opt.label),
                               style: const TextStyle(fontSize: 12),
                               decoration: const InputDecoration(
                                 hintText: 'Option',
                                 border: InputBorder.none,
                                 contentPadding: EdgeInsets.symmetric(
-                                  vertical: 6,
-                                ),
+                                    vertical: 6),
                               ),
                               onChanged: (v) {
                                 opt.label = v;
@@ -3890,43 +3901,35 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                     }),
                     TextButton.icon(
                       onPressed: () => setState(() {
-                        col.options.add(
-                          _BuilderOption(
-                            label: 'Option ${col.options.length + 1}',
-                          ),
-                        );
+                        col.options.add(_BuilderOption(
+                            label:
+                                'Option ${col.options.length + 1}'));
                         _hasUnsavedChanges = true;
                       }),
                       icon: const Icon(Icons.add, size: 14),
-                      label: const Text(
-                        'Add option',
-                        style: TextStyle(fontSize: 11),
-                      ),
+                      label: const Text('Add option',
+                          style: TextStyle(fontSize: 11)),
                     ),
                   ],
                 ),
               ),
             ),
-
-        // Add column button
         TextButton.icon(
           onPressed: () => setState(() {
-            field.columns.add(
-              _BuilderColumn(
-                label: 'Column ${field.columns.length + 1}',
-                order: field.columns.length,
-              ),
-            );
+            field.columns.add(_BuilderColumn(
+              label: 'Column ${field.columns.length + 1}',
+              order: field.columns.length,
+            ));
             _hasUnsavedChanges = true;
           }),
           icon: const Icon(Icons.add_circle_outline, size: 16),
-          label: const Text('Add Column', style: TextStyle(fontSize: 12)),
+          label: const Text('Add Column',
+              style: TextStyle(fontSize: 12)),
         ),
       ],
     );
   }
 
-  // ── Options Editor (radio/checkbox/dropdown) ────────────────
   Widget _buildOptionsEditor(_BuilderField field, bool isActive) {
     final isRadio = field.type == FormFieldType.radio;
     final isCheckbox = field.type == FormFieldType.checkbox;
@@ -3951,19 +3954,20 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                     child: TextField(
                       controller: _ctrl('opt_${opt.id}', opt.label),
                       style: const TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textDark,
-                      ),
+                          fontSize: 13, color: AppColors.textDark),
                       decoration: const InputDecoration(
                         hintText: 'Option',
                         border: InputBorder.none,
                         enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(color: AppColors.cardBorder),
+                          borderSide:
+                              BorderSide(color: AppColors.cardBorder),
                         ),
                         focusedBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(color: AppColors.highlight),
+                          borderSide: BorderSide(
+                              color: AppColors.highlight),
                         ),
-                        contentPadding: EdgeInsets.symmetric(vertical: 8),
+                        contentPadding:
+                            EdgeInsets.symmetric(vertical: 8),
                       ),
                       onChanged: (v) {
                         opt.label = v;
@@ -3973,21 +3977,14 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                   )
                 else
                   Expanded(
-                    child: Text(
-                      opt.label,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textDark,
-                      ),
-                    ),
+                    child: Text(opt.label,
+                        style: const TextStyle(
+                            fontSize: 13, color: AppColors.textDark)),
                   ),
                 if (isActive && field.options.length > 1)
                   IconButton(
-                    icon: const Icon(
-                      Icons.close,
-                      size: 18,
-                      color: AppColors.textMuted,
-                    ),
+                    icon: const Icon(Icons.close,
+                        size: 18, color: AppColors.textMuted),
                     onPressed: () => setState(() {
                       field.options.removeAt(oi);
                       _hasUnsavedChanges = true;
@@ -4002,20 +3999,16 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             padding: const EdgeInsets.only(top: 4),
             child: Row(
               children: [
-                Icon(
-                  optIcon,
-                  size: 20,
-                  color: AppColors.textMuted.withOpacity(0.4),
-                ),
+                Icon(optIcon,
+                    size: 20,
+                    color: AppColors.textMuted.withOpacity(0.4)),
                 const SizedBox(width: 10),
                 TextButton(
                   onPressed: () => setState(() {
-                    field.options.add(
-                      _BuilderOption(
-                        label: 'Option ${field.options.length + 1}',
-                        order: field.options.length,
-                      ),
-                    );
+                    field.options.add(_BuilderOption(
+                      label: 'Option ${field.options.length + 1}',
+                      order: field.options.length,
+                    ));
                     _hasUnsavedChanges = true;
                   }),
                   child: const Text('Add option'),
@@ -4027,9 +4020,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  // ── Formula Editor (computed fields) ──────────────────────
-  // Formula is stored as space-separated tokens, e.g. "field_a + field_b"
-  // Tokens are displayed as removable chips — no free-text editing.
   List<String> _formulaTokens(_BuilderField field) =>
       field.formula.trim().isEmpty
       ? []
@@ -4065,14 +4055,13 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         )
         .toList();
 
-    // Build a lookup: fieldName → label for display in tokens
     final fieldLabelMap = {
-      for (final f
-          in _sections.expand((s) => s.fields).where((f) => f.id != field.id))
+      for (final f in _sections
+          .expand((s) => s.fields)
+          .where((f) => f.id != field.id))
         f.fieldName: (f.label.isNotEmpty ? f.label : f.fieldName),
     };
 
-    // ── Inactive preview ──
     if (!isActive) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -4080,16 +4069,12 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           color: const Color(0xFFF0F4FF),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: AppColors.buttonOutlineBlue.withOpacity(0.3),
-          ),
+              color: AppColors.buttonOutlineBlue.withOpacity(0.3)),
         ),
         child: Row(
           children: [
-            const Icon(
-              Icons.calculate_outlined,
-              size: 14,
-              color: AppColors.primaryBlue,
-            ),
+            const Icon(Icons.calculate_outlined,
+                size: 14, color: AppColors.primaryBlue),
             const SizedBox(width: 6),
             Expanded(
               child: Text(
@@ -4111,25 +4096,22 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       );
     }
 
-    // ── Active editor ──
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Formula',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textMuted,
-          ),
-        ),
+        const Text('Formula',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textMuted,
+            )),
         const SizedBox(height: 4),
         const Text(
           'Tap field names and operators below to build the formula. Tap × on a token to remove it.',
-          style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+          style:
+              TextStyle(fontSize: 11, color: AppColors.textMuted),
         ),
         const SizedBox(height: 8),
-        // Token display area
         Container(
           width: double.infinity,
           constraints: const BoxConstraints(minHeight: 44),
@@ -4138,8 +4120,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             color: const Color(0xFFF0F4FF),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: AppColors.buttonOutlineBlue.withOpacity(0.4),
-            ),
+                color: AppColors.buttonOutlineBlue.withOpacity(0.4)),
           ),
           child: tokens.isEmpty
               ? const Text(
@@ -4157,20 +4138,15 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                     final i = e.key;
                     final tok = e.value;
                     final isOp = const {
-                      '+',
-                      '-',
-                      '*',
-                      '/',
-                      '(',
-                      ')',
+                      '+', '-', '*', '/', '(', ')',
                     }.contains(tok);
                     return Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
+                          horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: isOp ? const Color(0xFFE8EEFF) : Colors.white,
+                        color: isOp
+                            ? const Color(0xFFE8EEFF)
+                            : Colors.white,
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(
                           color: isOp
@@ -4194,12 +4170,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                           ),
                           const SizedBox(width: 4),
                           GestureDetector(
-                            onTap: () => _removeFormulaToken(field, i),
-                            child: const Icon(
-                              Icons.close,
-                              size: 13,
-                              color: AppColors.primaryBlue,
-                            ),
+                            onTap: () =>
+                                _removeFormulaToken(field, i),
+                            child: const Icon(Icons.close,
+                                size: 13,
+                                color: AppColors.primaryBlue),
                           ),
                         ],
                       ),
@@ -4209,36 +4184,33 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         ),
         if (numericFields.isNotEmpty) ...[
           const SizedBox(height: 12),
-          const Text(
-            'Available fields:',
-            style: TextStyle(fontSize: 11, color: AppColors.textMuted),
-          ),
+          const Text('Available fields:',
+              style: TextStyle(
+                  fontSize: 11, color: AppColors.textMuted)),
           const SizedBox(height: 6),
           Wrap(
             spacing: 6,
             runSpacing: 6,
             children: numericFields.map((f) {
               return ElevatedButton.icon(
-                onPressed: () => _appendFormulaToken(field, f.fieldName),
+                onPressed: () =>
+                    _appendFormulaToken(field, f.fieldName),
                 icon: const Icon(Icons.add, size: 14),
                 label: Text(
                   f.label.isNotEmpty ? f.label : f.fieldName,
-                  style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
+                  style: const TextStyle(
+                      fontSize: 11, fontFamily: 'monospace'),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
                   foregroundColor: AppColors.primaryBlue,
                   elevation: 0,
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
+                      horizontal: 10, vertical: 6),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(6),
                     side: const BorderSide(
-                      color: AppColors.buttonOutlineBlue,
-                      width: 1,
-                    ),
+                        color: AppColors.buttonOutlineBlue, width: 1),
                   ),
                 ),
               );
@@ -4246,10 +4218,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           ),
         ],
         const SizedBox(height: 8),
-        const Text(
-          'Operators:',
-          style: TextStyle(fontSize: 11, color: AppColors.textMuted),
-        ),
+        const Text('Operators:',
+            style: TextStyle(
+                fontSize: 11, color: AppColors.textMuted)),
         const SizedBox(height: 6),
         Wrap(
           spacing: 6,
@@ -4262,22 +4233,17 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 foregroundColor: AppColors.primaryBlue,
                 elevation: 0,
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
+                    horizontal: 12, vertical: 6),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(6),
-                ),
+                    borderRadius: BorderRadius.circular(6)),
                 minimumSize: const Size(36, 32),
               ),
-              child: Text(
-                op,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'monospace',
-                ),
-              ),
+              child: Text(op,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'monospace',
+                  )),
             );
           }).toList(),
         ),
@@ -4309,11 +4275,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         ),
         child: Row(
           children: [
-            const Icon(
-              Icons.device_hub_outlined,
-              size: 14,
-              color: Colors.orange,
-            ),
+            const Icon(Icons.device_hub_outlined,
+                size: 14, color: Colors.orange),
             const SizedBox(width: 6),
             Expanded(
               child: Text(
@@ -4337,18 +4300,17 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Condition',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textMuted,
-          ),
-        ),
+        const Text('Condition',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textMuted,
+            )),
         const SizedBox(height: 4),
         const Text(
           'This field will only be visible when the selected field equals the specified value.',
-          style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+          style:
+              TextStyle(fontSize: 11, color: AppColors.textMuted),
         ),
         const SizedBox(height: 12),
         Container(
@@ -4363,10 +4325,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                   ? null
                   : field.condition.triggerFieldId,
               isExpanded: true,
-              hint: const Text(
-                'Select trigger field',
-                style: TextStyle(fontSize: 13, color: AppColors.textMuted),
-              ),
+              hint: const Text('Select trigger field',
+                  style: TextStyle(
+                      fontSize: 13, color: AppColors.textMuted)),
               items: allFields
                   .map(
                     (f) => DropdownMenuItem<String>(
@@ -4392,9 +4353,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         const SizedBox(height: 8),
         TextField(
           controller: _ctrl(
-            'cond_val_${field.id}',
-            field.condition.triggerValue,
-          ),
+              'cond_val_${field.id}', field.condition.triggerValue),
           decoration: InputDecoration(
             hintText: 'Trigger value (exact match)',
             filled: true,
@@ -4405,12 +4364,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: AppColors.highlight),
+              borderSide:
+                  const BorderSide(color: AppColors.highlight),
             ),
             contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 12,
-            ),
+                horizontal: 12, vertical: 12),
           ),
           onChanged: (v) {
             field.condition.triggerValue = v;
@@ -4422,7 +4380,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  // ── Add Section Button ─────────────────────────────────────
   Widget _buildAddSectionButton() {
     return OutlinedButton.icon(
       onPressed: _addSection,
@@ -4432,19 +4389,15 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         foregroundColor: AppColors.highlight,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
         side: BorderSide(color: AppColors.highlight.withOpacity(0.5)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
 
-  // ── Status Card ─────────────────────────────────────────────
   Widget _buildStatusCard() {
-    final (
-      Color clr,
-      String label,
-      String desc,
-      IconData icon,
-    ) = switch (_formStatus) {
+    final (Color clr, String label, String desc, IconData icon) =
+        switch (_formStatus) {
       'published' => (
         Colors.blue,
         'PUBLISHED',
@@ -4486,23 +4439,19 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Status: $label',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: clr,
-                    fontSize: 13,
-                  ),
-                ),
-                Text(
-                  desc,
-                  style: TextStyle(color: clr.withOpacity(0.8), fontSize: 12),
-                ),
+                Text('Status: $label',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: clr,
+                      fontSize: 13,
+                    )),
+                Text(desc,
+                    style: TextStyle(
+                        color: clr.withOpacity(0.8), fontSize: 12)),
               ],
             ),
           ),
           const SizedBox(width: 12),
-          // Archive action (available for draft, published, pushed_to_mobile)
           if (_formStatus != 'archived') ...[
             if (_formStatus != 'draft')
               TextButton(

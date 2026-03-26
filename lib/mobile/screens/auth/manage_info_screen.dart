@@ -14,6 +14,7 @@ import 'package:sappiire/mobile/screens/auth/login_screen.dart';
 import 'package:sappiire/mobile/screens/auth/InfoScannerScreen.dart';
 import 'package:sappiire/mobile/screens/auth/ProfileScreen.dart';
 import 'package:sappiire/mobile/screens/auth/HistoryScreen.dart';
+import 'package:sappiire/mobile/widgets/form_popup.dart'; // ← NEW
 
 class ManageInfoScreen extends StatefulWidget {
   final String userId;
@@ -25,6 +26,7 @@ class ManageInfoScreen extends StatefulWidget {
 
 class _ManageInfoScreenState extends State<ManageInfoScreen> {
   final _supabaseService = SupabaseService();
+  final _supabase = Supabase.instance.client; // ← NEW: for popup fetch
   late final ManageInfoController _controller;
   int _currentNavIndex = 0;
 
@@ -71,6 +73,38 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       );
       return;
     }
+
+    // ── NEW: check if selected form has a popup configured ──
+    final templateId = _controller.selectedTemplate?.templateId;
+    if (templateId != null) {
+      try {
+        final row = await _supabase
+            .from('form_templates')
+            .select('popup_enabled, popup_subtitle, popup_description, form_name')
+            .eq('template_id', templateId)
+            .maybeSingle();
+
+        final popupEnabled = (row?['popup_enabled'] as bool?) ?? false;
+
+        if (popupEnabled && mounted) {
+          final proceed = await FormIntroPopupDialog.show(
+            context: context,
+            formTitle: (row?['form_name'] as String?) ??
+                _controller.selectedTemplate?.formName ??
+                'Form',
+            subtitle: row?['popup_subtitle'] as String?,
+            description: row?['popup_description'] as String?,
+          );
+
+          // User tapped Cancel — abort the QR scan entirely
+          if (!proceed || !mounted) return;
+        }
+      } catch (e) {
+        // If the fetch fails, silently skip the popup and continue
+        debugPrint('Popup fetch error: $e');
+      }
+    }
+    // ── END NEW ─────────────────────────────────────────────
 
     final sessionId = await Navigator.push<String>(
       context,
@@ -137,7 +171,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         setState(() => _currentNavIndex = 0);
         break;
       case 1:
-        // AutoFill QR — transmit selected fields
+        // AutoFill QR — show popup (if configured) then transmit
         setState(() => _currentNavIndex = 1);
         _scanAndTransmit().then((_) {
           if (mounted) setState(() => _currentNavIndex = 0);
@@ -171,64 +205,64 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   // ── Build ─────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-  return ListenableBuilder(
-    listenable: _controller,
-    builder: (context, _) => PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-        final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Log out?'),
-            content: const Text('Are you sure you want to log out?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.dangerRed),
-                child: const Text('Log Out',
-                    style: TextStyle(color: Colors.white)),
-              ),
-            ],
-          ),
-        );
-        if (confirmed == true && context.mounted) {
-          await Supabase.instance.client.auth.signOut();
-          if (context.mounted) {
-            Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(builder: (_) => const LoginScreen()),
-              (route) => false,
-            );
+    return ListenableBuilder(
+      listenable: _controller,
+      builder: (context, _) => PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (didPop) return;
+          final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Log out?'),
+              content: const Text('Are you sure you want to log out?'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.dangerRed),
+                  child: const Text('Log Out',
+                      style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            ),
+          );
+          if (confirmed == true && context.mounted) {
+            await Supabase.instance.client.auth.signOut();
+            if (context.mounted) {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                (route) => false,
+              );
+            }
           }
-        }
-      }, 
-    child: Scaffold(
-        backgroundColor: AppColors.pageBg,
-        appBar: _buildAppBar(),
-        floatingActionButton:
-            (_controller.formController != null && _currentNavIndex == 0)
-            ? _buildSelectAllFAB()
-            : null,
-        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-        bottomNavigationBar: _buildBottomNav(),
-        body: _currentNavIndex == 2
-            ? HistoryScreen(userId: widget.userId, embedded: true)
-            : _controller.isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _controller.templates.isEmpty
-            ? _buildEmptyState()
-            : _buildFormContent(),
+        },
+        child: Scaffold(
+          backgroundColor: AppColors.pageBg,
+          appBar: _buildAppBar(),
+          floatingActionButton:
+              (_controller.formController != null && _currentNavIndex == 0)
+              ? _buildSelectAllFAB()
+              : null,
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+          bottomNavigationBar: _buildBottomNav(),
+          body: _currentNavIndex == 2
+              ? HistoryScreen(userId: widget.userId, embedded: true)
+              : _controller.isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _controller.templates.isEmpty
+              ? _buildEmptyState()
+              : _buildFormContent(),
+        ),
       ),
-    ),
-  );
+    );
   }
 
-  // ── AppBar: logout left, camera + save right ──────────────
+  // ── AppBar ────────────────────────────────────────────────
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
       backgroundColor: AppColors.primaryBlue,
@@ -275,7 +309,9 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                     ),
                   ),
                   Text(
-                    _controller.username.isEmpty ? 'User' : _controller.username,
+                    _controller.username.isEmpty
+                        ? 'User'
+                        : _controller.username,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 14,
@@ -435,7 +471,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
   }
 
-  // ── Floating Select All Button ────────────────────────────────
+  // ── Floating Select All Button ────────────────────────────
   Widget _buildSelectAllFAB() {
     final isSelectAll = _controller.formController?.selectAll ?? false;
     return FloatingActionButton.extended(
@@ -443,9 +479,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         _controller.formController?.setSelectAll(!isSelectAll);
         setState(() {});
       },
-      backgroundColor: isSelectAll
-          ? AppColors.highlight
-          : AppColors.primaryBlue,
+      backgroundColor:
+          isSelectAll ? AppColors.highlight : AppColors.primaryBlue,
       elevation: 6,
       icon: Icon(
         isSelectAll ? Icons.deselect_rounded : Icons.select_all_rounded,
@@ -463,7 +498,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
   }
 
-  // ── Bottom nav: 3 items with increased height ─────────────
+  // ── Bottom nav ────────────────────────────────────────────
   Widget _buildBottomNav() {
     return Container(
       decoration: BoxDecoration(
@@ -512,7 +547,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                 ),
                 child: Icon(
                   icon,
-                  color: isActive ? AppColors.highlight : AppColors.primaryBlue,
+                  color:
+                      isActive ? AppColors.highlight : AppColors.primaryBlue,
                   size: 24,
                 ),
               )
