@@ -8,6 +8,8 @@ import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/screen/dashboard_screen.dart';
 import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/form_builder_screen.dart';
+import 'package:sappiire/web/screen/audit_logs_screen.dart';
+import 'package:sappiire/web/services/audit_log_service.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:crypto/crypto.dart';
@@ -152,6 +154,23 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
             ? null
             : _phoneController.text.trim(),
       });
+
+      await AuditLogService().log(
+        actionType: kAuditStaffCreated,
+        category: kCategoryStaff,
+        severity: kSeverityInfo,
+        actorId: widget.cswd_id,
+        actorName: widget.displayName,
+        actorRole: widget.role,
+        targetType: 'staff_account',
+        targetId: cswdId,
+        targetLabel: _usernameController.text.trim(),
+        details: {
+          'username': _usernameController.text.trim(),
+          'role': _selectedRole,
+          'email': _emailController.text.trim(),
+        },
+      );
 
       if (!mounted) return;
 
@@ -573,6 +592,14 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
       case 'FormBuilder':
         if (widget.role != 'superadmin') return;
         nextScreen = FormBuilderScreen(
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+          displayName: widget.displayName,
+        );
+        break;
+      case 'AuditLogs':
+        if (widget.role != 'superadmin') return;
+        nextScreen = AuditLogsScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
           displayName: widget.displayName,

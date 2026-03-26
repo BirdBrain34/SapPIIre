@@ -7,7 +7,9 @@ import 'package:sappiire/web/screen/dashboard_screen.dart';
 import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/applicants_screen.dart';
 import 'package:sappiire/web/screen/form_builder_screen.dart';
+import 'package:sappiire/web/screen/audit_logs_screen.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
+import 'package:sappiire/web/services/audit_log_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ManageStaffScreen extends StatefulWidget {
@@ -75,6 +77,19 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
           'is_active': true,
         })
         .eq('cswd_id', cswd_id);
+
+    await AuditLogService().log(
+      actionType: kAuditStaffApproved,
+      category: kCategoryStaff,
+      severity: kSeverityInfo,
+      actorId: widget.cswd_id,
+      actorName: widget.displayName,
+      actorRole: widget.role,
+      targetType: 'staff_account',
+      targetId: cswd_id,
+      details: {'approved_role': requestedRole},
+    );
+
     _loadAccounts();
   }
 
@@ -83,6 +98,18 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
         .from('staff_accounts')
         .update({'account_status': 'deactivated', 'is_active': false})
         .eq('cswd_id', cswd_id);
+
+    await AuditLogService().log(
+      actionType: kAuditStaffRejected,
+      category: kCategoryStaff,
+      severity: kSeverityWarning,
+      actorId: widget.cswd_id,
+      actorName: widget.displayName,
+      actorRole: widget.role,
+      targetType: 'staff_account',
+      targetId: cswd_id,
+    );
+
     _loadAccounts();
   }
 
@@ -97,10 +124,25 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
     );
     if (targetAccount['role'] == 'superadmin') return;
 
+    final oldRole = targetAccount['role'];
+
     await _supabase
         .from('staff_accounts')
         .update({'role': newRole})
         .eq('cswd_id', cswd_id);
+
+    await AuditLogService().log(
+      actionType: kAuditRoleChanged,
+      category: kCategoryStaff,
+      severity: kSeverityWarning,
+      actorId: widget.cswd_id,
+      actorName: widget.displayName,
+      actorRole: widget.role,
+      targetType: 'staff_account',
+      targetId: cswd_id,
+      details: {'old_role': oldRole, 'new_role': newRole},
+    );
+
     _loadAccounts();
   }
 
@@ -390,6 +432,14 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
       case 'FormBuilder':
         if (widget.role != 'superadmin') return;
         nextScreen = FormBuilderScreen(
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+          displayName: widget.displayName,
+        );
+        break;
+      case 'AuditLogs':
+        if (widget.role != 'superadmin') return;
+        nextScreen = AuditLogsScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
           displayName: widget.displayName,

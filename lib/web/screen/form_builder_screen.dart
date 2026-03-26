@@ -21,6 +21,8 @@ import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/applicants_screen.dart';
+import 'package:sappiire/web/screen/audit_logs_screen.dart';
+import 'package:sappiire/web/services/audit_log_service.dart';
 
 // ── UUID v4 generator ──────────────────────────────────────
 String _generateUuid() {
@@ -700,6 +702,18 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     if (success) {
       setState(() => _formStatus = 'published');
       await _loadTemplateList();
+
+      await AuditLogService().log(
+        actionType: kAuditTemplatePublished,
+        category: kCategoryTemplate,
+        severity: kSeverityInfo,
+        actorId: widget.cswd_id,
+        actorName: widget.displayName,
+        actorRole: widget.role,
+        targetType: 'form_template',
+        targetId: _activeTemplateId,
+        targetLabel: _formName,
+      );
     }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(success ? 'Form published ✓' : 'Error publishing'),
@@ -725,6 +739,18 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     if (success) {
       setState(() => _formStatus = 'pushed_to_mobile');
       await _loadTemplateList();
+
+      await AuditLogService().log(
+        actionType: kAuditTemplatePushed,
+        category: kCategoryTemplate,
+        severity: kSeverityInfo,
+        actorId: widget.cswd_id,
+        actorName: widget.displayName,
+        actorRole: widget.role,
+        targetType: 'form_template',
+        targetId: _activeTemplateId,
+        targetLabel: _formName,
+      );
     }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(success ? 'Pushed to mobile ✓' : 'Error pushing'),
@@ -735,6 +761,19 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
 
   Future<void> _deleteTemplate() async {
     if (_activeTemplateId == null) return;
+
+    await AuditLogService().log(
+      actionType: kAuditTemplateDeleted,
+      category: kCategoryTemplate,
+      severity: kSeverityCritical,
+      actorId: widget.cswd_id,
+      actorName: widget.displayName,
+      actorRole: widget.role,
+      targetType: 'form_template',
+      targetId: _activeTemplateId,
+      targetLabel: _formName,
+      details: {'force_delete': false},
+    );
 
     // First check for submissions
     final result = await _service.deleteTemplate(_activeTemplateId!);
@@ -796,6 +835,20 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         confirmColor: Colors.red,
       );
       if (confirm2 != true || !mounted) return;
+
+      await AuditLogService().log(
+        actionType: kAuditTemplateDeleted,
+        category: kCategoryTemplate,
+        severity: kSeverityCritical,
+        actorId: widget.cswd_id,
+        actorName: widget.displayName,
+        actorRole: widget.role,
+        targetType: 'form_template',
+        targetId: _activeTemplateId,
+        targetLabel: _formName,
+        details: {'force_delete': true},
+      );
+
       final ok = await _service.forceDeleteTemplate(_activeTemplateId!);
       if (!mounted) return;
       if (ok) {
@@ -828,6 +881,18 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     if (success) {
       setState(() => _formStatus = 'archived');
       await _loadTemplateList();
+
+      await AuditLogService().log(
+        actionType: kAuditTemplateArchived,
+        category: kCategoryTemplate,
+        severity: kSeverityWarning,
+        actorId: widget.cswd_id,
+        actorName: widget.displayName,
+        actorRole: widget.role,
+        targetType: 'form_template',
+        targetId: _activeTemplateId,
+        targetLabel: _formName,
+      );
     }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(success ? 'Form archived ✓' : 'Error archiving'),
@@ -1225,6 +1290,13 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         break;
       case 'Applicants':
         next = ApplicantsScreen(
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
+        break;
+      case 'AuditLogs':
+        if (widget.role != 'superadmin') return;
+        next = AuditLogsScreen(
             cswd_id: widget.cswd_id,
             role: widget.role,
             displayName: widget.displayName);

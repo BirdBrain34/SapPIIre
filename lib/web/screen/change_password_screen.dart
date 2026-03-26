@@ -6,6 +6,7 @@ import 'package:sappiire/web/screen/dashboard_screen.dart';
 import 'package:sappiire/web/screen/form_builder_screen.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/screen/manage_staff_screen.dart';
+import 'package:sappiire/web/screen/audit_logs_screen.dart';
 import 'package:sappiire/web/services/web_auth_service.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/web/widget/web_shell.dart';
@@ -479,6 +480,14 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       case 'FormBuilder':
         if (widget.role != 'superadmin') return;
         next = FormBuilderScreen(
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+          displayName: widget.displayName,
+        );
+        break;
+      case 'AuditLogs':
+        if (widget.role != 'superadmin') return;
+        next = AuditLogsScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
           displayName: widget.displayName,

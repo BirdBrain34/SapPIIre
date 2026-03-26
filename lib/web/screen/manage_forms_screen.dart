@@ -34,6 +34,8 @@ import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/applicants_screen.dart';
 import 'package:sappiire/web/screen/form_builder_screen.dart';
+import 'package:sappiire/web/screen/audit_logs_screen.dart';
+import 'package:sappiire/web/services/audit_log_service.dart';
 
 class ManageFormsScreen extends StatefulWidget {
   final String cswd_id;
@@ -131,6 +133,22 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         _isStartingSession = false;
       });
 
+      await AuditLogService().log(
+        actionType: kAuditSessionStarted,
+        category: kCategorySession,
+        severity: kSeverityInfo,
+        actorId: widget.cswd_id,
+        actorName: widget.displayName,
+        actorRole: widget.role,
+        targetType: 'form_session',
+        targetId: _currentSessionId,
+        targetLabel: _selectedTemplate?.formName,
+        details: {
+          'template_id': _selectedTemplate?.templateId,
+          'form_name': _selectedTemplate?.formName,
+        },
+      );
+
       _listenForMobileUpdates(_currentSessionId);
 
       // Push to display_sessions so the customer monitor updates
@@ -207,6 +225,22 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         'data': formData,
         'created_by': widget.cswd_id,
       });
+
+      await AuditLogService().log(
+        actionType: kAuditSubmissionCreated,
+        category: kCategorySubmission,
+        severity: kSeverityInfo,
+        actorId: widget.cswd_id,
+        actorName: widget.displayName,
+        actorRole: widget.role,
+        targetType: 'client_submission',
+        targetId: _currentSessionId,
+        targetLabel: _selectedTemplate?.formName,
+        details: {
+          'form_type': _selectedTemplate?.formName,
+          'session_id': _currentSessionId,
+        },
+      );
 
       // Close the session
       await _supabase
@@ -398,6 +432,13 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       case 'FormBuilder':
         if (widget.role != 'superadmin') return;
         next = FormBuilderScreen(
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
+        break;
+      case 'AuditLogs':
+        if (widget.role != 'superadmin') return;
+        next = AuditLogsScreen(
             cswd_id: widget.cswd_id,
             role: widget.role,
             displayName: widget.displayName);

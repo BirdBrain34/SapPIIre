@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
+import 'package:sappiire/web/services/audit_log_service.dart';
 
 class WebAuthService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -34,6 +35,13 @@ class WebAuthService {
 
       final storedHash = accountResponse['password_hash'];
       if (hashedPassword != storedHash) {
+        await AuditLogService().log(
+          actionType: kAuditLoginFailed,
+          category: kCategoryAuth,
+          severity: kSeverityWarning,
+          actorName: username,
+          details: {'reason': 'invalid_password'},
+        );
         return {'success': false, 'message': 'Invalid username or password'};
       }
 
@@ -71,6 +79,18 @@ class WebAuthService {
           displayName = '$first $last'.trim();
         }
       }
+
+      await AuditLogService().log(
+        actionType: kAuditLogin,
+        category: kCategoryAuth,
+        severity: kSeverityInfo,
+        actorId: cswdId,
+        actorName: displayName,
+        actorRole: accountResponse['role'] ?? 'viewer',
+        targetType: 'staff_account',
+        targetId: cswdId,
+        targetLabel: accountResponse['username']?.toString(),
+      );
 
       return {
         'success': true,
@@ -133,6 +153,16 @@ class WebAuthService {
           .from('staff_accounts')
           .update({'password_hash': newHash})
           .eq('cswd_id', cswd_id);
+
+      await AuditLogService().log(
+        actionType: kAuditPasswordChanged,
+        category: kCategoryAuth,
+        severity: kSeverityWarning,
+        actorId: cswd_id,
+        targetType: 'staff_account',
+        targetId: cswd_id,
+        details: {'initiated_by': 'self'},
+      );
 
       return {'success': true, 'message': 'Password changed successfully.'};
     } catch (e) {

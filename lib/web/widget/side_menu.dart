@@ -140,6 +140,13 @@ class SideMenu extends StatelessWidget {
               'CreateStaff',
               activePath,
             ),
+            _navItem(
+              context,
+              Icons.history_outlined,
+              'Audit Logs',
+              'AuditLogs',
+              activePath,
+            ),
           ],
 
           const Spacer(),
@@ -242,14 +249,15 @@ class SideMenu extends StatelessWidget {
   }
 
   void _handleNavigation(BuildContext context, String screenPath) {
-    // Import the screen classes at the top for this to work
-    // For now, we'll use a generic approach that works without circular imports
     try {
-      // The screens will be navigated to based on the path
-      // This is called from SideMenu which is in WebShell
-      // We need to tell the parent to navigate
-      if (onNavigate != null) {
-        onNavigate!(screenPath);
+      switch (screenPath) {
+        case 'AuditLogs':
+          if (role != 'superadmin') return;
+          onNavigate?.call('AuditLogs');
+          break;
+        default:
+          onNavigate?.call(screenPath);
+          break;
       }
     } catch (e) {
       debugPrint("Navigation error: $e");

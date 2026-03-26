@@ -18,6 +18,8 @@ import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/screen/form_builder_screen.dart';
+import 'package:sappiire/web/screen/audit_logs_screen.dart';
+import 'package:sappiire/web/services/audit_log_service.dart';
 
 class ApplicantsScreen extends StatefulWidget {
   final String cswd_id;
@@ -208,6 +210,19 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
           })
           .eq('id', _selectedSubmission!['id']);
 
+      await AuditLogService().log(
+        actionType: kAuditSubmissionEdited,
+        category: kCategorySubmission,
+        severity: kSeverityInfo,
+        actorId: widget.cswd_id,
+        actorName: widget.displayName,
+        actorRole: widget.role,
+        targetType: 'client_submission',
+        targetId: _selectedSubmission!['id'].toString(),
+        targetLabel: _getApplicantName(_selectedSubmission!),
+        details: {'form_type': _selectedSubmission!['form_type']},
+      );
+
       await _loadData();
       setState(() {
         _isEditMode = false;
@@ -247,6 +262,19 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       ),
     );
     if (confirmed != true) return;
+
+    await AuditLogService().log(
+      actionType: kAuditSubmissionDeleted,
+      category: kCategorySubmission,
+      severity: kSeverityCritical,
+      actorId: widget.cswd_id,
+      actorName: widget.displayName,
+      actorRole: widget.role,
+      targetType: 'client_submission',
+      targetId: _selectedSubmission!['id'].toString(),
+      targetLabel: _getApplicantName(_selectedSubmission!),
+      details: {'form_type': _selectedSubmission!['form_type']},
+    );
 
     await _supabase
         .from('client_submissions')
@@ -391,6 +419,13 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       case 'FormBuilder':
         if (widget.role != 'superadmin') return;
         next = FormBuilderScreen(
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
+        break;
+      case 'AuditLogs':
+        if (widget.role != 'superadmin') return;
+        next = AuditLogsScreen(
             cswd_id: widget.cswd_id,
             role: widget.role,
             displayName: widget.displayName);
