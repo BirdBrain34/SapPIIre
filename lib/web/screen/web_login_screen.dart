@@ -48,6 +48,7 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
           page: ManageFormsScreen(
             cswd_id: result['cswd_id'] ?? '',
             role: result['role'] ?? 'viewer',
+            displayName: result['display_name'] ?? result['username'] ?? '',
           ),
         ),
       );

@@ -51,12 +51,20 @@ class DynamicFieldWidget extends StatelessWidget {
       case FormFieldType.computed:
         fieldWidget = _ComputedField(field: field, controller: controller);
         break;
+      case FormFieldType.conditional:
+        fieldWidget = _TextField(
+            field: field, controller: controller, isReadOnly: isReadOnly);
+        break;
       case FormFieldType.dropdown:
         fieldWidget = _DropdownField(
             field: field, controller: controller, isReadOnly: isReadOnly);
         break;
       case FormFieldType.radio:
         fieldWidget = _RadioField(
+            field: field, controller: controller, isReadOnly: isReadOnly);
+        break;
+      case FormFieldType.checkbox:
+        fieldWidget = _CheckboxField(
             field: field, controller: controller, isReadOnly: isReadOnly);
         break;
       case FormFieldType.boolean:
@@ -445,6 +453,99 @@ class _RadioField extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                     color: selected ? Colors.white : Colors.black87,
                   ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Checkbox field (multi-select) ───────────────────────────
+class _CheckboxField extends StatelessWidget {
+  final FormFieldModel field;
+  final FormStateController controller;
+  final bool isReadOnly;
+
+  const _CheckboxField({
+    required this.field,
+    required this.controller,
+    required this.isReadOnly,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final raw = controller.getValue(field.fieldName);
+    final selected = <String>{};
+    if (raw is List) {
+      selected.addAll(raw.map((e) => e.toString()));
+    } else if (raw is String && raw.trim().isNotEmpty) {
+      selected.addAll(
+          raw.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _FieldLabel(label: field.fieldLabel, isRequired: field.isRequired),
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          children: field.options.map((o) {
+            final isSelected = selected.contains(o.value);
+            return GestureDetector(
+              onTap: isReadOnly
+                  ? null
+                  : () {
+                      final next = Set<String>.from(selected);
+                      if (isSelected) {
+                        next.remove(o.value);
+                      } else {
+                        next.add(o.value);
+                      }
+                      controller.setValue(
+                        field.fieldName,
+                        next.toList(),
+                        notify: true,
+                      );
+                    },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? AppColors.primaryBlue
+                      : const Color(0xFFF0F0F8),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isSelected
+                        ? AppColors.primaryBlue
+                        : const Color(0xFFDDDDEE),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isSelected
+                          ? Icons.check_box
+                          : Icons.check_box_outline_blank,
+                      size: 14,
+                      color: isSelected ? Colors.white : Colors.black45,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      o.label,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: isSelected ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             );

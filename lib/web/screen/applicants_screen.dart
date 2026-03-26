@@ -18,15 +18,19 @@ import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/screen/form_builder_screen.dart';
+import 'package:sappiire/web/screen/audit_logs_screen.dart';
+import 'package:sappiire/web/services/audit_log_service.dart';
 
 class ApplicantsScreen extends StatefulWidget {
   final String cswd_id;
   final String role;
+  final String displayName;
 
   const ApplicantsScreen({
     super.key,
     required this.cswd_id,
     required this.role,
+    this.displayName = '',
   });
 
   @override
@@ -206,6 +210,19 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
           })
           .eq('id', _selectedSubmission!['id']);
 
+      await AuditLogService().log(
+        actionType: kAuditSubmissionEdited,
+        category: kCategorySubmission,
+        severity: kSeverityInfo,
+        actorId: widget.cswd_id,
+        actorName: widget.displayName,
+        actorRole: widget.role,
+        targetType: 'client_submission',
+        targetId: _selectedSubmission!['id'].toString(),
+        targetLabel: _getApplicantName(_selectedSubmission!),
+        details: {'form_type': _selectedSubmission!['form_type']},
+      );
+
       await _loadData();
       setState(() {
         _isEditMode = false;
@@ -245,6 +262,19 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       ),
     );
     if (confirmed != true) return;
+
+    await AuditLogService().log(
+      actionType: kAuditSubmissionDeleted,
+      category: kCategorySubmission,
+      severity: kSeverityCritical,
+      actorId: widget.cswd_id,
+      actorName: widget.displayName,
+      actorRole: widget.role,
+      targetType: 'client_submission',
+      targetId: _selectedSubmission!['id'].toString(),
+      targetLabel: _getApplicantName(_selectedSubmission!),
+      details: {'form_type': _selectedSubmission!['form_type']},
+    );
 
     await _supabase
         .from('client_submissions')
@@ -365,24 +395,40 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         next = DashboardScreen(
             cswd_id: widget.cswd_id,
             role: widget.role,
+            displayName: widget.displayName,
             onLogout: _handleLogout);
         break;
       case 'Staff':
         next = ManageStaffScreen(
-            cswd_id: widget.cswd_id, role: widget.role);
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
         break;
       case 'CreateStaff':
         next = CreateStaffScreen(
-            cswd_id: widget.cswd_id, role: widget.role);
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
         break;
       case 'Forms':
         next = ManageFormsScreen(
-            cswd_id: widget.cswd_id, role: widget.role);
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
         break;
       case 'FormBuilder':
         if (widget.role != 'superadmin') return;
         next = FormBuilderScreen(
-            cswd_id: widget.cswd_id, role: widget.role);
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
+        break;
+      case 'AuditLogs':
+        if (widget.role != 'superadmin') return;
+        next = AuditLogsScreen(
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
         break;
       default:
         return;
@@ -399,6 +445,8 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       pageTitle: 'Applicants',
       pageSubtitle: 'Review submitted client intake forms',
       role: widget.role,
+      cswd_id: widget.cswd_id,
+      displayName: widget.displayName,
       onLogout: _handleLogout,
       headerActions: [
         _buildHeaderButton('Refresh', Icons.refresh,

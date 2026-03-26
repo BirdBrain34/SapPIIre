@@ -3,6 +3,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
+import 'package:sappiire/web/screen/change_password_screen.dart';
+import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/web/widget/side_menu.dart';
 
 class WebShell extends StatelessWidget {
@@ -10,6 +12,8 @@ class WebShell extends StatelessWidget {
   final String pageTitle;
   final String pageSubtitle;
   final String role;
+  final String cswd_id;
+  final String displayName;
   final Widget child;
   final VoidCallback onLogout;
   final List<Widget>? headerActions;
@@ -21,11 +25,28 @@ class WebShell extends StatelessWidget {
     required this.pageTitle,
     required this.pageSubtitle,
     required this.role,
+    required this.cswd_id,
+    this.displayName = '',
     required this.child,
     required this.onLogout,
     this.headerActions,
     this.onNavigate,
   });
+
+  String _roleLabel(String role) {
+    switch (role) {
+      case 'superadmin':
+        return 'Super Administrator';
+      case 'admin':
+        return 'Administrator';
+      case 'form_editor':
+        return 'Form Editor';
+      case 'viewer':
+        return 'Staff';
+      default:
+        return role;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -84,18 +105,80 @@ class WebShell extends StatelessWidget {
                       // Header action buttons (optional)
                       if (headerActions != null) ...headerActions!,
                       const SizedBox(width: 16),
-                      // Staff avatar placeholder
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: AppColors.highlight.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(
-                          Icons.person_outline,
-                          color: AppColors.highlight,
-                          size: 20,
+                      Tooltip(
+                        message: 'Change Password',
+                        child: GestureDetector(
+                          onTap: () => Navigator.push(
+                            context,
+                            ContentFadeRoute(
+                              page: ChangePasswordScreen(
+                                cswd_id: cswd_id,
+                                role: role,
+                                displayName: displayName,
+                              ),
+                            ),
+                          ),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.highlight.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: AppColors.highlight.withOpacity(0.2),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 30,
+                                  height: 30,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.highlight.withOpacity(0.15),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.person_outline,
+                                    color: AppColors.highlight,
+                                    size: 18,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      displayName.isEmpty
+                                          ? 'My Account'
+                                          : displayName,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.textDark,
+                                      ),
+                                    ),
+                                    Text(
+                                      _roleLabel(role),
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.textMuted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(width: 8),
+                                const Icon(
+                                  Icons.expand_more,
+                                  size: 16,
+                                  color: AppColors.textMuted,
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ],

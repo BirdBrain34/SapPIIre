@@ -21,6 +21,8 @@ import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/applicants_screen.dart';
+import 'package:sappiire/web/screen/audit_logs_screen.dart';
+import 'package:sappiire/web/services/audit_log_service.dart';
 
 // ── UUID v4 generator ──────────────────────────────────────
 String _generateUuid() {
@@ -70,6 +72,7 @@ const _typeIcons = <FormFieldType, IconData>{
 
 const _systemTypeLabels = <FormFieldType, String>{
   FormFieldType.computed: 'Computed',
+  FormFieldType.conditional: 'Conditional',
   FormFieldType.membershipGroup: 'Membership Group',
   FormFieldType.familyTable: 'Family Table',
   FormFieldType.supportingFamilyTable: 'Supporting Family Table',
@@ -79,6 +82,7 @@ const _systemTypeLabels = <FormFieldType, String>{
 
 const _systemTypeIcons = <FormFieldType, IconData>{
   FormFieldType.computed: Icons.calculate_outlined,
+  FormFieldType.conditional: Icons.device_hub_outlined,
   FormFieldType.membershipGroup: Icons.group_outlined,
   FormFieldType.familyTable: Icons.table_chart_outlined,
   FormFieldType.supportingFamilyTable: Icons.table_chart_outlined,
@@ -151,6 +155,18 @@ class _BuilderColumn {
   bool get isCoreColumn => dbMapKey != null;
 }
 
+class _BuilderCondition {
+  String triggerFieldId;
+  String triggerValue;
+  String action;
+
+  _BuilderCondition({
+    this.triggerFieldId = '',
+    this.triggerValue = '',
+    this.action = 'show',
+  });
+}
+
 class _BuilderField {
   String id;
   String label;
@@ -165,6 +181,7 @@ class _BuilderField {
   int scaleMin;
   int scaleMax;
   String formula; // for computed fields
+  _BuilderCondition condition;
 
   _BuilderField({
     String? id,
@@ -180,10 +197,12 @@ class _BuilderField {
     this.scaleMin = 1,
     this.scaleMax = 5,
     this.formula = '',
+    _BuilderCondition? condition,
   })  : id = id ?? _generateUuid(),
         fieldName = fieldName ?? 'field_${_generateUuid().substring(0, 8)}',
         options = options ?? [_BuilderOption(label: 'Option 1', order: 0)],
-        columns = columns ?? [];
+      columns = columns ?? [],
+      condition = condition ?? _BuilderCondition();
 
   bool get hasOptions =>
       type == FormFieldType.radio ||
@@ -214,12 +233,14 @@ class _BuilderSection {
 class FormBuilderScreen extends StatefulWidget {
   final String cswd_id;
   final String role;
+  final String displayName;
   final String? editTemplateId;
 
   const FormBuilderScreen({
     super.key,
     required this.cswd_id,
     required this.role,
+    this.displayName = '',
     this.editTemplateId,
   });
 
@@ -435,6 +456,18 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           }
 
           final vr = f['validation_rules'] as Map<String, dynamic>?;
+          final rawConditions =
+              (f['form_field_conditions'] as List<dynamic>? ?? [])
+                  .cast<Map<String, dynamic>>();
+          Map<String, dynamic>? showCondition;
+          for (final c in rawConditions) {
+            if ((c['action'] as String? ?? 'show') == 'show') {
+              showCondition = c;
+              break;
+            }
+          }
+          showCondition ??= rawConditions.isNotEmpty ? rawConditions.first : null;
+
           return _BuilderField(
             id: f['field_id'] as String,
             label: f['field_label'] as String? ?? '',
@@ -447,6 +480,13 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             order: (f['field_order'] as int?) ?? 0,
             columns: columns,
             formula: (vr?['formula'] as String?) ?? '',
+            condition: _BuilderCondition(
+              triggerFieldId:
+                (showCondition?['trigger_field_id'] as String?) ?? '',
+              triggerValue:
+                (showCondition?['trigger_value'] as String?) ?? '',
+              action: (showCondition?['action'] as String?) ?? 'show',
+            ),
             options: rawOpts
                 .map((o) => _BuilderOption(
                       id: o['option_id'] as String,
@@ -511,6 +551,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     final dbSections = <Map<String, dynamic>>[];
     final dbFields = <Map<String, dynamic>>[];
     final dbOptions = <Map<String, dynamic>>[];
+    final dbConditions = <Map<String, dynamic>>[];
 
     for (var si = 0; si < _sections.length; si++) {
       final section = _sections[si];
@@ -592,6 +633,16 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             });
           }
         }
+
+        if (field.condition.triggerFieldId.isNotEmpty &&
+            field.condition.triggerValue.isNotEmpty) {
+          dbConditions.add({
+            'field_id': field.id,
+            'trigger_field_id': field.condition.triggerFieldId,
+            'trigger_value': field.condition.triggerValue,
+            'action': field.condition.action,
+          });
+        }
       }
     }
 
@@ -602,6 +653,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       sections: dbSections,
       fields: dbFields,
       options: dbOptions,
+      conditions: dbConditions,
     );
 
     if (!mounted) return;
@@ -650,6 +702,18 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     if (success) {
       setState(() => _formStatus = 'published');
       await _loadTemplateList();
+
+      await AuditLogService().log(
+        actionType: kAuditTemplatePublished,
+        category: kCategoryTemplate,
+        severity: kSeverityInfo,
+        actorId: widget.cswd_id,
+        actorName: widget.displayName,
+        actorRole: widget.role,
+        targetType: 'form_template',
+        targetId: _activeTemplateId,
+        targetLabel: _formName,
+      );
     }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(success ? 'Form published ✓' : 'Error publishing'),
@@ -675,6 +739,18 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     if (success) {
       setState(() => _formStatus = 'pushed_to_mobile');
       await _loadTemplateList();
+
+      await AuditLogService().log(
+        actionType: kAuditTemplatePushed,
+        category: kCategoryTemplate,
+        severity: kSeverityInfo,
+        actorId: widget.cswd_id,
+        actorName: widget.displayName,
+        actorRole: widget.role,
+        targetType: 'form_template',
+        targetId: _activeTemplateId,
+        targetLabel: _formName,
+      );
     }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(success ? 'Pushed to mobile ✓' : 'Error pushing'),
@@ -685,6 +761,19 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
 
   Future<void> _deleteTemplate() async {
     if (_activeTemplateId == null) return;
+
+    await AuditLogService().log(
+      actionType: kAuditTemplateDeleted,
+      category: kCategoryTemplate,
+      severity: kSeverityCritical,
+      actorId: widget.cswd_id,
+      actorName: widget.displayName,
+      actorRole: widget.role,
+      targetType: 'form_template',
+      targetId: _activeTemplateId,
+      targetLabel: _formName,
+      details: {'force_delete': false},
+    );
 
     // First check for submissions
     final result = await _service.deleteTemplate(_activeTemplateId!);
@@ -746,6 +835,20 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         confirmColor: Colors.red,
       );
       if (confirm2 != true || !mounted) return;
+
+      await AuditLogService().log(
+        actionType: kAuditTemplateDeleted,
+        category: kCategoryTemplate,
+        severity: kSeverityCritical,
+        actorId: widget.cswd_id,
+        actorName: widget.displayName,
+        actorRole: widget.role,
+        targetType: 'form_template',
+        targetId: _activeTemplateId,
+        targetLabel: _formName,
+        details: {'force_delete': true},
+      );
+
       final ok = await _service.forceDeleteTemplate(_activeTemplateId!);
       if (!mounted) return;
       if (ok) {
@@ -778,6 +881,18 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     if (success) {
       setState(() => _formStatus = 'archived');
       await _loadTemplateList();
+
+      await AuditLogService().log(
+        actionType: kAuditTemplateArchived,
+        category: kCategoryTemplate,
+        severity: kSeverityWarning,
+        actorId: widget.cswd_id,
+        actorName: widget.displayName,
+        actorRole: widget.role,
+        targetType: 'form_template',
+        targetId: _activeTemplateId,
+        targetLabel: _formName,
+      );
     }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(success ? 'Form archived ✓' : 'Error archiving'),
@@ -1028,7 +1143,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                           ),
                         )
                       : null,
-                  enabled: !exists || e.key == FormFieldType.computed,
+                    enabled: !exists || e.key == FormFieldType.computed,
                   onTap: () {
                     Navigator.pop(ctx);
                     _addSystemField(si, e.key);
@@ -1075,6 +1190,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           options: src.options
               .map((o) => _BuilderOption(label: o.label))
               .toList(),
+          condition: _BuilderCondition(
+            triggerFieldId: src.condition.triggerFieldId,
+            triggerValue: src.condition.triggerValue,
+            action: src.condition.action,
+          ),
         ),
       );
       _activeFieldIdx = fi + 1;
@@ -1147,23 +1267,39 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         next = DashboardScreen(
             cswd_id: widget.cswd_id,
             role: widget.role,
+            displayName: widget.displayName,
             onLogout: _handleLogout);
         break;
       case 'Forms':
         next = ManageFormsScreen(
-            cswd_id: widget.cswd_id, role: widget.role);
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
         break;
       case 'Staff':
         next = ManageStaffScreen(
-            cswd_id: widget.cswd_id, role: widget.role);
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
         break;
       case 'CreateStaff':
         next = CreateStaffScreen(
-            cswd_id: widget.cswd_id, role: widget.role);
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
         break;
       case 'Applicants':
         next = ApplicantsScreen(
-            cswd_id: widget.cswd_id, role: widget.role);
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
+        break;
+      case 'AuditLogs':
+        if (widget.role != 'superadmin') return;
+        next = AuditLogsScreen(
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
         break;
       default:
         return;
@@ -1186,6 +1322,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           ? '$_formName${_hasUnsavedChanges ? '  •  unsaved changes' : ''}'
           : 'Create and manage form templates',
       role: widget.role,
+      cswd_id: widget.cswd_id,
+      displayName: widget.displayName,
       onLogout: _handleLogout,
       headerActions: _buildHeaderActions(),
       onNavigate: (path) => _navigateToScreen(context, path),
@@ -2012,52 +2150,285 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   }
 
   Widget _buildFieldToolbar(_BuilderField field, int si, int fi) {
-    return Wrap(
-      alignment: WrapAlignment.end,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 0,
-      runSpacing: 4,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        IconButton(
-          icon: const Icon(Icons.content_copy, size: 18),
-          tooltip: 'Duplicate',
-          onPressed: () => _duplicateField(si, fi),
-        ),
-        IconButton(
-          icon:
-              const Icon(Icons.delete_outline, size: 18, color: Colors.red),
-          tooltip: 'Delete',
-          onPressed: () => _removeField(si, fi),
-        ),
-        const SizedBox(width: 8),
-        Container(width: 1, height: 24, color: AppColors.cardBorder),
-        const SizedBox(width: 8),
-        IconButton(
-          icon: const Icon(Icons.arrow_upward, size: 18),
-          tooltip: 'Move up',
-          onPressed: fi > 0 ? () => _moveField(si, fi, -1) : null,
-        ),
-        IconButton(
-          icon: const Icon(Icons.arrow_downward, size: 18),
-          tooltip: 'Move down',
-          onPressed: fi < _sections[si].fields.length - 1
-              ? () => _moveField(si, fi, 1)
-              : null,
-        ),
-        const SizedBox(width: 8),
-        Container(width: 1, height: 24, color: AppColors.cardBorder),
-        const SizedBox(width: 4),
-        const Text('Required',
-            style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
-        Switch(
-          value: field.isRequired,
-          activeColor: AppColors.highlight,
-          onChanged: (v) => setState(() {
-            field.isRequired = v;
-            _hasUnsavedChanges = true;
-          }),
+        _buildVisibilityConditionRow(field),
+        const SizedBox(height: 8),
+        Wrap(
+          alignment: WrapAlignment.end,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 0,
+          runSpacing: 4,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.content_copy, size: 18),
+              tooltip: 'Duplicate',
+              onPressed: () => _duplicateField(si, fi),
+            ),
+            IconButton(
+              icon:
+                  const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+              tooltip: 'Delete',
+              onPressed: () => _removeField(si, fi),
+            ),
+            const SizedBox(width: 8),
+            Container(width: 1, height: 24, color: AppColors.cardBorder),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.arrow_upward, size: 18),
+              tooltip: 'Move up',
+              onPressed: fi > 0 ? () => _moveField(si, fi, -1) : null,
+            ),
+            IconButton(
+              icon: const Icon(Icons.arrow_downward, size: 18),
+              tooltip: 'Move down',
+              onPressed: fi < _sections[si].fields.length - 1
+                  ? () => _moveField(si, fi, 1)
+                  : null,
+            ),
+            const SizedBox(width: 8),
+            Container(width: 1, height: 24, color: AppColors.cardBorder),
+            const SizedBox(width: 4),
+            const Text('Required',
+                style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+            Switch(
+              value: field.isRequired,
+              activeColor: AppColors.highlight,
+              onChanged: (v) => setState(() {
+                field.isRequired = v;
+                _hasUnsavedChanges = true;
+              }),
+            ),
+          ],
         ),
       ],
+    );
+  }
+
+  Widget _buildVisibilityConditionRow(_BuilderField field) {
+    final triggerCandidates = _sections
+        .expand((s) => s.fields)
+        .where((f) =>
+            f.id != field.id &&
+            (f.type == FormFieldType.boolean ||
+                f.type == FormFieldType.radio ||
+                f.type == FormFieldType.dropdown ||
+            f.type == FormFieldType.checkbox ||
+            f.type == FormFieldType.membershipGroup))
+        .toList();
+
+    final hasCondition = field.condition.triggerFieldId.isNotEmpty;
+
+    _BuilderField? triggerField;
+    for (final f in triggerCandidates) {
+      if (f.id == field.condition.triggerFieldId) {
+        triggerField = f;
+        break;
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: hasCondition ? Colors.orange.withOpacity(0.06) : AppColors.pageBg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color:
+              hasCondition ? Colors.orange.withOpacity(0.4) : AppColors.cardBorder,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.device_hub_outlined,
+                  size: 15, color: AppColors.textMuted),
+              const SizedBox(width: 6),
+              const Text(
+                'Show only if...',
+                style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+              ),
+              const Spacer(),
+              Switch(
+                value: hasCondition,
+                activeColor: Colors.orange,
+                onChanged: triggerCandidates.isEmpty
+                    ? null
+                    : (v) => setState(() {
+                          if (!v) {
+                            field.condition.triggerFieldId = '';
+                            field.condition.triggerValue = '';
+                          } else {
+                            field.condition.triggerFieldId =
+                                triggerCandidates.first.id;
+                            field.condition.triggerValue = '';
+                            field.condition.action = 'show';
+                          }
+                          _hasUnsavedChanges = true;
+                        }),
+              ),
+            ],
+          ),
+          if (hasCondition) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.cardBorder),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: field.condition.triggerFieldId.isEmpty
+                            ? null
+                            : field.condition.triggerFieldId,
+                        isExpanded: true,
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.textDark),
+                        hint: const Text('Pick a field',
+                            style: TextStyle(fontSize: 12)),
+                        items: triggerCandidates.map((f) {
+                          return DropdownMenuItem<String>(
+                            value: f.id,
+                            child: Text(
+                              f.label.isNotEmpty ? f.label : f.fieldName,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (v) => setState(() {
+                          field.condition.triggerFieldId = v ?? '';
+                          field.condition.triggerValue = '';
+                          field.condition.action = 'show';
+                          _hasUnsavedChanges = true;
+                        }),
+                      ),
+                    ),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: Text('=',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textMuted)),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: triggerField != null &&
+                          (triggerField.hasOptions ||
+                          triggerField.type == FormFieldType.boolean ||
+                          triggerField.type == FormFieldType.membershipGroup)
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppColors.cardBorder),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: field.condition.triggerValue.isEmpty
+                                  ? null
+                                  : field.condition.triggerValue,
+                              isExpanded: true,
+                              style: const TextStyle(
+                                  fontSize: 12, color: AppColors.textDark),
+                              hint: const Text('Pick a value',
+                                  style: TextStyle(fontSize: 12)),
+                                items: triggerField.type == FormFieldType.boolean
+                                  ? const [
+                                    DropdownMenuItem(
+                                      value: 'yes', child: Text('Yes')),
+                                    DropdownMenuItem(
+                                      value: 'no', child: Text('No')),
+                                  ]
+                                  : triggerField.type ==
+                                      FormFieldType.membershipGroup
+                                    ? const [
+                                      DropdownMenuItem(
+                                        value: 'solo_parent',
+                                        child: Text('Solo Parent')),
+                                      DropdownMenuItem(
+                                        value: 'pwd',
+                                        child: Text('PWD')),
+                                      DropdownMenuItem(
+                                        value: 'four_ps_member',
+                                        child: Text('4Ps Member')),
+                                      DropdownMenuItem(
+                                        value: 'phic_member',
+                                        child: Text('PHIC Member')),
+                                    ]
+                                    : triggerField.options.map((o) {
+                                      return DropdownMenuItem<String>(
+                                        value: _slugify(o.label),
+                                        child: Text(o.label,
+                                            style:
+                                                const TextStyle(fontSize: 12)),
+                                      );
+                                    }).toList(),
+                              onChanged: (v) => setState(() {
+                                field.condition.triggerValue = v ?? '';
+                                field.condition.action = 'show';
+                                _hasUnsavedChanges = true;
+                              }),
+                            ),
+                          ),
+                        )
+                      : TextField(
+                          controller:
+                              _ctrl('cond_val_${field.id}', field.condition.triggerValue),
+                          style: const TextStyle(fontSize: 12),
+                          decoration: InputDecoration(
+                            hintText: 'Type value...',
+                            filled: true,
+                            fillColor: Colors.white,
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide.none),
+                            focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide:
+                                    const BorderSide(color: Colors.orange)),
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 10),
+                          ),
+                          onChanged: (v) => setState(() {
+                            field.condition.triggerValue = v;
+                            field.condition.action = 'show';
+                            _hasUnsavedChanges = true;
+                          }),
+                        ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              field.condition.triggerValue.isEmpty
+                  ? 'Pick a value to complete the condition.'
+                  : 'This field shows when "${triggerField?.label ?? "?"}" = "${field.condition.triggerValue}"',
+              style: TextStyle(fontSize: 11, color: Colors.orange.shade700),
+            ),
+          ],
+          if (!hasCondition && triggerCandidates.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 4),
+              child: Text(
+                'Add a Yes/No, radio, dropdown, checkbox, or Membership Group field first to use this.',
+                style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -2088,6 +2459,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         return _buildSystemTableColumnEditor(field, isActive);
       case FormFieldType.computed:
         return _buildFormulaEditor(field, isActive);
+      case FormFieldType.conditional:
+        return _buildConditionEditor(field, isActive);
       case FormFieldType.boolean:
         return Column(
           children: [
@@ -2936,6 +3309,136 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                       fontFamily: 'monospace')),
             );
           }).toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildConditionEditor(_BuilderField field, bool isActive) {
+    final allFields = _sections
+        .expand((s) => s.fields)
+        .where((f) => f.id != field.id)
+        .toList();
+
+    _BuilderField? triggerField;
+    for (final f in allFields) {
+      if (f.id == field.condition.triggerFieldId) {
+        triggerField = f;
+        break;
+      }
+    }
+
+    if (!isActive) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF8E1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.orange.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.device_hub_outlined,
+                size: 14, color: Colors.orange),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                field.condition.triggerFieldId.isEmpty
+                    ? 'No condition set'
+                    : 'Show if "${triggerField?.label ?? field.condition.triggerFieldId}" = "${field.condition.triggerValue}"',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: field.condition.triggerFieldId.isEmpty
+                      ? AppColors.textMuted
+                      : Colors.orange.shade800,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Condition',
+          style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textMuted),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'This field will only be visible when the selected field equals the specified value.',
+          style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.cardBorder),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: field.condition.triggerFieldId.isEmpty
+                  ? null
+                  : field.condition.triggerFieldId,
+              isExpanded: true,
+              hint: const Text(
+                'Select trigger field',
+                style: TextStyle(fontSize: 13, color: AppColors.textMuted),
+              ),
+              items: allFields
+                  .map(
+                    (f) => DropdownMenuItem<String>(
+                      value: f.id,
+                      child: Text(
+                        f.label.isNotEmpty ? f.label : f.fieldName,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() {
+                  field.condition.triggerFieldId = value;
+                  field.condition.action = 'show';
+                  _hasUnsavedChanges = true;
+                });
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _ctrl('cond_val_${field.id}', field.condition.triggerValue),
+          decoration: InputDecoration(
+            hintText: 'Trigger value (exact match)',
+            filled: true,
+            fillColor: AppColors.pageBg,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: AppColors.highlight),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 12,
+            ),
+          ),
+          onChanged: (v) {
+            field.condition.triggerValue = v;
+            field.condition.action = 'show';
+            _hasUnsavedChanges = true;
+          },
         ),
       ],
     );

@@ -229,6 +229,7 @@ class FormBuilderService {
     required List<Map<String, dynamic>> sections,
     required List<Map<String, dynamic>> fields,
     required List<Map<String, dynamic>> options,
+    List<Map<String, dynamic>> conditions = const [],
   }) async {
     try {
       // 1. Update template metadata
@@ -284,6 +285,11 @@ class FormBuilderService {
       // 5. Insert fresh options
       if (options.isNotEmpty) {
         await _supabase.from('form_field_options').insert(options);
+      }
+
+      // 5b. Insert fresh conditions for conditional fields
+      if (conditions.isNotEmpty) {
+        await _supabase.from('form_field_conditions').insert(conditions);
       }
 
       // 6. Soft-delete orphaned fields — fields removed in the builder

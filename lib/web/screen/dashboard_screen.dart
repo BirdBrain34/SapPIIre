@@ -6,6 +6,7 @@ import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/applicants_screen.dart';
 import 'package:sappiire/web/screen/form_builder_screen.dart';
+import 'package:sappiire/web/screen/audit_logs_screen.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/services/intake_analytics_service.dart';
 import 'package:sappiire/web/components/intake_chart_widgets.dart';
@@ -13,12 +14,14 @@ import 'package:sappiire/web/components/intake_chart_widgets.dart';
 class DashboardScreen extends StatefulWidget {
   final String cswd_id;
   final String role;
+  final String displayName;
   final VoidCallback onLogout;
 
   const DashboardScreen({
     super.key,
     required this.cswd_id,
     required this.role,
+    this.displayName = '',
     required this.onLogout,
   });
 
@@ -98,6 +101,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       pageTitle: 'Intake Analytics Dashboard',
       pageSubtitle: 'Comprehensive insights from General Intake submissions',
       role: widget.role,
+      cswd_id: widget.cswd_id,
+      displayName: widget.displayName,
       onLogout: widget.onLogout,
       onNavigate: (screenPath) => _navigateToScreen(context, screenPath),
       child: Padding(
@@ -392,24 +397,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
         nextScreen = ManageFormsScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
+          displayName: widget.displayName,
         );
         break;
       case 'Staff':
         nextScreen = ManageStaffScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
+          displayName: widget.displayName,
         );
         break;
       case 'CreateStaff':
         nextScreen = CreateStaffScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
+          displayName: widget.displayName,
         );
         break;
       case 'Applicants':
         nextScreen = ApplicantsScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
+          displayName: widget.displayName,
         );
         break;
       case 'FormBuilder':
@@ -417,6 +426,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         nextScreen = FormBuilderScreen(
           cswd_id: widget.cswd_id,
           role: widget.role,
+          displayName: widget.displayName,
+        );
+        break;
+      case 'AuditLogs':
+        if (widget.role != 'superadmin') return;
+        nextScreen = AuditLogsScreen(
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+          displayName: widget.displayName,
         );
         break;
       default:

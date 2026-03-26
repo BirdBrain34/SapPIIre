@@ -34,15 +34,19 @@ import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/applicants_screen.dart';
 import 'package:sappiire/web/screen/form_builder_screen.dart';
+import 'package:sappiire/web/screen/audit_logs_screen.dart';
+import 'package:sappiire/web/services/audit_log_service.dart';
 
 class ManageFormsScreen extends StatefulWidget {
   final String cswd_id;
   final String role;
+  final String displayName;
 
   const ManageFormsScreen({
     super.key,
     required this.cswd_id,
     required this.role,
+    this.displayName = '',
   });
 
   @override
@@ -129,6 +133,22 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         _isStartingSession = false;
       });
 
+      await AuditLogService().log(
+        actionType: kAuditSessionStarted,
+        category: kCategorySession,
+        severity: kSeverityInfo,
+        actorId: widget.cswd_id,
+        actorName: widget.displayName,
+        actorRole: widget.role,
+        targetType: 'form_session',
+        targetId: _currentSessionId,
+        targetLabel: _selectedTemplate?.formName,
+        details: {
+          'template_id': _selectedTemplate?.templateId,
+          'form_name': _selectedTemplate?.formName,
+        },
+      );
+
       _listenForMobileUpdates(_currentSessionId);
 
       // Push to display_sessions so the customer monitor updates
@@ -205,6 +225,22 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         'data': formData,
         'created_by': widget.cswd_id,
       });
+
+      await AuditLogService().log(
+        actionType: kAuditSubmissionCreated,
+        category: kCategorySubmission,
+        severity: kSeverityInfo,
+        actorId: widget.cswd_id,
+        actorName: widget.displayName,
+        actorRole: widget.role,
+        targetType: 'client_submission',
+        targetId: _currentSessionId,
+        targetLabel: _selectedTemplate?.formName,
+        details: {
+          'form_type': _selectedTemplate?.formName,
+          'session_id': _currentSessionId,
+        },
+      );
 
       // Close the session
       await _supabase
@@ -372,24 +408,40 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         next = DashboardScreen(
             cswd_id: widget.cswd_id,
             role: widget.role,
+            displayName: widget.displayName,
             onLogout: _handleLogout);
         break;
       case 'Staff':
         next = ManageStaffScreen(
-            cswd_id: widget.cswd_id, role: widget.role);
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
         break;
       case 'CreateStaff':
         next = CreateStaffScreen(
-            cswd_id: widget.cswd_id, role: widget.role);
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
         break;
       case 'Applicants':
         next = ApplicantsScreen(
-            cswd_id: widget.cswd_id, role: widget.role);
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
         break;
       case 'FormBuilder':
         if (widget.role != 'superadmin') return;
         next = FormBuilderScreen(
-            cswd_id: widget.cswd_id, role: widget.role);
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
+        break;
+      case 'AuditLogs':
+        if (widget.role != 'superadmin') return;
+        next = AuditLogsScreen(
+            cswd_id: widget.cswd_id,
+            role: widget.role,
+            displayName: widget.displayName);
         break;
       default:
         return;
@@ -410,6 +462,8 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           ? 'Session active — client can scan the QR code'
           : 'Start a session to generate a QR code',
       role: widget.role,
+      cswd_id: widget.cswd_id,
+      displayName: widget.displayName,
       onLogout: _handleLogout,
       headerActions: [
         // "Open Customer Display" button — always visible
