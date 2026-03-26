@@ -91,19 +91,22 @@ const _systemTypeIcons = <FormFieldType, IconData>{
 };
 
 const _standardProfileCanonicalKeys = <({String key, String label})>[
-  (key: 'last_name',                            label: 'Last Name'),
-  (key: 'first_name',                           label: 'First Name'),
-  (key: 'middle_name',                          label: 'Middle Name'),
-  (key: 'date_of_birth',                        label: 'Date of Birth'),
-  (key: 'age',                                  label: 'Age'),
-  (key: 'kasarian_sex',                         label: 'Sex / Kasarian'),
-  (key: 'estadong_sibil_civil_status',          label: 'Civil Status / Estadong Sibil'),
+  (key: 'last_name', label: 'Last Name'),
+  (key: 'first_name', label: 'First Name'),
+  (key: 'middle_name', label: 'Middle Name'),
+  (key: 'date_of_birth', label: 'Date of Birth'),
+  (key: 'age', label: 'Age'),
+  (key: 'kasarian_sex', label: 'Sex / Kasarian'),
+  (key: 'estadong_sibil_civil_status', label: 'Civil Status / Estadong Sibil'),
   (key: 'lugar_ng_kapanganakan_place_of_birth', label: 'Place of Birth'),
-  (key: 'cp_number',                            label: 'Phone Number / CP Number'),
-  (key: 'email_address',                        label: 'Email Address'),
-  (key: 'house_number_street_name_phase_purok', label: 'House No. / Street / Purok'),
-  (key: 'barangay',                             label: 'Barangay'),
-  (key: 'subdivison_',                          label: 'Subdivision'),
+  (key: 'cp_number', label: 'Phone Number / CP Number'),
+  (key: 'email_address', label: 'Email Address'),
+  (
+    key: 'house_number_street_name_phase_purok',
+    label: 'House No. / Street / Purok',
+  ),
+  (key: 'barangay', label: 'Barangay'),
+  (key: 'subdivison_', label: 'Subdivision'),
 ];
 
 const _canonicalKeyEligibleTypes = <FormFieldType>{
@@ -115,6 +118,44 @@ const _canonicalKeyEligibleTypes = <FormFieldType>{
   FormFieldType.boolean,
 };
 
+class _ReferenceToken {
+  final String label;
+  final String token;
+  final String hint;
+  final String group;
+
+  const _ReferenceToken(this.label, this.token, this.hint, this.group);
+}
+
+const _referenceTokens = <_ReferenceToken>[
+  _ReferenceToken('Form Code', '{FORMCODE}', 'GIS', 'Form Info'),
+  _ReferenceToken('Year (2026)', '{YYYY}', '2026', 'Date'),
+  _ReferenceToken('Year Short (26)', '{YY}', '26', 'Date'),
+  _ReferenceToken('Month Number (03)', '{MM}', '03', 'Date'),
+  _ReferenceToken('Month Short (MAR)', '{MON}', 'MAR', 'Date'),
+  _ReferenceToken('Day (26)', '{DD}', '26', 'Date'),
+  _ReferenceToken('Day of Year (085)', '{DDD}', '085', 'Date'),
+  _ReferenceToken('Quarter (1)', '{Q}', '1', 'Date'),
+  _ReferenceToken('Week Number (13)', '{WW}', '13', 'Date'),
+  _ReferenceToken('ISO Week (13)', '{IW}', '13', 'Date'),
+  _ReferenceToken('Hour (14)', '{HH24}', '14', 'Time'),
+  _ReferenceToken('Minute (30)', '{MI}', '30', 'Time'),
+  _ReferenceToken('Second (00)', '{SS}', '00', 'Time'),
+  _ReferenceToken(
+    'Counter 8-digit (00000001)',
+    '{########}',
+    '00000001',
+    'Counter',
+  ),
+  _ReferenceToken('Counter 6-digit (000001)', '{######}', '000001', 'Counter'),
+  _ReferenceToken('Counter 4-digit (0001)', '{####}', '0001', 'Counter'),
+  _ReferenceToken('Counter 3-digit (001)', '{###}', '001', 'Counter'),
+  _ReferenceToken('Counter 2-digit (01)', '{##}', '01', 'Counter'),
+  _ReferenceToken('Counter (1)', '{#}', '1', 'Counter'),
+];
+
+const _referenceTokenGroups = <String>['Form Info', 'Date', 'Time', 'Counter'];
+
 // ── Mutable builder models (file-private) ───────────────────
 class _BuilderOption {
   String id;
@@ -122,7 +163,7 @@ class _BuilderOption {
   int order;
 
   _BuilderOption({String? id, this.label = 'Option', this.order = 0})
-      : id = id ?? _generateUuid();
+    : id = id ?? _generateUuid();
 }
 
 class _BuilderColumn {
@@ -146,9 +187,9 @@ class _BuilderColumn {
     this.order = 0,
     List<_BuilderOption>? options,
     this.dbMapKey,
-  })  : id = id ?? _generateUuid(),
-        fieldName = fieldName ?? 'col_${_generateUuid().substring(0, 8)}',
-        options = options ?? [];
+  }) : id = id ?? _generateUuid(),
+       fieldName = fieldName ?? 'col_${_generateUuid().substring(0, 8)}',
+       options = options ?? [];
 
   /// Whether this column has a DB mapping. Used by the interceptor for
   /// best-effort routing — no longer prevents deletion or editing in the UI.
@@ -181,6 +222,7 @@ class _BuilderField {
   int scaleMin;
   int scaleMax;
   String formula; // for computed fields
+  String? ageFromFieldId; // for number fields auto-computed from a date field
   _BuilderCondition condition;
 
   _BuilderField({
@@ -197,12 +239,13 @@ class _BuilderField {
     this.scaleMin = 1,
     this.scaleMax = 5,
     this.formula = '',
+    this.ageFromFieldId,
     _BuilderCondition? condition,
-  })  : id = id ?? _generateUuid(),
-        fieldName = fieldName ?? 'field_${_generateUuid().substring(0, 8)}',
-        options = options ?? [_BuilderOption(label: 'Option 1', order: 0)],
-      columns = columns ?? [],
-      condition = condition ?? _BuilderCondition();
+  }) : id = id ?? _generateUuid(),
+       fieldName = fieldName ?? 'field_${_generateUuid().substring(0, 8)}',
+       options = options ?? [_BuilderOption(label: 'Option 1', order: 0)],
+       columns = columns ?? [],
+       condition = condition ?? _BuilderCondition();
 
   bool get hasOptions =>
       type == FormFieldType.radio ||
@@ -223,8 +266,8 @@ class _BuilderSection {
     this.description,
     this.order = 0,
     List<_BuilderField>? fields,
-  })  : id = id ?? _generateUuid(),
-        fields = fields ?? [];
+  }) : id = id ?? _generateUuid(),
+       fields = fields ?? [];
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -261,6 +304,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   String? _activeTemplateId;
   String _formName = '';
   String _formDesc = '';
+  String _formCode = '';
+  String _referencePrefix = '';
+  String _referenceFormat = '{FORMCODE}-{YYYY}-{MM}-{####}';
+  bool _requiresReference = true;
   String _formStatus = 'draft';
   List<_BuilderSection> _sections = [];
 
@@ -279,8 +326,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   final Map<String, TextEditingController> _ctrls = {};
 
   TextEditingController _ctrl(String key, String initial) {
-    return _ctrls.putIfAbsent(
-        key, () => TextEditingController(text: initial));
+    return _ctrls.putIfAbsent(key, () => TextEditingController(text: initial));
   }
 
   void _clearCtrls() {
@@ -288,6 +334,112 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       c.dispose();
     }
     _ctrls.clear();
+  }
+
+  String _sanitizeCode(String input) {
+    final cleaned = input.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    return cleaned.length > 10 ? cleaned.substring(0, 10) : cleaned;
+  }
+
+  List<String> _referenceFormatParts() {
+    if (_referenceFormat.isEmpty) return const [];
+    return RegExp(
+      r'(\{[^{}]+\}|.)',
+    ).allMatches(_referenceFormat).map((m) => m.group(0)!).toList();
+  }
+
+  void _appendReferenceToken(String token) {
+    setState(() {
+      _referenceFormat = '$_referenceFormat$token';
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  void _appendReferenceSeparator(String separator) {
+    setState(() {
+      _referenceFormat = '$_referenceFormat$separator';
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  void _removeReferencePartAt(int index) {
+    final parts = _referenceFormatParts();
+    if (index < 0 || index >= parts.length) return;
+    setState(() {
+      parts.removeAt(index);
+      _referenceFormat = parts.join();
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  String _referencePreview() {
+    final now = DateTime.now();
+    var ref = _referenceFormat;
+    final prefix = _referencePrefix.trim().isNotEmpty
+        ? _referencePrefix.trim().toUpperCase()
+        : (_formCode.trim().isNotEmpty
+              ? _formCode.trim().toUpperCase()
+              : 'FORM');
+
+    String pad(int v, int n) => v.toString().padLeft(n, '0');
+    final yearStart = DateTime(now.year, 1, 1);
+    final dayOfYear = now.difference(yearStart).inDays + 1;
+    final quarter = ((now.month - 1) ~/ 3) + 1;
+
+    ref = ref.replaceAll('{FORMCODE}', prefix);
+    ref = ref.replaceAll('{YYYY}', now.year.toString());
+    ref = ref.replaceAll('{YY}', now.year.toString().substring(2));
+    ref = ref.replaceAll('{MM}', pad(now.month, 2));
+    ref = ref.replaceAll(
+      '{MON}',
+      const [
+        'JAN',
+        'FEB',
+        'MAR',
+        'APR',
+        'MAY',
+        'JUN',
+        'JUL',
+        'AUG',
+        'SEP',
+        'OCT',
+        'NOV',
+        'DEC',
+      ][now.month - 1],
+    );
+    ref = ref.replaceAll(
+      '{MONTH}',
+      const [
+        'JANUARY',
+        'FEBRUARY',
+        'MARCH',
+        'APRIL',
+        'MAY',
+        'JUNE',
+        'JULY',
+        'AUGUST',
+        'SEPTEMBER',
+        'OCTOBER',
+        'NOVEMBER',
+        'DECEMBER',
+      ][now.month - 1],
+    );
+    ref = ref.replaceAll('{DD}', pad(now.day, 2));
+    ref = ref.replaceAll('{DDD}', pad(dayOfYear, 3));
+    ref = ref.replaceAll('{Q}', '$quarter');
+    ref = ref.replaceAll('{WW}', pad(((dayOfYear - 1) ~/ 7) + 1, 2));
+    ref = ref.replaceAll('{IW}', pad(((dayOfYear - 1) ~/ 7) + 1, 2));
+    ref = ref.replaceAll('{HH24}', pad(now.hour, 2));
+    ref = ref.replaceAll('{MI}', pad(now.minute, 2));
+    ref = ref.replaceAll('{SS}', pad(now.second, 2));
+
+    ref = ref.replaceAll('{########}', '????????');
+    ref = ref.replaceAll('{######}', '??????');
+    ref = ref.replaceAll('{####}', '????');
+    ref = ref.replaceAll('{###}', '???');
+    ref = ref.replaceAll('{##}', '??');
+    ref = ref.replaceAll('{#}', '?');
+    return ref;
   }
 
   @override
@@ -342,8 +494,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       };
       final merged = dbKeys.map((k) {
         return (key: k, label: labelMap[k] ?? k);
-      }).toList()
-        ..sort((a, b) => a.key.compareTo(b.key));
+      }).toList()..sort((a, b) => a.key.compareTo(b.key));
 
       if (mounted) {
         setState(() {
@@ -374,16 +525,21 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     }
 
     // Parse sections & fields into builder models
-    final rawSections = (data['form_sections'] as List<dynamic>? ?? [])
-        .cast<Map<String, dynamic>>()
-      ..sort((a, b) => ((a['section_order'] as int?) ?? 0)
-          .compareTo((b['section_order'] as int?) ?? 0));
+    final rawSections =
+        (data['form_sections'] as List<dynamic>? ?? [])
+            .cast<Map<String, dynamic>>()
+          ..sort(
+            (a, b) => ((a['section_order'] as int?) ?? 0).compareTo(
+              (b['section_order'] as int?) ?? 0,
+            ),
+          );
     final rawFields = (data['form_fields'] as List<dynamic>? ?? [])
         .cast<Map<String, dynamic>>()
         .where((f) {
-      final vr = f['validation_rules'] as Map<String, dynamic>?;
-      return vr == null || vr['_archived'] != true;
-    }).toList();
+          final vr = f['validation_rules'] as Map<String, dynamic>?;
+          return vr == null || vr['_archived'] != true;
+        })
+        .toList();
 
     // Separate child column-definition fields from top-level fields
     final childFields = rawFields
@@ -401,11 +557,15 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     }
 
     final sections = rawSections.map((s) {
-      final sFields = topLevelFields
-          .where((f) => f['section_id'] == s['section_id'])
-          .toList()
-        ..sort((a, b) => ((a['field_order'] as int?) ?? 0)
-            .compareTo((b['field_order'] as int?) ?? 0));
+      final sFields =
+          topLevelFields
+              .where((f) => f['section_id'] == s['section_id'])
+              .toList()
+            ..sort(
+              (a, b) => ((a['field_order'] as int?) ?? 0).compareTo(
+                (b['field_order'] as int?) ?? 0,
+              ),
+            );
 
       return _BuilderSection(
         id: s['section_id'] as String,
@@ -416,8 +576,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           final rawOpts =
               (f['form_field_options'] as List<dynamic>? ?? [])
                   .cast<Map<String, dynamic>>()
-                ..sort((a, b) => ((a['option_order'] as int?) ?? 0)
-                    .compareTo((b['option_order'] as int?) ?? 0));
+                ..sort(
+                  (a, b) => ((a['option_order'] as int?) ?? 0).compareTo(
+                    (b['option_order'] as int?) ?? 0,
+                  ),
+                );
 
           // Parse columns for member_table and family_table fields
           List<_BuilderColumn> columns = [];
@@ -426,14 +589,20 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           if ((ftype == 'member_table' || ftype == 'family_table') &&
               childrenByParent.containsKey(fid)) {
             final childList = childrenByParent[fid]!
-              ..sort((a, b) => ((a['field_order'] as int?) ?? 0)
-                  .compareTo((b['field_order'] as int?) ?? 0));
+              ..sort(
+                (a, b) => ((a['field_order'] as int?) ?? 0).compareTo(
+                  (b['field_order'] as int?) ?? 0,
+                ),
+              );
             columns = childList.map((cf) {
               final colOpts =
                   (cf['form_field_options'] as List<dynamic>? ?? [])
                       .cast<Map<String, dynamic>>()
-                    ..sort((a, b) => ((a['option_order'] as int?) ?? 0)
-                        .compareTo((b['option_order'] as int?) ?? 0));
+                    ..sort(
+                      (a, b) => ((a['option_order'] as int?) ?? 0).compareTo(
+                        (b['option_order'] as int?) ?? 0,
+                      ),
+                    );
               // Read db_map_key from validation_rules for system table cols
               final vr = cf['validation_rules'] as Map<String, dynamic>?;
               return _BuilderColumn(
@@ -441,21 +610,25 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 label: cf['field_label'] as String? ?? '',
                 fieldName: cf['field_name'] as String? ?? '',
                 type: FormFieldType.fromString(
-                    cf['field_type'] as String? ?? 'text'),
+                  cf['field_type'] as String? ?? 'text',
+                ),
                 order: (cf['field_order'] as int?) ?? 0,
                 dbMapKey: vr?['db_map_key'] as String?,
                 options: colOpts
-                    .map((o) => _BuilderOption(
-                          id: o['option_id'] as String,
-                          label: o['option_label'] as String? ?? '',
-                          order: (o['option_order'] as int?) ?? 0,
-                        ))
+                    .map(
+                      (o) => _BuilderOption(
+                        id: o['option_id'] as String,
+                        label: o['option_label'] as String? ?? '',
+                        order: (o['option_order'] as int?) ?? 0,
+                      ),
+                    )
                     .toList(),
               );
             }).toList();
           }
 
           final vr = f['validation_rules'] as Map<String, dynamic>?;
+          final ageFromField = (vr?['age_from_field'] as String?)?.trim();
           final rawConditions =
               (f['form_field_conditions'] as List<dynamic>? ?? [])
                   .cast<Map<String, dynamic>>();
@@ -466,33 +639,40 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               break;
             }
           }
-          showCondition ??= rawConditions.isNotEmpty ? rawConditions.first : null;
+          showCondition ??= rawConditions.isNotEmpty
+              ? rawConditions.first
+              : null;
 
           return _BuilderField(
             id: f['field_id'] as String,
             label: f['field_label'] as String? ?? '',
             fieldName: f['field_name'] as String? ?? '',
             type: FormFieldType.fromString(
-                f['field_type'] as String? ?? 'text'),
+              f['field_type'] as String? ?? 'text',
+            ),
             isRequired: (f['is_required'] as bool?) ?? false,
             placeholder: f['placeholder'] as String?,
             canonicalFieldKey: f['canonical_field_key'] as String?,
             order: (f['field_order'] as int?) ?? 0,
             columns: columns,
             formula: (vr?['formula'] as String?) ?? '',
+            ageFromFieldId: (ageFromField != null && ageFromField.isNotEmpty)
+                ? ageFromField
+                : null,
             condition: _BuilderCondition(
               triggerFieldId:
-                (showCondition?['trigger_field_id'] as String?) ?? '',
-              triggerValue:
-                (showCondition?['trigger_value'] as String?) ?? '',
+                  (showCondition?['trigger_field_id'] as String?) ?? '',
+              triggerValue: (showCondition?['trigger_value'] as String?) ?? '',
               action: (showCondition?['action'] as String?) ?? 'show',
             ),
             options: rawOpts
-                .map((o) => _BuilderOption(
-                      id: o['option_id'] as String,
-                      label: o['option_label'] as String? ?? '',
-                      order: (o['option_order'] as int?) ?? 0,
-                    ))
+                .map(
+                  (o) => _BuilderOption(
+                    id: o['option_id'] as String,
+                    label: o['option_label'] as String? ?? '',
+                    order: (o['option_order'] as int?) ?? 0,
+                  ),
+                )
                 .toList(),
           );
         }).toList(),
@@ -503,6 +683,17 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       _activeTemplateId = templateId;
       _formName = data['form_name'] as String? ?? 'Untitled Form';
       _formDesc = data['form_desc'] as String? ?? '';
+      _formCode = _sanitizeCode(
+        data['form_code'] as String? ?? _slugify(_formName).toUpperCase(),
+      );
+      _referencePrefix = _sanitizeCode(
+        data['reference_prefix'] as String? ?? _formCode,
+      );
+      _referenceFormat =
+          (data['reference_format'] as String?)?.trim().isNotEmpty == true
+          ? data['reference_format'] as String
+          : '{FORMCODE}-{YYYY}-{MM}-{####}';
+      _requiresReference = (data['requires_reference'] as bool?) ?? true;
       _formStatus = data['status'] as String? ?? 'draft';
       _sections = sections;
       _activeSectionIdx = null;
@@ -514,10 +705,15 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
 
   // ── CRUD Operations ─────────────────────────────────────────
   Future<void> _createNewTemplate() async {
+    const defaultFormat = '{FORMCODE}-{YYYY}-{MM}-{####}';
     final id = await _service.createTemplate(
       formName: 'Untitled Form',
       formDesc: '',
       createdBy: widget.cswd_id,
+      formCode: 'UNTITLEDFORM',
+      referencePrefix: 'UNTITLEDFORM',
+      referenceFormat: defaultFormat,
+      requiresReference: true,
     );
     if (id == null || !mounted) return;
     await _loadTemplateList();
@@ -528,6 +724,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       _activeTemplateId = id;
       _formName = 'Untitled Form';
       _formDesc = '';
+      _formCode = 'UNTITLEDFORM';
+      _referencePrefix = 'UNTITLEDFORM';
+      _referenceFormat = defaultFormat;
+      _requiresReference = true;
       _formStatus = 'draft';
       _sections = [
         _BuilderSection(
@@ -566,6 +766,15 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
 
       for (var fi = 0; fi < section.fields.length; fi++) {
         final field = section.fields[fi];
+        final validationRules = <String, dynamic>{};
+        if (field.type == FormFieldType.computed && field.formula.isNotEmpty) {
+          validationRules['formula'] = field.formula;
+        }
+        if (field.type == FormFieldType.number &&
+            field.ageFromFieldId != null &&
+            field.ageFromFieldId!.isNotEmpty) {
+          validationRules['age_from_field'] = field.ageFromFieldId;
+        }
         dbFields.add({
           'field_id': field.id,
           'template_id': _activeTemplateId,
@@ -577,8 +786,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           'placeholder': field.placeholder,
           'canonical_field_key': field.canonicalFieldKey,
           'field_order': fi,
-          if (field.type == FormFieldType.computed && field.formula.isNotEmpty)
-            'validation_rules': {'formula': field.formula},
+          if (validationRules.isNotEmpty) 'validation_rules': validationRules,
         });
 
         // Serialize member table columns as child fields
@@ -646,10 +854,25 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       }
     }
 
+    final normalizedCode = _sanitizeCode(
+      _formCode.trim().isNotEmpty
+          ? _formCode
+          : _slugify(_formName).toUpperCase(),
+    );
+    final normalizedPrefix = _sanitizeCode(
+      _referencePrefix.trim().isNotEmpty ? _referencePrefix : normalizedCode,
+    );
+
     final success = await _service.saveTemplateStructure(
       templateId: _activeTemplateId!,
       formName: _formName,
       formDesc: _formDesc,
+      formCode: normalizedCode,
+      referencePrefix: normalizedPrefix,
+      referenceFormat: _referenceFormat.trim().isNotEmpty
+          ? _referenceFormat.trim()
+          : '{FORMCODE}-{YYYY}-{MM}-{####}',
+      requiresReference: _requiresReference,
       sections: dbSections,
       fields: dbFields,
       options: dbOptions,
@@ -662,13 +885,17 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       if (success) _hasUnsavedChanges = false;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(success
-          ? 'Template saved'
-          : 'Error saving template: ${_service.lastSaveError ?? "unknown"}'),
-      backgroundColor: success ? Colors.green : Colors.red,
-      behavior: SnackBarBehavior.floating,
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          success
+              ? 'Template saved'
+              : 'Error saving template: ${_service.lastSaveError ?? "unknown"}',
+        ),
+        backgroundColor: success ? Colors.green : Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
     await _loadTemplateList();
   }
 
@@ -678,11 +905,15 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     // Validate: must have at least one section with one field
     final hasFields = _sections.any((s) => s.fields.isNotEmpty);
     if (!hasFields) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Add at least one section with a question before publishing.'),
-        backgroundColor: Colors.orange,
-        behavior: SnackBarBehavior.floating,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Add at least one section with a question before publishing.',
+          ),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
       return;
     }
 
@@ -690,7 +921,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
 
     final confirmed = await _showConfirmDialog(
       title: 'Publish Form',
-      message: 'This will make the form visible to all admin users in their '
+      message:
+          'This will make the form visible to all admin users in their '
           '"Manage Forms" view. Continue?',
       confirmLabel: 'Publish',
       confirmColor: AppColors.highlight,
@@ -715,11 +947,13 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         targetLabel: _formName,
       );
     }
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(success ? 'Form published ✓' : 'Error publishing'),
-      backgroundColor: success ? Colors.green : Colors.red,
-      behavior: SnackBarBehavior.floating,
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(success ? 'Form published ✓' : 'Error publishing'),
+        backgroundColor: success ? Colors.green : Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Future<void> _pushToMobile() async {
@@ -727,7 +961,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
 
     final confirmed = await _showConfirmDialog(
       title: 'Push to Mobile',
-      message: 'This will make the form available on the mobile app. '
+      message:
+          'This will make the form available on the mobile app. '
           'Users will see it in their forms list. Continue?',
       confirmLabel: 'Push to Mobile',
       confirmColor: Colors.green,
@@ -752,11 +987,13 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         targetLabel: _formName,
       );
     }
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(success ? 'Pushed to mobile ✓' : 'Error pushing'),
-      backgroundColor: success ? Colors.green : Colors.red,
-      behavior: SnackBarBehavior.floating,
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(success ? 'Pushed to mobile ✓' : 'Error pushing'),
+        backgroundColor: success ? Colors.green : Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Future<void> _deleteTemplate() async {
@@ -802,7 +1039,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         content: Text(
           '$subCount submission(s) reference this form.\n\n'
           'You can Archive it (preserves data) or Force Delete '
-          '(permanently removes the form and all submissions).'),
+          '(permanently removes the form and all submissions).',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, 'cancel'),
@@ -811,14 +1049,15 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, 'archive'),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            child: const Text('Archive',
-                style: TextStyle(color: Colors.white)),
+            child: const Text('Archive', style: TextStyle(color: Colors.white)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, 'force'),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Force Delete',
-                style: TextStyle(color: Colors.white)),
+            child: const Text(
+              'Force Delete',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -829,7 +1068,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     } else if (choice == 'force') {
       final confirm2 = await _showConfirmDialog(
         title: 'Force Delete — Are you sure?',
-        message: 'This will permanently destroy the template AND all '
+        message:
+            'This will permanently destroy the template AND all '
             '$subCount submission(s). This cannot be undone.',
         confirmLabel: 'Delete Everything',
         confirmColor: Colors.red,
@@ -869,7 +1109,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     if (_activeTemplateId == null) return;
     final confirmed = await _showConfirmDialog(
       title: 'Archive Form',
-      message: 'This will remove the form from admins\' and mobile users\' '
+      message:
+          'This will remove the form from admins\' and mobile users\' '
           'view but keep all data intact for historical reference. Continue?',
       confirmLabel: 'Archive',
       confirmColor: Colors.orange,
@@ -894,11 +1135,13 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         targetLabel: _formName,
       );
     }
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(success ? 'Form archived ✓' : 'Error archiving'),
-      backgroundColor: success ? Colors.orange : Colors.red,
-      behavior: SnackBarBehavior.floating,
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(success ? 'Form archived ✓' : 'Error archiving'),
+        backgroundColor: success ? Colors.orange : Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Future<void> _restoreTemplate() async {
@@ -909,18 +1152,21 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       setState(() => _formStatus = 'draft');
       await _loadTemplateList();
     }
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(success ? 'Form restored to draft ✓' : 'Error restoring'),
-      backgroundColor: success ? Colors.green : Colors.red,
-      behavior: SnackBarBehavior.floating,
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(success ? 'Form restored to draft ✓' : 'Error restoring'),
+        backgroundColor: success ? Colors.green : Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Future<void> _unpublishTemplate() async {
     if (_activeTemplateId == null) return;
     final confirmed = await _showConfirmDialog(
       title: 'Unpublish Form',
-      message: 'This will revert the form to draft status. It will no longer '
+      message:
+          'This will revert the form to draft status. It will no longer '
           'be visible to admins or mobile users. Continue?',
       confirmLabel: 'Unpublish',
       confirmColor: Colors.orange,
@@ -955,8 +1201,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(backgroundColor: confirmColor),
-            child:
-                Text(confirmLabel, style: const TextStyle(color: Colors.white)),
+            child: Text(
+              confirmLabel,
+              style: const TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -966,10 +1214,12 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   // ── Builder Actions ─────────────────────────────────────────
   void _addSection() {
     setState(() {
-      _sections.add(_BuilderSection(
-        name: 'Section ${_sections.length + 1}',
-        order: _sections.length,
-      ));
+      _sections.add(
+        _BuilderSection(
+          name: 'Section ${_sections.length + 1}',
+          order: _sections.length,
+        ),
+      );
       _hasUnsavedChanges = true;
     });
   }
@@ -977,10 +1227,12 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   void _addField(int si) {
     final section = _sections[si];
     setState(() {
-      section.fields.add(_BuilderField(
-        label: 'Question ${section.fields.length + 1}',
-        order: section.fields.length,
-      ));
+      section.fields.add(
+        _BuilderField(
+          label: 'Question ${section.fields.length + 1}',
+          order: section.fields.length,
+        ),
+      );
       _activeSectionIdx = si;
       _activeFieldIdx = section.fields.length - 1;
       _hasUnsavedChanges = true;
@@ -988,57 +1240,103 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   }
 
   // ── System block definitions ───────────────────────────────
-  static const _systemBlocks = <FormFieldType, ({String label, String fieldName, String desc, IconData icon})>{
-    FormFieldType.membershipGroup: (
-      label: 'Membership Group',
-      fieldName: 'membership_group',
-      desc: 'Solo Parent, PWD, 4Ps, PHIC checkboxes',
-      icon: Icons.group_outlined,
-    ),
-    FormFieldType.familyTable: (
-      label: 'Family Composition',
-      fieldName: 'family_composition',
-      desc: 'Table for household members',
-      icon: Icons.table_chart_outlined,
-    ),
-    FormFieldType.supportingFamilyTable: (
-      label: 'Supporting Family Members',
-      fieldName: 'supporting_family_members',
-      desc: 'Table for supporting relatives',
-      icon: Icons.table_chart_outlined,
-    ),
-    FormFieldType.computed: (
-      label: 'Computed Field',
-      fieldName: 'computed_field',
-      desc: 'Auto-calculated value (income, expenses, etc.)',
-      icon: Icons.calculate_outlined,
-    ),
-    FormFieldType.signature: (
-      label: 'Signature',
-      fieldName: 'signature',
-      desc: 'Applicant draws their signature on screen. Saved as a base64 image in field values.',
-      icon: Icons.draw_outlined,
-    ),
-  };
+  static const _systemBlocks =
+      <
+        FormFieldType,
+        ({String label, String fieldName, String desc, IconData icon})
+      >{
+        FormFieldType.membershipGroup: (
+          label: 'Membership Group',
+          fieldName: 'membership_group',
+          desc: 'Solo Parent, PWD, 4Ps, PHIC checkboxes',
+          icon: Icons.group_outlined,
+        ),
+        FormFieldType.familyTable: (
+          label: 'Family Composition',
+          fieldName: 'family_composition',
+          desc: 'Table for household members',
+          icon: Icons.table_chart_outlined,
+        ),
+        FormFieldType.supportingFamilyTable: (
+          label: 'Supporting Family Members',
+          fieldName: 'supporting_family_members',
+          desc: 'Table for supporting relatives',
+          icon: Icons.table_chart_outlined,
+        ),
+        FormFieldType.computed: (
+          label: 'Computed Field',
+          fieldName: 'computed_field',
+          desc: 'Auto-calculated value (income, expenses, etc.)',
+          icon: Icons.calculate_outlined,
+        ),
+        FormFieldType.signature: (
+          label: 'Signature',
+          fieldName: 'signature',
+          desc:
+              'Applicant draws their signature on screen. Saved as a base64 image in field values.',
+          icon: Icons.draw_outlined,
+        ),
+      };
 
   // The 9 core columns of the family_composition DB table.
   // Each entry: (label, fieldName, dbMapKey, type)
-  static const _familyTableCoreColumns = <({
-    String label,
-    String fieldName,
-    String dbMapKey,
-    FormFieldType type,
-  })>[
-    (label: 'Name',           fieldName: 'name',                       dbMapKey: 'name',                       type: FormFieldType.text),
-    (label: 'Relationship',   fieldName: 'relationship_of_relative',   dbMapKey: 'relationship_of_relative',   type: FormFieldType.text),
-    (label: 'Birthdate',      fieldName: 'birthdate',                  dbMapKey: 'birthdate',                  type: FormFieldType.date),
-    (label: 'Age',            fieldName: 'age',                        dbMapKey: 'age',                        type: FormFieldType.number),
-    (label: 'Sex',            fieldName: 'gender',                     dbMapKey: 'gender',                     type: FormFieldType.dropdown),
-    (label: 'Civil Status',   fieldName: 'civil_status',               dbMapKey: 'civil_status',               type: FormFieldType.dropdown),
-    (label: 'Education',      fieldName: 'education',                  dbMapKey: 'education',                  type: FormFieldType.dropdown),
-    (label: 'Occupation',     fieldName: 'occupation',                 dbMapKey: 'occupation',                 type: FormFieldType.text),
-    (label: 'Allowance (₱)',  fieldName: 'allowance',                  dbMapKey: 'allowance',                  type: FormFieldType.number),
-  ];
+  static const _familyTableCoreColumns =
+      <({String label, String fieldName, String dbMapKey, FormFieldType type})>[
+        (
+          label: 'Name',
+          fieldName: 'name',
+          dbMapKey: 'name',
+          type: FormFieldType.text,
+        ),
+        (
+          label: 'Relationship',
+          fieldName: 'relationship_of_relative',
+          dbMapKey: 'relationship_of_relative',
+          type: FormFieldType.text,
+        ),
+        (
+          label: 'Birthdate',
+          fieldName: 'birthdate',
+          dbMapKey: 'birthdate',
+          type: FormFieldType.date,
+        ),
+        (
+          label: 'Age',
+          fieldName: 'age',
+          dbMapKey: 'age',
+          type: FormFieldType.number,
+        ),
+        (
+          label: 'Sex',
+          fieldName: 'gender',
+          dbMapKey: 'gender',
+          type: FormFieldType.dropdown,
+        ),
+        (
+          label: 'Civil Status',
+          fieldName: 'civil_status',
+          dbMapKey: 'civil_status',
+          type: FormFieldType.dropdown,
+        ),
+        (
+          label: 'Education',
+          fieldName: 'education',
+          dbMapKey: 'education',
+          type: FormFieldType.dropdown,
+        ),
+        (
+          label: 'Occupation',
+          fieldName: 'occupation',
+          dbMapKey: 'occupation',
+          type: FormFieldType.text,
+        ),
+        (
+          label: 'Allowance (₱)',
+          fieldName: 'allowance',
+          dbMapKey: 'allowance',
+          type: FormFieldType.number,
+        ),
+      ];
 
   void _addSystemField(int si, FormFieldType type) {
     final block = _systemBlocks[type];
@@ -1048,14 +1346,17 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     // Prevent duplicates for one-per-form blocks
     final allFields = _sections.expand((s) => s.fields);
     if (const {
-      FormFieldType.membershipGroup,
-      FormFieldType.familyTable,
-      FormFieldType.supportingFamilyTable,
-      FormFieldType.signature,
-    }.contains(type) && allFields.any((f) => f.type == type)) {
+          FormFieldType.membershipGroup,
+          FormFieldType.familyTable,
+          FormFieldType.supportingFamilyTable,
+          FormFieldType.signature,
+        }.contains(type) &&
+        allFields.any((f) => f.type == type)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('A "${block.label}" block already exists in this form.'),
+          content: Text(
+            'A "${block.label}" block already exists in this form.',
+          ),
           backgroundColor: Colors.orange.shade700,
         ),
       );
@@ -1068,26 +1369,30 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       columns = _familyTableCoreColumns
           .asMap()
           .entries
-          .map((e) => _BuilderColumn(
-                label: e.value.label,
-                fieldName: e.value.fieldName,
-                type: e.value.type,
-                order: e.key,
-                dbMapKey: e.value.dbMapKey,
-              ))
+          .map(
+            (e) => _BuilderColumn(
+              label: e.value.label,
+              fieldName: e.value.fieldName,
+              type: e.value.type,
+              order: e.key,
+              dbMapKey: e.value.dbMapKey,
+            ),
+          )
           .toList();
     }
 
     setState(() {
-      section.fields.add(_BuilderField(
-        label: block.label,
-        fieldName: block.fieldName,
-        type: type,
-        isRequired: false,
-        order: section.fields.length,
-        options: [],
-        columns: columns,
-      ));
+      section.fields.add(
+        _BuilderField(
+          label: block.label,
+          fieldName: block.fieldName,
+          type: type,
+          isRequired: false,
+          order: section.fields.length,
+          options: [],
+          columns: columns,
+        ),
+      );
       _activeSectionIdx = si;
       _activeFieldIdx = section.fields.length - 1;
       _hasUnsavedChanges = true;
@@ -1127,13 +1432,17 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                     .expand((s) => s.fields)
                     .any((f) => f.type == e.key);
                 return ListTile(
-                  leading: Icon(block.icon,
-                      color: exists ? AppColors.textMuted : AppColors.highlight),
-                  title: Text(block.label,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: exists ? AppColors.textMuted : AppColors.textDark,
-                      )),
+                  leading: Icon(
+                    block.icon,
+                    color: exists ? AppColors.textMuted : AppColors.highlight,
+                  ),
+                  title: Text(
+                    block.label,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: exists ? AppColors.textMuted : AppColors.textDark,
+                    ),
+                  ),
                   subtitle: e.key == FormFieldType.signature
                       ? Text(
                           exists ? 'Already added' : block.desc,
@@ -1143,7 +1452,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                           ),
                         )
                       : null,
-                    enabled: !exists || e.key == FormFieldType.computed,
+                  enabled: !exists || e.key == FormFieldType.computed,
                   onTap: () {
                     Navigator.pop(ctx);
                     _addSystemField(si, e.key);
@@ -1186,6 +1495,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           isRequired: src.isRequired,
           placeholder: src.placeholder,
           canonicalFieldKey: src.canonicalFieldKey,
+          ageFromFieldId: src.ageFromFieldId,
           order: fi + 1,
           options: src.options
               .map((o) => _BuilderOption(label: o.label))
@@ -1234,11 +1544,13 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         content: const Text('You have unsaved changes. Leave without saving?'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Stay')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Stay'),
+          ),
           TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Leave', style: TextStyle(color: Colors.red))),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Leave', style: TextStyle(color: Colors.red)),
+          ),
         ],
       ),
     );
@@ -1256,7 +1568,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   }
 
   void _navigateToScreen(BuildContext context, String screenPath) {
-    if ((screenPath == 'Staff' || screenPath == 'CreateStaff' ||
+    if ((screenPath == 'Staff' ||
+            screenPath == 'CreateStaff' ||
             screenPath == 'FormBuilder') &&
         widget.role != 'superadmin') {
       return;
@@ -1265,41 +1578,47 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     switch (screenPath) {
       case 'Dashboard':
         next = DashboardScreen(
-            cswd_id: widget.cswd_id,
-            role: widget.role,
-            displayName: widget.displayName,
-            onLogout: _handleLogout);
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+          displayName: widget.displayName,
+          onLogout: _handleLogout,
+        );
         break;
       case 'Forms':
         next = ManageFormsScreen(
-            cswd_id: widget.cswd_id,
-            role: widget.role,
-            displayName: widget.displayName);
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+          displayName: widget.displayName,
+        );
         break;
       case 'Staff':
         next = ManageStaffScreen(
-            cswd_id: widget.cswd_id,
-            role: widget.role,
-            displayName: widget.displayName);
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+          displayName: widget.displayName,
+        );
         break;
       case 'CreateStaff':
         next = CreateStaffScreen(
-            cswd_id: widget.cswd_id,
-            role: widget.role,
-            displayName: widget.displayName);
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+          displayName: widget.displayName,
+        );
         break;
       case 'Applicants':
         next = ApplicantsScreen(
-            cswd_id: widget.cswd_id,
-            role: widget.role,
-            displayName: widget.displayName);
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+          displayName: widget.displayName,
+        );
         break;
       case 'AuditLogs':
         if (widget.role != 'superadmin') return;
         next = AuditLogsScreen(
-            cswd_id: widget.cswd_id,
-            role: widget.role,
-            displayName: widget.displayName);
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+          displayName: widget.displayName,
+        );
         break;
       default:
         return;
@@ -1335,10 +1654,12 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             child: _activeTemplateId == null
                 ? _buildEmptyState()
                 : _isLoadingTemplate
-                    ? const Center(
-                        child: CircularProgressIndicator(
-                            color: AppColors.highlight))
-                    : _buildBuilderCanvas(),
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      color: AppColors.highlight,
+                    ),
+                  )
+                : _buildBuilderCanvas(),
           ),
         ],
       ),
@@ -1350,32 +1671,57 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     if (_activeTemplateId == null) return [];
     return [
       if (_formStatus == 'draft') ...[
-        _headerBtn('Save Draft', Icons.save_outlined,
-            onPressed: _isSaving ? null : _saveTemplate),
+        _headerBtn(
+          'Save Draft',
+          Icons.save_outlined,
+          onPressed: _isSaving ? null : _saveTemplate,
+        ),
         const SizedBox(width: 8),
-        _headerBtn('Publish', Icons.publish,
-            color: AppColors.highlight, onPressed: _publishTemplate),
+        _headerBtn(
+          'Publish',
+          Icons.publish,
+          color: AppColors.highlight,
+          onPressed: _publishTemplate,
+        ),
       ],
       if (_formStatus == 'published') ...[
-        _headerBtn('Save', Icons.save_outlined,
-            onPressed: _isSaving ? null : _saveTemplate),
+        _headerBtn(
+          'Save',
+          Icons.save_outlined,
+          onPressed: _isSaving ? null : _saveTemplate,
+        ),
         const SizedBox(width: 8),
-        _headerBtn('Push to Mobile', Icons.phone_android,
-            color: Colors.green, onPressed: _pushToMobile),
+        _headerBtn(
+          'Push to Mobile',
+          Icons.phone_android,
+          color: Colors.green,
+          onPressed: _pushToMobile,
+        ),
       ],
       if (_formStatus == 'pushed_to_mobile') ...[
-        _headerBtn('Save', Icons.save_outlined,
-            onPressed: _isSaving ? null : _saveTemplate),
+        _headerBtn(
+          'Save',
+          Icons.save_outlined,
+          onPressed: _isSaving ? null : _saveTemplate,
+        ),
       ],
       if (_formStatus == 'archived') ...[
-        _headerBtn('Restore', Icons.restore,
-            color: Colors.teal, onPressed: _restoreTemplate),
+        _headerBtn(
+          'Restore',
+          Icons.restore,
+          color: Colors.teal,
+          onPressed: _restoreTemplate,
+        ),
       ],
     ];
   }
 
-  Widget _headerBtn(String label, IconData icon,
-      {VoidCallback? onPressed, Color? color}) {
+  Widget _headerBtn(
+    String label,
+    IconData icon, {
+    VoidCallback? onPressed,
+    Color? color,
+  }) {
     return ElevatedButton.icon(
       onPressed: onPressed,
       icon: _isSaving && icon == Icons.save_outlined
@@ -1383,11 +1729,18 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               width: 16,
               height: 16,
               child: CircularProgressIndicator(
-                  color: Colors.white, strokeWidth: 2))
+                color: Colors.white,
+                strokeWidth: 2,
+              ),
+            )
           : Icon(icon, color: Colors.white, size: 18),
-      label: Text(label,
-          style: const TextStyle(
-              color: Colors.white, fontWeight: FontWeight.bold)),
+      label: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
       style: ElevatedButton.styleFrom(
         backgroundColor: color ?? AppColors.primaryBlue,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -1413,15 +1766,21 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             padding: const EdgeInsets.all(20),
             child: Row(
               children: [
-                const Icon(Icons.description_outlined,
-                    color: AppColors.textDark, size: 20),
+                const Icon(
+                  Icons.description_outlined,
+                  color: AppColors.textDark,
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 const Expanded(
-                  child: Text('My Templates',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                          color: AppColors.textDark)),
+                  child: Text(
+                    'My Templates',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      color: AppColors.textDark,
+                    ),
+                  ),
                 ),
                 IconButton(
                   onPressed: _createNewTemplate,
@@ -1438,14 +1797,17 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             child: _isLoadingList
                 ? const Center(
                     child: CircularProgressIndicator(
-                        color: AppColors.highlight))
+                      color: AppColors.highlight,
+                    ),
+                  )
                 : _templates.isEmpty
-                    ? _buildNoTemplates()
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        itemCount: _templates.length,
-                        itemBuilder: (_, i) => _buildTemplateListItem(_templates[i]),
-                      ),
+                ? _buildNoTemplates()
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: _templates.length,
+                    itemBuilder: (_, i) =>
+                        _buildTemplateListItem(_templates[i]),
+                  ),
           ),
         ],
       ),
@@ -1457,11 +1819,16 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.note_add_outlined,
-              size: 48, color: AppColors.textMuted.withOpacity(0.5)),
+          Icon(
+            Icons.note_add_outlined,
+            size: 48,
+            color: AppColors.textMuted.withOpacity(0.5),
+          ),
           const SizedBox(height: 12),
-          const Text('No templates yet',
-              style: TextStyle(color: AppColors.textMuted)),
+          const Text(
+            'No templates yet',
+            style: TextStyle(color: AppColors.textMuted),
+          ),
           const SizedBox(height: 8),
           TextButton.icon(
             onPressed: _createNewTemplate,
@@ -1499,29 +1866,34 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       ),
       child: ListTile(
         dense: true,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: Icon(Icons.description_outlined,
-            color: isActive ? AppColors.highlight : AppColors.textMuted,
-            size: 20),
-        title: Text(name,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-              color: AppColors.textDark,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        leading: Icon(
+          Icons.description_outlined,
+          color: isActive ? AppColors.highlight : AppColors.textMuted,
+          size: 20,
+        ),
+        title: Text(
+          name,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+            color: AppColors.textDark,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         subtitle: Row(
           children: [
             Container(
-                width: 6,
-                height: 6,
-                decoration:
-                    BoxDecoration(color: statusClr, shape: BoxShape.circle)),
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: statusClr,
+                shape: BoxShape.circle,
+              ),
+            ),
             const SizedBox(width: 4),
-            Text(statusLbl,
-                style: TextStyle(fontSize: 11, color: statusClr)),
+            Text(statusLbl, style: TextStyle(fontSize: 11, color: statusClr)),
           ],
         ),
         onTap: () async {
@@ -1541,26 +1913,34 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.edit_note,
-              size: 80, color: AppColors.highlight.withOpacity(0.3)),
+          Icon(
+            Icons.edit_note,
+            size: 80,
+            color: AppColors.highlight.withOpacity(0.3),
+          ),
           const SizedBox(height: 24),
-          const Text('Select a template or create a new one',
-              style: TextStyle(
-                  fontSize: 18,
-                  color: AppColors.textMuted,
-                  fontWeight: FontWeight.w500)),
+          const Text(
+            'Select a template or create a new one',
+            style: TextStyle(
+              fontSize: 18,
+              color: AppColors.textMuted,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
           const SizedBox(height: 16),
           ElevatedButton.icon(
             onPressed: _createNewTemplate,
             icon: const Icon(Icons.add, color: Colors.white),
-            label: const Text('New Form',
-                style: TextStyle(color: Colors.white)),
+            label: const Text(
+              'New Form',
+              style: TextStyle(color: Colors.white),
+            ),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.highlight,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
         ],
@@ -1610,7 +1990,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   // ── Canvas Toolbar (static, top of builder area) ──────────
   Widget _buildCanvasToolbar() {
     // Determine the section index to add to: use active section, or last section
-    final targetSi = _activeSectionIdx ?? (_sections.isNotEmpty ? _sections.length - 1 : null);
+    final targetSi =
+        _activeSectionIdx ??
+        (_sections.isNotEmpty ? _sections.length - 1 : null);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
@@ -1622,16 +2004,21 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         children: [
           ElevatedButton.icon(
             onPressed: targetSi != null ? () => _addField(targetSi) : null,
-            icon: const Icon(Icons.add_circle_outline, size: 18,
-                color: Colors.white),
-            label: const Text('Add Question',
-                style: TextStyle(color: Colors.white, fontSize: 13)),
+            icon: const Icon(
+              Icons.add_circle_outline,
+              size: 18,
+              color: Colors.white,
+            ),
+            label: const Text(
+              'Add Question',
+              style: TextStyle(color: Colors.white, fontSize: 13),
+            ),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.highlight,
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
+                borderRadius: BorderRadius.circular(8),
+              ),
               elevation: 0,
             ),
           ),
@@ -1641,23 +2028,24 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 ? () => _showSystemBlockPicker(targetSi)
                 : null,
             icon: const Icon(Icons.dashboard_customize_outlined, size: 18),
-            label: const Text('Add Intake Module',
-                style: TextStyle(fontSize: 13)),
+            label: const Text(
+              'Add Intake Module',
+              style: TextStyle(fontSize: 13),
+            ),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.highlight,
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               side: const BorderSide(color: AppColors.highlight),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
           ),
           const Spacer(),
           if (_activeSectionIdx != null)
             Text(
               'Active: ${_sections[_activeSectionIdx!].name}',
-              style: const TextStyle(
-                  fontSize: 12, color: AppColors.textMuted),
+              style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
             ),
         ],
       ),
@@ -1681,18 +2069,20 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             TextField(
               controller: _ctrl('formName', _formName),
               style: const TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w400,
-                  color: AppColors.textDark),
+                fontSize: 28,
+                fontWeight: FontWeight.w400,
+                color: AppColors.textDark,
+              ),
               decoration: const InputDecoration(
                 hintText: 'Untitled Form',
                 hintStyle: TextStyle(color: AppColors.textMuted),
                 border: InputBorder.none,
                 enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: AppColors.cardBorder)),
+                  borderSide: BorderSide(color: AppColors.cardBorder),
+                ),
                 focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(
-                        color: AppColors.highlight, width: 2)),
+                  borderSide: BorderSide(color: AppColors.highlight, width: 2),
+                ),
               ),
               onChanged: (v) {
                 _formName = v;
@@ -1703,23 +2093,299 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             // Description
             TextField(
               controller: _ctrl('formDesc', _formDesc),
-              style: const TextStyle(
-                  fontSize: 14, color: AppColors.textMuted),
+              style: const TextStyle(fontSize: 14, color: AppColors.textMuted),
               decoration: const InputDecoration(
                 hintText: 'Form description',
-                hintStyle:
-                    TextStyle(color: AppColors.textMuted, fontSize: 14),
+                hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 14),
                 border: InputBorder.none,
                 enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.transparent)),
+                  borderSide: BorderSide(color: Colors.transparent),
+                ),
                 focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(
-                        color: AppColors.highlight, width: 1)),
+                  borderSide: BorderSide(color: AppColors.highlight, width: 1),
+                ),
               ),
               onChanged: (v) {
                 _formDesc = v;
                 _hasUnsavedChanges = true;
               },
+            ),
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _ctrl('formCode', _formCode),
+                    decoration: InputDecoration(
+                      labelText: 'Form Code',
+                      hintText: 'GIS',
+                      isDense: true,
+                      filled: true,
+                      fillColor: AppColors.pageBg,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                    onChanged: (v) {
+                      _formCode = _sanitizeCode(v);
+                      if (_referencePrefix.trim().isEmpty) {
+                        _referencePrefix = _formCode;
+                        _ctrl('referencePrefix', _referencePrefix).text =
+                            _referencePrefix;
+                      }
+                      _hasUnsavedChanges = true;
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _ctrl('referencePrefix', _referencePrefix),
+                    decoration: InputDecoration(
+                      labelText: 'Reference Prefix',
+                      hintText: 'GIS',
+                      isDense: true,
+                      filled: true,
+                      fillColor: AppColors.pageBg,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                    onChanged: (v) {
+                      _referencePrefix = _sanitizeCode(v);
+                      _hasUnsavedChanges = true;
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                SizedBox(
+                  width: 170,
+                  child: SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text(
+                      'Needs Ref',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                    value: _requiresReference,
+                    onChanged: (v) {
+                      setState(() {
+                        _requiresReference = v;
+                        _hasUnsavedChanges = true;
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppColors.pageBg,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.cardBorder),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Reference Format',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: _referenceFormatParts().isEmpty
+                        ? const [
+                            Text(
+                              'No format tokens yet. Add tokens below.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textMuted,
+                              ),
+                            ),
+                          ]
+                        : List.generate(_referenceFormatParts().length, (i) {
+                            final part = _referenceFormatParts()[i];
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: AppColors.cardBorder),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    part == ' ' ? 'space' : part,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontFamily: 'monospace',
+                                      color: AppColors.textDark,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  InkWell(
+                                    borderRadius: BorderRadius.circular(10),
+                                    onTap: () => _removeReferencePartAt(i),
+                                    child: const Padding(
+                                      padding: EdgeInsets.all(1),
+                                      child: Icon(
+                                        Icons.close,
+                                        size: 14,
+                                        color: AppColors.textMuted,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            ..._referenceTokenGroups.map((group) {
+              final groupTokens = _referenceTokens
+                  .where((t) => t.group == group)
+                  .toList();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      group,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: groupTokens
+                          .map(
+                            (t) => OutlinedButton(
+                              onPressed: () => _appendReferenceToken(t.token),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppColors.primaryBlue,
+                                side: const BorderSide(
+                                  color: AppColors.cardBorder,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              child: Text(
+                                t.label,
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ],
+                ),
+              );
+            }),
+            const SizedBox(height: 6),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Separators',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textMuted,
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final sep in const ['-', '/', '_', '.', ' '])
+                  OutlinedButton(
+                    onPressed: () => _appendReferenceSeparator(sep),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.textMuted,
+                      side: const BorderSide(color: AppColors.cardBorder),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    child: Text(
+                      sep == ' ' ? 'space' : sep,
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFF),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.cardBorder),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.visibility_outlined,
+                    size: 16,
+                    color: AppColors.textMuted,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _requiresReference
+                          ? _referencePreview()
+                          : 'Reference disabled for this form',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'monospace',
+                        color: _requiresReference
+                            ? AppColors.primaryBlue
+                            : AppColors.textMuted,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -1743,7 +2409,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 final isFieldActive =
                     _activeSectionIdx == si && _activeFieldIdx == fi;
                 return _buildFieldCard(
-                    section.fields[fi], si, fi, isFieldActive);
+                  section.fields[fi],
+                  si,
+                  fi,
+                  isFieldActive,
+                );
               }),
             ],
           ),
@@ -1753,8 +2423,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     return items;
   }
 
-  Widget _buildSectionHeader(
-      _BuilderSection section, int si, bool isActive) {
+  Widget _buildSectionHeader(_BuilderSection section, int si, bool isActive) {
     return GestureDetector(
       onTap: () => setState(() {
         _activeSectionIdx = si;
@@ -1766,7 +2435,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           color: AppColors.cardBg,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-              color: isActive ? AppColors.highlight : AppColors.cardBorder),
+            color: isActive ? AppColors.highlight : AppColors.cardBorder,
+          ),
         ),
         child: Row(
           children: [
@@ -1778,13 +2448,13 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 decoration: const BoxDecoration(
                   color: AppColors.highlight,
                   borderRadius: BorderRadius.horizontal(
-                      left: Radius.circular(8)),
+                    left: Radius.circular(8),
+                  ),
                 ),
               ),
             Expanded(
               child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                    isActive ? 13 : 16, 12, 8, 12),
+                padding: EdgeInsets.fromLTRB(isActive ? 13 : 16, 12, 8, 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1792,18 +2462,22 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                       TextField(
                         controller: _ctrl('sec_${section.id}', section.name),
                         style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w500,
-                            color: AppColors.textDark),
+                          fontSize: 18,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textDark,
+                        ),
                         decoration: const InputDecoration(
                           hintText: 'Section Title',
                           border: InputBorder.none,
                           enabledBorder: UnderlineInputBorder(
-                              borderSide:
-                                  BorderSide(color: AppColors.cardBorder)),
+                            borderSide: BorderSide(color: AppColors.cardBorder),
+                          ),
                           focusedBorder: UnderlineInputBorder(
-                              borderSide:
-                                  BorderSide(color: AppColors.highlight, width: 2)),
+                            borderSide: BorderSide(
+                              color: AppColors.highlight,
+                              width: 2,
+                            ),
+                          ),
                         ),
                         onChanged: (v) {
                           section.name = v;
@@ -1811,18 +2485,24 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                         },
                       )
                     else
-                      Text(section.name,
-                          style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w500,
-                              color: AppColors.textDark)),
+                      Text(
+                        section.name,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textDark,
+                        ),
+                      ),
                     if (isActive)
                       TextField(
                         controller: _ctrl(
-                            'sec_desc_${section.id}',
-                            section.description ?? ''),
+                          'sec_desc_${section.id}',
+                          section.description ?? '',
+                        ),
                         style: const TextStyle(
-                            fontSize: 13, color: AppColors.textMuted),
+                          fontSize: 13,
+                          color: AppColors.textMuted,
+                        ),
                         decoration: const InputDecoration(
                           hintText: 'Section description (optional)',
                           hintStyle: TextStyle(fontSize: 13),
@@ -1840,8 +2520,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             if (isActive) ...[
               IconButton(
                 icon: const Icon(Icons.arrow_upward, size: 18),
-                onPressed:
-                    si > 0 ? () => _moveSection(si, -1) : null,
+                onPressed: si > 0 ? () => _moveSection(si, -1) : null,
                 tooltip: 'Move up',
               ),
               IconButton(
@@ -1852,8 +2531,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 tooltip: 'Move down',
               ),
               IconButton(
-                icon: const Icon(Icons.delete_outline,
-                    size: 18, color: Colors.red),
+                icon: const Icon(
+                  Icons.delete_outline,
+                  size: 18,
+                  color: Colors.red,
+                ),
                 onPressed: () => _removeSection(si),
                 tooltip: 'Delete section',
               ),
@@ -1867,8 +2549,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   // ═══════════════════════════════════════════════════════════
   // FIELD CARD
   // ═══════════════════════════════════════════════════════════
-  Widget _buildFieldCard(
-      _BuilderField field, int si, int fi, bool isActive) {
+  Widget _buildFieldCard(_BuilderField field, int si, int fi, bool isActive) {
     return GestureDetector(
       onTap: () => setState(() {
         _activeSectionIdx = si;
@@ -1880,7 +2561,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           color: AppColors.cardBg,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-              color: isActive ? AppColors.highlight : AppColors.cardBorder),
+            color: isActive ? AppColors.highlight : AppColors.cardBorder,
+          ),
         ),
         child: IntrinsicHeight(
           child: Row(
@@ -1893,13 +2575,13 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                   decoration: const BoxDecoration(
                     color: AppColors.highlight,
                     borderRadius: BorderRadius.horizontal(
-                        left: Radius.circular(8)),
+                      left: Radius.circular(8),
+                    ),
                   ),
                 ),
               Expanded(
                 child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                      isActive ? 18 : 24, 16, 16, 8),
+                  padding: EdgeInsets.fromLTRB(isActive ? 18 : 24, 16, 16, 8),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1929,8 +2611,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   }
 
   Widget _buildFieldHeaderActive(_BuilderField field) {
-    final canLinkCanonicalKey =
-        _canonicalKeyEligibleTypes.contains(field.type);
+    final canLinkCanonicalKey = _canonicalKeyEligibleTypes.contains(field.type);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1941,28 +2622,30 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             Expanded(
               flex: 3,
               child: TextField(
-                      controller: _ctrl('fld_${field.id}', field.label),
-                      style: const TextStyle(
-                          fontSize: 15, color: AppColors.textDark),
-                      decoration: InputDecoration(
-                        hintText: 'Question',
-                        filled: true,
-                        fillColor: AppColors.pageBg,
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide.none),
-                        focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide:
-                                const BorderSide(color: AppColors.highlight)),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 14),
-                      ),
-                      onChanged: (v) {
-                        field.label = v;
-                        _hasUnsavedChanges = true;
-                      },
-                    ),
+                controller: _ctrl('fld_${field.id}', field.label),
+                style: const TextStyle(fontSize: 15, color: AppColors.textDark),
+                decoration: InputDecoration(
+                  hintText: 'Question',
+                  filled: true,
+                  fillColor: AppColors.pageBg,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: AppColors.highlight),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 14,
+                  ),
+                ),
+                onChanged: (v) {
+                  field.label = v;
+                  _hasUnsavedChanges = true;
+                },
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -1973,79 +2656,98 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: AppColors.cardBorder),
                 ),
-                child: field.type.isSystemType || field.type == FormFieldType.computed
-                  ? Row(
-                      children: [
-                        Icon(
-                          _systemTypeIcons[field.type] ?? Icons.help_outline,
-                          size: 18,
-                          color: AppColors.textMuted,
-                        ),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            'System: ${_systemTypeLabels[field.type] ?? field.type.toDbString()}',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: AppColors.textMuted,
-                            ),
-                            overflow: TextOverflow.ellipsis,
+                child:
+                    field.type.isSystemType ||
+                        field.type == FormFieldType.computed
+                    ? Row(
+                        children: [
+                          Icon(
+                            _systemTypeIcons[field.type] ?? Icons.help_outline,
+                            size: 18,
+                            color: AppColors.textMuted,
                           ),
-                        ),
-                      ],
-                    )
-                  : DropdownButtonHideUnderline(
-                  child: DropdownButton<FormFieldType>(
-                    value: field.type,
-                    isExpanded: true,
-                    icon: const Icon(Icons.arrow_drop_down),
-                    style: const TextStyle(
-                        fontSize: 13, color: AppColors.textDark),
-                    items: _typeLabels.entries.map((e) {
-                      return DropdownMenuItem(
-                        value: e.key,
-                        child: Row(
-                          children: [
-                            Icon(_typeIcons[e.key],
-                                size: 18, color: AppColors.textMuted),
-                            const SizedBox(width: 8),
-                            Flexible(
-                                child: Text(e.value,
-                                    overflow: TextOverflow.ellipsis)),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                    onChanged: (v) {
-                      if (v == null) return;
-
-                      if (v == FormFieldType.signature) {
-                        final hasOtherSignature = _sections
-                            .expand((s) => s.fields)
-                            .any((f) => f.type == FormFieldType.signature && f.id != field.id);
-                        if (hasOtherSignature) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Text(
-                                  'A "Signature" block already exists in this form.'),
-                              backgroundColor: Colors.orange.shade700,
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              'System: ${_systemTypeLabels[field.type] ?? field.type.toDbString()}',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: AppColors.textMuted,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          );
-                          return;
-                        }
-                      }
+                          ),
+                        ],
+                      )
+                    : DropdownButtonHideUnderline(
+                        child: DropdownButton<FormFieldType>(
+                          value: field.type,
+                          isExpanded: true,
+                          icon: const Icon(Icons.arrow_drop_down),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textDark,
+                          ),
+                          items: _typeLabels.entries.map((e) {
+                            return DropdownMenuItem(
+                              value: e.key,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    _typeIcons[e.key],
+                                    size: 18,
+                                    color: AppColors.textMuted,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Text(
+                                      e.value,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (v) {
+                            if (v == null) return;
 
-                      setState(() {
-                        field.type = v;
-                        if (field.hasOptions && field.options.isEmpty) {
-                          field.options
-                              .add(_BuilderOption(label: 'Option 1'));
-                        }
-                        _hasUnsavedChanges = true;
-                      });
-                    },
-                  ),
-                ),
+                            if (v == FormFieldType.signature) {
+                              final hasOtherSignature = _sections
+                                  .expand((s) => s.fields)
+                                  .any(
+                                    (f) =>
+                                        f.type == FormFieldType.signature &&
+                                        f.id != field.id,
+                                  );
+                              if (hasOtherSignature) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: const Text(
+                                      'A "Signature" block already exists in this form.',
+                                    ),
+                                    backgroundColor: Colors.orange.shade700,
+                                  ),
+                                );
+                                return;
+                              }
+                            }
+
+                            setState(() {
+                              field.type = v;
+                              if (v != FormFieldType.number) {
+                                field.ageFromFieldId = null;
+                              }
+                              if (field.hasOptions && field.options.isEmpty) {
+                                field.options.add(
+                                  _BuilderOption(label: 'Option 1'),
+                                );
+                              }
+                              _hasUnsavedChanges = true;
+                            });
+                          },
+                        ),
+                      ),
               ),
             ),
           ],
@@ -2106,35 +2808,47 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     return Row(
       children: [
         Icon(
-            (field.type.isSystemType
-                ? _systemTypeIcons[field.type]
-                : _typeIcons[field.type]) ??
-                Icons.help_outline,
-            size: 16, color: AppColors.textMuted),
+          (field.type.isSystemType
+                  ? _systemTypeIcons[field.type]
+                  : _typeIcons[field.type]) ??
+              Icons.help_outline,
+          size: 16,
+          color: AppColors.textMuted,
+        ),
         const SizedBox(width: 8),
         Expanded(
           child: Row(
             children: [
               Expanded(
-                child: Text(field.label,
-                    style: const TextStyle(
-                        fontSize: 14, color: AppColors.textDark),
-                    overflow: TextOverflow.ellipsis),
+                child: Text(
+                  field.label,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textDark,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
               if (field.canonicalFieldKey != null) ...[
                 const SizedBox(width: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.highlight.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(4),
-                    border:
-                        Border.all(color: AppColors.highlight.withOpacity(0.4)),
+                    border: Border.all(
+                      color: AppColors.highlight.withOpacity(0.4),
+                    ),
                   ),
                   child: Text(
                     '⟷ ${field.canonicalFieldKey}',
-                    style:
-                        const TextStyle(fontSize: 10, color: AppColors.highlight),
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: AppColors.highlight,
+                    ),
                   ),
                 ),
               ],
@@ -2142,9 +2856,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           ),
         ),
         if (field.isRequired)
-          const Text(' *',
-              style: TextStyle(
-                  color: Colors.red, fontWeight: FontWeight.bold)),
+          const Text(
+            ' *',
+            style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+          ),
       ],
     );
   }
@@ -2167,8 +2882,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               onPressed: () => _duplicateField(si, fi),
             ),
             IconButton(
-              icon:
-                  const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+              icon: const Icon(
+                Icons.delete_outline,
+                size: 18,
+                color: Colors.red,
+              ),
               tooltip: 'Delete',
               onPressed: () => _removeField(si, fi),
             ),
@@ -2190,8 +2908,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             const SizedBox(width: 8),
             Container(width: 1, height: 24, color: AppColors.cardBorder),
             const SizedBox(width: 4),
-            const Text('Required',
-                style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+            const Text(
+              'Required',
+              style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+            ),
             Switch(
               value: field.isRequired,
               activeColor: AppColors.highlight,
@@ -2209,13 +2929,15 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   Widget _buildVisibilityConditionRow(_BuilderField field) {
     final triggerCandidates = _sections
         .expand((s) => s.fields)
-        .where((f) =>
-            f.id != field.id &&
-            (f.type == FormFieldType.boolean ||
-                f.type == FormFieldType.radio ||
-                f.type == FormFieldType.dropdown ||
-            f.type == FormFieldType.checkbox ||
-            f.type == FormFieldType.membershipGroup))
+        .where(
+          (f) =>
+              f.id != field.id &&
+              (f.type == FormFieldType.boolean ||
+                  f.type == FormFieldType.radio ||
+                  f.type == FormFieldType.dropdown ||
+                  f.type == FormFieldType.checkbox ||
+                  f.type == FormFieldType.membershipGroup),
+        )
         .toList();
 
     final hasCondition = field.condition.triggerFieldId.isNotEmpty;
@@ -2231,11 +2953,14 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: hasCondition ? Colors.orange.withOpacity(0.06) : AppColors.pageBg,
+        color: hasCondition
+            ? Colors.orange.withOpacity(0.06)
+            : AppColors.pageBg,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color:
-              hasCondition ? Colors.orange.withOpacity(0.4) : AppColors.cardBorder,
+          color: hasCondition
+              ? Colors.orange.withOpacity(0.4)
+              : AppColors.cardBorder,
         ),
       ),
       child: Column(
@@ -2243,8 +2968,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.device_hub_outlined,
-                  size: 15, color: AppColors.textMuted),
+              const Icon(
+                Icons.device_hub_outlined,
+                size: 15,
+                color: AppColors.textMuted,
+              ),
               const SizedBox(width: 6),
               const Text(
                 'Show only if...',
@@ -2257,17 +2985,17 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 onChanged: triggerCandidates.isEmpty
                     ? null
                     : (v) => setState(() {
-                          if (!v) {
-                            field.condition.triggerFieldId = '';
-                            field.condition.triggerValue = '';
-                          } else {
-                            field.condition.triggerFieldId =
-                                triggerCandidates.first.id;
-                            field.condition.triggerValue = '';
-                            field.condition.action = 'show';
-                          }
-                          _hasUnsavedChanges = true;
-                        }),
+                        if (!v) {
+                          field.condition.triggerFieldId = '';
+                          field.condition.triggerValue = '';
+                        } else {
+                          field.condition.triggerFieldId =
+                              triggerCandidates.first.id;
+                          field.condition.triggerValue = '';
+                          field.condition.action = 'show';
+                        }
+                        _hasUnsavedChanges = true;
+                      }),
               ),
             ],
           ),
@@ -2291,9 +3019,13 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                             : field.condition.triggerFieldId,
                         isExpanded: true,
                         style: const TextStyle(
-                            fontSize: 12, color: AppColors.textDark),
-                        hint: const Text('Pick a field',
-                            style: TextStyle(fontSize: 12)),
+                          fontSize: 12,
+                          color: AppColors.textDark,
+                        ),
+                        hint: const Text(
+                          'Pick a field',
+                          style: TextStyle(fontSize: 12),
+                        ),
                         items: triggerCandidates.map((f) {
                           return DropdownMenuItem<String>(
                             value: f.id,
@@ -2316,18 +3048,23 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 ),
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 8),
-                  child: Text('=',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textMuted)),
+                  child: Text(
+                    '=',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
                 ),
                 Expanded(
                   flex: 2,
-                  child: triggerField != null &&
+                  child:
+                      triggerField != null &&
                           (triggerField.hasOptions ||
-                          triggerField.type == FormFieldType.boolean ||
-                          triggerField.type == FormFieldType.membershipGroup)
+                              triggerField.type == FormFieldType.boolean ||
+                              triggerField.type ==
+                                  FormFieldType.membershipGroup)
                       ? Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10),
                           decoration: BoxDecoration(
@@ -2342,38 +3079,51 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                                   : field.condition.triggerValue,
                               isExpanded: true,
                               style: const TextStyle(
-                                  fontSize: 12, color: AppColors.textDark),
-                              hint: const Text('Pick a value',
-                                  style: TextStyle(fontSize: 12)),
-                                items: triggerField.type == FormFieldType.boolean
+                                fontSize: 12,
+                                color: AppColors.textDark,
+                              ),
+                              hint: const Text(
+                                'Pick a value',
+                                style: TextStyle(fontSize: 12),
+                              ),
+                              items: triggerField.type == FormFieldType.boolean
                                   ? const [
-                                    DropdownMenuItem(
-                                      value: 'yes', child: Text('Yes')),
-                                    DropdownMenuItem(
-                                      value: 'no', child: Text('No')),
-                                  ]
+                                      DropdownMenuItem(
+                                        value: 'yes',
+                                        child: Text('Yes'),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 'no',
+                                        child: Text('No'),
+                                      ),
+                                    ]
                                   : triggerField.type ==
-                                      FormFieldType.membershipGroup
-                                    ? const [
+                                        FormFieldType.membershipGroup
+                                  ? const [
                                       DropdownMenuItem(
                                         value: 'solo_parent',
-                                        child: Text('Solo Parent')),
+                                        child: Text('Solo Parent'),
+                                      ),
                                       DropdownMenuItem(
                                         value: 'pwd',
-                                        child: Text('PWD')),
+                                        child: Text('PWD'),
+                                      ),
                                       DropdownMenuItem(
                                         value: 'four_ps_member',
-                                        child: Text('4Ps Member')),
+                                        child: Text('4Ps Member'),
+                                      ),
                                       DropdownMenuItem(
                                         value: 'phic_member',
-                                        child: Text('PHIC Member')),
+                                        child: Text('PHIC Member'),
+                                      ),
                                     ]
-                                    : triggerField.options.map((o) {
+                                  : triggerField.options.map((o) {
                                       return DropdownMenuItem<String>(
                                         value: _slugify(o.label),
-                                        child: Text(o.label,
-                                            style:
-                                                const TextStyle(fontSize: 12)),
+                                        child: Text(
+                                          o.label,
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
                                       );
                                     }).toList(),
                               onChanged: (v) => setState(() {
@@ -2385,22 +3135,29 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                           ),
                         )
                       : TextField(
-                          controller:
-                              _ctrl('cond_val_${field.id}', field.condition.triggerValue),
+                          controller: _ctrl(
+                            'cond_val_${field.id}',
+                            field.condition.triggerValue,
+                          ),
                           style: const TextStyle(fontSize: 12),
                           decoration: InputDecoration(
                             hintText: 'Type value...',
                             filled: true,
                             fillColor: Colors.white,
                             border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide.none),
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
                             focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide:
-                                    const BorderSide(color: Colors.orange)),
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: const BorderSide(
+                                color: Colors.orange,
+                              ),
+                            ),
                             contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 10),
+                              horizontal: 10,
+                              vertical: 10,
+                            ),
                           ),
                           onChanged: (v) => setState(() {
                             field.condition.triggerValue = v;
@@ -2442,7 +3199,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       case FormFieldType.paragraph:
         return _textPreview('Long answer text');
       case FormFieldType.number:
-        return _textPreview('Number');
+        return _buildNumberEditor(field, isActive);
       case FormFieldType.radio:
       case FormFieldType.checkbox:
       case FormFieldType.dropdown:
@@ -2473,18 +3230,122 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     }
   }
 
+  Widget _buildNumberEditor(_BuilderField field, bool isActive) {
+    if (!isActive) return _textPreview('Number');
+
+    final dateCandidates = _sections
+        .expand((s) => s.fields)
+        .where((f) => f.id != field.id && f.type == FormFieldType.date)
+        .toList();
+    final hasLink =
+        field.ageFromFieldId != null && field.ageFromFieldId!.isNotEmpty;
+    final selectedValid =
+        hasLink && dateCandidates.any((f) => f.id == field.ageFromFieldId);
+    final selectedValue = selectedValid ? field.ageFromFieldId : null;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Auto-compute from field',
+            style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              const Text(
+                'Enable',
+                style: TextStyle(fontSize: 12, color: AppColors.textDark),
+              ),
+              const SizedBox(width: 8),
+              Switch(
+                value: hasLink,
+                activeColor: AppColors.highlight,
+                onChanged: (v) => setState(() {
+                  if (!v) {
+                    field.ageFromFieldId = null;
+                  } else {
+                    field.ageFromFieldId = dateCandidates.isNotEmpty
+                        ? dateCandidates.first.id
+                        : null;
+                  }
+                  _hasUnsavedChanges = true;
+                }),
+              ),
+            ],
+          ),
+          if (hasLink) ...[
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.cardBorder),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: selectedValue,
+                  isExpanded: true,
+                  hint: const Text(
+                    'Select date field',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textDark,
+                  ),
+                  items: dateCandidates
+                      .map(
+                        (f) => DropdownMenuItem<String>(
+                          value: f.id,
+                          child: Text(
+                            f.label.isNotEmpty ? f.label : f.fieldName,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: dateCandidates.isEmpty
+                      ? null
+                      : (v) => setState(() {
+                          field.ageFromFieldId = v;
+                          _hasUnsavedChanges = true;
+                        }),
+                ),
+              ),
+            ),
+            if (dateCandidates.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 6),
+                child: Text(
+                  'Add at least one Date field to link this Age field.',
+                  style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _textPreview(String hint) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: const BoxDecoration(
-        border:
-            Border(bottom: BorderSide(color: AppColors.cardBorder)),
+        border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
       ),
       child: Align(
         alignment: Alignment.centerLeft,
-        child: Text(hint,
-            style: const TextStyle(
-                color: AppColors.textMuted, fontSize: 13)),
+        child: Text(
+          hint,
+          style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+        ),
       ),
     );
   }
@@ -2493,14 +3354,14 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: const BoxDecoration(
-        border:
-            Border(bottom: BorderSide(color: AppColors.cardBorder)),
+        border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
       ),
       child: Row(
         children: [
-          Text(hint,
-              style: const TextStyle(
-                  color: AppColors.textMuted, fontSize: 13)),
+          Text(
+            hint,
+            style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+          ),
           const Spacer(),
           Icon(icon, size: 18, color: AppColors.textMuted),
         ],
@@ -2515,9 +3376,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         children: [
           Icon(icon, size: 20, color: AppColors.textMuted),
           const SizedBox(width: 10),
-          Text(label,
-              style: const TextStyle(
-                  fontSize: 13, color: AppColors.textDark)),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 13, color: AppColors.textDark),
+          ),
         ],
       ),
     );
@@ -2528,9 +3390,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     if (!isActive) {
       return Row(
         children: [
-          Text('${field.scaleMin}',
-              style: const TextStyle(
-                  fontSize: 13, color: AppColors.textMuted)),
+          Text(
+            '${field.scaleMin}',
+            style: const TextStyle(fontSize: 13, color: AppColors.textMuted),
+          ),
           Expanded(
             child: Container(
               height: 2,
@@ -2538,38 +3401,43 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               color: AppColors.cardBorder,
             ),
           ),
-          Text('${field.scaleMax}',
-              style: const TextStyle(
-                  fontSize: 13, color: AppColors.textMuted)),
+          Text(
+            '${field.scaleMax}',
+            style: const TextStyle(fontSize: 13, color: AppColors.textMuted),
+          ),
         ],
       );
     }
     return Row(
       children: [
-        const Text('From:',
-            style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+        const Text(
+          'From:',
+          style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+        ),
         const SizedBox(width: 8),
         DropdownButton<int>(
           value: field.scaleMin,
-          items: [0, 1]
-              .map((v) =>
-                  DropdownMenuItem(value: v, child: Text('$v')))
-              .toList(),
+          items: [
+            0,
+            1,
+          ].map((v) => DropdownMenuItem(value: v, child: Text('$v'))).toList(),
           onChanged: (v) => setState(() {
             field.scaleMin = v!;
             _hasUnsavedChanges = true;
           }),
         ),
         const SizedBox(width: 24),
-        const Text('To:',
-            style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+        const Text(
+          'To:',
+          style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+        ),
         const SizedBox(width: 8),
         DropdownButton<int>(
           value: field.scaleMax,
-          items: List.generate(9, (i) => i + 2)
-              .map((v) =>
-                  DropdownMenuItem(value: v, child: Text('$v')))
-              .toList(),
+          items: List.generate(
+            9,
+            (i) => i + 2,
+          ).map((v) => DropdownMenuItem(value: v, child: Text('$v'))).toList(),
           onChanged: (v) => setState(() {
             field.scaleMax = v!;
             _hasUnsavedChanges = true;
@@ -2590,14 +3458,18 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
 
     if (!isActive) {
       if (field.columns.isEmpty) {
-        return const Text('No columns defined',
-            style: TextStyle(fontSize: 12, color: AppColors.textMuted));
+        return const Text(
+          'No columns defined',
+          style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+        );
       }
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${field.columns.length} column(s) defined',
-              style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+          Text(
+            '${field.columns.length} column(s) defined',
+            style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+          ),
           const SizedBox(height: 4),
           Wrap(
             spacing: 8,
@@ -2605,8 +3477,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             children: field.columns.map((c) {
               return Chip(
                 label: Text(
-                    '${c.label} (${columnTypes[c.type] ?? c.type.toDbString()})',
-                    style: const TextStyle(fontSize: 11)),
+                  '${c.label} (${columnTypes[c.type] ?? c.type.toDbString()})',
+                  style: const TextStyle(fontSize: 11),
+                ),
                 visualDensity: VisualDensity.compact,
               );
             }).toList(),
@@ -2618,11 +3491,14 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Table Columns',
-            style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textMuted)),
+        const Text(
+          'Table Columns',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textMuted,
+          ),
+        ),
         const SizedBox(height: 8),
         ...field.columns.asMap().entries.map((entry) {
           final ci = entry.key;
@@ -2641,10 +3517,13 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                       filled: true,
                       fillColor: AppColors.pageBg,
                       border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide.none),
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
                       contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 10),
+                        horizontal: 10,
+                        vertical: 10,
+                      ),
                     ),
                     onChanged: (v) {
                       col.label = v;
@@ -2667,7 +3546,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                         value: col.type,
                         isExpanded: true,
                         style: const TextStyle(
-                            fontSize: 12, color: AppColors.textDark),
+                          fontSize: 12,
+                          color: AppColors.textDark,
+                        ),
                         items: columnTypes.entries.map((e) {
                           return DropdownMenuItem(
                             value: e.key,
@@ -2680,8 +3561,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                             col.type = v;
                             if (v == FormFieldType.dropdown &&
                                 col.options.isEmpty) {
-                              col.options
-                                  .add(_BuilderOption(label: 'Option 1'));
+                              col.options.add(
+                                _BuilderOption(label: 'Option 1'),
+                              );
                             }
                             _hasUnsavedChanges = true;
                           });
@@ -2692,8 +3574,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 ),
                 const SizedBox(width: 4),
                 IconButton(
-                  icon: const Icon(Icons.close,
-                      size: 18, color: AppColors.textMuted),
+                  icon: const Icon(
+                    Icons.close,
+                    size: 18,
+                    color: AppColors.textMuted,
+                  ),
                   onPressed: () => setState(() {
                     field.columns.removeAt(ci);
                     _hasUnsavedChanges = true;
@@ -2707,69 +3592,85 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         // Dropdown options sub-editors
         ...field.columns
             .where((c) => c.type == FormFieldType.dropdown)
-            .map((col) => Padding(
-                  padding: const EdgeInsets.only(left: 24, bottom: 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Options for "${col.label}":',
-                          style: const TextStyle(
-                              fontSize: 11, color: AppColors.textMuted)),
-                      ...col.options.asMap().entries.map((oe) {
-                        final opt = oe.value;
-                        return Row(
-                          children: [
-                            const Icon(Icons.arrow_right,
-                                size: 16, color: AppColors.textMuted),
-                            Expanded(
-                              child: TextField(
-                                controller:
-                                    _ctrl('colopt_${opt.id}', opt.label),
-                                style: const TextStyle(fontSize: 12),
-                                decoration: const InputDecoration(
-                                  hintText: 'Option',
-                                  border: InputBorder.none,
-                                  contentPadding:
-                                      EdgeInsets.symmetric(vertical: 6),
-                                ),
-                                onChanged: (v) {
-                                  opt.label = v;
-                                  _hasUnsavedChanges = true;
-                                },
-                              ),
-                            ),
-                            if (col.options.length > 1)
-                              IconButton(
-                                icon: const Icon(Icons.close, size: 14),
-                                onPressed: () => setState(() {
-                                  col.options.removeAt(oe.key);
-                                  _hasUnsavedChanges = true;
-                                }),
-                              ),
-                          ],
-                        );
-                      }),
-                      TextButton.icon(
-                        onPressed: () => setState(() {
-                          col.options.add(_BuilderOption(
-                              label: 'Option ${col.options.length + 1}'));
-                          _hasUnsavedChanges = true;
-                        }),
-                        icon: const Icon(Icons.add, size: 14),
-                        label: const Text('Add option',
-                            style: TextStyle(fontSize: 11)),
+            .map(
+              (col) => Padding(
+                padding: const EdgeInsets.only(left: 24, bottom: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Options for "${col.label}":',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textMuted,
                       ),
-                    ],
-                  ),
-                )),
+                    ),
+                    ...col.options.asMap().entries.map((oe) {
+                      final opt = oe.value;
+                      return Row(
+                        children: [
+                          const Icon(
+                            Icons.arrow_right,
+                            size: 16,
+                            color: AppColors.textMuted,
+                          ),
+                          Expanded(
+                            child: TextField(
+                              controller: _ctrl('colopt_${opt.id}', opt.label),
+                              style: const TextStyle(fontSize: 12),
+                              decoration: const InputDecoration(
+                                hintText: 'Option',
+                                border: InputBorder.none,
+                                contentPadding: EdgeInsets.symmetric(
+                                  vertical: 6,
+                                ),
+                              ),
+                              onChanged: (v) {
+                                opt.label = v;
+                                _hasUnsavedChanges = true;
+                              },
+                            ),
+                          ),
+                          if (col.options.length > 1)
+                            IconButton(
+                              icon: const Icon(Icons.close, size: 14),
+                              onPressed: () => setState(() {
+                                col.options.removeAt(oe.key);
+                                _hasUnsavedChanges = true;
+                              }),
+                            ),
+                        ],
+                      );
+                    }),
+                    TextButton.icon(
+                      onPressed: () => setState(() {
+                        col.options.add(
+                          _BuilderOption(
+                            label: 'Option ${col.options.length + 1}',
+                          ),
+                        );
+                        _hasUnsavedChanges = true;
+                      }),
+                      icon: const Icon(Icons.add, size: 14),
+                      label: const Text(
+                        'Add option',
+                        style: TextStyle(fontSize: 11),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
 
         // Add column button
         TextButton.icon(
           onPressed: () => setState(() {
-            field.columns.add(_BuilderColumn(
-              label: 'Column ${field.columns.length + 1}',
-              order: field.columns.length,
-            ));
+            field.columns.add(
+              _BuilderColumn(
+                label: 'Column ${field.columns.length + 1}',
+                order: field.columns.length,
+              ),
+            );
             _hasUnsavedChanges = true;
           }),
           icon: const Icon(Icons.add_circle_outline, size: 16),
@@ -2793,14 +3694,18 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
 
     if (!isActive) {
       if (field.columns.isEmpty) {
-        return const Text('No columns defined',
-            style: TextStyle(fontSize: 12, color: AppColors.textMuted));
+        return const Text(
+          'No columns defined',
+          style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+        );
       }
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${field.columns.length} column(s) defined',
-              style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+          Text(
+            '${field.columns.length} column(s) defined',
+            style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+          ),
           const SizedBox(height: 4),
           Wrap(
             spacing: 8,
@@ -2808,8 +3713,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             children: field.columns.map((c) {
               return Chip(
                 label: Text(
-                    '${c.label} (${columnTypes[c.type] ?? c.type.toDbString()})',
-                    style: const TextStyle(fontSize: 11)),
+                  '${c.label} (${columnTypes[c.type] ?? c.type.toDbString()})',
+                  style: const TextStyle(fontSize: 11),
+                ),
                 visualDensity: VisualDensity.compact,
               );
             }).toList(),
@@ -2821,11 +3727,14 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Table Columns',
-            style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textMuted)),
+        const Text(
+          'Table Columns',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textMuted,
+          ),
+        ),
         const SizedBox(height: 4),
         const Text(
           'Edit, rename, or remove any column. '
@@ -2851,10 +3760,13 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                       filled: true,
                       fillColor: AppColors.pageBg,
                       border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide.none),
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
                       contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 10),
+                        horizontal: 10,
+                        vertical: 10,
+                      ),
                     ),
                     onChanged: (v) {
                       col.label = v;
@@ -2879,7 +3791,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                         value: col.type,
                         isExpanded: true,
                         style: const TextStyle(
-                            fontSize: 12, color: AppColors.textDark),
+                          fontSize: 12,
+                          color: AppColors.textDark,
+                        ),
                         items: columnTypes.entries.map((e) {
                           return DropdownMenuItem(
                             value: e.key,
@@ -2892,8 +3806,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                             col.type = v;
                             if (v == FormFieldType.dropdown &&
                                 col.options.isEmpty) {
-                              col.options
-                                  .add(_BuilderOption(label: 'Option 1'));
+                              col.options.add(
+                                _BuilderOption(label: 'Option 1'),
+                              );
                             }
                             _hasUnsavedChanges = true;
                           });
@@ -2905,8 +3820,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 const SizedBox(width: 4),
                 // Delete button: available for ALL columns
                 IconButton(
-                  icon: const Icon(Icons.close,
-                      size: 18, color: AppColors.textMuted),
+                  icon: const Icon(
+                    Icons.close,
+                    size: 18,
+                    color: AppColors.textMuted,
+                  ),
                   onPressed: () => setState(() {
                     field.columns.removeAt(ci);
                     _hasUnsavedChanges = true;
@@ -2920,69 +3838,85 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         // Dropdown options sub-editors (same as _buildColumnEditor)
         ...field.columns
             .where((c) => c.type == FormFieldType.dropdown)
-            .map((col) => Padding(
-                  padding: const EdgeInsets.only(left: 24, bottom: 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Options for "${col.label}":',
-                          style: const TextStyle(
-                              fontSize: 11, color: AppColors.textMuted)),
-                      ...col.options.asMap().entries.map((oe) {
-                        final opt = oe.value;
-                        return Row(
-                          children: [
-                            const Icon(Icons.arrow_right,
-                                size: 16, color: AppColors.textMuted),
-                            Expanded(
-                              child: TextField(
-                                controller:
-                                    _ctrl('colopt_${opt.id}', opt.label),
-                                style: const TextStyle(fontSize: 12),
-                                decoration: const InputDecoration(
-                                  hintText: 'Option',
-                                  border: InputBorder.none,
-                                  contentPadding:
-                                      EdgeInsets.symmetric(vertical: 6),
-                                ),
-                                onChanged: (v) {
-                                  opt.label = v;
-                                  _hasUnsavedChanges = true;
-                                },
-                              ),
-                            ),
-                            if (col.options.length > 1)
-                              IconButton(
-                                icon: const Icon(Icons.close, size: 14),
-                                onPressed: () => setState(() {
-                                  col.options.removeAt(oe.key);
-                                  _hasUnsavedChanges = true;
-                                }),
-                              ),
-                          ],
-                        );
-                      }),
-                      TextButton.icon(
-                        onPressed: () => setState(() {
-                          col.options.add(_BuilderOption(
-                              label: 'Option ${col.options.length + 1}'));
-                          _hasUnsavedChanges = true;
-                        }),
-                        icon: const Icon(Icons.add, size: 14),
-                        label: const Text('Add option',
-                            style: TextStyle(fontSize: 11)),
+            .map(
+              (col) => Padding(
+                padding: const EdgeInsets.only(left: 24, bottom: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Options for "${col.label}":',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textMuted,
                       ),
-                    ],
-                  ),
-                )),
+                    ),
+                    ...col.options.asMap().entries.map((oe) {
+                      final opt = oe.value;
+                      return Row(
+                        children: [
+                          const Icon(
+                            Icons.arrow_right,
+                            size: 16,
+                            color: AppColors.textMuted,
+                          ),
+                          Expanded(
+                            child: TextField(
+                              controller: _ctrl('colopt_${opt.id}', opt.label),
+                              style: const TextStyle(fontSize: 12),
+                              decoration: const InputDecoration(
+                                hintText: 'Option',
+                                border: InputBorder.none,
+                                contentPadding: EdgeInsets.symmetric(
+                                  vertical: 6,
+                                ),
+                              ),
+                              onChanged: (v) {
+                                opt.label = v;
+                                _hasUnsavedChanges = true;
+                              },
+                            ),
+                          ),
+                          if (col.options.length > 1)
+                            IconButton(
+                              icon: const Icon(Icons.close, size: 14),
+                              onPressed: () => setState(() {
+                                col.options.removeAt(oe.key);
+                                _hasUnsavedChanges = true;
+                              }),
+                            ),
+                        ],
+                      );
+                    }),
+                    TextButton.icon(
+                      onPressed: () => setState(() {
+                        col.options.add(
+                          _BuilderOption(
+                            label: 'Option ${col.options.length + 1}',
+                          ),
+                        );
+                        _hasUnsavedChanges = true;
+                      }),
+                      icon: const Icon(Icons.add, size: 14),
+                      label: const Text(
+                        'Add option',
+                        style: TextStyle(fontSize: 11),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
 
         // Add column button
         TextButton.icon(
           onPressed: () => setState(() {
-            field.columns.add(_BuilderColumn(
-              label: 'Column ${field.columns.length + 1}',
-              order: field.columns.length,
-            ));
+            field.columns.add(
+              _BuilderColumn(
+                label: 'Column ${field.columns.length + 1}',
+                order: field.columns.length,
+              ),
+            );
             _hasUnsavedChanges = true;
           }),
           icon: const Icon(Icons.add_circle_outline, size: 16),
@@ -2999,8 +3933,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     final optIcon = isRadio
         ? Icons.radio_button_unchecked
         : isCheckbox
-            ? Icons.check_box_outline_blank
-            : Icons.arrow_right;
+        ? Icons.check_box_outline_blank
+        : Icons.arrow_right;
 
     return Column(
       children: [
@@ -3015,21 +3949,21 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 if (isActive)
                   Expanded(
                     child: TextField(
-                      controller:
-                          _ctrl('opt_${opt.id}', opt.label),
+                      controller: _ctrl('opt_${opt.id}', opt.label),
                       style: const TextStyle(
-                          fontSize: 13, color: AppColors.textDark),
+                        fontSize: 13,
+                        color: AppColors.textDark,
+                      ),
                       decoration: const InputDecoration(
                         hintText: 'Option',
                         border: InputBorder.none,
                         enabledBorder: UnderlineInputBorder(
-                            borderSide: BorderSide(
-                                color: AppColors.cardBorder)),
+                          borderSide: BorderSide(color: AppColors.cardBorder),
+                        ),
                         focusedBorder: UnderlineInputBorder(
-                            borderSide: BorderSide(
-                                color: AppColors.highlight)),
-                        contentPadding:
-                            EdgeInsets.symmetric(vertical: 8),
+                          borderSide: BorderSide(color: AppColors.highlight),
+                        ),
+                        contentPadding: EdgeInsets.symmetric(vertical: 8),
                       ),
                       onChanged: (v) {
                         opt.label = v;
@@ -3039,15 +3973,21 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                   )
                 else
                   Expanded(
-                    child: Text(opt.label,
-                        style: const TextStyle(
-                            fontSize: 13,
-                            color: AppColors.textDark)),
+                    child: Text(
+                      opt.label,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textDark,
+                      ),
+                    ),
                   ),
                 if (isActive && field.options.length > 1)
                   IconButton(
-                    icon: const Icon(Icons.close,
-                        size: 18, color: AppColors.textMuted),
+                    icon: const Icon(
+                      Icons.close,
+                      size: 18,
+                      color: AppColors.textMuted,
+                    ),
                     onPressed: () => setState(() {
                       field.options.removeAt(oi);
                       _hasUnsavedChanges = true;
@@ -3062,16 +4002,20 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             padding: const EdgeInsets.only(top: 4),
             child: Row(
               children: [
-                Icon(optIcon,
-                    size: 20,
-                    color: AppColors.textMuted.withOpacity(0.4)),
+                Icon(
+                  optIcon,
+                  size: 20,
+                  color: AppColors.textMuted.withOpacity(0.4),
+                ),
                 const SizedBox(width: 10),
                 TextButton(
                   onPressed: () => setState(() {
-                    field.options.add(_BuilderOption(
-                      label: 'Option ${field.options.length + 1}',
-                      order: field.options.length,
-                    ));
+                    field.options.add(
+                      _BuilderOption(
+                        label: 'Option ${field.options.length + 1}',
+                        order: field.options.length,
+                      ),
+                    );
                     _hasUnsavedChanges = true;
                   }),
                   child: const Text('Add option'),
@@ -3088,8 +4032,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   // Tokens are displayed as removable chips — no free-text editing.
   List<String> _formulaTokens(_BuilderField field) =>
       field.formula.trim().isEmpty
-          ? []
-          : field.formula.trim().split(RegExp(r'\s+'));
+      ? []
+      : field.formula.trim().split(RegExp(r'\s+'));
 
   void _appendFormulaToken(_BuilderField field, String token) {
     final tokens = _formulaTokens(field);
@@ -3113,17 +4057,19 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     final tokens = _formulaTokens(field);
     final numericFields = _sections
         .expand((s) => s.fields)
-        .where((f) =>
-            f.id != field.id &&
-            (f.type == FormFieldType.number ||
-                f.type == FormFieldType.computed))
+        .where(
+          (f) =>
+              f.id != field.id &&
+              (f.type == FormFieldType.number ||
+                  f.type == FormFieldType.computed),
+        )
         .toList();
 
     // Build a lookup: fieldName → label for display in tokens
     final fieldLabelMap = {
-      for (final f in _sections.expand((s) => s.fields)
-          .where((f) => f.id != field.id))
-        f.fieldName: (f.label.isNotEmpty ? f.label : f.fieldName)
+      for (final f
+          in _sections.expand((s) => s.fields).where((f) => f.id != field.id))
+        f.fieldName: (f.label.isNotEmpty ? f.label : f.fieldName),
     };
 
     // ── Inactive preview ──
@@ -3133,20 +4079,23 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         decoration: BoxDecoration(
           color: const Color(0xFFF0F4FF),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppColors.buttonOutlineBlue.withOpacity(0.3)),
+          border: Border.all(
+            color: AppColors.buttonOutlineBlue.withOpacity(0.3),
+          ),
         ),
         child: Row(
           children: [
-            const Icon(Icons.calculate_outlined,
-                size: 14, color: AppColors.primaryBlue),
+            const Icon(
+              Icons.calculate_outlined,
+              size: 14,
+              color: AppColors.primaryBlue,
+            ),
             const SizedBox(width: 6),
             Expanded(
               child: Text(
                 tokens.isEmpty
                     ? 'No formula set'
-                    : tokens
-                        .map((t) => fieldLabelMap[t] ?? t)
-                        .join(' '),
+                    : tokens.map((t) => fieldLabelMap[t] ?? t).join(' '),
                 style: TextStyle(
                   fontSize: 12,
                   color: tokens.isEmpty
@@ -3169,9 +4118,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         const Text(
           'Formula',
           style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textMuted),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textMuted,
+          ),
         ),
         const SizedBox(height: 4),
         const Text(
@@ -3188,15 +4138,17 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             color: const Color(0xFFF0F4FF),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-                color: AppColors.buttonOutlineBlue.withOpacity(0.4)),
+              color: AppColors.buttonOutlineBlue.withOpacity(0.4),
+            ),
           ),
           child: tokens.isEmpty
               ? const Text(
                   'Empty — add fields and operators below',
                   style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textMuted,
-                      fontStyle: FontStyle.italic),
+                    fontSize: 12,
+                    color: AppColors.textMuted,
+                    fontStyle: FontStyle.italic,
+                  ),
                 )
               : Wrap(
                   spacing: 4,
@@ -3204,15 +4156,21 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                   children: tokens.asMap().entries.map((e) {
                     final i = e.key;
                     final tok = e.value;
-                    final isOp = const {'+', '-', '*', '/', '(', ')'}
-                        .contains(tok);
+                    final isOp = const {
+                      '+',
+                      '-',
+                      '*',
+                      '/',
+                      '(',
+                      ')',
+                    }.contains(tok);
                     return Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
-                        color: isOp
-                            ? const Color(0xFFE8EEFF)
-                            : Colors.white,
+                        color: isOp ? const Color(0xFFE8EEFF) : Colors.white,
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(
                           color: isOp
@@ -3251,8 +4209,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         ),
         if (numericFields.isNotEmpty) ...[
           const SizedBox(height: 12),
-          const Text('Available fields:',
-              style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+          const Text(
+            'Available fields:',
+            style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+          ),
           const SizedBox(height: 6),
           Wrap(
             spacing: 6,
@@ -3262,19 +4222,23 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 onPressed: () => _appendFormulaToken(field, f.fieldName),
                 icon: const Icon(Icons.add, size: 14),
                 label: Text(
-                    f.label.isNotEmpty ? f.label : f.fieldName,
-                    style: const TextStyle(
-                        fontSize: 11, fontFamily: 'monospace')),
+                  f.label.isNotEmpty ? f.label : f.fieldName,
+                  style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
                   foregroundColor: AppColors.primaryBlue,
                   elevation: 0,
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 6),
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(6),
                     side: const BorderSide(
-                        color: AppColors.buttonOutlineBlue, width: 1),
+                      color: AppColors.buttonOutlineBlue,
+                      width: 1,
+                    ),
                   ),
                 ),
               );
@@ -3282,8 +4246,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           ),
         ],
         const SizedBox(height: 8),
-        const Text('Operators:',
-            style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+        const Text(
+          'Operators:',
+          style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+        ),
         const SizedBox(height: 6),
         Wrap(
           spacing: 6,
@@ -3295,18 +4261,23 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 backgroundColor: const Color(0xFFE8EEFF),
                 foregroundColor: AppColors.primaryBlue,
                 elevation: 0,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(6),
                 ),
                 minimumSize: const Size(36, 32),
               ),
-              child: Text(op,
-                  style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'monospace')),
+              child: Text(
+                op,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'monospace',
+                ),
+              ),
             );
           }).toList(),
         ),
@@ -3338,8 +4309,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         ),
         child: Row(
           children: [
-            const Icon(Icons.device_hub_outlined,
-                size: 14, color: Colors.orange),
+            const Icon(
+              Icons.device_hub_outlined,
+              size: 14,
+              color: Colors.orange,
+            ),
             const SizedBox(width: 6),
             Expanded(
               child: Text(
@@ -3366,9 +4340,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         const Text(
           'Condition',
           style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textMuted),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textMuted,
+          ),
         ),
         const SizedBox(height: 4),
         const Text(
@@ -3416,7 +4391,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         ),
         const SizedBox(height: 8),
         TextField(
-          controller: _ctrl('cond_val_${field.id}', field.condition.triggerValue),
+          controller: _ctrl(
+            'cond_val_${field.id}',
+            field.condition.triggerValue,
+          ),
           decoration: InputDecoration(
             hintText: 'Trigger value (exact match)',
             filled: true,
@@ -3452,42 +4430,44 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       label: const Text('Add Section'),
       style: OutlinedButton.styleFrom(
         foregroundColor: AppColors.highlight,
-        padding:
-            const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
         side: BorderSide(color: AppColors.highlight.withOpacity(0.5)),
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
 
   // ── Status Card ─────────────────────────────────────────────
   Widget _buildStatusCard() {
-    final (Color clr, String label, String desc, IconData icon) =
-        switch (_formStatus) {
+    final (
+      Color clr,
+      String label,
+      String desc,
+      IconData icon,
+    ) = switch (_formStatus) {
       'published' => (
         Colors.blue,
         'PUBLISHED',
         'Visible to admin staff in Manage Forms',
-        Icons.visibility
+        Icons.visibility,
       ),
       'pushed_to_mobile' => (
         Colors.green,
         'LIVE ON MOBILE',
         'Users can fill this form on the mobile app',
-        Icons.phone_android
+        Icons.phone_android,
       ),
       'archived' => (
         Colors.grey,
         'ARCHIVED',
         'Hidden from admins & mobile. Data preserved.',
-        Icons.archive_outlined
+        Icons.archive_outlined,
       ),
       _ => (
         Colors.orange,
         'DRAFT',
         'Only you can see this template',
-        Icons.edit_note
+        Icons.edit_note,
       ),
     };
 
@@ -3506,14 +4486,18 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Status: $label',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: clr,
-                        fontSize: 13)),
-                Text(desc,
-                    style: TextStyle(
-                        color: clr.withOpacity(0.8), fontSize: 12)),
+                Text(
+                  'Status: $label',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: clr,
+                    fontSize: 13,
+                  ),
+                ),
+                Text(
+                  desc,
+                  style: TextStyle(color: clr.withOpacity(0.8), fontSize: 12),
+                ),
               ],
             ),
           ),

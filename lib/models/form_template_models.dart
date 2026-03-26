@@ -317,6 +317,10 @@ class FormTemplate {
   final String formName;
   final String? formDesc;
   final bool isActive;
+  final String? formCode;
+  final String? referencePrefix;
+  final String referenceFormat;
+  final bool requiresReference;
   final List<FormSection> sections;
 
   const FormTemplate({
@@ -324,6 +328,10 @@ class FormTemplate {
     required this.formName,
     this.formDesc,
     this.isActive = true,
+    this.formCode,
+    this.referencePrefix,
+    this.referenceFormat = '{FORMCODE}-{YYYY}-{MM}-{####}',
+    this.requiresReference = true,
     this.sections = const [],
   });
 
@@ -389,6 +397,12 @@ class FormTemplate {
       formName: m['form_name'] as String,
       formDesc: m['form_desc'] as String?,
       isActive: (m['is_active'] as bool?) ?? true,
+      formCode: m['form_code'] as String?,
+      referencePrefix: m['reference_prefix'] as String?,
+      referenceFormat: (m['reference_format'] as String?)?.trim().isNotEmpty == true
+          ? m['reference_format'] as String
+          : '{FORMCODE}-{YYYY}-{MM}-{####}',
+      requiresReference: (m['requires_reference'] as bool?) ?? true,
       sections: sections,
     );
   }

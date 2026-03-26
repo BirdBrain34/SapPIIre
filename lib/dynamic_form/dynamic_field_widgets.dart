@@ -38,58 +38,94 @@ class DynamicFieldWidget extends StatelessWidget {
     switch (field.fieldType) {
       case FormFieldType.text:
         fieldWidget = _TextField(
-            field: field, controller: controller, isReadOnly: isReadOnly);
+          field: field,
+          controller: controller,
+          isReadOnly: isReadOnly,
+        );
         break;
       case FormFieldType.date:
         fieldWidget = _DateField(
-            field: field, controller: controller, isReadOnly: isReadOnly);
+          field: field,
+          controller: controller,
+          isReadOnly: isReadOnly,
+        );
         break;
       case FormFieldType.number:
         fieldWidget = _NumberField(
-            field: field, controller: controller, isReadOnly: isReadOnly);
+          field: field,
+          controller: controller,
+          isReadOnly: isReadOnly,
+        );
         break;
       case FormFieldType.computed:
         fieldWidget = _ComputedField(field: field, controller: controller);
         break;
       case FormFieldType.conditional:
         fieldWidget = _TextField(
-            field: field, controller: controller, isReadOnly: isReadOnly);
+          field: field,
+          controller: controller,
+          isReadOnly: isReadOnly,
+        );
         break;
       case FormFieldType.dropdown:
         fieldWidget = _DropdownField(
-            field: field, controller: controller, isReadOnly: isReadOnly);
+          field: field,
+          controller: controller,
+          isReadOnly: isReadOnly,
+        );
         break;
       case FormFieldType.radio:
         fieldWidget = _RadioField(
-            field: field, controller: controller, isReadOnly: isReadOnly);
+          field: field,
+          controller: controller,
+          isReadOnly: isReadOnly,
+        );
         break;
       case FormFieldType.checkbox:
         fieldWidget = _CheckboxField(
-            field: field, controller: controller, isReadOnly: isReadOnly);
+          field: field,
+          controller: controller,
+          isReadOnly: isReadOnly,
+        );
         break;
       case FormFieldType.boolean:
         fieldWidget = _BooleanField(
-            field: field, controller: controller, isReadOnly: isReadOnly);
+          field: field,
+          controller: controller,
+          isReadOnly: isReadOnly,
+        );
         break;
       case FormFieldType.membershipGroup:
         fieldWidget = _MembershipGroupField(
-            controller: controller, isReadOnly: isReadOnly);
+          controller: controller,
+          isReadOnly: isReadOnly,
+        );
         break;
       case FormFieldType.familyTable:
         fieldWidget = _FamilyTableField(
-            field: field, controller: controller, isReadOnly: isReadOnly);
+          field: field,
+          controller: controller,
+          isReadOnly: isReadOnly,
+        );
         break;
       case FormFieldType.supportingFamilyTable:
         fieldWidget = _SupportingFamilyField(
-            controller: controller, isReadOnly: isReadOnly);
+          controller: controller,
+          isReadOnly: isReadOnly,
+        );
         break;
       case FormFieldType.memberTable:
         fieldWidget = _MemberTableWidget(
-            field: field, controller: controller, isReadOnly: isReadOnly);
+          field: field,
+          controller: controller,
+          isReadOnly: isReadOnly,
+        );
         break;
       case FormFieldType.signature:
-        fieldWidget =
-            _SignatureField(controller: controller, isReadOnly: isReadOnly);
+        fieldWidget = _SignatureField(
+          controller: controller,
+          isReadOnly: isReadOnly,
+        );
         break;
       default:
         return const SizedBox();
@@ -97,7 +133,8 @@ class DynamicFieldWidget extends StatelessWidget {
 
     if (!showCheckbox) return fieldWidget;
 
-    final skipCheckbox = field.fieldType == FormFieldType.computed ||
+    final skipCheckbox =
+        field.fieldType == FormFieldType.computed ||
         field.fieldType == FormFieldType.supportingFamilyTable;
     if (skipCheckbox) return fieldWidget;
 
@@ -122,30 +159,30 @@ class DynamicFieldWidget extends StatelessWidget {
 
 // ── Shared helpers ────────────────────────────────────────────
 
-InputDecoration _inputDeco(
-        {String? hint, bool readOnly = false, Widget? suffix}) =>
-    InputDecoration(
-      hintText: hint,
-      hintStyle: const TextStyle(color: Colors.black38, fontSize: 13),
-      filled: true,
-      fillColor: readOnly ? const Color(0xFFF5F5F8) : Colors.white,
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFFDDDDEE)),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFFDDDDEE)),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide:
-            const BorderSide(color: AppColors.primaryBlue, width: 1.5),
-      ),
-      suffixIcon: suffix,
-    );
+InputDecoration _inputDeco({
+  String? hint,
+  bool readOnly = false,
+  Widget? suffix,
+}) => InputDecoration(
+  hintText: hint,
+  hintStyle: const TextStyle(color: Colors.black38, fontSize: 13),
+  filled: true,
+  fillColor: readOnly ? const Color(0xFFF5F5F8) : Colors.white,
+  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+  border: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(10),
+    borderSide: const BorderSide(color: Color(0xFFDDDDEE)),
+  ),
+  enabledBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(10),
+    borderSide: const BorderSide(color: Color(0xFFDDDDEE)),
+  ),
+  focusedBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(10),
+    borderSide: const BorderSide(color: AppColors.primaryBlue, width: 1.5),
+  ),
+  suffixIcon: suffix,
+);
 
 // ── Field label ───────────────────────────────────────────────
 class _FieldLabel extends StatelessWidget {
@@ -161,13 +198,16 @@ class _FieldLabel extends StatelessWidget {
         text: TextSpan(
           text: label,
           style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF555577)),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF555577),
+          ),
           children: [
             if (isRequired)
               const TextSpan(
-                  text: ' *', style: TextStyle(color: Colors.red)),
+                text: ' *',
+                style: TextStyle(color: Colors.red),
+              ),
           ],
         ),
       ),
@@ -180,10 +220,11 @@ class _TextField extends StatelessWidget {
   final FormFieldModel field;
   final FormStateController controller;
   final bool isReadOnly;
-  const _TextField(
-      {required this.field,
-      required this.controller,
-      required this.isReadOnly});
+  const _TextField({
+    required this.field,
+    required this.controller,
+    required this.isReadOnly,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -196,10 +237,10 @@ class _TextField extends StatelessWidget {
         TextFormField(
           controller: ctrl,
           readOnly: isReadOnly,
-          decoration:
-              _inputDeco(hint: field.placeholder, readOnly: isReadOnly),
+          decoration: _inputDeco(hint: field.placeholder, readOnly: isReadOnly),
           style: const TextStyle(fontSize: 13),
-          onChanged: (v) => controller.setValue(field.fieldName, v, notify: false),
+          onChanged: (v) =>
+              controller.setValue(field.fieldName, v, notify: false),
         ),
       ],
     );
@@ -211,13 +252,19 @@ class _NumberField extends StatelessWidget {
   final FormFieldModel field;
   final FormStateController controller;
   final bool isReadOnly;
-  const _NumberField(
-      {required this.field,
-      required this.controller,
-      required this.isReadOnly});
+  const _NumberField({
+    required this.field,
+    required this.controller,
+    required this.isReadOnly,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final hasAgeFromMetadata = (field.validationRules?['age_from_field'] ?? '')
+        .toString()
+        .trim()
+        .isNotEmpty;
+    final readOnlyNumber = isReadOnly || hasAgeFromMetadata;
     final ctrl =
         controller.textControllers[field.fieldName] ?? TextEditingController();
     return Column(
@@ -226,12 +273,12 @@ class _NumberField extends StatelessWidget {
         _FieldLabel(label: field.fieldLabel, isRequired: field.isRequired),
         TextFormField(
           controller: ctrl,
-          readOnly: isReadOnly,
-          keyboardType:
-              const TextInputType.numberWithOptions(decimal: true),
-          decoration: _inputDeco(hint: '0.00', readOnly: isReadOnly),
+          readOnly: readOnlyNumber,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: _inputDeco(hint: '0.00', readOnly: readOnlyNumber),
           style: const TextStyle(fontSize: 13),
-          onChanged: (v) => controller.setValue(field.fieldName, v, notify: false),
+          onChanged: (v) =>
+              controller.setValue(field.fieldName, v, notify: false),
         ),
       ],
     );
@@ -256,9 +303,10 @@ class _ComputedField extends StatelessWidget {
           readOnly: true,
           decoration: _inputDeco(readOnly: true),
           style: const TextStyle(
-              fontSize: 13,
-              color: AppColors.primaryBlue,
-              fontWeight: FontWeight.w600),
+            fontSize: 13,
+            color: AppColors.primaryBlue,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ],
     );
@@ -270,10 +318,11 @@ class _DateField extends StatelessWidget {
   final FormFieldModel field;
   final FormStateController controller;
   final bool isReadOnly;
-  const _DateField(
-      {required this.field,
-      required this.controller,
-      required this.isReadOnly});
+  const _DateField({
+    required this.field,
+    required this.controller,
+    required this.isReadOnly,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -310,13 +359,15 @@ class _DateField extends StatelessWidget {
                     ),
                   );
                   if (picked != null) {
-                    controller.setValue(field.fieldName,
-                        DatePickerHelper.formatDate(picked), notify: true);
+                    controller.setValue(
+                      field.fieldName,
+                      DatePickerHelper.formatDate(picked),
+                      notify: true,
+                    );
                   }
                 },
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             decoration: BoxDecoration(
               color: isReadOnly ? const Color(0xFFF5F5F8) : Colors.white,
               borderRadius: BorderRadius.circular(10),
@@ -324,8 +375,11 @@ class _DateField extends StatelessWidget {
             ),
             child: Row(
               children: [
-                const Icon(Icons.calendar_today,
-                    size: 16, color: AppColors.primaryBlue),
+                const Icon(
+                  Icons.calendar_today,
+                  size: 16,
+                  color: AppColors.primaryBlue,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -355,10 +409,11 @@ class _DropdownField extends StatelessWidget {
   final FormFieldModel field;
   final FormStateController controller;
   final bool isReadOnly;
-  const _DropdownField(
-      {required this.field,
-      required this.controller,
-      required this.isReadOnly});
+  const _DropdownField({
+    required this.field,
+    required this.controller,
+    required this.isReadOnly,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -379,19 +434,26 @@ class _DropdownField extends StatelessWidget {
               value: field.options.any((o) => o.value == current)
                   ? current
                   : null,
-              hint: Text(field.placeholder ?? 'Select...',
-                  style: const TextStyle(
-                      fontSize: 13, color: Colors.black38)),
+              hint: Text(
+                field.placeholder ?? 'Select...',
+                style: const TextStyle(fontSize: 13, color: Colors.black38),
+              ),
               isExpanded: true,
               items: field.options
-                  .map((o) => DropdownMenuItem(
+                  .map(
+                    (o) => DropdownMenuItem(
                       value: o.value,
-                      child: Text(o.label,
-                          style: const TextStyle(fontSize: 13))))
+                      child: Text(
+                        o.label,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  )
                   .toList(),
               onChanged: isReadOnly
                   ? null
-                  : (v) => controller.setValue(field.fieldName, v, notify: true),
+                  : (v) =>
+                        controller.setValue(field.fieldName, v, notify: true),
             ),
           ),
         ),
@@ -405,10 +467,11 @@ class _RadioField extends StatelessWidget {
   final FormFieldModel field;
   final FormStateController controller;
   final bool isReadOnly;
-  const _RadioField(
-      {required this.field,
-      required this.controller,
-      required this.isReadOnly});
+  const _RadioField({
+    required this.field,
+    required this.controller,
+    required this.isReadOnly,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -429,12 +492,18 @@ class _RadioField extends StatelessWidget {
                       if (field.fieldName == 'housing_status') {
                         controller.housingStatus = o.value;
                       }
-                      controller.setValue(field.fieldName, o.value, notify: true);
+                      controller.setValue(
+                        field.fieldName,
+                        o.value,
+                        notify: true,
+                      );
                     },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 8),
+                  horizontal: 14,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: selected
                       ? AppColors.primaryBlue
@@ -483,7 +552,8 @@ class _CheckboxField extends StatelessWidget {
       selected.addAll(raw.map((e) => e.toString()));
     } else if (raw is String && raw.trim().isNotEmpty) {
       selected.addAll(
-          raw.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty));
+        raw.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty),
+      );
     }
 
     return Column(
@@ -513,8 +583,10 @@ class _CheckboxField extends StatelessWidget {
                     },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: isSelected
                       ? AppColors.primaryBlue
@@ -561,10 +633,11 @@ class _BooleanField extends StatelessWidget {
   final FormFieldModel field;
   final FormStateController controller;
   final bool isReadOnly;
-  const _BooleanField(
-      {required this.field,
-      required this.controller,
-      required this.isReadOnly});
+  const _BooleanField({
+    required this.field,
+    required this.controller,
+    required this.isReadOnly,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -572,8 +645,12 @@ class _BooleanField extends StatelessWidget {
     if (field.fieldName == 'has_support') {
       current = controller.hasSupport;
     } else {
-      final raw = controller.getValue(field.fieldName); // FIX: Safely handle boolean or string values.
-      current = raw == true || raw == 'true'; // FIX: Coerce string "true" to boolean true.
+      final raw = controller.getValue(
+        field.fieldName,
+      ); // FIX: Safely handle boolean or string values.
+      current =
+          raw == true ||
+          raw == 'true'; // FIX: Coerce string "true" to boolean true.
     }
     return Row(
       children: [
@@ -593,8 +670,7 @@ class _BooleanField extends StatelessWidget {
         Expanded(
           child: Text(
             field.fieldLabel,
-            style: const TextStyle(
-                fontSize: 13, fontWeight: FontWeight.w500),
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
           ),
         ),
       ],
@@ -606,8 +682,10 @@ class _BooleanField extends StatelessWidget {
 class _MembershipGroupField extends StatelessWidget {
   final FormStateController controller;
   final bool isReadOnly;
-  const _MembershipGroupField(
-      {required this.controller, required this.isReadOnly});
+  const _MembershipGroupField({
+    required this.controller,
+    required this.isReadOnly,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -637,7 +715,9 @@ class _MembershipGroupField extends StatelessWidget {
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 7),
+                  horizontal: 12,
+                  vertical: 7,
+                ),
                 decoration: BoxDecoration(
                   color: selected
                       ? AppColors.primaryBlue
@@ -684,10 +764,11 @@ class _FamilyTableField extends StatefulWidget {
   final FormFieldModel field;
   final FormStateController controller;
   final bool isReadOnly;
-  const _FamilyTableField(
-      {required this.field,
-       required this.controller,
-       required this.isReadOnly});
+  const _FamilyTableField({
+    required this.field,
+    required this.controller,
+    required this.isReadOnly,
+  });
 
   @override
   State<_FamilyTableField> createState() => _FamilyTableFieldState();
@@ -697,12 +778,26 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
   // Fallback columns used when the template has no column definitions
   // (backwards compatibility with templates saved before this feature).
   static const _fallbackCols = [
-    'name', 'relationship', 'birthdate', 'age',
-    'gender', 'civil_status', 'education', 'occupation', 'allowance',
+    'name',
+    'relationship',
+    'birthdate',
+    'age',
+    'gender',
+    'civil_status',
+    'education',
+    'occupation',
+    'allowance',
   ];
   static const _fallbackHeaders = [
-    'Name', 'Relationship', 'Birthdate', 'Age',
-    'Sex', 'Civil Status', 'Education', 'Occupation', 'Allowance (₱)',
+    'Name',
+    'Relationship',
+    'Birthdate',
+    'Age',
+    'Sex',
+    'Civil Status',
+    'Education',
+    'Occupation',
+    'Allowance (₱)',
   ];
 
   /// Returns the list of column keys (fieldName) to iterate.
@@ -726,8 +821,9 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
   String? _dbMapKeyFor(String colFieldName) {
     if (widget.field.columns.isEmpty) return colFieldName; // legacy
     try {
-      final col = widget.field.columns
-          .firstWhere((c) => c.fieldName == colFieldName);
+      final col = widget.field.columns.firstWhere(
+        (c) => c.fieldName == colFieldName,
+      );
       return col.validationRules?['db_map_key'] as String?;
     } catch (_) {
       return null;
@@ -739,21 +835,21 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
     // First: check if this familyTable column itself has options
     if (widget.field.columns.isNotEmpty) {
       try {
-        final col = widget.field.columns
-            .firstWhere((c) => c.fieldName == fieldName);
+        final col = widget.field.columns.firstWhere(
+          (c) => c.fieldName == fieldName,
+        );
         if (col.options.isNotEmpty) return col.options;
       } catch (_) {}
     }
 
     // Fall back to top-level template fields
-    final lookupNames = fieldName == 'gender'
-        ? ['gender', 'sex']
-        : [fieldName];
+    final lookupNames = fieldName == 'gender' ? ['gender', 'sex'] : [fieldName];
 
     for (final name in lookupNames) {
       try {
-        final field = widget.controller.template.allFields
-            .firstWhere((f) => f.fieldName == name);
+        final field = widget.controller.template.allFields.firstWhere(
+          (f) => f.fieldName == name,
+        );
         if (field.options.isNotEmpty) return field.options;
       } catch (_) {}
     }
@@ -770,31 +866,34 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
         Row(
           children: [
             Expanded(
-              child: _FieldLabel(label: widget.field.fieldLabel.isNotEmpty
-                  ? widget.field.fieldLabel
-                  : 'Family Composition'),
+              child: _FieldLabel(
+                label: widget.field.fieldLabel.isNotEmpty
+                    ? widget.field.fieldLabel
+                    : 'Family Composition',
+              ),
             ),
             if (!widget.isReadOnly)
               TextButton.icon(
                 onPressed: () {
                   widget.controller.familyMembers = [
                     ...members,
-                    {for (final c in cols) c: ''}
+                    {for (final c in cols) c: ''},
                   ];
                   widget.controller.notifyFormChanged();
                   setState(() {});
                 },
                 icon: const Icon(Icons.add, size: 16),
-                label: const Text('Add Member',
-                    style: TextStyle(fontSize: 12)),
+                label: const Text('Add Member', style: TextStyle(fontSize: 12)),
               ),
           ],
         ),
         if (members.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
-            child: Text('No family members added.',
-                style: TextStyle(color: Colors.black45, fontSize: 12)),
+            child: Text(
+              'No family members added.',
+              style: TextStyle(color: Colors.black45, fontSize: 12),
+            ),
           ),
         ...members.asMap().entries.map((entry) {
           final i = entry.key;
@@ -814,20 +913,24 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
                   ...cols.asMap().entries.map((col) {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
-                      child: Column( // FIX: always vertical — eliminates overflow regardless of screen width
+                      child: Column(
+                        // FIX: always vertical — eliminates overflow regardless of screen width
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             _headerAt(col.key),
                             style: const TextStyle(
                               fontSize: 11,
-                              fontWeight: FontWeight.w600, // FIX: slightly bolder so label reads well above field
+                              fontWeight: FontWeight
+                                  .w600, // FIX: slightly bolder so label reads well above field
                               color: Colors.black54,
                             ),
                             overflow: TextOverflow.ellipsis,
                             maxLines: 1,
                           ),
-                          const SizedBox(height: 4), // FIX: gap between label and field
+                          const SizedBox(
+                            height: 4,
+                          ), // FIX: gap between label and field
                           widget.isReadOnly
                               ? Text(
                                   m[col.value]?.toString() ?? '—',
@@ -840,23 +943,27 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
                       ),
                     );
                   }),
-                    if (!widget.isReadOnly)
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton.icon(
-                          onPressed: () {
-                            widget.controller.familyMembers =
-                                List.from(members)..removeAt(i);
-                            widget.controller.recomputeFromFamilyChange();
-                            setState(() {});
-                          },
-                          icon: const Icon(Icons.delete_outline,
-                              size: 14, color: Colors.red),
-                          label: const Text('Remove',
-                              style: TextStyle(
-                                  fontSize: 11, color: Colors.red)),
+                  if (!widget.isReadOnly)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () {
+                          widget.controller.familyMembers = List.from(members)
+                            ..removeAt(i);
+                          widget.controller.recomputeFromFamilyChange();
+                          setState(() {});
+                        },
+                        icon: const Icon(
+                          Icons.delete_outline,
+                          size: 14,
+                          color: Colors.red,
+                        ),
+                        label: const Text(
+                          'Remove',
+                          style: TextStyle(fontSize: 11, color: Colors.red),
                         ),
                       ),
+                    ),
                 ],
               ),
             ),
@@ -866,15 +973,18 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
     );
   }
 
-  Widget _buildEditCell(BuildContext context, int i,
-      Map<String, dynamic> m, String col) {
+  Widget _buildEditCell(
+    BuildContext context,
+    int i,
+    Map<String, dynamic> m,
+    String col,
+  ) {
     // Use the db_map_key to decide which specialised editor to show.
     // This way, even if the superadmin renames "Birthdate" to "Petsa",
     // the correct date-picker editor still renders.
     final dbKey = _dbMapKeyFor(col);
 
     switch (dbKey) {
-
       // ── Birthdate → auto-calculates age ─────────────────
       case 'birthdate':
         final raw = m[col]?.toString() ?? '';
@@ -907,8 +1017,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
               final today = DateTime.now();
               int age = today.year - picked.year;
               if (today.month < picked.month ||
-                  (today.month == picked.month &&
-                      today.day < picked.day)) {
+                  (today.month == picked.month && today.day < picked.day)) {
                 age--;
               }
               // Find the age column's fieldName (in case it was renamed)
@@ -921,8 +1030,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
             }
           },
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(8),
@@ -930,16 +1038,18 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
             ),
             child: Row(
               children: [
-                const Icon(Icons.calendar_today,
-                    size: 14, color: AppColors.primaryBlue),
+                const Icon(
+                  Icons.calendar_today,
+                  size: 14,
+                  color: AppColors.primaryBlue,
+                ),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     raw.isEmpty ? 'Select date' : raw,
                     style: TextStyle(
                       fontSize: 12,
-                      color:
-                          raw.isEmpty ? Colors.black38 : Colors.black87,
+                      color: raw.isEmpty ? Colors.black38 : Colors.black87,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -993,7 +1103,9 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 6),
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: isSelected
                       ? AppColors.primaryBlue
@@ -1021,11 +1133,10 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
-                        color: isSelected
-                            ? Colors.white
-                            : Colors.black87,
+                        color: isSelected ? Colors.white : Colors.black87,
                       ),
-                      overflow: TextOverflow.ellipsis, // FIX: clip long option labels
+                      overflow:
+                          TextOverflow.ellipsis, // FIX: clip long option labels
                       maxLines: 1,
                     ),
                   ],
@@ -1075,8 +1186,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
       case 'allowance':
         return TextFormField(
           initialValue: m[col]?.toString() ?? '',
-          keyboardType:
-              const TextInputType.numberWithOptions(decimal: true),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: _inputDeco(hint: '0.00').copyWith(isDense: true),
           style: const TextStyle(fontSize: 12),
           onChanged: (v) {
@@ -1146,24 +1256,33 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
           ),
           isExpanded: true,
           // FIX: selected value display must also be clipped
-          selectedItemBuilder: (context) => opts.map((o) => Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              o.label,
-              style: const TextStyle(fontSize: 12, color: Colors.black87),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
-            ),
-          )).toList(),
-          items: opts.map((o) => DropdownMenuItem(
-            value: o.value,
-            child: Text(
-              o.label,
-              style: const TextStyle(fontSize: 12),
-              overflow: TextOverflow.ellipsis, // FIX: prevent item text overflow
-              maxLines: 1,
-            ),
-          )).toList(),
+          selectedItemBuilder: (context) => opts
+              .map(
+                (o) => Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    o.label,
+                    style: const TextStyle(fontSize: 12, color: Colors.black87),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                ),
+              )
+              .toList(),
+          items: opts
+              .map(
+                (o) => DropdownMenuItem(
+                  value: o.value,
+                  child: Text(
+                    o.label,
+                    style: const TextStyle(fontSize: 12),
+                    overflow: TextOverflow
+                        .ellipsis, // FIX: prevent item text overflow
+                    maxLines: 1,
+                  ),
+                ),
+              )
+              .toList(),
           onChanged: (v) {
             if (v != null) onDropdownChange(v);
           },
@@ -1177,12 +1296,13 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
 class _SupportingFamilyField extends StatefulWidget {
   final FormStateController controller;
   final bool isReadOnly;
-  const _SupportingFamilyField(
-      {required this.controller, required this.isReadOnly});
+  const _SupportingFamilyField({
+    required this.controller,
+    required this.isReadOnly,
+  });
 
   @override
-  State<_SupportingFamilyField> createState() =>
-      _SupportingFamilyFieldState();
+  State<_SupportingFamilyField> createState() => _SupportingFamilyFieldState();
 }
 
 class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
@@ -1202,11 +1322,7 @@ class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
                 onPressed: () {
                   widget.controller.supportingFamily = [
                     ...members,
-                    {
-                      'name': '',
-                      'relationship': '',
-                      'regular_sustento': ''
-                    }
+                    {'name': '', 'relationship': '', 'regular_sustento': ''},
                   ];
                   widget.controller.notifyFormChanged();
                   setState(() {});
@@ -1234,39 +1350,58 @@ class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
                     child: widget.isReadOnly
                         ? Text(
                             '${m['name']} (${m['relationship']}) — ₱${m['regular_sustento']}',
-                            style: const TextStyle(fontSize: 13))
+                            style: const TextStyle(fontSize: 13),
+                          )
                         : Column(
                             children: [
                               TextFormField(
-                                initialValue:
-                                    m['name']?.toString() ?? '',
-                                decoration: _inputDeco(hint: 'Name')
-                                    .copyWith(isDense: true),
+                                initialValue: m['name']?.toString() ?? '',
+                                decoration: _inputDeco(
+                                  hint: 'Name',
+                                ).copyWith(isDense: true),
                                 style: const TextStyle(fontSize: 12),
-                                onChanged: (v) => widget.controller
-                                    .supportingFamily[i]['name'] = v,
+                                onChanged: (v) =>
+                                    widget
+                                            .controller
+                                            .supportingFamily[i]['name'] =
+                                        v,
                               ),
                               const SizedBox(height: 4),
                               // FIX: always vertical — eliminates overflow regardless of screen width
                               Column(
                                 children: [
                                   TextFormField(
-                                    initialValue: m['relationship']?.toString() ?? '',
-                                    decoration: _inputDeco(hint: 'Relationship')
-                                        .copyWith(isDense: true),
+                                    initialValue:
+                                        m['relationship']?.toString() ?? '',
+                                    decoration: _inputDeco(
+                                      hint: 'Relationship',
+                                    ).copyWith(isDense: true),
                                     style: const TextStyle(fontSize: 12),
-                                    onChanged: (v) => widget.controller
-                                        .supportingFamily[i]['relationship'] = v,
+                                    onChanged: (v) =>
+                                        widget
+                                                .controller
+                                                .supportingFamily[i]['relationship'] =
+                                            v,
                                   ),
-                                  const SizedBox(height: 4), // FIX: gap between fields
+                                  const SizedBox(
+                                    height: 4,
+                                  ), // FIX: gap between fields
                                   TextFormField(
-                                    initialValue: m['regular_sustento']?.toString() ?? '',
-                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                    decoration: _inputDeco(hint: 'Monthly Amt')
-                                        .copyWith(isDense: true),
+                                    initialValue:
+                                        m['regular_sustento']?.toString() ?? '',
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                          decimal: true,
+                                        ),
+                                    decoration: _inputDeco(
+                                      hint: 'Monthly Amt',
+                                    ).copyWith(isDense: true),
                                     style: const TextStyle(fontSize: 12),
-                                    onChanged: (v) => widget.controller
-                                        .supportingFamily[i]['regular_sustento'] = v,
+                                    onChanged: (v) =>
+                                        widget
+                                                .controller
+                                                .supportingFamily[i]['regular_sustento'] =
+                                            v,
                                   ),
                                 ],
                               ),
@@ -1276,11 +1411,14 @@ class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
                   if (!widget.isReadOnly) ...[
                     const SizedBox(width: 4),
                     IconButton(
-                      icon: const Icon(Icons.delete_outline,
-                          size: 18, color: Colors.red),
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        size: 18,
+                        color: Colors.red,
+                      ),
                       onPressed: () {
-                        widget.controller.supportingFamily =
-                            List.from(members)..removeAt(i);
+                        widget.controller.supportingFamily = List.from(members)
+                          ..removeAt(i);
                         widget.controller.notifyFormChanged();
                         setState(() {});
                       },
@@ -1302,8 +1440,7 @@ class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
 class _SignatureField extends StatefulWidget {
   final FormStateController controller;
   final bool isReadOnly;
-  const _SignatureField(
-      {required this.controller, required this.isReadOnly});
+  const _SignatureField({required this.controller, required this.isReadOnly});
 
   @override
   State<_SignatureField> createState() => _SignatureFieldState();
@@ -1376,8 +1513,11 @@ class _SignatureFieldState extends State<_SignatureField> {
       child: signature != null && signature.isNotEmpty
           ? _renderSig(signature)
           : const Center(
-              child: Text('No signature',
-                  style: TextStyle(color: Colors.black38))),
+              child: Text(
+                'No signature',
+                style: TextStyle(color: Colors.black38),
+              ),
+            ),
     );
   }
 
@@ -1387,8 +1527,11 @@ class _SignatureFieldState extends State<_SignatureField> {
       return Image.memory(base64Decode(b64), fit: BoxFit.contain);
     } catch (_) {
       return const Center(
-          child: Text('Invalid signature',
-              style: TextStyle(color: Colors.black38)));
+        child: Text(
+          'Invalid signature',
+          style: TextStyle(color: Colors.black38),
+        ),
+      );
     }
   }
 
@@ -1575,20 +1718,24 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
                   ..._columns.map((col) {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
-                      child: Column( // FIX: always vertical to prevent overflow on narrow screens
+                      child: Column(
+                        // FIX: always vertical to prevent overflow on narrow screens
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             col.fieldLabel,
                             style: const TextStyle(
                               fontSize: 11,
-                              fontWeight: FontWeight.w600, // FIX: bolder label for vertical layout
+                              fontWeight: FontWeight
+                                  .w600, // FIX: bolder label for vertical layout
                               color: Colors.black54,
                             ),
                             overflow: TextOverflow.ellipsis,
                             maxLines: 1,
                           ),
-                          const SizedBox(height: 4), // FIX: spacing between label and field
+                          const SizedBox(
+                            height: 4,
+                          ), // FIX: spacing between label and field
                           widget.isReadOnly
                               ? Text(
                                   rowData[col.fieldName]?.toString() ?? '',
@@ -1612,10 +1759,15 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
                           );
                           setState(() {});
                         },
-                        icon: const Icon(Icons.delete_outline,
-                            size: 14, color: Colors.red),
-                        label: const Text('Remove',
-                            style: TextStyle(fontSize: 11, color: Colors.red)),
+                        icon: const Icon(
+                          Icons.delete_outline,
+                          size: 14,
+                          color: Colors.red,
+                        ),
+                        label: const Text(
+                          'Remove',
+                          style: TextStyle(fontSize: 11, color: Colors.red),
+                        ),
                       ),
                     ),
                 ],
@@ -1628,7 +1780,10 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
   }
 
   Widget _buildCellEditor(
-      FormFieldModel col, Map<String, dynamic> rowData, int rowIdx) {
+    FormFieldModel col,
+    Map<String, dynamic> rowData,
+    int rowIdx,
+  ) {
     final currentValue = rowData[col.fieldName]?.toString() ?? '';
 
     switch (col.fieldType) {
@@ -1644,7 +1799,10 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
           style: const TextStyle(fontSize: 13),
           onChanged: (v) {
             widget.controller.updateMemberTableCell(
-              widget.field.fieldName, rowIdx, col.fieldName, v,
+              widget.field.fieldName,
+              rowIdx,
+              col.fieldName,
+              v,
             );
           },
         );
@@ -1667,7 +1825,9 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
             );
             if (picked != null) {
               widget.controller.updateMemberTableCell(
-                widget.field.fieldName, rowIdx, col.fieldName,
+                widget.field.fieldName,
+                rowIdx,
+                col.fieldName,
                 DatePickerHelper.formatDate(picked),
               );
               setState(() {});
@@ -1686,13 +1846,17 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
                     currentValue.isEmpty ? 'Select date' : currentValue,
                     style: TextStyle(
                       fontSize: 13,
-                      color:
-                          currentValue.isEmpty ? Colors.black38 : Colors.black,
+                      color: currentValue.isEmpty
+                          ? Colors.black38
+                          : Colors.black,
                     ),
                   ),
                 ),
-                const Icon(Icons.calendar_today,
-                    size: 16, color: Colors.black38),
+                const Icon(
+                  Icons.calendar_today,
+                  size: 16,
+                  color: Colors.black38,
+                ),
               ],
             ),
           ),
@@ -1710,7 +1874,10 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
           decoration: _inputDeco(hint: 'Select...'),
           onChanged: (v) {
             widget.controller.updateMemberTableCell(
-              widget.field.fieldName, rowIdx, col.fieldName, v ?? '',
+              widget.field.fieldName,
+              rowIdx,
+              col.fieldName,
+              v ?? '',
             );
             setState(() {});
           },
@@ -1724,7 +1891,10 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
           style: const TextStyle(fontSize: 13),
           onChanged: (v) {
             widget.controller.updateMemberTableCell(
-              widget.field.fieldName, rowIdx, col.fieldName, v,
+              widget.field.fieldName,
+              rowIdx,
+              col.fieldName,
+              v,
             );
           },
         );

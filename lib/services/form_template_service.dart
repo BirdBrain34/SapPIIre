@@ -32,6 +32,7 @@ class FormTemplateService {
           .from('form_templates')
           .select('''
             template_id, form_name, form_desc, is_active,
+            form_code, reference_prefix, reference_format, requires_reference,
             form_sections(
               section_id, template_id, section_name, section_desc,
               section_order, is_collapsible
@@ -82,6 +83,7 @@ class FormTemplateService {
           .from('form_templates')
           .select('''
             template_id, form_name, form_desc, is_active,
+            form_code, reference_prefix, reference_format, requires_reference,
             form_sections(
               section_id, template_id, section_name, section_desc,
               section_order, is_collapsible
