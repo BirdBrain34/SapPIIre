@@ -104,14 +104,179 @@ class FormStateController extends ChangeNotifier {
       if (ctrl.text != strVal) ctrl.text = strVal;
     }
 
+    _syncAgeFromBirthDate(changedFieldName: fieldName);
+
     _recomputeDebounce?.cancel();
-    _recomputeDebounce =
-        Timer(const Duration(milliseconds: 150), _recomputeFields);
+    _recomputeDebounce = Timer(
+      const Duration(milliseconds: 150),
+      _recomputeFields,
+    );
 
     // Only structural changes (conditions, computed cascades) trigger full repaint
     if (notify || _hasStructuralDependencies(fieldName)) {
       notifyListeners();
     }
+  }
+
+  bool isAgeAutoField(FormFieldModel field) {
+    if (_ageFromFieldId(field) != null) return true;
+
+    final fieldName = field.fieldName.trim().toLowerCase();
+    final label = field.fieldLabel.trim().toLowerCase();
+    final canonical = (field.canonicalFieldKey ?? '').trim().toLowerCase();
+    final autofill = (field.autofillSource ?? '').trim().toLowerCase();
+    final dbMapKey = (field.validationRules?['db_map_key'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    return fieldName == 'age' ||
+        label == 'age' ||
+        canonical == 'age' ||
+        autofill == 'age' ||
+        dbMapKey == 'age';
+  }
+
+  bool _isBirthDateField(FormFieldModel field) {
+    final fieldName = field.fieldName.trim().toLowerCase();
+    final label = field.fieldLabel.trim().toLowerCase();
+    final canonical = (field.canonicalFieldKey ?? '').trim().toLowerCase();
+    final autofill = (field.autofillSource ?? '').trim().toLowerCase();
+    final dbMapKey = (field.validationRules?['db_map_key'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+
+    return field.fieldType == FormFieldType.date &&
+        (fieldName == 'date_of_birth' ||
+            fieldName == 'birthdate' ||
+            fieldName == 'dob' ||
+            label == 'date of birth' ||
+            label == 'birthdate' ||
+            canonical == 'birth_date' ||
+            autofill == 'birth_date' ||
+            dbMapKey == 'birth_date');
+  }
+
+  String? _ageFromFieldId(FormFieldModel field) {
+    final raw = (field.validationRules?['age_from_field'] ?? '')
+        .toString()
+        .trim();
+    return raw.isEmpty ? null : raw;
+  }
+
+  String _fieldTextValue(String fieldName) {
+    return (textControllers[fieldName]?.text ??
+            _values[fieldName]?.toString() ??
+            '')
+        .trim();
+  }
+
+  String _computeAgeString(String dobRaw) {
+    final parsedDob = _tryParseFlexibleDate(dobRaw);
+    if (parsedDob == null) return '';
+
+    final today = DateTime.now();
+    var age = today.year - parsedDob.year;
+    final hadBirthdayThisYear =
+        today.month > parsedDob.month ||
+        (today.month == parsedDob.month && today.day >= parsedDob.day);
+    if (!hadBirthdayThisYear) age -= 1;
+    return age >= 0 ? age.toString() : '';
+  }
+
+  void _setFieldTextValue(String fieldName, String value) {
+    final current = _fieldTextValue(fieldName);
+    if (current == value) return;
+
+    if (textControllers.containsKey(fieldName)) {
+      textControllers[fieldName]!.text = value;
+    }
+    _values[fieldName] = value;
+    _fieldNotifiers[fieldName]?.value = value;
+  }
+
+  void _syncAgeFromBirthDate({String? changedFieldName}) {
+    final fields = template.allFields;
+    final fieldsById = <String, FormFieldModel>{
+      for (final f in fields) f.fieldId: f,
+    };
+
+    final explicitlyLinkedAgeFields = fields
+        .where((f) => _ageFromFieldId(f) != null)
+        .toList();
+
+    if (explicitlyLinkedAgeFields.isNotEmpty) {
+      for (final ageField in explicitlyLinkedAgeFields) {
+        final dobFieldId = _ageFromFieldId(ageField);
+        if (dobFieldId == null) continue;
+        final dobField = fieldsById[dobFieldId];
+        if (dobField == null) continue;
+
+        if (changedFieldName != null &&
+            changedFieldName != dobField.fieldName &&
+            changedFieldName != ageField.fieldName) {
+          continue;
+        }
+
+        final nextAge = _computeAgeString(_fieldTextValue(dobField.fieldName));
+        _setFieldTextValue(ageField.fieldName, nextAge);
+      }
+      return;
+    }
+
+    // Backward compatibility for older templates without explicit age_from_field.
+    FormFieldModel? fallbackDobField;
+    FormFieldModel? fallbackAgeField;
+    for (final f in fields) {
+      if (fallbackDobField == null && _isBirthDateField(f)) {
+        fallbackDobField = f;
+      }
+      if (fallbackAgeField == null && isAgeAutoField(f)) {
+        fallbackAgeField = f;
+      }
+      if (fallbackDobField != null && fallbackAgeField != null) break;
+    }
+
+    if (fallbackDobField == null || fallbackAgeField == null) return;
+    if (changedFieldName != null &&
+        changedFieldName != fallbackDobField.fieldName &&
+        changedFieldName != fallbackAgeField.fieldName) {
+      return;
+    }
+
+    final nextAge = _computeAgeString(
+      _fieldTextValue(fallbackDobField.fieldName),
+    );
+    _setFieldTextValue(fallbackAgeField.fieldName, nextAge);
+  }
+
+  DateTime? _tryParseFlexibleDate(String raw) {
+    if (raw.isEmpty) return null;
+
+    final iso = DateTime.tryParse(raw);
+    if (iso != null) return DateTime(iso.year, iso.month, iso.day);
+
+    final slash = RegExp(r'^(\d{1,2})/(\d{1,2})/(\d{4})$').firstMatch(raw);
+    if (slash != null) {
+      final month = int.tryParse(slash.group(1)!);
+      final day = int.tryParse(slash.group(2)!);
+      final year = int.tryParse(slash.group(3)!);
+      if (month != null && day != null && year != null) {
+        return DateTime(year, month, day);
+      }
+    }
+
+    final dash = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})$').firstMatch(raw);
+    if (dash != null) {
+      final year = int.tryParse(dash.group(1)!);
+      final month = int.tryParse(dash.group(2)!);
+      final day = int.tryParse(dash.group(3)!);
+      if (month != null && day != null && year != null) {
+        return DateTime(year, month, day);
+      }
+    }
+
+    return null;
   }
 
   /// Checks if a changed field triggers conditional visibility on other fields.
@@ -121,8 +286,9 @@ class FormStateController extends ChangeNotifier {
 
     // Check if any field's visibility condition is bound to the changed field.
     for (final field in template.allFields) {
-      if (field.conditions
-          .any((cond) => cond.triggerFieldId == changedField.fieldId)) {
+      if (field.conditions.any(
+        (cond) => cond.triggerFieldId == changedField.fieldId,
+      )) {
         return true;
       }
     }
@@ -226,10 +392,10 @@ class FormStateController extends ChangeNotifier {
                 parsedValue = raw.trim().isEmpty
                     ? <String>[]
                     : raw
-                        .split(',')
-                        .map((s) => s.trim())
-                        .where((s) => s.isNotEmpty)
-                        .toList();
+                          .split(',')
+                          .map((s) => s.trim())
+                          .where((s) => s.isNotEmpty)
+                          .toList();
               }
             } else if (field.fieldType == FormFieldType.signature) {
               final signature = value?.toString();
@@ -482,7 +648,8 @@ class FormStateController extends ChangeNotifier {
   }
 
   double _parseNum(String key) {
-    final raw = textControllers[key]?.text.replaceAll(',', '') ??
+    final raw =
+        textControllers[key]?.text.replaceAll(',', '') ??
         _values[key]?.toString() ??
         '0';
     return double.tryParse(raw) ?? 0.0;

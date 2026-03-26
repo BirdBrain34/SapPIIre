@@ -79,7 +79,8 @@ class FormBuilderService {
           .from('form_templates')
           .select(
             'template_id, form_name, form_desc, is_active, '
-            'status, created_by, published_at, pushed_to_mobile_at',
+            'status, created_by, published_at, pushed_to_mobile_at, '
+            'form_code, reference_prefix, reference_format, requires_reference',
           )
           .order('form_name', ascending: true);
       return List<Map<String, dynamic>>.from(res);
@@ -98,6 +99,7 @@ class FormBuilderService {
           .select('''
             template_id, form_name, form_desc, is_active, status,
             theme_config, created_by, published_at, pushed_to_mobile_at,
+            form_code, reference_prefix, reference_format, requires_reference,
             form_sections(
               section_id, template_id, section_name, section_desc,
               section_order, is_collapsible
@@ -130,6 +132,10 @@ class FormBuilderService {
     required String formName,
     String? formDesc,
     required String createdBy,
+    String? formCode,
+    String? referencePrefix,
+    String? referenceFormat,
+    bool requiresReference = true,
   }) async {
     try {
       final res = await _supabase
@@ -140,6 +146,13 @@ class FormBuilderService {
             'is_active': false,
             'status': 'draft',
             'created_by': createdBy,
+            if (formCode != null && formCode.trim().isNotEmpty)
+              'form_code': formCode.trim().toUpperCase(),
+            if (referencePrefix != null && referencePrefix.trim().isNotEmpty)
+              'reference_prefix': referencePrefix.trim().toUpperCase(),
+            if (referenceFormat != null && referenceFormat.trim().isNotEmpty)
+              'reference_format': referenceFormat.trim(),
+            'requires_reference': requiresReference,
           })
           .select('template_id')
           .single();
@@ -225,6 +238,10 @@ class FormBuilderService {
     required String templateId,
     required String formName,
     String? formDesc,
+    String? formCode,
+    String? referencePrefix,
+    String? referenceFormat,
+    bool? requiresReference,
     Map<String, dynamic>? themeConfig,
     required List<Map<String, dynamic>> sections,
     required List<Map<String, dynamic>> fields,
@@ -237,6 +254,14 @@ class FormBuilderService {
         'form_name': formName,
         'form_desc': formDesc,
         'theme_config': themeConfig,
+        if (formCode != null && formCode.trim().isNotEmpty)
+          'form_code': formCode.trim().toUpperCase(),
+        if (referencePrefix != null && referencePrefix.trim().isNotEmpty)
+          'reference_prefix': referencePrefix.trim().toUpperCase(),
+        if (referenceFormat != null && referenceFormat.trim().isNotEmpty)
+          'reference_format': referenceFormat.trim(),
+        if (requiresReference != null)
+          'requires_reference': requiresReference,
       }).eq('template_id', templateId);
 
       // 2. Delete options only (safe — no user data references options)

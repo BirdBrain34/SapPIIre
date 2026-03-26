@@ -70,6 +70,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   bool _isStartingSession = false;
   bool _isLoading = true;
   bool _isFinalizing = false;
+  String _lastSavedReference = '';
 
   /// Derive a stable station ID from the worker's cswd_id.
   String get _stationId => 'desk_${widget.cswd_id}';
@@ -131,6 +132,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         _currentSessionId = response['id'].toString();
         _sessionStarted = true;
         _isStartingSession = false;
+        _lastSavedReference = '';
       });
 
       await AuditLogService().log(
@@ -220,11 +222,15 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       );
 
       // ── Audit copy (JSONB keeps __family_composition for record) ──
-      await _supabase.from('client_submissions').insert({
+      final created = await _supabase.from('client_submissions').insert({
+        'template_id': _selectedTemplate!.templateId,
+        'form_code': _selectedTemplate!.formCode,
         'form_type': _selectedTemplate!.formName,
         'data': formData,
         'created_by': widget.cswd_id,
-      });
+      }).select('id, intake_reference').single();
+
+      final intakeReference = (created['intake_reference'] as String?) ?? '';
 
       await AuditLogService().log(
         actionType: kAuditSubmissionCreated,
@@ -234,11 +240,12 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         actorName: widget.displayName,
         actorRole: widget.role,
         targetType: 'client_submission',
-        targetId: _currentSessionId,
+        targetId: created['id']?.toString() ?? _currentSessionId,
         targetLabel: _selectedTemplate?.formName,
         details: {
           'form_type': _selectedTemplate?.formName,
           'session_id': _currentSessionId,
+          'intake_reference': intakeReference,
         },
       );
 
@@ -249,8 +256,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           .eq('id', _currentSessionId);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Entry saved to Applicants ✓'),
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(intakeReference.isNotEmpty
+              ? 'Entry saved ✓ Reference: $intakeReference'
+              : 'Entry saved to Applicants ✓'),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
         ));
@@ -261,6 +270,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         _sessionStarted = false;
         _currentSessionId = 'WAITING-FOR-SESSION';
         _isFinalizing = false;
+        _lastSavedReference = intakeReference;
       });
       _formSubscription?.cancel();
 
@@ -277,6 +287,52 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       }
       setState(() => _isFinalizing = false);
     }
+  }
+
+  String _buildTempReferencePreview() {
+    final template = _selectedTemplate;
+    if (template == null) return 'N/A';
+    if (!template.requiresReference) return 'Reference disabled for this form';
+
+    final now = DateTime.now();
+    var preview = template.referenceFormat;
+    final prefix = (template.referencePrefix?.trim().isNotEmpty == true
+            ? template.referencePrefix!
+            : (template.formCode?.trim().isNotEmpty == true
+                ? template.formCode!
+                : 'FORM'))
+        .toUpperCase();
+
+    String pad(int v, int len) => v.toString().padLeft(len, '0');
+    final yearStart = DateTime(now.year, 1, 1);
+    final dayOfYear = now.difference(yearStart).inDays + 1;
+    final quarter = ((now.month - 1) ~/ 3) + 1;
+    final weekOfYear = ((dayOfYear - 1) ~/ 7) + 1;
+
+    preview = preview.replaceAll('{FORMCODE}', prefix);
+    preview = preview.replaceAll('{YYYY}', now.year.toString());
+    preview = preview.replaceAll('{YY}', now.year.toString().substring(2));
+    preview = preview.replaceAll('{MM}', pad(now.month, 2));
+    preview = preview.replaceAll('{MON}',
+        const ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'][now.month - 1]);
+    preview = preview.replaceAll('{MONTH}',
+        const ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'][now.month - 1]);
+    preview = preview.replaceAll('{DD}', pad(now.day, 2));
+    preview = preview.replaceAll('{DDD}', pad(dayOfYear, 3));
+    preview = preview.replaceAll('{Q}', '$quarter');
+    preview = preview.replaceAll('{WW}', pad(weekOfYear, 2));
+    preview = preview.replaceAll('{IW}', pad(weekOfYear, 2));
+    preview = preview.replaceAll('{HH24}', pad(now.hour, 2));
+    preview = preview.replaceAll('{MI}', pad(now.minute, 2));
+    preview = preview.replaceAll('{SS}', pad(now.second, 2));
+
+    preview = preview.replaceAll('{########}', '????????');
+    preview = preview.replaceAll('{######}', '??????');
+    preview = preview.replaceAll('{####}', '????');
+    preview = preview.replaceAll('{###}', '???');
+    preview = preview.replaceAll('{##}', '??');
+    preview = preview.replaceAll('{#}', '?');
+    return preview;
   }
 
   /// Embeds __applicant_name into the JSONB data.
@@ -723,6 +779,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   }
 
   Widget _buildQrSidebar() {
+    final tempReference = _buildTempReferencePreview();
     return Container(
       width: 300,
       padding: const EdgeInsets.all(32),
@@ -754,6 +811,74 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
             'Session: ${_currentSessionId.split('-').first}...',
             style: const TextStyle(color: Colors.white70, fontSize: 11),
           ),
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.amber.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.amber.withOpacity(0.4)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Temporary Reference',
+                    style: TextStyle(
+                        color: Colors.amber,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Text(
+                  tempReference,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w700,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 3),
+                const Text('Final value is generated when saved',
+                    style: TextStyle(color: Colors.white60, fontSize: 10)),
+              ],
+            ),
+          ),
+          if (_lastSavedReference.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.green.withOpacity(0.45)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Last Saved Reference',
+                      style: TextStyle(
+                          color: Colors.greenAccent,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  Text(
+                    _lastSavedReference,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontFamily: 'monospace',
+                      fontWeight: FontWeight.w700,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 24),
 
           // Instructions
