@@ -11,6 +11,7 @@
 // Uses Supabase Realtime to listen for incoming data from mobile.
 
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -71,6 +72,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   bool _isLoading = true;
   bool _isFinalizing = false;
   String _lastSavedReference = '';
+  String? _lastAppliedPayloadFingerprint;
 
   /// Derive a stable station ID from the worker's cswd_id.
   String get _stationId => 'desk_${widget.cswd_id}';
@@ -136,6 +138,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         _sessionStarted = true;
         _isStartingSession = false;
         _lastSavedReference = '';
+        _lastAppliedPayloadFingerprint = null;
       });
 
       await AuditLogService().log(
@@ -208,11 +211,43 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       debugPrint('Web: Incoming data is empty, skipping');
       return;
     }
+
+    final fingerprint = _fingerprintPayload(incoming);
+    if (fingerprint != null && fingerprint == _lastAppliedPayloadFingerprint) {
+      debugPrint('Web: Duplicate payload detected, skipping re-apply');
+      return;
+    }
+    _lastAppliedPayloadFingerprint = fingerprint;
+
     if (!mounted) return;
     debugPrint('Web: Loading data into form controller');
     _formCtrl?.loadFromJson(incoming);
     setState(() {});
     debugPrint('Web: Form updated successfully');
+  }
+
+  String? _fingerprintPayload(Map<String, dynamic> payload) {
+    try {
+      final normalized = _normalizeForFingerprint(payload);
+      return jsonEncode(normalized);
+    } catch (_) {
+      return payload.toString();
+    }
+  }
+
+  dynamic _normalizeForFingerprint(dynamic value) {
+    if (value is Map) {
+      final keys = value.keys.map((k) => k.toString()).toList()..sort();
+      final normalized = <String, dynamic>{};
+      for (final key in keys) {
+        normalized[key] = _normalizeForFingerprint(value[key]);
+      }
+      return normalized;
+    }
+    if (value is List) {
+      return value.map(_normalizeForFingerprint).toList();
+    }
+    return value;
   }
 
   Future<void> _hydrateFromSessionSnapshot(String sessionId) async {
@@ -672,16 +707,18 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   Widget _buildStartSessionGate() {
     return Center(
       child: Container(
-        width: 480,
-        padding: const EdgeInsets.all(48),
+        constraints: const BoxConstraints(maxWidth: 560),
+        margin: const EdgeInsets.symmetric(horizontal: 20),
+        padding: const EdgeInsets.all(36),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(color: const Color(0xFFE6EBF8)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.08),
-              blurRadius: 30,
-              offset: const Offset(0, 8),
+              color: Colors.black.withOpacity(0.07),
+              blurRadius: 34,
+              offset: const Offset(0, 10),
             ),
           ],
         ),
@@ -692,7 +729,11 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
               width: 80,
               height: 80,
               decoration: BoxDecoration(
-                color: AppColors.primaryBlue.withOpacity(0.1),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFE9F0FF), Color(0xFFDDE8FF)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: const Icon(
@@ -701,20 +742,37 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                 color: AppColors.primaryBlue,
               ),
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF4FF),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: const Text(
+                'Session Setup',
+                style: TextStyle(
+                  color: AppColors.primaryBlue,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
             const Text(
               'Ready to assist a client?',
               style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
                 color: Color(0xFF1A1A2E),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Text(
               'Select a form type and start a session. '
-              'A QR code will be generated for the client to scan. '
-              'Their data will autofill in real time.',
+              'A QR code will be generated for the client to scan and '
+              'the form will autofill in real time.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,
@@ -722,23 +780,22 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                 height: 1.5,
               ),
             ),
-            const SizedBox(height: 32),
-
-            // Template selector
+            const SizedBox(height: 28),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
                 color: const Color(0xFFF4F7FE),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: AppColors.buttonOutlineBlue.withOpacity(0.4),
+                  color: AppColors.buttonOutlineBlue.withOpacity(0.35),
                 ),
               ),
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<String>(
                   value: _selectedTemplate?.templateId,
                   isExpanded: true,
+                  icon: const Icon(Icons.expand_more_rounded),
                   items: _templates
                       .map(
                         (t) => DropdownMenuItem(
@@ -764,8 +821,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 28),
-
+            const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -813,60 +869,101 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Template dropdown (read-only while session is active)
-          Row(
-            children: [
-              const Text(
-                'Form:',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-              ),
-              const SizedBox(width: 12),
-              Flexible(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: AppColors.buttonOutlineBlue.withOpacity(0.5),
-                    ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE6EBF8)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
                   ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _selectedTemplate!.templateId,
-                      isExpanded: true,
-                      items: _templates
-                          .map(
-                            (t) => DropdownMenuItem(
-                              value: t.templateId,
-                              child: Text(
-                                t.formName,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE9F9F1),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.fiber_manual_record,
+                        size: 10,
+                        color: Color(0xFF1B9E63),
+                      ),
+                      SizedBox(width: 6),
+                      Text(
+                        'Session Live',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF156D45),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 14),
+                const Text(
+                  'Form:',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                ),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFF),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppColors.buttonOutlineBlue.withOpacity(0.38),
+                      ),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _selectedTemplate!.templateId,
+                        isExpanded: true,
+                        items: _templates
+                            .map(
+                              (t) => DropdownMenuItem(
+                                value: t.templateId,
+                                child: Text(
+                                  t.formName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                overflow: TextOverflow.ellipsis,
                               ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: null, // locked once session started
+                            )
+                            .toList(),
+                        onChanged: null,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 16),
-              Text(
-                'Session: ${_currentSessionId.split('-').first}...',
-                style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
-              ),
-            ],
+                const SizedBox(width: 16),
+                Text(
+                  'Session: ${_currentSessionId.split('-').first}...',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 20),
 
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: AppColors.accentBlue,
+                gradient: const LinearGradient(
+                  colors: [AppColors.primaryBlue, AppColors.midBlue],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
@@ -919,12 +1016,31 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Text(
-            'Live Form QR',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: Colors.white.withOpacity(0.2)),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.qr_code_scanner_rounded,
+                  color: Colors.white,
+                  size: 14,
+                ),
+                SizedBox(width: 6),
+                Text(
+                  'Live Form QR',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 8),
