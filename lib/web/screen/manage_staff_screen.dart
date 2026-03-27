@@ -10,6 +10,7 @@ import 'package:sappiire/web/screen/form_builder_screen.dart';
 import 'package:sappiire/web/screen/audit_logs_screen.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/web/services/audit_log_service.dart';
+import 'package:sappiire/web/services/web_auth_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ManageStaffScreen extends StatefulWidget {
@@ -53,7 +54,9 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
       // Fetch active accounts
       final active = await _supabase
           .from('staff_accounts')
-          .select('cswd_id, username, email, role, account_status, is_active')
+          .select(
+            'cswd_id, username, email, role, account_status, is_active, is_first_login',
+          )
           .neq('account_status', 'pending')
           .order('username');
 
@@ -141,6 +144,71 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
       targetType: 'staff_account',
       targetId: cswd_id,
       details: {'old_role': oldRole, 'new_role': newRole},
+    );
+
+    _loadAccounts();
+  }
+
+  Future<void> _deactivateAccount(String cswd_id, String username) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Deactivate Account'),
+        content: Text(
+          'Deactivating "@$username" will prevent them from logging in. '
+          'Their data and audit history are preserved. Continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            child: const Text(
+              'Deactivate',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final authService = WebAuthService();
+    await authService.deactivateStaffAccount(cswd_id);
+
+    await AuditLogService().log(
+      actionType: 'staff_deactivated',
+      category: kCategoryStaff,
+      severity: kSeverityWarning,
+      actorId: widget.cswd_id,
+      actorName: widget.displayName,
+      actorRole: widget.role,
+      targetType: 'staff_account',
+      targetId: cswd_id,
+      targetLabel: username,
+    );
+
+    _loadAccounts();
+  }
+
+  Future<void> _reactivateAccount(String cswd_id, String username) async {
+    final authService = WebAuthService();
+    await authService.reactivateStaffAccount(cswd_id);
+
+    await AuditLogService().log(
+      actionType: 'staff_reactivated',
+      category: kCategoryStaff,
+      severity: kSeverityInfo,
+      actorId: widget.cswd_id,
+      actorName: widget.displayName,
+      actorRole: widget.role,
+      targetType: 'staff_account',
+      targetId: cswd_id,
+      targetLabel: username,
     );
 
     _loadAccounts();
@@ -326,6 +394,35 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                                                 ),
                                               ),
                                             ),
+                                          if (acc['is_active'] != true)
+                                            Container(
+                                              margin: const EdgeInsets.only(
+                                                left: 8,
+                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 6,
+                                                    vertical: 2,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.orange
+                                                    .withOpacity(0.15),
+                                                borderRadius:
+                                                    BorderRadius.circular(4),
+                                                border: Border.all(
+                                                  color: Colors.orange
+                                                      .withOpacity(0.4),
+                                                ),
+                                              ),
+                                              child: const Text(
+                                                'DEACTIVATED',
+                                                style: TextStyle(
+                                                  color: Colors.orange,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
                                         ],
                                       ),
                                       Text(
@@ -380,6 +477,47 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                                           }
                                         },
                                       ),
+                                if (acc['role'] != 'superadmin') ...[
+                                  const SizedBox(width: 12),
+                                  if (acc['is_active'] == true)
+                                    TextButton.icon(
+                                      onPressed: () => _deactivateAccount(
+                                        acc['cswd_id'],
+                                        acc['username'] ?? '',
+                                      ),
+                                      icon: const Icon(
+                                        Icons.block,
+                                        size: 16,
+                                        color: Colors.orange,
+                                      ),
+                                      label: const Text(
+                                        'Deactivate',
+                                        style: TextStyle(
+                                          color: Colors.orange,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    )
+                                  else
+                                    TextButton.icon(
+                                      onPressed: () => _reactivateAccount(
+                                        acc['cswd_id'],
+                                        acc['username'] ?? '',
+                                      ),
+                                      icon: const Icon(
+                                        Icons.check_circle_outline,
+                                        size: 16,
+                                        color: AppColors.successGreen,
+                                      ),
+                                      label: const Text(
+                                        'Reactivate',
+                                        style: TextStyle(
+                                          color: AppColors.successGreen,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ],
                             ),
                           );

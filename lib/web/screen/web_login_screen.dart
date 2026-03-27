@@ -1,6 +1,8 @@
 // lib/web/screen/web_login_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:sappiire/web/screen/first_login_password_screen.dart';
+import 'package:sappiire/web/screen/forgot_password_screen.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/services/web_auth_service.dart';
 import 'package:sappiire/web/screen/web_signup_screen.dart';
@@ -42,16 +44,32 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
 
     if (result['success'] == true) {
       _snack('Welcome, ${result['username']}!');
-      Navigator.push(
-        context,
-        ContentFadeRoute(
-          page: ManageFormsScreen(
-            cswd_id: result['cswd_id'] ?? '',
-            role: result['role'] ?? 'viewer',
-            displayName: result['display_name'] ?? result['username'] ?? '',
+      final bool isFirstLogin = result['is_first_login'] == true;
+
+      if (isFirstLogin) {
+        Navigator.push(
+          context,
+          ContentFadeRoute(
+            page: FirstLoginPasswordScreen(
+              cswd_id: result['cswd_id'] ?? '',
+              role: result['role'] ?? 'viewer',
+              displayName: result['display_name'] ?? result['username'] ?? '',
+              username: result['username'] ?? '',
+            ),
           ),
-        ),
-      );
+        );
+      } else {
+        Navigator.push(
+          context,
+          ContentFadeRoute(
+            page: ManageFormsScreen(
+              cswd_id: result['cswd_id'] ?? '',
+              role: result['role'] ?? 'viewer',
+              displayName: result['display_name'] ?? result['username'] ?? '',
+            ),
+          ),
+        );
+      }
     } else {
       _snack(result['message'] ?? 'Login failed.', error: true);
     }
@@ -197,7 +215,10 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton(
-                        onPressed: () {},
+                        onPressed: () => Navigator.push(
+                          context,
+                          ContentFadeRoute(page: const ForgotPasswordScreen()),
+                        ),
                         child: const Text(
                           'Forgot password?',
                           style: TextStyle(

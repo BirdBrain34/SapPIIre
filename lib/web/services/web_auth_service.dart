@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:sappiire/web/services/audit_log_service.dart';
 
 class WebAuthService {
@@ -24,7 +25,8 @@ class WebAuthService {
       final accountResponse = await _supabase
           .from('staff_accounts')
           .select(
-            'cswd_id, username, email, is_active, role, account_status, password_hash',
+            'cswd_id, username, email, is_active, role, '
+            'account_status, password_hash, is_first_login',
           )
           .ilike('username', normalizedUsername)
           .maybeSingle();
@@ -99,6 +101,7 @@ class WebAuthService {
         'username': accountResponse['username'],
         'email': accountResponse['email'],
         'role': accountResponse['role'] ?? 'viewer',
+        'is_first_login': accountResponse['is_first_login'] ?? false,
         'display_name': displayName,
         'profile': profileResponse,
       };
@@ -165,6 +168,73 @@ class WebAuthService {
       );
 
       return {'success': true, 'message': 'Password changed successfully.'};
+    } catch (e) {
+      return {'success': false, 'message': 'Error: ${e.toString()}'};
+    }
+  }
+
+  /// Called after a successful first-login password change.
+  /// Clears the is_first_login flag so the user reaches the dashboard normally.
+  Future<void> clearFirstLoginFlag(String cswd_id) async {
+    try {
+      await _supabase
+          .from('staff_accounts')
+          .update({'is_first_login': false})
+          .eq('cswd_id', cswd_id);
+    } catch (e) {
+      debugPrint('clearFirstLoginFlag error: $e');
+    }
+  }
+
+  /// Resets a staff password without requiring the current password.
+  /// Only callable after OTP verification - never expose directly in UI.
+  Future<Map<String, dynamic>> resetPasswordWithOtp({
+    required String cswd_id,
+    required String newPassword,
+  }) async {
+    try {
+      if (newPassword.length < 8) {
+        return {
+          'success': false,
+          'message': 'Password must be at least 8 characters.',
+        };
+      }
+
+      await _supabase
+          .from('staff_accounts')
+          .update({
+            'password_hash': _hashPassword(newPassword),
+            'is_first_login': false,
+          })
+          .eq('cswd_id', cswd_id);
+
+      return {'success': true, 'message': 'Password reset successfully.'};
+    } catch (e) {
+      return {'success': false, 'message': 'Error: ${e.toString()}'};
+    }
+  }
+
+  /// Deactivates a staff account. Never deletes - preserves audit trail.
+  Future<Map<String, dynamic>> deactivateStaffAccount(String cswd_id) async {
+    try {
+      await _supabase
+          .from('staff_accounts')
+          .update({'is_active': false, 'account_status': 'deactivated'})
+          .eq('cswd_id', cswd_id);
+      return {'success': true, 'message': 'Account deactivated.'};
+    } catch (e) {
+      return {'success': false, 'message': 'Error: ${e.toString()}'};
+    }
+  }
+
+  /// Reactivates a previously deactivated account.
+  Future<Map<String, dynamic>> reactivateStaffAccount(String cswd_id) async {
+    try {
+      await _supabase
+          .from('staff_accounts')
+          .update({'is_active': true, 'account_status': 'active'})
+          .eq('cswd_id', cswd_id);
+      return {'success': true, 'message': 'Account reactivated.'};
     } catch (e) {
       return {'success': false, 'message': 'Error: ${e.toString()}'};
     }

@@ -10,6 +10,7 @@ import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/form_builder_screen.dart';
 import 'package:sappiire/web/screen/audit_logs_screen.dart';
 import 'package:sappiire/web/services/audit_log_service.dart';
+import 'package:sappiire/web/services/staff_email_service.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:crypto/crypto.dart';
@@ -124,6 +125,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
             'requested_role': _selectedRole,
             'account_status': 'active',
             'is_active': true,
+            'is_first_login': true,
           })
           .select('cswd_id')
           .single();
@@ -154,6 +156,16 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
             ? null
             : _phoneController.text.trim(),
       });
+
+      await StaffEmailService().sendWelcomeEmail(
+        toEmail: _emailController.text.trim(),
+        displayName:
+            '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'
+                .trim(),
+        username: _usernameController.text.trim(),
+        temporaryPassword: tempPassword,
+        role: _selectedRole,
+      );
 
       await AuditLogService().log(
         actionType: kAuditStaffCreated,
