@@ -46,7 +46,14 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
   static const _pageSize = 50;
   int _currentPage = 0;
 
-  final _categories = ['', 'auth', 'session', 'submission', 'staff', 'template'];
+  final _categories = [
+    '',
+    'auth',
+    'session',
+    'submission',
+    'staff',
+    'template',
+  ];
   final _severities = ['', 'info', 'warning', 'critical'];
 
   @override
@@ -76,14 +83,18 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         offset: _currentPage * _pageSize,
         categoryFilter: _categoryFilter.isEmpty ? null : _categoryFilter,
         severityFilter: _severityFilter.isEmpty ? null : _severityFilter,
-        actorFilter: _searchController.text.isEmpty ? null : _searchController.text,
+        actorFilter: _searchController.text.isEmpty
+            ? null
+            : _searchController.text,
         dateFrom: _dateFrom,
         dateTo: _dateTo,
       ),
       _service.fetchCount(
         categoryFilter: _categoryFilter.isEmpty ? null : _categoryFilter,
         severityFilter: _severityFilter.isEmpty ? null : _severityFilter,
-        actorFilter: _searchController.text.isEmpty ? null : _searchController.text,
+        actorFilter: _searchController.text.isEmpty
+            ? null
+            : _searchController.text,
         dateFrom: _dateFrom,
         dateTo: _dateTo,
       ),
@@ -112,7 +123,8 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
   Future<void> _pickDateFrom() async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: _dateFrom ?? DateTime.now().subtract(const Duration(days: 7)),
+      initialDate:
+          _dateFrom ?? DateTime.now().subtract(const Duration(days: 7)),
       firstDate: DateTime(2024),
       lastDate: DateTime.now(),
       builder: (ctx, child) => Theme(
@@ -265,7 +277,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         'Sep',
         'Oct',
         'Nov',
-        'Dec'
+        'Dec',
       ];
       final h = dt.hour.toString().padLeft(2, '0');
       final m = dt.minute.toString().padLeft(2, '0');
@@ -311,37 +323,48 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
 
   Widget _buildSummaryStrip() {
     final categories = ['auth', 'submission', 'staff', 'template', 'session'];
-    return SizedBox(
-      height: 90,
-      child: ListView(
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 90),
+      child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        children: [
-          _summaryCard(
-            label: 'Total Events',
-            value: _totalCount.toString(),
-            color: AppColors.primaryBlue,
-            icon: Icons.history,
-          ),
-          const SizedBox(width: 12),
-          _summaryCard(
-            label: 'Critical',
-            value: _logs.where((l) => l['severity'] == 'critical').length.toString(),
-            color: const Color(0xFFE63946),
-            icon: Icons.warning_amber_rounded,
-          ),
-          const SizedBox(width: 12),
-          ...categories.map(
-            (cat) => Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: _summaryCard(
-                label: cat[0].toUpperCase() + cat.substring(1),
-                value: _logs.where((l) => l['category'] == cat).length.toString(),
-                color: _categoryColor(cat),
-                icon: _categoryIcon(cat),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _summaryCard(
+                label: 'Total Events',
+                value: _totalCount.toString(),
+                color: AppColors.primaryBlue,
+                icon: Icons.history,
               ),
-            ),
+              const SizedBox(width: 12),
+              _summaryCard(
+                label: 'Critical',
+                value: _logs
+                    .where((l) => l['severity'] == 'critical')
+                    .length
+                    .toString(),
+                color: const Color(0xFFE63946),
+                icon: Icons.warning_amber_rounded,
+              ),
+              const SizedBox(width: 12),
+              ...categories.map(
+                (cat) => Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: _summaryCard(
+                    label: cat[0].toUpperCase() + cat.substring(1),
+                    value: _logs
+                        .where((l) => l['category'] == cat)
+                        .length
+                        .toString(),
+                    color: _categoryColor(cat),
+                    icon: _categoryIcon(cat),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -354,6 +377,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
   }) {
     return Container(
       width: 140,
+      constraints: const BoxConstraints(minHeight: 90),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
@@ -361,11 +385,13 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         border: Border.all(color: color.withValues(alpha: 0.25)),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Icon(icon, color: color, size: 20),
           Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
@@ -410,10 +436,15 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
               },
               decoration: InputDecoration(
                 hintText: 'Search by actor name...',
-                hintStyle:
-                    const TextStyle(fontSize: 13, color: AppColors.textMuted),
-                prefixIcon:
-                    const Icon(Icons.search, size: 18, color: AppColors.textMuted),
+                hintStyle: const TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textMuted,
+                ),
+                prefixIcon: const Icon(
+                  Icons.search,
+                  size: 18,
+                  color: AppColors.textMuted,
+                ),
                 filled: true,
                 fillColor: AppColors.pageBg,
                 border: OutlineInputBorder(
@@ -518,8 +549,10 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
               .map(
                 (item) => DropdownMenuItem(
                   value: item,
-                  child: Text(labels[item] ?? item,
-                      style: const TextStyle(fontSize: 13)),
+                  child: Text(
+                    labels[item] ?? item,
+                    style: const TextStyle(fontSize: 13),
+                  ),
                 ),
               )
               .toList(),
@@ -570,8 +603,11 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.history_toggle_off_outlined,
-                size: 64, color: AppColors.textMuted.withValues(alpha: 0.4)),
+            Icon(
+              Icons.history_toggle_off_outlined,
+              size: 64,
+              color: AppColors.textMuted.withValues(alpha: 0.4),
+            ),
             const SizedBox(height: 16),
             const Text(
               'No audit logs found',
@@ -717,13 +753,19 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
                 children: [
                   Text(
                     actorName,
-                    style: const TextStyle(fontSize: 13, color: AppColors.textDark),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textDark,
+                    ),
                     overflow: TextOverflow.ellipsis,
                   ),
                   if (actorRole.isNotEmpty)
                     Text(
                       actorRole,
-                      style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: AppColors.textMuted,
+                      ),
                     ),
                 ],
               ),
@@ -736,13 +778,19 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
                 children: [
                   Text(
                     target,
-                    style: const TextStyle(fontSize: 13, color: AppColors.textDark),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textDark,
+                    ),
                     overflow: TextOverflow.ellipsis,
                   ),
                   if (targetType.isNotEmpty)
                     Text(
                       targetType.replaceAll('_', ' '),
-                      style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: AppColors.textMuted,
+                      ),
                     ),
                 ],
               ),
@@ -777,8 +825,8 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     final details = rawDetails is Map<String, dynamic>
         ? rawDetails
         : rawDetails is Map
-            ? Map<String, dynamic>.from(rawDetails)
-            : <String, dynamic>{};
+        ? Map<String, dynamic>.from(rawDetails)
+        : <String, dynamic>{};
 
     showDialog(
       context: context,
@@ -813,13 +861,19 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _detailRow('Timestamp', _formatDate(log['created_at']?.toString())),
+                _detailRow(
+                  'Timestamp',
+                  _formatDate(log['created_at']?.toString()),
+                ),
                 _detailRow('Category', log['category']?.toString() ?? '-'),
                 _detailRow('Severity', log['severity']?.toString() ?? '-'),
                 _detailRow('Actor', log['actor_name']?.toString() ?? '-'),
                 _detailRow('Actor Role', log['actor_role']?.toString() ?? '-'),
                 _detailRow('Actor ID', log['actor_id']?.toString() ?? '-'),
-                _detailRow('Target Type', log['target_type']?.toString() ?? '-'),
+                _detailRow(
+                  'Target Type',
+                  log['target_type']?.toString() ?? '-',
+                ),
                 _detailRow('Target', log['target_label']?.toString() ?? '-'),
                 _detailRow('Target ID', log['target_id']?.toString() ?? '-'),
                 if (details.isNotEmpty) ...[
@@ -829,8 +883,9 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                   ),
                   const SizedBox(height: 8),
-                  ...details.entries
-                      .map((e) => _detailRow(e.key, e.value?.toString() ?? '-')),
+                  ...details.entries.map(
+                    (e) => _detailRow(e.key, e.value?.toString() ?? '-'),
+                  ),
                 ],
               ],
             ),
