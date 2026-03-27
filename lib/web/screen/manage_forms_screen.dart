@@ -83,14 +83,17 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
 
   Future<void> _loadTemplates() async {
     debugPrint('Web: Loading templates...');
-    final templates = await _templateService.fetchActiveTemplates(forceRefresh: true);
+    final templates = await _templateService.fetchActiveTemplates(
+      forceRefresh: true,
+    );
     debugPrint('Web: Received ${templates.length} templates');
     setState(() {
       _templates = templates;
       _selectedTemplate = templates.isNotEmpty
           ? (templates.firstWhere(
               (t) => t.formName == 'General Intake Sheet',
-              orElse: () => templates.first))
+              orElse: () => templates.first,
+            ))
           : null;
       _isLoading = false;
     });
@@ -175,31 +178,56 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         .stream(primaryKey: ['id'])
         .eq('id', sessionId)
         .timeout(const Duration(minutes: 30), onTimeout: (sink) => sink.close())
-        .listen((List<Map<String, dynamic>> data) {
-          debugPrint('Web: Realtime update received');
-          if (data.isEmpty) {
-            debugPrint('Web: Data is empty');
-            return;
-          }
-          final row = data.first;
-          debugPrint('Web: Row status: ${row['status']}');
-          final incoming =
-              row['form_data'] as Map<String, dynamic>? ?? {};
-          debugPrint('Web: Incoming data keys: ${incoming.keys.toList()}');
-          debugPrint('Web: Incoming data size: ${incoming.length} fields');
-          if (incoming.isEmpty) {
-            debugPrint('Web: Incoming data is empty, skipping');
-            return;
-          }
-          if (!mounted) return;
-          debugPrint('Web: Loading data into form controller');
-          _formCtrl?.loadFromJson(incoming);
-          setState(() {}); // refresh UI
-          debugPrint('Web: Form updated successfully');
-        },
-        onError: (e) => debugPrint('Session stream error: $e'),
-        cancelOnError: false,
+        .listen(
+          (List<Map<String, dynamic>> data) {
+            debugPrint('Web: Realtime update received');
+            if (data.isEmpty) {
+              debugPrint('Web: Data is empty');
+              return;
+            }
+            _applySessionRow(data.first);
+          },
+          onError: (e) => debugPrint('Session stream error: $e'),
+          cancelOnError: false,
         );
+
+    // Cold-start race guard: if mobile updates before the stream fully attaches,
+    // fetch current session state directly and hydrate once.
+    _hydrateFromSessionSnapshot(sessionId);
+    Future.delayed(const Duration(milliseconds: 800), () {
+      _hydrateFromSessionSnapshot(sessionId);
+    });
+  }
+
+  void _applySessionRow(Map<String, dynamic> row) {
+    debugPrint('Web: Row status: ${row['status']}');
+    final incoming = row['form_data'] as Map<String, dynamic>? ?? {};
+    debugPrint('Web: Incoming data keys: ${incoming.keys.toList()}');
+    debugPrint('Web: Incoming data size: ${incoming.length} fields');
+    if (incoming.isEmpty) {
+      debugPrint('Web: Incoming data is empty, skipping');
+      return;
+    }
+    if (!mounted) return;
+    debugPrint('Web: Loading data into form controller');
+    _formCtrl?.loadFromJson(incoming);
+    setState(() {});
+    debugPrint('Web: Form updated successfully');
+  }
+
+  Future<void> _hydrateFromSessionSnapshot(String sessionId) async {
+    try {
+      final row = await _supabase
+          .from('form_submission')
+          .select('id, status, form_data')
+          .eq('id', sessionId)
+          .maybeSingle();
+
+      if (row == null) return;
+      _applySessionRow(Map<String, dynamic>.from(row));
+    } catch (e) {
+      debugPrint('Session snapshot hydrate error: $e');
+    }
   }
 
   // ── Finalize: save form data to client_submissions ───────
@@ -222,13 +250,17 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       );
 
       // ── Audit copy (JSONB keeps __family_composition for record) ──
-      final created = await _supabase.from('client_submissions').insert({
-        'template_id': _selectedTemplate!.templateId,
-        'form_code': _selectedTemplate!.formCode,
-        'form_type': _selectedTemplate!.formName,
-        'data': formData,
-        'created_by': widget.cswd_id,
-      }).select('id, intake_reference').single();
+      final created = await _supabase
+          .from('client_submissions')
+          .insert({
+            'template_id': _selectedTemplate!.templateId,
+            'form_code': _selectedTemplate!.formCode,
+            'form_type': _selectedTemplate!.formName,
+            'data': formData,
+            'created_by': widget.cswd_id,
+          })
+          .select('id, intake_reference')
+          .single();
 
       final intakeReference = (created['intake_reference'] as String?) ?? '';
 
@@ -256,13 +288,17 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           .eq('id', _currentSessionId);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(intakeReference.isNotEmpty
-              ? 'Entry saved ✓ Reference: $intakeReference'
-              : 'Entry saved to Applicants ✓'),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              intakeReference.isNotEmpty
+                  ? 'Entry saved ✓ Reference: $intakeReference'
+                  : 'Entry saved to Applicants ✓',
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
 
       // Reset for next client
@@ -279,11 +315,13 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     } catch (e) {
       debugPrint('_finalizeEntry error: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Error saving: $e'),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
       setState(() => _isFinalizing = false);
     }
@@ -296,12 +334,13 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
 
     final now = DateTime.now();
     var preview = template.referenceFormat;
-    final prefix = (template.referencePrefix?.trim().isNotEmpty == true
-            ? template.referencePrefix!
-            : (template.formCode?.trim().isNotEmpty == true
-                ? template.formCode!
-                : 'FORM'))
-        .toUpperCase();
+    final prefix =
+        (template.referencePrefix?.trim().isNotEmpty == true
+                ? template.referencePrefix!
+                : (template.formCode?.trim().isNotEmpty == true
+                      ? template.formCode!
+                      : 'FORM'))
+            .toUpperCase();
 
     String pad(int v, int len) => v.toString().padLeft(len, '0');
     final yearStart = DateTime(now.year, 1, 1);
@@ -313,10 +352,40 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     preview = preview.replaceAll('{YYYY}', now.year.toString());
     preview = preview.replaceAll('{YY}', now.year.toString().substring(2));
     preview = preview.replaceAll('{MM}', pad(now.month, 2));
-    preview = preview.replaceAll('{MON}',
-        const ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'][now.month - 1]);
-    preview = preview.replaceAll('{MONTH}',
-        const ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'][now.month - 1]);
+    preview = preview.replaceAll(
+      '{MON}',
+      const [
+        'JAN',
+        'FEB',
+        'MAR',
+        'APR',
+        'MAY',
+        'JUN',
+        'JUL',
+        'AUG',
+        'SEP',
+        'OCT',
+        'NOV',
+        'DEC',
+      ][now.month - 1],
+    );
+    preview = preview.replaceAll(
+      '{MONTH}',
+      const [
+        'JANUARY',
+        'FEBRUARY',
+        'MARCH',
+        'APRIL',
+        'MAY',
+        'JUNE',
+        'JULY',
+        'AUGUST',
+        'SEPTEMBER',
+        'OCTOBER',
+        'NOVEMBER',
+        'DECEMBER',
+      ][now.month - 1],
+    );
     preview = preview.replaceAll('{DD}', pad(now.day, 2));
     preview = preview.replaceAll('{DDD}', pad(dayOfYear, 3));
     preview = preview.replaceAll('{Q}', '$quarter');
@@ -378,12 +447,19 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       String last = '', first = '', mid = '';
       for (final field in _selectedTemplate!.allFields) {
         final src = field.autofillSource;
-        if (src == 'lastname') last = formData[field.fieldName]?.toString() ?? '';
-        if (src == 'firstname') first = formData[field.fieldName]?.toString() ?? '';
-        if (src == 'middle_name') mid = formData[field.fieldName]?.toString() ?? '';
+        if (src == 'lastname')
+          last = formData[field.fieldName]?.toString() ?? '';
+        if (src == 'firstname')
+          first = formData[field.fieldName]?.toString() ?? '';
+        if (src == 'middle_name')
+          mid = formData[field.fieldName]?.toString() ?? '';
       }
       if (last.isNotEmpty || first.isNotEmpty) {
-        formData['__applicant_name'] = {'last': last, 'first': first, 'middle': mid};
+        formData['__applicant_name'] = {
+          'last': last,
+          'first': first,
+          'middle': mid,
+        };
         return;
       }
     }
@@ -394,12 +470,19 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       final lk = key.toLowerCase();
       final val = formData[key]?.toString() ?? '';
       if (val.isEmpty) continue;
-      if (lk.contains('last') && lk.contains('name') && last.isEmpty) last = val;
-      if (lk.contains('first') && lk.contains('name') && first.isEmpty) first = val;
-      if (lk.contains('middle') && lk.contains('name') && mid.isEmpty) mid = val;
+      if (lk.contains('last') && lk.contains('name') && last.isEmpty)
+        last = val;
+      if (lk.contains('first') && lk.contains('name') && first.isEmpty)
+        first = val;
+      if (lk.contains('middle') && lk.contains('name') && mid.isEmpty)
+        mid = val;
     }
     if (last.isNotEmpty || first.isNotEmpty) {
-      formData['__applicant_name'] = {'last': last, 'first': first, 'middle': mid};
+      formData['__applicant_name'] = {
+        'last': last,
+        'first': first,
+        'middle': mid,
+      };
     }
   }
 
@@ -419,14 +502,17 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Unsaved Session'),
         content: const Text(
-            'You have an active session with unsaved data. Leave anyway?'),
+          'You have an active session with unsaved data. Leave anyway?',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Stay')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Stay'),
+          ),
           TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Leave', style: TextStyle(color: Colors.red))),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Leave', style: TextStyle(color: Colors.red)),
+          ),
         ],
       ),
     );
@@ -462,42 +548,48 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     switch (screenPath) {
       case 'Dashboard':
         next = DashboardScreen(
-            cswd_id: widget.cswd_id,
-            role: widget.role,
-            displayName: widget.displayName,
-            onLogout: _handleLogout);
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+          displayName: widget.displayName,
+          onLogout: _handleLogout,
+        );
         break;
       case 'Staff':
         next = ManageStaffScreen(
-            cswd_id: widget.cswd_id,
-            role: widget.role,
-            displayName: widget.displayName);
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+          displayName: widget.displayName,
+        );
         break;
       case 'CreateStaff':
         next = CreateStaffScreen(
-            cswd_id: widget.cswd_id,
-            role: widget.role,
-            displayName: widget.displayName);
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+          displayName: widget.displayName,
+        );
         break;
       case 'Applicants':
         next = ApplicantsScreen(
-            cswd_id: widget.cswd_id,
-            role: widget.role,
-            displayName: widget.displayName);
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+          displayName: widget.displayName,
+        );
         break;
       case 'FormBuilder':
         if (widget.role != 'superadmin') return;
         next = FormBuilderScreen(
-            cswd_id: widget.cswd_id,
-            role: widget.role,
-            displayName: widget.displayName);
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+          displayName: widget.displayName,
+        );
         break;
       case 'AuditLogs':
         if (widget.role != 'superadmin') return;
         next = AuditLogsScreen(
-            cswd_id: widget.cswd_id,
-            role: widget.role,
-            displayName: widget.displayName);
+          cswd_id: widget.cswd_id,
+          role: widget.role,
+          displayName: widget.displayName,
+        );
         break;
       default:
         return;
@@ -523,12 +615,18 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       onLogout: _handleLogout,
       headerActions: [
         // "Open Customer Display" button — always visible
-        _buildHeaderButton('Open Customer Display', Icons.desktop_windows,
-            onPressed: _openCustomerDisplay),
+        _buildHeaderButton(
+          'Open Customer Display',
+          Icons.desktop_windows,
+          onPressed: _openCustomerDisplay,
+        ),
         if (_sessionStarted) ...[
           const SizedBox(width: 8),
-          _buildHeaderButton('New Session', Icons.refresh,
-              onPressed: _createNewSession),
+          _buildHeaderButton(
+            'New Session',
+            Icons.refresh,
+            onPressed: _createNewSession,
+          ),
           const SizedBox(width: 8),
           ElevatedButton.icon(
             onPressed: _isFinalizing ? null : _finalizeEntry,
@@ -537,17 +635,24 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(
-                        color: Colors.white, strokeWidth: 2))
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
                 : const Icon(Icons.save_alt, color: Colors.white, size: 18),
-            label: const Text('Save to Applicants',
-                style: TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.bold)),
+            label: const Text(
+              'Save to Applicants',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
         ],
@@ -555,10 +660,11 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       onNavigate: (path) => _navigateToScreen(context, path),
       child: _isLoading
           ? const Center(
-              child: CircularProgressIndicator(color: AppColors.primaryBlue))
+              child: CircularProgressIndicator(color: AppColors.primaryBlue),
+            )
           : _sessionStarted
-              ? _buildActiveFormView()
-              : _buildStartSessionGate(),
+          ? _buildActiveFormView()
+          : _buildStartSessionGate(),
     );
   }
 
@@ -573,9 +679,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           borderRadius: BorderRadius.circular(28),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withOpacity(0.08),
-                blurRadius: 30,
-                offset: const Offset(0, 8))
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 30,
+              offset: const Offset(0, 8),
+            ),
           ],
         ),
         child: Column(
@@ -588,15 +695,21 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                 color: AppColors.primaryBlue.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Icon(Icons.qr_code_2_rounded,
-                  size: 44, color: AppColors.primaryBlue),
+              child: const Icon(
+                Icons.qr_code_2_rounded,
+                size: 44,
+                color: AppColors.primaryBlue,
+              ),
             ),
             const SizedBox(height: 28),
-            const Text('Ready to assist a client?',
-                style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1A1A2E))),
+            const Text(
+              'Ready to assist a client?',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1A1A2E),
+              ),
+            ),
             const SizedBox(height: 12),
             Text(
               'Select a form type and start a session. '
@@ -604,7 +717,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
               'Their data will autofill in real time.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                  fontSize: 14, color: Colors.grey.shade600, height: 1.5),
+                fontSize: 14,
+                color: Colors.grey.shade600,
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 32),
 
@@ -616,28 +732,33 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                 color: const Color(0xFFF4F7FE),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                    color: AppColors.buttonOutlineBlue.withOpacity(0.4)),
+                  color: AppColors.buttonOutlineBlue.withOpacity(0.4),
+                ),
               ),
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<String>(
                   value: _selectedTemplate?.templateId,
                   isExpanded: true,
                   items: _templates
-                      .map((t) => DropdownMenuItem(
+                      .map(
+                        (t) => DropdownMenuItem(
                           value: t.templateId,
-                          child: Text(t.formName,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w600),
-                              overflow: TextOverflow.ellipsis)))
+                          child: Text(
+                            t.formName,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
                       .toList(),
                   onChanged: (id) {
-                    final tpl =
-                        _templates.firstWhere((t) => t.templateId == id);
+                    final tpl = _templates.firstWhere(
+                      (t) => t.templateId == id,
+                    );
                     setState(() {
                       _selectedTemplate = tpl;
                       _formCtrl?.dispose();
-                      _formCtrl =
-                          FormStateController(template: tpl);
+                      _formCtrl = FormStateController(template: tpl);
                     });
                   },
                 ),
@@ -654,21 +775,25 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.play_arrow_rounded,
-                        color: Colors.white),
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.play_arrow_rounded, color: Colors.white),
                 label: Text(
                   _isStartingSession ? 'Starting...' : 'Start Session',
                   style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16),
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryBlue,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
               ),
             ),
@@ -691,9 +816,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           // Template dropdown (read-only while session is active)
           Row(
             children: [
-              const Text('Form:',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 14)),
+              const Text(
+                'Form:',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+              ),
               const SizedBox(width: 12),
               Flexible(
                 child: Container(
@@ -702,19 +828,26 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                        color: AppColors.buttonOutlineBlue.withOpacity(0.5)),
+                      color: AppColors.buttonOutlineBlue.withOpacity(0.5),
+                    ),
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
                       value: _selectedTemplate!.templateId,
                       isExpanded: true,
                       items: _templates
-                          .map((t) => DropdownMenuItem(
+                          .map(
+                            (t) => DropdownMenuItem(
                               value: t.templateId,
-                              child: Text(t.formName,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w600),
-                                  overflow: TextOverflow.ellipsis)))
+                              child: Text(
+                                t.formName,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
                           .toList(),
                       onChanged: null, // locked once session started
                     ),
@@ -724,8 +857,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
               const SizedBox(width: 16),
               Text(
                 'Session: ${_currentSessionId.split('-').first}...',
-                style:
-                    TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
               ),
             ],
           ),
@@ -738,8 +870,9 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 20)
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 20,
+                  ),
                 ],
               ),
               child: Row(
@@ -786,20 +919,26 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Text('Live Form QR',
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold)),
+          const Text(
+            'Live Form QR',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 8),
-          const Text('Scan with SapPIIre Mobile',
-              style: TextStyle(color: Colors.white70, fontSize: 12)),
+          const Text(
+            'Scan with SapPIIre Mobile',
+            style: TextStyle(color: Colors.white70, fontSize: 12),
+          ),
           const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.all(15),
             decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20)),
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+            ),
             child: QrImageView(
               data: _currentSessionId,
               version: QrVersions.auto,
@@ -823,11 +962,14 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Temporary Reference',
-                    style: TextStyle(
-                        color: Colors.amber,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold)),
+                const Text(
+                  'Temporary Reference',
+                  style: TextStyle(
+                    color: Colors.amber,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Text(
                   tempReference,
@@ -841,8 +983,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 3),
-                const Text('Final value is generated when saved',
-                    style: TextStyle(color: Colors.white60, fontSize: 10)),
+                const Text(
+                  'Final value is generated when saved',
+                  style: TextStyle(color: Colors.white60, fontSize: 10),
+                ),
               ],
             ),
           ),
@@ -859,11 +1003,14 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Last Saved Reference',
-                      style: TextStyle(
-                          color: Colors.greenAccent,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Last Saved Reference',
+                    style: TextStyle(
+                      color: Colors.greenAccent,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const SizedBox(height: 4),
                   Text(
                     _lastSavedReference,
@@ -891,24 +1038,31 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
             child: const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('How it works:',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12)),
+                Text(
+                  'How it works:',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
                 SizedBox(height: 6),
-                Text('1. Client opens SapPIIre app',
-                    style:
-                        TextStyle(color: Colors.white70, fontSize: 11)),
-                Text('2. Selects fields to share',
-                    style:
-                        TextStyle(color: Colors.white70, fontSize: 11)),
-                Text('3. Scans this QR code',
-                    style:
-                        TextStyle(color: Colors.white70, fontSize: 11)),
-                Text('4. Form autofills instantly',
-                    style:
-                        TextStyle(color: Colors.white70, fontSize: 11)),
+                Text(
+                  '1. Client opens SapPIIre app',
+                  style: TextStyle(color: Colors.white70, fontSize: 11),
+                ),
+                Text(
+                  '2. Selects fields to share',
+                  style: TextStyle(color: Colors.white70, fontSize: 11),
+                ),
+                Text(
+                  '3. Scans this QR code',
+                  style: TextStyle(color: Colors.white70, fontSize: 11),
+                ),
+                Text(
+                  '4. Form autofills instantly',
+                  style: TextStyle(color: Colors.white70, fontSize: 11),
+                ),
               ],
             ),
           ),
@@ -917,20 +1071,25 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     );
   }
 
-  Widget _buildHeaderButton(String label, IconData icon,
-      {VoidCallback? onPressed}) {
+  Widget _buildHeaderButton(
+    String label,
+    IconData icon, {
+    VoidCallback? onPressed,
+  }) {
     return OutlinedButton.icon(
       onPressed: onPressed ?? () {},
       icon: Icon(icon, color: AppColors.primaryBlue),
-      label: Text(label,
-          style: const TextStyle(
-              color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
+      label: Text(
+        label,
+        style: const TextStyle(
+          color: AppColors.primaryBlue,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
       style: OutlinedButton.styleFrom(
         side: const BorderSide(color: AppColors.buttonOutlineBlue),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
