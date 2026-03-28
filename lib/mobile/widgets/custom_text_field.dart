@@ -6,6 +6,7 @@ class CustomTextField extends StatelessWidget {
   final bool obscureText;
   final TextEditingController? controller;
   final Icon? prefixIcon;
+  final Widget? suffixIcon;
   final FormFieldValidator<String>? validator;
   final bool isDarkBackground;
   final FocusNode? focusNode;
@@ -18,6 +19,7 @@ class CustomTextField extends StatelessWidget {
     this.obscureText = false,
     this.controller,
     this.prefixIcon,
+    this.suffixIcon,
     this.validator,
     this.isDarkBackground = true,
     this.focusNode,
@@ -58,6 +60,7 @@ class CustomTextField extends StatelessWidget {
           prefixIcon: prefixIcon != null 
               ? Icon(prefixIcon!.icon, color: contentColor.withOpacity(0.7)) 
               : null,
+          suffixIcon: suffixIcon,
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 15,

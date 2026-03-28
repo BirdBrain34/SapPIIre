@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/mobile/screens/auth/manage_info_screen.dart';
 import 'package:sappiire/mobile/screens/auth/signup_screen.dart';
+import 'package:sappiire/mobile/screens/auth/ChangePassword.dart';
 import 'package:sappiire/services/supabase_service.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -38,8 +39,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     setState(() => _isLoading = true);
 
-    // SupabaseService.login() now resolves the email from your public table
-    // and calls supabase.auth.signInWithPassword() — no manual hashing.
     final result = await _supabaseService.login(
       username: _usernameController.text.trim(),
       password: _passwordController.text,
@@ -144,9 +143,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton(
-                          onPressed: () {
-                            // Forgot password — wire up later
-                          },
+                          // ← NOW wired to ChangePasswordScreen
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ChangePasswordScreen(),
+                            ),
+                          ),
                           style: TextButton.styleFrom(padding: EdgeInsets.zero),
                           child: const Text(
                             'Forgot account?',
