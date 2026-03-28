@@ -17,27 +17,27 @@ class WorkerLoginScreen extends StatefulWidget {
 }
 
 class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
-  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _identifierController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final WebAuthService _authService = WebAuthService();
   bool _isLoading = false;
 
   @override
   void dispose() {
-    _usernameController.dispose();
+    _identifierController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
   Future<void> _handleLogin() async {
-    if (_usernameController.text.trim().isEmpty ||
+    if (_identifierController.text.trim().isEmpty ||
         _passwordController.text.isEmpty) {
-      _snack('Please enter your username and password.', error: true);
+      _snack('Please enter your login identifier and password.', error: true);
       return;
     }
     setState(() => _isLoading = true);
     final result = await _authService.login(
-      username: _usernameController.text.trim(),
+      loginIdentifier: _identifierController.text.trim(),
       password: _passwordController.text,
     );
     if (!mounted) return;
@@ -189,14 +189,23 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
                     ),
                     const SizedBox(height: 40),
 
-                    // Username field
-                    _fieldLabel('Username'),
+                    // Identifier field
+                    _fieldLabel('Email (Staff) or Username (Superadmin)'),
                     const SizedBox(height: 8),
                     _styledField(
-                      controller: _usernameController,
-                      hint: 'Enter your username',
+                      controller: _identifierController,
+                      hint: 'Staff: email | Superadmin: username',
                       icon: Icons.badge_outlined,
                       textInputAction: TextInputAction.next,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Staff accounts must sign in with email. Superadmin signs in with username.',
+                      style: TextStyle(
+                        color: Color(0xFF8BAEE0),
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
                     ),
                     const SizedBox(height: 20),
 

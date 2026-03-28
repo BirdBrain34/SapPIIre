@@ -14,25 +14,45 @@ class WebAuthService {
   }
 
   Future<Map<String, dynamic>> login({
-    required String username,
+    required String loginIdentifier,
     required String password,
   }) async {
     try {
-      final normalizedUsername = username.trim().toLowerCase();
+      final normalizedIdentifier = loginIdentifier.trim().toLowerCase();
       final hashedPassword = _hashPassword(password);
 
-      // Query staff_accounts — NOT user_accounts
-      final accountResponse = await _supabase
+      // Strict split policy:
+      // - superadmin authenticates via username
+      // - non-superadmin staff authenticate via email
+      Map<String, dynamic>? accountResponse = await _supabase
           .from('staff_accounts')
           .select(
             'cswd_id, username, email, is_active, role, '
             'account_status, password_hash, is_first_login',
           )
-          .ilike('username', normalizedUsername)
+          .ilike('username', normalizedIdentifier)
+          .eq('role', 'superadmin')
+          .maybeSingle();
+
+      accountResponse ??= await _supabase
+          .from('staff_accounts')
+          .select(
+            'cswd_id, username, email, is_active, role, '
+            'account_status, password_hash, is_first_login',
+          )
+          .ilike('email', normalizedIdentifier)
+          .neq('role', 'superadmin')
           .maybeSingle();
 
       if (accountResponse == null) {
-        return {'success': false, 'message': 'Invalid username or password'};
+        await AuditLogService().log(
+          actionType: kAuditLoginFailed,
+          category: kCategoryAuth,
+          severity: kSeverityWarning,
+          actorName: loginIdentifier,
+          details: {'reason': 'invalid_identifier_or_role_policy'},
+        );
+        return {'success': false, 'message': 'Invalid credentials'};
       }
 
       final storedHash = accountResponse['password_hash'];
@@ -41,10 +61,10 @@ class WebAuthService {
           actionType: kAuditLoginFailed,
           category: kCategoryAuth,
           severity: kSeverityWarning,
-          actorName: username,
+          actorName: loginIdentifier,
           details: {'reason': 'invalid_password'},
         );
-        return {'success': false, 'message': 'Invalid username or password'};
+        return {'success': false, 'message': 'Invalid credentials'};
       }
 
       if (accountResponse['is_active'] == false) {

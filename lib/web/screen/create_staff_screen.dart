@@ -34,6 +34,7 @@ class CreateStaffScreen extends StatefulWidget {
 
 class _CreateStaffScreenState extends State<CreateStaffScreen> {
   final _supabase = Supabase.instance.client;
+  static const String _fixedRole = 'admin';
 
   // Account creation form controllers
   final TextEditingController _firstNameController = TextEditingController();
@@ -43,8 +44,6 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
   final TextEditingController _positionController = TextEditingController();
   final TextEditingController _departmentController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
-  String _selectedRole = 'viewer';
-  final List<String> _availableRoles = ['viewer', 'form_editor', 'admin'];
   bool _isCreatingAccount = false;
 
   String _hashPassword(String password) {
@@ -70,15 +69,45 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
     _positionController.clear();
     _departmentController.clear();
     _phoneController.clear();
-    setState(() => _selectedRole = 'viewer');
+  }
+
+  bool _isValidEmail(String email) {
+    final pattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+    return pattern.hasMatch(email);
+  }
+
+  InputDecoration _inputDecoration(String label, {bool required = false}) {
+    return InputDecoration(
+      labelText: required ? '$label *' : label,
+      labelStyle: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: AppColors.cardBorder),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: AppColors.highlight),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+    );
   }
 
   Future<void> _createStaffAccount() async {
-    if (_firstNameController.text.trim().isEmpty ||
-        _lastNameController.text.trim().isEmpty ||
-        _emailController.text.trim().isEmpty ||
-        _usernameController.text.trim().isEmpty) {
+    final firstName = _firstNameController.text.trim();
+    final lastName = _lastNameController.text.trim();
+    final email = _emailController.text.trim().toLowerCase();
+    final username = _usernameController.text.trim();
+
+    if (firstName.isEmpty ||
+        lastName.isEmpty ||
+        email.isEmpty ||
+        username.isEmpty) {
       _showSnackBar('Please fill in all required fields.', isError: true);
+      return;
+    }
+
+    if (!_isValidEmail(email)) {
+      _showSnackBar('Enter a valid email address.', isError: true);
       return;
     }
 
@@ -89,7 +118,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
       final existing = await _supabase
           .from('staff_accounts')
           .select('username')
-          .eq('username', _usernameController.text.trim())
+          .eq('username', username)
           .maybeSingle();
 
       if (existing != null) {
@@ -98,9 +127,9 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
         return;
       }
 
-      if (_selectedRole == 'superadmin') {
+      if (_fixedRole != 'admin') {
         _showSnackBar(
-          'Superadmin cannot be created through this interface.',
+          'Invalid role policy. Contact developer.',
           isError: true,
         );
         setState(() => _isCreatingAccount = false);
@@ -115,11 +144,11 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
       final accountResponse = await _supabase
           .from('staff_accounts')
           .insert({
-            'email': _emailController.text.trim().toLowerCase(),
-            'username': _usernameController.text.trim(),
+            'email': email,
+            'username': username,
             'password_hash': placeholderPassword,
-            'role': _selectedRole,
-            'requested_role': _selectedRole,
+            'role': _fixedRole,
+            'requested_role': _fixedRole,
             'account_status': 'active',
             'is_active': true,
             'is_first_login': true,
@@ -141,8 +170,8 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
       // Insert into staff_profiles
       await _supabase.from('staff_profiles').insert({
         'cswd_id': cswdId,
-        'first_name': _firstNameController.text.trim(),
-        'last_name': _lastNameController.text.trim(),
+        'first_name': firstName,
+        'last_name': lastName,
         'position': _positionController.text.trim().isEmpty
             ? null
             : _positionController.text.trim(),
@@ -155,7 +184,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
       });
 
       final emailResult = await StaffEmailService().sendAccountCreationOtp(
-        email: _emailController.text.trim(),
+        email: email,
       );
 
       await AuditLogService().log(
@@ -167,11 +196,11 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
         actorRole: widget.role,
         targetType: 'staff_account',
         targetId: cswdId,
-        targetLabel: _usernameController.text.trim(),
+        targetLabel: username,
         details: {
-          'username': _usernameController.text.trim(),
-          'role': _selectedRole,
-          'email': _emailController.text.trim(),
+          'username': username,
+          'role': _fixedRole,
+          'email': email,
         },
       );
 
@@ -179,11 +208,11 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
 
       if (emailResult['success'] == true) {
         _showSnackBar(
-          'Account created. OTP sent. Staff should use New staff setup to verify OTP and set password.',
+          'Admin account created. OTP sent. Staff should use New staff setup to verify OTP and set password.',
         );
       } else {
         _showSnackBar(
-          'Account created, but Supabase OTP email failed: ${emailResult['message'] ?? 'Unknown error'}',
+          'Admin account created, but OTP email failed: ${emailResult['message'] ?? 'Unknown error'}',
           isError: true,
         );
       }
@@ -222,9 +251,11 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
       child: Padding(
         padding: const EdgeInsets.all(28),
         child: SingleChildScrollView(
-          child: SizedBox(
-            width: 700,
-            child: Container(
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 860),
+              child: Container(
               padding: const EdgeInsets.all(32),
               decoration: BoxDecoration(
                 color: AppColors.cardBg,
@@ -243,240 +274,264 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                 children: [
                   Row(
                     children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _firstNameController,
-                          decoration: InputDecoration(
-                            labelText: 'First Name *',
-                            labelStyle: const TextStyle(
-                              color: AppColors.textMuted,
-                              fontSize: 13,
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: AppColors.cardBorder,
-                              ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: AppColors.highlight,
-                              ),
-                            ),
-                          ),
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: AppColors.highlight.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.person_add_alt_1_rounded,
+                          color: AppColors.highlight,
                         ),
                       ),
                       const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: _lastNameController,
-                          decoration: InputDecoration(
-                            labelText: 'Last Name *',
-                            labelStyle: const TextStyle(
-                              color: AppColors.textMuted,
-                              fontSize: 13,
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: AppColors.cardBorder,
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Create Staff Account',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textDark,
                               ),
                             ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: AppColors.highlight,
+                            SizedBox(height: 2),
+                            Text(
+                              'All accounts created here are provisioned with admin access.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textMuted,
                               ),
                             ),
-                          ),
+                          ],
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _emailController,
-                          decoration: InputDecoration(
-                            labelText: 'Email Address *',
-                            labelStyle: const TextStyle(
-                              color: AppColors.textMuted,
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.highlight.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppColors.highlight.withOpacity(0.25),
+                      ),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(
+                          Icons.verified_user_outlined,
+                          size: 18,
+                          color: AppColors.highlight,
+                        ),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Access Role: Admin only',
+                            style: TextStyle(
                               fontSize: 13,
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: AppColors.cardBorder,
-                              ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: AppColors.highlight,
-                              ),
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textDark,
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: _usernameController,
-                          decoration: InputDecoration(
-                            labelText: 'Username *',
-                            labelStyle: const TextStyle(
-                              color: AppColors.textMuted,
-                              fontSize: 13,
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: AppColors.cardBorder,
-                              ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: AppColors.highlight,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _positionController,
-                          decoration: InputDecoration(
-                            labelText: 'Position',
-                            labelStyle: const TextStyle(
-                              color: AppColors.textMuted,
-                              fontSize: 13,
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: AppColors.cardBorder,
-                              ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: AppColors.highlight,
-                              ),
-                            ),
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: AppColors.pageBg,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.cardBorder),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Account Identity',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textDark,
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: _departmentController,
-                          decoration: InputDecoration(
-                            labelText: 'Department',
-                            labelStyle: const TextStyle(
-                              color: AppColors.textMuted,
-                              fontSize: 13,
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: AppColors.cardBorder,
-                              ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: AppColors.highlight,
-                              ),
-                            ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Required fields used for login and account ownership.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textMuted,
                           ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _firstNameController,
+                                decoration: _inputDecoration(
+                                  'First Name',
+                                  required: true,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextField(
+                                controller: _lastNameController,
+                                decoration: _inputDecoration(
+                                  'Last Name',
+                                  required: true,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _emailController,
+                                keyboardType: TextInputType.emailAddress,
+                                decoration: _inputDecoration(
+                                  'Email Address',
+                                  required: true,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextField(
+                                controller: _usernameController,
+                                decoration: _inputDecoration(
+                                  'Username',
+                                  required: true,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: AppColors.pageBg,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.cardBorder),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Profile Details',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Optional values to complete staff profile context.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _positionController,
+                                decoration: _inputDecoration('Position'),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextField(
+                                controller: _departmentController,
+                                decoration: _inputDecoration('Department'),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
                           controller: _phoneController,
-                          decoration: InputDecoration(
-                            labelText: 'Phone Number',
-                            labelStyle: const TextStyle(
-                              color: AppColors.textMuted,
-                              fontSize: 13,
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: AppColors.cardBorder,
-                              ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: AppColors.highlight,
-                              ),
-                            ),
-                          ),
+                          keyboardType: TextInputType.phone,
+                          decoration: _inputDecoration('Phone Number'),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: _selectedRole,
-                          decoration: InputDecoration(
-                            labelText: 'Role',
-                            labelStyle: const TextStyle(
-                              color: AppColors.textMuted,
-                              fontSize: 13,
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: AppColors.cardBorder,
-                              ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: AppColors.highlight,
-                              ),
-                            ),
-                          ),
-                          items: _availableRoles.map((role) {
-                            return DropdownMenuItem<String>(
-                              value: role,
-                              child: Text(role),
-                            );
-                          }).toList(),
-                          onChanged: (value) {
-                            if (value != null) {
-                              setState(() => _selectedRole = value);
-                            }
-                          },
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF7FBFF),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.cardBorder),
+                    ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.mail_outline_rounded,
+                              size: 18,
+                              color: AppColors.highlight,
+                            ),
+                            SizedBox(width: 8),
+                            Text(
+                              'After Account Creation',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textDark,
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          '1) Supabase sends an OTP email to the staff address.\n'
+                          '2) Staff opens New staff setup from login.\n'
+                          '3) Staff verifies OTP and sets their own password.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textMuted,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 22),
                   SizedBox(
-                    height: 48,
+                    height: 50,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.highlight,
                         foregroundColor: Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                       ),
                       onPressed: _isCreatingAccount
@@ -492,7 +547,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                               ),
                             )
                           : const Text(
-                              'CREATE ACCOUNT',
+                              'CREATE ADMIN ACCOUNT',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 14,
@@ -500,11 +555,18 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                             ),
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '* Required fields',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                  ),
                 ],
               ),
             ),
           ),
         ),
+      ),
       ),
     );
   }
