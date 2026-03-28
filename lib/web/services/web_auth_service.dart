@@ -205,6 +205,7 @@ class WebAuthService {
           .update({
             'password_hash': _hashPassword(newPassword),
             'is_first_login': false,
+            'account_status': 'active',
           })
           .eq('cswd_id', cswd_id);
 

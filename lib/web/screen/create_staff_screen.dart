@@ -53,10 +53,6 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
     return digest.toString();
   }
 
-  String _generateTemporaryPassword() {
-    return 'Temp${DateTime.now().millisecondsSinceEpoch}'.substring(0, 12);
-  }
-
   void _showSnackBar(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -111,16 +107,17 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
         return;
       }
 
-      // Generate temporary password
-      final tempPassword = _generateTemporaryPassword();
+      final placeholderPassword = _hashPassword(
+        'pending_setup_${DateTime.now().millisecondsSinceEpoch}',
+      );
 
       // Insert into staff_accounts
       final accountResponse = await _supabase
           .from('staff_accounts')
           .insert({
-            'email': _emailController.text.trim(),
+            'email': _emailController.text.trim().toLowerCase(),
             'username': _usernameController.text.trim(),
-            'password_hash': _hashPassword(tempPassword),
+            'password_hash': placeholderPassword,
             'role': _selectedRole,
             'requested_role': _selectedRole,
             'account_status': 'active',
@@ -157,14 +154,8 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
             : _phoneController.text.trim(),
       });
 
-      await StaffEmailService().sendWelcomeEmail(
-        toEmail: _emailController.text.trim(),
-        displayName:
-            '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'
-                .trim(),
-        username: _usernameController.text.trim(),
-        temporaryPassword: tempPassword,
-        role: _selectedRole,
+      final emailResult = await StaffEmailService().sendAccountCreationOtp(
+        email: _emailController.text.trim(),
       );
 
       await AuditLogService().log(
@@ -186,44 +177,16 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
 
       if (!mounted) return;
 
-      // Show confirmation dialog with credentials
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Account Created Successfully! ✓'),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('Share these credentials with the staff member:'),
-                const SizedBox(height: 20),
-                _buildCredentialField(
-                  'Username',
-                  _usernameController.text.trim(),
-                ),
-                const SizedBox(height: 12),
-                _buildCredentialField('Temporary Password', tempPassword),
-                const SizedBox(height: 20),
-                const Text(
-                  '⚠️ Note: Save these credentials now. The password will not be displayed again.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontStyle: FontStyle.italic,
-                    color: Colors.orange,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-          ],
-        ),
-      );
+      if (emailResult['success'] == true) {
+        _showSnackBar(
+          'Account created. OTP sent. Staff should use New staff setup to verify OTP and set password.',
+        );
+      } else {
+        _showSnackBar(
+          'Account created, but Supabase OTP email failed: ${emailResult['message'] ?? 'Unknown error'}',
+          isError: true,
+        );
+      }
 
       _clearCreateForm();
     } catch (e) {
@@ -231,32 +194,6 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
     } finally {
       if (mounted) setState(() => _isCreatingAccount = false);
     }
-  }
-
-  Widget _buildCredentialField(String label, String value) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey[300]!),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              fontFamily: 'Courier',
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   @override

@@ -1,7 +1,5 @@
-// Staff password reset via email OTP.
-// Step 1: Enter registered email address
-// Step 2: Enter 6-digit OTP sent to that email
-// Step 3: Set new password
+// First-time setup for newly created staff accounts.
+// Uses the OTP sent at account creation time and does not auto-send a new code.
 
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
@@ -9,14 +7,14 @@ import 'package:sappiire/web/services/staff_email_service.dart';
 import 'package:sappiire/web/services/web_auth_service.dart';
 import 'package:sappiire/web/services/audit_log_service.dart';
 
-class ForgotPasswordScreen extends StatefulWidget {
-  const ForgotPasswordScreen({super.key});
+class NewStaffSetupScreen extends StatefulWidget {
+  const NewStaffSetupScreen({super.key});
 
   @override
-  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
+  State<NewStaffSetupScreen> createState() => _NewStaffSetupScreenState();
 }
 
-class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
+class _NewStaffSetupScreenState extends State<NewStaffSetupScreen> {
   final _emailService = StaffEmailService();
   final _authService = WebAuthService();
 
@@ -32,9 +30,17 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   String? _errorMessage;
   String? _infoMessage;
   String? _verifiedCswdId;
-  final RegExp _emailRegex =
-      RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+
+  final RegExp _emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
   final RegExp _otpRegex = RegExp(r'^\d{6,8}$');
+
+  bool get _hasMinLength => _newPasswordController.text.length >= 8;
+  bool get _hasUppercase =>
+      _newPasswordController.text.contains(RegExp(r'[A-Z]'));
+  bool get _hasNumber => _newPasswordController.text.contains(RegExp(r'[0-9]'));
+  bool get _passwordsMatch =>
+      _newPasswordController.text == _confirmPasswordController.text &&
+      _newPasswordController.text.isNotEmpty;
 
   @override
   void dispose() {
@@ -45,15 +51,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     super.dispose();
   }
 
-  bool get _hasMinLength => _newPasswordController.text.length >= 8;
-  bool get _hasUppercase =>
-      _newPasswordController.text.contains(RegExp(r'[A-Z]'));
-  bool get _hasNumber => _newPasswordController.text.contains(RegExp(r'[0-9]'));
-  bool get _passwordsMatch =>
-      _newPasswordController.text == _confirmPasswordController.text &&
-      _newPasswordController.text.isNotEmpty;
-
-  Future<void> _handleRequestOtp() async {
+  Future<void> _handleContinueFromEmail() async {
     final email = _emailController.text.trim();
 
     if (email.isEmpty) {
@@ -72,9 +70,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       _infoMessage = null;
     });
 
-    final result = await _emailService.sendPasswordResetOtp(
-      email: email,
-    );
+    final result = await _emailService.validatePendingSetupEmail(email: email);
 
     if (!mounted) return;
     setState(() => _isLoading = false);
@@ -82,7 +78,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     if (result['success'] == true) {
       setState(() {
         _step = 2;
-        _infoMessage = 'Code sent. Check your email inbox for the OTP code.';
+        _infoMessage =
+            'Enter the original OTP sent when your account was created.';
       });
     } else {
       setState(() => _errorMessage = result['message']?.toString());
@@ -101,7 +98,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       _infoMessage = null;
     });
 
-    final result = await _emailService.verifyPasswordResetOtp(
+    final result = await _emailService.verifyPendingSetupOtp(
       email: _emailController.text.trim(),
       otp: _otpController.text.trim(),
     );
@@ -111,16 +108,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
     if (result['success'] == true) {
       _verifiedCswdId = result['cswd_id']?.toString();
-      setState(() {
-        _step = 3;
-        _infoMessage = null;
-      });
+      setState(() => _step = 3);
     } else {
       setState(() => _errorMessage = result['message']?.toString());
     }
   }
 
-  Future<void> _handleResetPassword() async {
+  Future<void> _handleSetPassword() async {
     if (!_hasMinLength) {
       setState(() => _errorMessage = 'Password must be at least 8 characters.');
       return;
@@ -151,15 +145,15 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       await AuditLogService().log(
         actionType: kAuditPasswordChanged,
         category: kCategoryAuth,
-        severity: kSeverityWarning,
+        severity: kSeverityInfo,
         actorId: _verifiedCswdId,
-        details: {'initiated_by': 'forgot_password_otp_reset'},
+        details: {'initiated_by': 'new_staff_setup'},
       );
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Password reset successfully! Please log in.'),
+          content: Text('Setup complete. You can now log in.'),
           backgroundColor: AppColors.successGreen,
         ),
       );
@@ -183,7 +177,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white70),
         title: const Text(
-          'Set or Reset Password',
+          'New Staff Setup',
           style: TextStyle(color: Colors.white, fontSize: 16),
         ),
       ),
@@ -260,7 +254,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   Widget _buildStepIndicator() {
-    const steps = ['Email', 'Verify Code', 'New Password'];
+    const steps = ['Email', 'Verify OTP', 'Set Password'];
     return Row(
       children: List.generate(steps.length, (i) {
         final stepNum = i + 1;
@@ -330,8 +324,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Enter your registered email to receive a new reset code.',
+          'Enter the same email used by the superadmin when creating your account.',
           style: TextStyle(color: Colors.white, fontSize: 14, height: 1.5),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Use the original OTP sent during account creation.',
+          style: TextStyle(color: Color(0xFF8BAEE0), fontSize: 12, height: 1.4),
         ),
         const SizedBox(height: 20),
         _styledField(
@@ -340,7 +339,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           icon: Icons.email_outlined,
           keyboardType: TextInputType.emailAddress,
           textInputAction: TextInputAction.done,
-          onSubmitted: (_) => _isLoading ? null : _handleRequestOtp(),
+          onSubmitted: (_) => _isLoading ? null : _handleContinueFromEmail(),
         ),
       ],
     );
@@ -363,11 +362,26 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => _isLoading ? null : _handleVerifyOtp(),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         TextButton(
-          onPressed: _isLoading ? null : _handleRequestOtp,
+          onPressed: _isLoading
+              ? null
+              : () async {
+                  final result = await _emailService.sendAccountCreationOtp(
+                    email: _emailController.text.trim(),
+                  );
+                  if (!mounted) return;
+                  setState(() {
+                    if (result['success'] == true) {
+                      _infoMessage = 'A new OTP was sent to your email.';
+                      _errorMessage = null;
+                    } else {
+                      _errorMessage = result['message']?.toString();
+                    }
+                  });
+                },
           child: const Text(
-            'Resend code',
+            'Resend OTP',
             style: TextStyle(color: Color(0xFF6EA8FE), fontSize: 13),
           ),
         ),
@@ -380,7 +394,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Set your new password',
+          'Set your password',
           style: TextStyle(color: Colors.white, fontSize: 14),
         ),
         const SizedBox(height: 20),
@@ -410,8 +424,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   Widget _buildActionButton() {
-    final labels = ['Send Reset Code', 'Verify Code', 'Reset Password'];
-    final actions = [_handleRequestOtp, _handleVerifyOtp, _handleResetPassword];
+    final labels = ['Continue', 'Verify OTP', 'Set Password'];
+    final actions = [
+      _handleContinueFromEmail,
+      _handleVerifyOtp,
+      _handleSetPassword,
+    ];
 
     return SizedBox(
       height: 50,

@@ -3,7 +3,6 @@
 // Falls back gracefully - email failure never blocks account creation.
 
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class StaffEmailService {
@@ -11,62 +10,74 @@ class StaffEmailService {
   factory StaffEmailService() => _instance;
   StaffEmailService._internal();
 
-  static const _apiKey = 'fc4874818b2f98480dbba9e862b90334';
-  static const _senderName = 'SapPIIre';
   final _supabase = Supabase.instance.client;
 
-  // Welcome Email
-  Future<void> sendWelcomeEmail({
-    required String toEmail,
-    required String displayName,
-    required String username,
-    required String temporaryPassword,
-    required String role,
+  /// Sends Supabase Auth email OTP for newly created staff onboarding.
+  Future<Map<String, dynamic>> sendAccountCreationOtp({
+    required String email,
   }) async {
-    final subject = 'Your SapPIIre Staff Account Has Been Created';
-    final message = '''
-Hello $displayName,
-
-Your SapPIIre CSWD Portal staff account has been created.
-
-Your login credentials:
-  Username: $username
-  Temporary Password: $temporaryPassword
-  Role: $role
-
-IMPORTANT: You will be required to change your password when you first log in.
-
-Please keep these credentials secure and do not share them with anyone.
-
-Access the portal at: https://sappiire.cswd.gov.ph
-
-- SapPIIre System
-City Social Welfare and Development Office
-Santa Rosa City
-''';
-
     try {
-      final response = await http.post(
-        Uri.parse('https://api.semaphore.co/api/v4/email'),
-        body: {
-          'apikey': _apiKey,
-          'to': toEmail,
-          'subject': subject,
-          'message': message,
-          'sendername': _senderName,
-        },
+      await _supabase.auth.signInWithOtp(
+        email: email.trim().toLowerCase(),
+        shouldCreateUser: true,
       );
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        debugPrint('StaffEmailService: welcome email sent to $toEmail');
-      } else {
-        debugPrint('StaffEmailService: email failed - ${response.body}');
-      }
+      return {
+        'success': true,
+        'message': 'OTP sent. Ask the staff member to check their email.',
+      };
+    } on AuthException catch (e) {
+      return {'success': false, 'message': e.message};
     } catch (e) {
-      debugPrint('StaffEmailService: sendWelcomeEmail error - $e');
+      return {'success': false, 'message': 'Failed to send OTP: ${e.toString()}'};
     }
   }
 
-  // Password Reset OTP
+  /// Validates a staff email belongs to an account that is still in setup.
+  /// This does NOT send a new OTP.
+  Future<Map<String, dynamic>> validatePendingSetupEmail({
+    required String email,
+  }) async {
+    try {
+      final normalizedEmail = email.trim().toLowerCase();
+      final account = await _supabase
+          .from('staff_accounts')
+          .select('cswd_id, is_active, account_status, is_first_login')
+          .ilike('email', normalizedEmail)
+          .maybeSingle();
+
+      if (account == null) {
+        return {
+          'success': false,
+          'message': 'No pending setup account found for this email.',
+        };
+      }
+
+      if (account['is_active'] == false ||
+          account['account_status'] == 'deactivated') {
+        return {
+          'success': false,
+          'message': 'This account has been deactivated. Contact your administrator.',
+        };
+      }
+
+      if (account['is_first_login'] != true) {
+        return {
+          'success': false,
+          'message': 'This account is already set up. Use Forgot password instead.',
+        };
+      }
+
+      return {
+        'success': true,
+        'cswd_id': account['cswd_id'] as String,
+        'message': 'Account found. Enter the OTP sent during account creation.',
+      };
+    } catch (e) {
+      return {'success': false, 'message': 'Error: ${e.toString()}'};
+    }
+  }
+
+  // Password Reset OTP (Supabase email OTP)
   Future<Map<String, dynamic>> sendPasswordResetOtp({
     required String email,
   }) async {
@@ -75,8 +86,8 @@ Santa Rosa City
 
       final account = await _supabase
           .from('staff_accounts')
-          .select('cswd_id, is_active, account_status')
-          .eq('email', normalizedEmail)
+          .select('cswd_id, is_active, account_status, is_first_login')
+          .ilike('email', normalizedEmail)
           .maybeSingle();
 
       if (account == null) {
@@ -94,59 +105,36 @@ Santa Rosa City
         };
       }
 
-      final cswdId = account['cswd_id'] as String;
-
-      await _supabase
-          .from('staff_password_reset_otp')
-          .update({'used': true})
-          .eq('email', normalizedEmail)
-          .eq('used', false);
-
-      final otp = (100000 + (DateTime.now().millisecondsSinceEpoch % 900000))
-          .toString();
-      final expiresAt =
-          DateTime.now().toUtc().add(const Duration(minutes: 15)).toIso8601String();
-
-      await _supabase.from('staff_password_reset_otp').insert({
-        'cswd_id': cswdId,
-        'email': normalizedEmail,
-        'otp': otp,
-        'expires_at': expiresAt,
-        'used': false,
-      });
-
-      final response = await http.post(
-        Uri.parse('https://api.semaphore.co/api/v4/email'),
-        body: {
-          'apikey': _apiKey,
-          'to': email.trim(),
-          'subject': 'SapPIIre Password Reset Code',
-          'message': '''
-You requested a password reset for your SapPIIre staff account.
-
-Your reset code: $otp
-
-This code expires in 15 minutes.
-
-If you did not request this, please contact your system administrator immediately.
-
-- SapPIIre System
-''',
-          'sendername': _senderName,
-        },
-      );
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
+      if (account['is_first_login'] == true) {
         return {
-          'success': true,
-          'message': 'If this email is registered, a reset code has been sent.',
+          'success': false,
+          'message':
+              'This account is still in initial setup. Use New staff setup instead.',
         };
       }
 
-      debugPrint('StaffEmailService OTP email failed: ${response.body}');
+      final cswdId = account['cswd_id'] as String;
+
+      await _supabase
+          .auth
+          .signInWithOtp(
+            email: normalizedEmail,
+            shouldCreateUser: false,
+          );
+
+      if (kDebugMode) {
+        debugPrint('StaffEmailService: password reset OTP sent to $normalizedEmail');
+      }
+
+      return {
+        'success': true,
+        'message': 'If this email is registered, a reset code has been sent.',
+      };
+    } on AuthException catch (e) {
+      debugPrint('StaffEmailService.sendPasswordResetOtp auth error: ${e.message}');
       return {
         'success': false,
-        'message': 'Failed to send reset code. Please try again.',
+        'message': e.message,
       };
     } catch (e) {
       debugPrint('StaffEmailService.sendPasswordResetOtp error: $e');
@@ -160,44 +148,105 @@ If you did not request this, please contact your system administrator immediatel
     required String otp,
   }) async {
     try {
-      final row = await _supabase
-          .from('staff_password_reset_otp')
-          .select('id, cswd_id, expires_at, used')
-          .eq('email', email.trim().toLowerCase())
-          .eq('otp', otp.trim())
-          .eq('used', false)
-          .order('created_at', ascending: false)
-          .limit(1)
-          .maybeSingle();
+      final normalizedEmail = email.trim().toLowerCase();
 
-      if (row == null) {
+      final verifyRes = await _supabase.auth.verifyOTP(
+        email: normalizedEmail,
+        token: otp.trim(),
+        type: OtpType.email,
+      );
+
+      if (verifyRes.user == null) {
         return {'success': false, 'message': 'Invalid or expired reset code.'};
       }
 
-      final expiresAt = DateTime.parse(row['expires_at'] as String).toUtc();
-      if (DateTime.now().toUtc().isAfter(expiresAt)) {
-        await _supabase
-            .from('staff_password_reset_otp')
-            .update({'used': true})
-            .eq('id', row['id']);
+      final account = await _supabase
+          .from('staff_accounts')
+          .select('cswd_id, is_active, account_status, is_first_login')
+          .ilike('email', normalizedEmail)
+          .maybeSingle();
+
+      if (account == null) {
+        return {'success': false, 'message': 'Staff account not found for this email.'};
+      }
+
+      if (account['is_active'] == false ||
+          account['account_status'] == 'deactivated') {
         return {
           'success': false,
-          'message': 'Reset code has expired. Please request a new one.',
+          'message': 'This account has been deactivated. Contact your administrator.',
         };
       }
 
-      await _supabase
-          .from('staff_password_reset_otp')
-          .update({'used': true})
-          .eq('id', row['id']);
+      return {
+        'success': true,
+        'cswd_id': account['cswd_id'] as String,
+        'message': 'Code verified.',
+      };
+    } on AuthException catch (e) {
+      debugPrint('StaffEmailService.verifyPasswordResetOtp auth error: ${e.message}');
+      return {'success': false, 'message': e.message};
+    } catch (e) {
+      debugPrint('StaffEmailService.verifyPasswordResetOtp error: $e');
+      return {'success': false, 'message': 'Error: ${e.toString()}'};
+    }
+  }
+
+  /// Verifies the OTP that was originally sent during account creation.
+  /// Does NOT send a new OTP.
+  Future<Map<String, dynamic>> verifyPendingSetupOtp({
+    required String email,
+    required String otp,
+  }) async {
+    try {
+      final normalizedEmail = email.trim().toLowerCase();
+
+      final account = await _supabase
+          .from('staff_accounts')
+          .select('cswd_id, is_active, account_status, is_first_login')
+          .ilike('email', normalizedEmail)
+          .maybeSingle();
+
+      if (account == null) {
+        return {
+          'success': false,
+          'message': 'No pending setup account found for this email.',
+        };
+      }
+
+      if (account['is_active'] == false ||
+          account['account_status'] == 'deactivated') {
+        return {
+          'success': false,
+          'message': 'This account has been deactivated. Contact your administrator.',
+        };
+      }
+
+      if (account['is_first_login'] != true) {
+        return {
+          'success': false,
+          'message': 'This account is already set up. Use Forgot password instead.',
+        };
+      }
+
+      final verifyRes = await _supabase.auth.verifyOTP(
+        email: normalizedEmail,
+        token: otp.trim(),
+        type: OtpType.email,
+      );
+
+      if (verifyRes.user == null) {
+        return {'success': false, 'message': 'Invalid or expired setup code.'};
+      }
 
       return {
         'success': true,
-        'cswd_id': row['cswd_id'] as String,
+        'cswd_id': account['cswd_id'] as String,
         'message': 'Code verified.',
       };
+    } on AuthException catch (e) {
+      return {'success': false, 'message': e.message};
     } catch (e) {
-      debugPrint('StaffEmailService.verifyPasswordResetOtp error: $e');
       return {'success': false, 'message': 'Error: ${e.toString()}'};
     }
   }

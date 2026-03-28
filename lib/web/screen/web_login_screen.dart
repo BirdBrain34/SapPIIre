@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:sappiire/web/screen/first_login_password_screen.dart';
 import 'package:sappiire/web/screen/forgot_password_screen.dart';
+import 'package:sappiire/web/screen/new_staff_setup_screen.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/services/web_auth_service.dart';
 import 'package:sappiire/web/screen/web_signup_screen.dart';
@@ -211,22 +212,36 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
                       onSubmitted: (_) => _isLoading ? null : _handleLogin(),
                     ),
 
-                    // Forgot password
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: () => Navigator.push(
-                          context,
-                          ContentFadeRoute(page: const ForgotPasswordScreen()),
-                        ),
-                        child: const Text(
-                          'Forgot password?',
-                          style: TextStyle(
-                            color: Color(0xFF6EA8FE),
-                            fontSize: 13,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.push(
+                            context,
+                            ContentFadeRoute(page: const NewStaffSetupScreen()),
+                          ),
+                          child: const Text(
+                            'New staff? Set your password',
+                            style: TextStyle(
+                              color: Color(0xFF6EA8FE),
+                              fontSize: 13,
+                            ),
                           ),
                         ),
-                      ),
+                        TextButton(
+                          onPressed: () => Navigator.push(
+                            context,
+                            ContentFadeRoute(page: const ForgotPasswordScreen()),
+                          ),
+                          child: const Text(
+                            'Forgot password?',
+                            style: TextStyle(
+                              color: Color(0xFF8BAEE0),
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 24),
 
