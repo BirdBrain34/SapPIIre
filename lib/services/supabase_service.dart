@@ -472,23 +472,8 @@ Future<bool> sendDataToWebSession(String sessionId, Map<String, dynamic> data, {
         .select()
         .maybeSingle();
 
-    // Also write to client_submissions so history screen can show it
-    if (userId != null) {
-      // Get form_type from form_submission
-      final session = await _supabase
-          .from('form_submission')
-          .select('form_type')
-          .eq('id', sessionId)
-          .maybeSingle();
-
-      final formType = session?['form_type'] as String? ?? 'Unknown Form';
-
-      await _supabase.from('client_submissions').insert({
-        'created_by': userId,
-        'form_type': formType,
-        'data': data,
-      });
-    }
+    // Intentionally do not write to client_submissions here.
+    // client_submissions must only be written during staff finalize on web.
 
     return response != null;
   } catch (e) {
