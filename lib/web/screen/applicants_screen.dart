@@ -33,7 +33,9 @@ class _ApplicantGroup {
   });
 }
 
-enum _SubmissionSortOption { date, formType }
+enum _RecordSortOrder { latestFirst, oldestFirst }
+
+enum _RightPanelView { records, form }
 
 class ApplicantsScreen extends StatefulWidget {
   final String cswd_id;
@@ -67,9 +69,10 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _intakeRefCtrl = TextEditingController();
-  final Set<String> _expandedApplicantKeys = <String>{};
-  final Map<String, String> _submissionSearchByGroup = {};
-  final Map<String, _SubmissionSortOption> _submissionSortByGroup = {};
+  String? _selectedApplicantKey;
+  _RecordSortOrder _recordSortOrder = _RecordSortOrder.latestFirst;
+  _RightPanelView _rightPanelView = _RightPanelView.records;
+  String _formTypeFilter = 'All';
 
   // Template cache by form_type name
   final Map<String, FormTemplate> _templateCache = {};
@@ -428,42 +431,6 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     return DateTime.tryParse(created) ?? DateTime.fromMillisecondsSinceEpoch(0);
   }
 
-  List<Map<String, dynamic>> _visibleSubmissionsForGroup(
-    _ApplicantGroup group,
-  ) {
-    final query = (_submissionSearchByGroup[group.key] ?? '')
-        .trim()
-        .toLowerCase();
-    final sortOption =
-        _submissionSortByGroup[group.key] ?? _SubmissionSortOption.date;
-
-    final visible = group.submissions.where((s) {
-      if (query.isEmpty) return true;
-      final intakeRef = (s['intake_reference'] ?? '').toString().toLowerCase();
-      final formType = (s['form_type'] ?? '').toString().toLowerCase();
-      final dateRaw = (s['created_at'] ?? '').toString().toLowerCase();
-      final dateDisplay = _getFormattedDate(
-        s['created_at']?.toString(),
-      ).toLowerCase();
-      return intakeRef.contains(query) ||
-          formType.contains(query) ||
-          dateRaw.contains(query) ||
-          dateDisplay.contains(query);
-    }).toList();
-
-    visible.sort((a, b) {
-      if (sortOption == _SubmissionSortOption.formType) {
-        final at = (a['form_type'] ?? '').toString().toLowerCase();
-        final bt = (b['form_type'] ?? '').toString().toLowerCase();
-        final typeCompare = at.compareTo(bt);
-        if (typeCompare != 0) return typeCompare;
-      }
-      return _parseCreatedAt(b).compareTo(_parseCreatedAt(a));
-    });
-
-    return visible;
-  }
-
   List<_ApplicantGroup> get _groupedApplicants {
     final grouped = <String, List<Map<String, dynamic>>>{};
     final groupName = <String, String>{};
@@ -490,15 +457,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         final matchesGroup =
             name.toLowerCase().contains(q) ||
             entry.key.toLowerCase().contains(q);
-        final matchesSubmission = submissions.any((s) {
-          final ref = (s['intake_reference'] ?? '').toString().toLowerCase();
-          final type = (s['form_type'] ?? '').toString().toLowerCase();
-          final date = _getFormattedDate(
-            s['created_at']?.toString(),
-          ).toLowerCase();
-          return ref.contains(q) || type.contains(q) || date.contains(q);
-        });
-        if (!matchesGroup && !matchesSubmission) continue;
+        if (!matchesGroup) continue;
       }
 
       groups.add(
@@ -523,18 +482,84 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     return groups;
   }
 
+  _ApplicantGroup? get _selectedApplicantGroup {
+    final key = _selectedApplicantKey;
+    if (key == null) return null;
+    for (final group in _groupedApplicants) {
+      if (group.key == key) return group;
+    }
+    return null;
+  }
+
+  List<Map<String, dynamic>> _sortedSubmissionsForGroup(_ApplicantGroup group) {
+    final sorted = List<Map<String, dynamic>>.from(group.submissions);
+
+    if (_formTypeFilter != 'All') {
+      sorted.removeWhere(
+        (s) => (s['form_type']?.toString() ?? '') != _formTypeFilter,
+      );
+    }
+
+    sorted.sort((a, b) {
+      final compare = _parseCreatedAt(a).compareTo(_parseCreatedAt(b));
+      return _recordSortOrder == _RecordSortOrder.latestFirst
+          ? -compare
+          : compare;
+    });
+    return sorted;
+  }
+
+  List<String> _formTypeOptionsForGroup(_ApplicantGroup group) {
+    final options = <String>{'All'};
+    for (final submission in group.submissions) {
+      final formType = submission['form_type']?.toString().trim() ?? '';
+      if (formType.isNotEmpty) options.add(formType);
+    }
+    final types = options.where((o) => o != 'All').toList()..sort();
+    return ['All', ...types];
+  }
+
   String _getFormattedDate(String? iso) {
     if (iso == null) return '—';
     try {
       final dt = DateTime.parse(iso).toLocal();
-      return '${dt.month.toString().padLeft(2, '0')}/'
-          '${dt.day.toString().padLeft(2, '0')}/'
-          '${dt.year}  '
-          '${dt.hour.toString().padLeft(2, '0')}:'
-          '${dt.minute.toString().padLeft(2, '0')}';
+      return '${dt.day.toString().padLeft(2, '0')}/'
+          '${dt.month.toString().padLeft(2, '0')}/'
+          '${dt.year}';
     } catch (_) {
       return iso;
     }
+  }
+
+  String _getIntakeRefLabel(Map<String, dynamic> submission) {
+    final ref = (submission['intake_reference'] as String?)?.trim();
+    if (ref == null || ref.isEmpty) return 'No reference';
+    return ref;
+  }
+
+  String _formTypeBadgeText(String formType) {
+    final trimmed = formType.trim();
+    if (trimmed.isEmpty) return 'FORM';
+    if (!trimmed.contains(' ') && trimmed.length <= 8) {
+      return trimmed.toUpperCase();
+    }
+    final parts = trimmed.split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
+    final initials = parts.map((p) => p[0].toUpperCase()).join();
+    return initials.isEmpty ? 'FORM' : initials;
+  }
+
+  Color _formTypeBadgeColor(String formType) {
+    final key = formType.toLowerCase();
+    if (key.contains('gis') || key.contains('general intake')) {
+      return const Color(0xFF1FA663);
+    }
+    if (key.contains('eafic')) {
+      return const Color(0xFF2B74E4);
+    }
+    if (key.contains('case')) {
+      return const Color(0xFF8A6BDB);
+    }
+    return const Color(0xFF4F8A8B);
   }
 
   // ── Logout / navigation ───────────────────────────────────
@@ -619,7 +644,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       onLogout: _handleLogout,
       headerActions: [
         _buildHeaderButton('Refresh', Icons.refresh, onPressed: _loadData),
-        if (_selectedSubmission != null) ...[
+        if (_selectedSubmission != null && _rightPanelView == _RightPanelView.form) ...[
           if (!_isEditMode)
             _buildHeaderButton(
               'Edit',
@@ -700,9 +725,9 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                   children: [
                     _buildListPanel(),
                     Expanded(
-                      child: _selectedSubmission == null
+                      child: _selectedApplicantGroup == null
                           ? _buildEmptyState()
-                          : _buildDetailPanel(),
+                          : _buildApplicantRecordsPanel(),
                     ),
                   ],
                 ),
@@ -761,281 +786,118 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                       style: TextStyle(color: Colors.white54),
                     ),
                   )
-                : ListView.builder(
-                    itemCount: groups.length,
-                    itemBuilder: (ctx, i) {
-                      final group = groups[i];
-                      final isExpanded = _expandedApplicantKeys.contains(
-                        group.key,
-                      );
-                      final visibleSubmissions = _visibleSubmissionsForGroup(
-                        group,
-                      );
-                      final selectedId = _selectedSubmission?['id'];
-                      final groupHasSelected = group.submissions.any(
-                        (s) => s['id'] == selectedId,
-                      );
+                : Scrollbar(
+                    thumbVisibility: true,
+                    child: ListView.separated(
+                      itemCount: groups.length,
+                      separatorBuilder: (_, __) => Divider(
+                        height: 1,
+                        color: Colors.white.withOpacity(0.10),
+                        indent: 14,
+                        endIndent: 14,
+                      ),
+                      itemBuilder: (ctx, i) {
+                        final group = groups[i];
+                        final isSelected = _selectedApplicantKey == group.key;
+                        final initials = group.displayName
+                            .split(' ')
+                            .where((p) => p.trim().isNotEmpty)
+                            .take(2)
+                            .map((p) => p.trim()[0].toUpperCase())
+                            .join();
 
-                      return Container(
-                        margin: const EdgeInsets.symmetric(vertical: 2),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            ListTile(
-                              selected: groupHasSelected,
-                              selectedTileColor: Colors.white.withOpacity(0.15),
-                              onTap: () {
-                                setState(() {
-                                  if (isExpanded) {
-                                    _expandedApplicantKeys.remove(group.key);
-                                  } else {
-                                    _expandedApplicantKeys.add(group.key);
-                                  }
-                                });
-                              },
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 4,
+                        return Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            hoverColor: Colors.white.withOpacity(0.05),
+                            splashColor: Colors.white.withOpacity(0.08),
+                            onTap: () {
+                              setState(() {
+                                _selectedApplicantKey = group.key;
+                                _rightPanelView = _RightPanelView.records;
+                                _formTypeFilter = 'All';
+                                _recordSortOrder =
+                                    _RecordSortOrder.latestFirst;
+                                _selectedSubmission = null;
+                                _activeTemplate = null;
+                                _isEditMode = false;
+                              });
+                            },
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? Colors.white.withOpacity(0.16)
+                                    : Colors.transparent,
+                                border: Border(
+                                  left: BorderSide(
+                                    color: isSelected
+                                        ? const Color(0xFF7CC3FF)
+                                        : Colors.transparent,
+                                    width: 3,
+                                  ),
+                                ),
                               ),
-                              title: Row(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 10,
+                              ),
+                              child: Row(
                                 children: [
+                                  Container(
+                                    width: 28,
+                                    height: 28,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? const Color(0xFF7CC3FF)
+                                              .withOpacity(0.25)
+                                          : Colors.white.withOpacity(0.12),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: isSelected
+                                            ? const Color(0xFF7CC3FF)
+                                            : Colors.white24,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      initials.isEmpty ? '?' : initials,
+                                      style: TextStyle(
+                                        color: isSelected
+                                            ? const Color(0xFFBFE3FF)
+                                            : Colors.white70,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
                                   Expanded(
                                     child: Text(
                                       group.displayName,
                                       style: TextStyle(
                                         color: Colors.white,
                                         fontSize: 13,
-                                        fontWeight: groupHasSelected
-                                            ? FontWeight.bold
+                                        fontWeight: isSelected
+                                            ? FontWeight.w700
                                             : FontWeight.w600,
                                       ),
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                  const SizedBox(width: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withOpacity(0.18),
-                                      borderRadius: BorderRadius.circular(999),
-                                    ),
-                                    child: Text(
-                                      '${group.submissions.length} forms',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
+                                  Icon(
+                                    Icons.chevron_right,
+                                    size: 18,
+                                    color: isSelected
+                                        ? const Color(0xFFBFE3FF)
+                                        : Colors.white54,
                                   ),
                                 ],
                               ),
-                              subtitle: group.submissions.isEmpty
-                                  ? null
-                                  : Text(
-                                      'Latest: ${group.submissions.first['form_type'] ?? ''}',
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 11,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                              trailing: Icon(
-                                isExpanded
-                                    ? Icons.expand_less
-                                    : Icons.expand_more,
-                                color: Colors.white70,
-                                size: 18,
-                              ),
                             ),
-                            if (isExpanded)
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                  left: 16,
-                                  right: 12,
-                                  bottom: 8,
-                                ),
-                                child: Column(
-                                  children: [
-                                    TextField(
-                                      key: ValueKey(
-                                        'submission-search-${group.key}',
-                                      ),
-                                      onChanged: (value) {
-                                        setState(() {
-                                          _submissionSearchByGroup[group.key] =
-                                              value;
-                                        });
-                                      },
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                      ),
-                                      decoration: InputDecoration(
-                                        hintText:
-                                            'Search intake ref, form type, or date',
-                                        hintStyle: const TextStyle(
-                                          color: Colors.white54,
-                                        ),
-                                        prefixIcon: const Icon(
-                                          Icons.search,
-                                          color: Colors.white54,
-                                          size: 18,
-                                        ),
-                                        filled: true,
-                                        fillColor: Colors.white.withOpacity(
-                                          0.08,
-                                        ),
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                          borderSide: BorderSide.none,
-                                        ),
-                                        isDense: true,
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 10,
-                                            ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    DropdownButtonFormField<
-                                      _SubmissionSortOption
-                                    >(
-                                      value:
-                                          _submissionSortByGroup[group.key] ??
-                                          _SubmissionSortOption.date,
-                                      onChanged: (value) {
-                                        if (value == null) return;
-                                        setState(() {
-                                          _submissionSortByGroup[group.key] =
-                                              value;
-                                        });
-                                      },
-                                      dropdownColor: const Color(0xFF1F2B40),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                      ),
-                                      decoration: InputDecoration(
-                                        filled: true,
-                                        fillColor: Colors.white.withOpacity(
-                                          0.08,
-                                        ),
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                          borderSide: BorderSide.none,
-                                        ),
-                                        isDense: true,
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 10,
-                                            ),
-                                      ),
-                                      items: const [
-                                        DropdownMenuItem(
-                                          value: _SubmissionSortOption.date,
-                                          child: Text('Sort by Date'),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: _SubmissionSortOption.formType,
-                                          child: Text('Sort by Form Type'),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 2),
-                                    ...visibleSubmissions.map((s) {
-                                      final isSelected =
-                                          _selectedSubmission?['id'] == s['id'];
-                                      final ref =
-                                          (s['intake_reference'] as String?)
-                                              ?.trim();
-                                      final refLabel =
-                                          (ref != null && ref.isNotEmpty)
-                                          ? ref
-                                          : 'NO-REFERENCE';
-                                      return Container(
-                                        width: double.infinity,
-                                        margin: const EdgeInsets.only(top: 6),
-                                        decoration: BoxDecoration(
-                                          color: isSelected
-                                              ? Colors.white.withOpacity(0.2)
-                                              : Colors.white.withOpacity(0.08),
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                          border: Border.all(
-                                            color: isSelected
-                                                ? Colors.white54
-                                                : Colors.white24,
-                                          ),
-                                        ),
-                                        child: InkWell(
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                          onTap: () => _loadSubmission(s),
-                                          child: Padding(
-                                            padding: const EdgeInsets.all(8),
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  refLabel,
-                                                  style: const TextStyle(
-                                                    color: Colors.amber,
-                                                    fontSize: 11,
-                                                    fontWeight: FontWeight.bold,
-                                                    fontFamily: 'monospace',
-                                                  ),
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                                const SizedBox(height: 2),
-                                                Text(
-                                                  '${s['form_type'] ?? ''} • ${_getFormattedDate(s['created_at']?.toString())}',
-                                                  style: const TextStyle(
-                                                    color: Colors.white70,
-                                                    fontSize: 10,
-                                                  ),
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    }),
-                                    if (visibleSubmissions.isEmpty)
-                                      Padding(
-                                        padding: const EdgeInsets.only(top: 10),
-                                        child: Text(
-                                          'No submissions match your search.',
-                                          style: TextStyle(
-                                            color: Colors.white.withOpacity(
-                                              0.7,
-                                            ),
-                                            fontSize: 11,
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                          ],
-                        ),
-                      );
-                    },
+                          ),
+                        );
+                      },
+                    ),
                   ),
           ),
         ],
@@ -1056,13 +918,427 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            'Select an applicant to view their form',
+            'Select an applicant to view records',
             style: TextStyle(
               color: Colors.white.withOpacity(0.7),
               fontSize: 15,
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildApplicantRecordsPanel() {
+    final group = _selectedApplicantGroup;
+    if (group == null) return _buildEmptyState();
+
+    if (_rightPanelView == _RightPanelView.form) {
+      return AnimatedSwitcher(
+        duration: const Duration(milliseconds: 260),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) {
+          final offsetAnimation = Tween<Offset>(
+            begin: const Offset(0.03, 0),
+            end: Offset.zero,
+          ).animate(animation);
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(position: offsetAnimation, child: child),
+          );
+        },
+        child: Container(
+          key: const ValueKey('right-form-view'),
+          margin: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  TextButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _rightPanelView = _RightPanelView.records;
+                        _isEditMode = false;
+                      });
+                    },
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    label: const Text(
+                      'Back',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.white.withOpacity(0.10),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      group.displayName,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 19,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: _selectedSubmission == null
+                    ? const Center(
+                        child: Text(
+                          'Select a record to view full form data.',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                      )
+                    : _buildDetailPanel(),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final options = _formTypeOptionsForGroup(group);
+    if (!options.contains(_formTypeFilter)) {
+      _formTypeFilter = 'All';
+    }
+    final records = _sortedSubmissionsForGroup(group);
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 260),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) {
+        final offsetAnimation = Tween<Offset>(
+          begin: const Offset(-0.03, 0),
+          end: Offset.zero,
+        ).animate(animation);
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(position: offsetAnimation, child: child),
+        );
+      },
+        child: Container(
+        key: const ValueKey('right-records-view'),
+        margin: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white24),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    group.displayName,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.2,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    alignment: WrapAlignment.end,
+                    children: [
+                      SizedBox(
+                        width: 158,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Padding(
+                              padding: EdgeInsets.only(left: 6, bottom: 4),
+                              child: Text(
+                                '↕ Date',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            DropdownButtonFormField<_RecordSortOrder>(
+                              isExpanded: true,
+                              value: _recordSortOrder,
+                              onChanged: (value) {
+                                if (value == null) return;
+                                setState(() {
+                                  _recordSortOrder = value;
+                                });
+                              },
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF243047),
+                                fontWeight: FontWeight.w600,
+                              ),
+                              decoration: InputDecoration(
+                                isDense: true,
+                                filled: true,
+                                fillColor: Colors.white,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 9,
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(999),
+                                  borderSide: BorderSide(
+                                    color: Colors.white.withOpacity(0.22),
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(999),
+                                  borderSide: const BorderSide(
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: _RecordSortOrder.latestFirst,
+                                  child: Text('Latest First'),
+                                ),
+                                DropdownMenuItem(
+                                  value: _RecordSortOrder.oldestFirst,
+                                  child: Text('Oldest First'),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(
+                        width: 148,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Padding(
+                              padding: EdgeInsets.only(left: 6, bottom: 4),
+                              child: Text(
+                                '⊞ Type',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            DropdownButtonFormField<String>(
+                              isExpanded: true,
+                              value: _formTypeFilter,
+                              onChanged: (value) {
+                                if (value == null) return;
+                                setState(() {
+                                  _formTypeFilter = value;
+                                });
+                              },
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF243047),
+                                fontWeight: FontWeight.w600,
+                              ),
+                              decoration: InputDecoration(
+                                isDense: true,
+                                filled: true,
+                                fillColor: Colors.white,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 9,
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(999),
+                                  borderSide: BorderSide(
+                                    color: Colors.white.withOpacity(0.22),
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(999),
+                                  borderSide: const BorderSide(
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              items: options
+                                  .map(
+                                    (type) => DropdownMenuItem<String>(
+                                      value: type,
+                                      child: Text(
+                                        type,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (records.isEmpty)
+            const Expanded(
+              child: Center(
+                child: Text(
+                  'No records available for this applicant.',
+                  style: TextStyle(color: Colors.white70),
+                ),
+              ),
+            )
+          else
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: Scrollbar(
+                  thumbVisibility: true,
+                  child: ListView.separated(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    itemCount: records.length,
+                    separatorBuilder: (_, __) => Divider(
+                      height: 1,
+                      color: Colors.white.withOpacity(0.10),
+                    ),
+                    itemBuilder: (_, idx) {
+                      final record = records[idx];
+                      final formType =
+                          record['form_type']?.toString() ?? 'Unknown Form';
+                      final badgeText = _formTypeBadgeText(formType);
+                      final badgeColor = _formTypeBadgeColor(formType);
+
+                      return Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          hoverColor: Colors.white.withOpacity(0.06),
+                          splashColor: Colors.white.withOpacity(0.08),
+                          onTap: () {
+                            _loadSubmission(record);
+                            setState(() {
+                              _rightPanelView = _RightPanelView.form;
+                            });
+                          },
+                          child: SizedBox(
+                            height: 78,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: badgeColor.withOpacity(0.18),
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(
+                                        color: badgeColor.withOpacity(0.6),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      badgeText,
+                                      style: TextStyle(
+                                        color: badgeColor,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.3,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          formType,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 13,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          _getFormattedDate(
+                                            record['created_at']?.toString(),
+                                          ),
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                        Text(
+                                          'Ref: ${_getIntakeRefLabel(record)}',
+                                          style: const TextStyle(
+                                            color: Colors.white60,
+                                            fontSize: 10,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const Icon(
+                                    Icons.chevron_right,
+                                    color: Colors.white54,
+                                    size: 18,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
