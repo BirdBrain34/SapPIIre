@@ -71,6 +71,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   bool _isStartingSession = false;
   bool _isLoading = true;
   bool _isFinalizing = false;
+  bool _isSubmitting = false;
   String _lastSavedReference = '';
   String? _lastAppliedPayloadFingerprint;
 
@@ -268,7 +269,12 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   // ── Finalize: save form data to client_submissions ───────
   Future<void> _finalizeEntry() async {
     if (_formCtrl == null || _selectedTemplate == null) return;
-    setState(() => _isFinalizing = true);
+    // Guard: prevent double finalize taps from creating duplicate submissions.
+    if (_isSubmitting) return;
+    setState(() {
+      _isSubmitting = true;
+      _isFinalizing = true;
+    });
 
     try {
       final formData = _formCtrl!.toJson();
@@ -285,15 +291,17 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       );
 
       // ── Audit copy (JSONB keeps __family_composition for record) ──
+      // Idempotent save keyed by session_id so repeated submits update one row.
       final created = await _supabase
           .from('client_submissions')
-          .insert({
+          .upsert({
+            'session_id': _currentSessionId,
             'template_id': _selectedTemplate!.templateId,
             'form_code': _selectedTemplate!.formCode,
             'form_type': _selectedTemplate!.formName,
             'data': formData,
             'created_by': widget.cswd_id,
-          })
+          }, onConflict: 'session_id')
           .select('id, intake_reference')
           .single();
 
@@ -341,6 +349,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         _sessionStarted = false;
         _currentSessionId = 'WAITING-FOR-SESSION';
         _isFinalizing = false;
+        _isSubmitting = false;
         _lastSavedReference = intakeReference;
       });
       _formSubscription?.cancel();
@@ -358,7 +367,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           ),
         );
       }
-      setState(() => _isFinalizing = false);
+      setState(() {
+        _isFinalizing = false;
+        _isSubmitting = false;
+      });
     }
   }
 

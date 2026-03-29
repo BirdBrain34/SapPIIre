@@ -29,6 +29,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   final _supabase = Supabase.instance.client; // ← NEW: for popup fetch
   late final ManageInfoController _controller;
   int _currentNavIndex = 0;
+  String? _activeTransmitSessionId;
 
   // ── Lifecycle ─────────────────────────────────────────────
   @override
@@ -117,16 +118,29 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
 
     if (sessionId != null && mounted) {
-      // Push field values + JSONB to web session
-      final success = await _supabaseService.sendDataToWebSession(
-        sessionId,
-        dataToTransmit,
-        userId: widget.userId,
-      );
-      _showFeedback(
-        success ? 'Data transmitted!' : 'Failed to send data.',
-        success ? Colors.green : Colors.red,
-      );
+      // Guard: if one scan result is already being synced, ignore duplicates.
+      if (_activeTransmitSessionId != null) {
+        debugPrint(
+          'Ignoring duplicate QR session result: $sessionId (active: $_activeTransmitSessionId)',
+        );
+        return;
+      }
+
+      _activeTransmitSessionId = sessionId;
+      try {
+        // Push field values + JSONB to web session
+        final success = await _supabaseService.sendDataToWebSession(
+          sessionId,
+          dataToTransmit,
+          userId: widget.userId,
+        );
+        _showFeedback(
+          success ? 'Data transmitted!' : 'Failed to send data.',
+          success ? Colors.green : Colors.red,
+        );
+      } finally {
+        _activeTransmitSessionId = null;
+      }
     }
   }
 

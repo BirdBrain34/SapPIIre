@@ -107,7 +107,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                   isPopping = true; 
                   debugPrint('QR Code Detected: $code');
                   
-                  // STOP THE CAMERA FIRST
+                  // Stop camera before pop so the same QR cannot fire twice.
                   await controller.stop(); 
                   
                   if (mounted) {
