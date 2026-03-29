@@ -6,6 +6,8 @@ import 'package:sappiire/services/form_template_service.dart';
 import 'package:sappiire/services/field_value_service.dart';
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/mobile/screens/auth/login_screen.dart';
+import 'package:sappiire/mobile/screens/auth/ChangePassword.dart';
+import 'package:sappiire/mobile/widgets/TermsAndCondition.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userId;
@@ -25,12 +27,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _username = '';
 
   // Controllers
-  final _lastNameCtrl      = TextEditingController();
-  final _firstNameCtrl     = TextEditingController();
-  final _middleNameCtrl    = TextEditingController();
-  final _dobCtrl           = TextEditingController();
-  final _addressCtrl       = TextEditingController();
-  final _placeOfBirthCtrl  = TextEditingController();
+  final _lastNameCtrl     = TextEditingController();
+  final _firstNameCtrl    = TextEditingController();
+  final _middleNameCtrl   = TextEditingController();
+  final _dobCtrl          = TextEditingController();
+  final _addressCtrl      = TextEditingController();
+  final _placeOfBirthCtrl = TextEditingController();
   String _sex = '';
   String _maritalStatus = '';
 
@@ -51,15 +53,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.dispose();
   }
 
-  /// Normalize any gender value to 'Male', 'Female', or null.
-  /// Handles both codes (M/F) and display names (Male/Female) and Tagalog (Lalaki/Babae).
   String? _normalizeGender(String? rawValue) {
     if (rawValue == null || rawValue.isEmpty) return null;
     final trimmed = rawValue.toString().trim();
     final lower = trimmed.toLowerCase();
     if (trimmed == 'M' || lower == 'male' || lower == 'lalaki') return 'Male';
     if (trimmed == 'F' || lower == 'female' || lower == 'babae') return 'Female';
-    return null; // any other value → null (shows hint, no crash)
+    return null;
   }
 
   Future<void> _loadProfile() async {
@@ -68,8 +68,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final username = await _supabaseService.getUsername(widget.userId);
       final pii = await _supabaseService.loadPiiFromFieldValues(widget.userId);
 
-      // Cache first active template for saves
-      _activeTemplate ??= await _templateService.fetchActiveTemplates()
+      _activeTemplate ??= await _templateService
+          .fetchActiveTemplates()
           .then((list) => list.isNotEmpty ? list.first : throw Exception('No template'));
 
       setState(() {
@@ -78,17 +78,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _firstNameCtrl.text = pii['first_name'] ?? '';
         _middleNameCtrl.text = pii['middle_name'] ?? '';
         _dobCtrl.text = pii['date_of_birth'] ?? '';
-        _placeOfBirthCtrl.text = pii['lugar_ng_kapanganakan_place_of_birth'] ?? '';
-        
-        // Normalize gender from canonical key
+        _placeOfBirthCtrl.text =
+            pii['lugar_ng_kapanganakan_place_of_birth'] ?? '';
+
         final rawGender = pii['kasarian_sex'] ?? '';
         _sex = _normalizeGender(rawGender) ?? '';
-        
-        // Normalize civil status from canonical key
+
         final rawCivil = pii['estadong_sibil_civil_status'] ?? '';
         _maritalStatus = _normalizeCivilStatus(rawCivil);
-        
-        // Reconstruct address from canonical keys
+
         final parts = [
           pii['house_number_street_name_phase_purok'] ?? '',
           pii['subdivison_'] ?? '',
@@ -120,13 +118,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
     setState(() => _isSaving = true);
     try {
-      // Split address back into parts
       final addressParts = _addressCtrl.text.trim().split(',');
-      final addressLine = addressParts.isNotEmpty ? addressParts[0].trim() : '';
-      final subdivision = addressParts.length > 1 ? addressParts[1].trim() : '';
-      final barangay = addressParts.length > 2 ? addressParts[2].trim() : '';
+      final addressLine =
+          addressParts.isNotEmpty ? addressParts[0].trim() : '';
+      final subdivision =
+          addressParts.length > 1 ? addressParts[1].trim() : '';
+      final barangay =
+          addressParts.length > 2 ? addressParts[2].trim() : '';
 
-      // Build formData map keyed by field_name (matches GIS v2 template)
       final formData = {
         'last_name': _lastNameCtrl.text.trim(),
         'first_name': _firstNameCtrl.text.trim(),
@@ -134,9 +133,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'date_of_birth': _dobCtrl.text.trim(),
         'kasarian_sex': _sex,
         'estadong_sibil_civil_status': _maritalStatus,
-        'lugar_ng_kapanganakan_place_of_birth': _placeOfBirthCtrl.text.trim(),
+        'lugar_ng_kapanganakan_place_of_birth':
+            _placeOfBirthCtrl.text.trim(),
         'house_number_street_name_phase_purok': addressLine,
-        'subdivison_': subdivision, // Note: typo in DB field name
+        'subdivison_': subdivision,
         'barangay': barangay,
       };
 
@@ -200,8 +200,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.dangerRed,
-            ),
+                backgroundColor: AppColors.dangerRed),
             child: const Text('Log Out',
                 style: TextStyle(color: Colors.white)),
           ),
@@ -219,6 +218,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  /// Navigate to ChangePasswordScreen in "from profile" mode.
+  /// No sign-out on success — just pops back here with a snackbar.
+  void _handleChangePassword() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const ChangePasswordScreen(fromProfile: true),
+      ),
+    ).then((_) {
+      // Show feedback if they came back (meaning success popped back here)
+      if (mounted) {
+        _showFeedback('Password changed successfully!', Colors.green);
+      }
+    });
+  }
+
   void _showFeedback(String msg, Color color) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -230,7 +245,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ── Build ─────────────────────────────────────────────────
+  // ── Build ──────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -295,8 +310,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: CircularProgressIndicator(
                       strokeWidth: 2, color: Colors.white),
                 )
-              : const Icon(Icons.save_outlined,
-                  color: Colors.white, size: 22),
+              : const Icon(Icons.save_outlined, color: Colors.white, size: 22),
           onPressed: _isSaving ? null : _saveProfile,
           tooltip: 'Save Profile',
         ),
@@ -311,7 +325,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header card
+          // ── Header card ──────────────────────────────────────
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(20),
@@ -337,27 +351,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        [
-                          _firstNameCtrl.text,
-                          _middleNameCtrl.text.isNotEmpty
-                              ? '${_middleNameCtrl.text[0]}.'
-                              : '',
-                          _lastNameCtrl.text,
-                        ]
-                            .where((s) => s.isNotEmpty)
-                            .join(' ')
-                            .trim()
-                            .isEmpty
-                            ? 'No Name Set'
-                            : [
-                                _firstNameCtrl.text,
-                                _middleNameCtrl.text.isNotEmpty
-                                    ? '${_middleNameCtrl.text[0]}.'
-                                    : '',
-                                _lastNameCtrl.text,
-                              ]
-                                .where((s) => s.isNotEmpty)
-                                .join(' '),
+                        () {
+                          final name = [
+                            _firstNameCtrl.text,
+                            _middleNameCtrl.text.isNotEmpty
+                                ? '${_middleNameCtrl.text[0]}.'
+                                : '',
+                            _lastNameCtrl.text,
+                          ].where((s) => s.isNotEmpty).join(' ').trim();
+                          return name.isEmpty ? 'No Name Set' : name;
+                        }(),
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 18,
@@ -379,55 +382,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
           const SizedBox(height: 20),
 
-          // Personal Info Section
+          // ── Personal Information ─────────────────────────────
           _buildSectionHeader('Personal Information', Icons.badge_outlined),
           const SizedBox(height: 12),
-
           _buildCard([
             _buildTextField(
-              label: 'Last Name',
-              controller: _lastNameCtrl,
-              icon: Icons.person_outline,
-            ),
+                label: 'Last Name',
+                controller: _lastNameCtrl,
+                icon: Icons.person_outline),
             _buildDivider(),
             _buildTextField(
-              label: 'First Name',
-              controller: _firstNameCtrl,
-              icon: Icons.person_outline,
-            ),
+                label: 'First Name',
+                controller: _firstNameCtrl,
+                icon: Icons.person_outline),
             _buildDivider(),
             _buildTextField(
-              label: 'Middle Name',
-              controller: _middleNameCtrl,
-              icon: Icons.person_outline,
-            ),
+                label: 'Middle Name',
+                controller: _middleNameCtrl,
+                icon: Icons.person_outline),
           ]),
 
           const SizedBox(height: 16),
+
+          // ── Birth Details ────────────────────────────────────
           _buildSectionHeader('Birth Details', Icons.cake_outlined),
           const SizedBox(height: 12),
-
           _buildCard([
             _buildDateField(),
             _buildDivider(),
             _buildTextField(
-              label: 'Place of Birth',
-              controller: _placeOfBirthCtrl,
-              icon: Icons.location_city_outlined,
-            ),
+                label: 'Place of Birth',
+                controller: _placeOfBirthCtrl,
+                icon: Icons.location_city_outlined),
           ]),
 
           const SizedBox(height: 16),
+
+          // ── Additional Details ───────────────────────────────
           _buildSectionHeader('Additional Details', Icons.info_outline),
           const SizedBox(height: 12),
-
           _buildCard([
             _buildDropdownField(
               label: 'Sex',
               value: _normalizeGender(_sex),
               icon: Icons.wc_outlined,
               items: const ['Male', 'Female'],
-              onChanged: (v) => setState(() => _sex = _normalizeGender(v) ?? ''),
+              onChanged: (v) =>
+                  setState(() => _sex = _normalizeGender(v) ?? ''),
             ),
             _buildDivider(),
             _buildDropdownField(
@@ -442,9 +443,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ]),
 
           const SizedBox(height: 16),
+
+          // ── Address ──────────────────────────────────────────
           _buildSectionHeader('Address', Icons.home_outlined),
           const SizedBox(height: 12),
-
           _buildCard([
             _buildTextField(
               label: 'Full Address',
@@ -457,7 +459,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
           const SizedBox(height: 24),
 
-          // Save button
+          // ── Save button ──────────────────────────────────────
           SizedBox(
             width: double.infinity,
             height: 52,
@@ -481,9 +483,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primaryBlue,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                    borderRadius: BorderRadius.circular(12)),
                 elevation: 0,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 28),
+
+          // ── Account Settings ─────────────────────────────────
+          _buildSectionHeader('Account Settings', Icons.manage_accounts_outlined),
+          const SizedBox(height: 12),
+          _buildCard([
+            _buildActionRow(
+              icon: Icons.lock_reset_outlined,
+              label: 'Change Password',
+              subtitle: 'Update your account password',
+              onTap: _handleChangePassword,
+            ),
+            _buildDivider(),
+            _buildActionRow(
+              icon: Icons.shield_outlined,
+              label: 'Privacy & Terms',
+              subtitle: 'Data Privacy Act of 2012 (R.A. 10173)',
+              onTap: () => TermsAndConditionsDialog.showForReading(context),
+            ),
+            _buildDivider(),
+            _buildActionRow(
+              icon: Icons.logout,
+              label: 'Log Out',
+              subtitle: 'Sign out of your account',
+              onTap: _handleLogout,
+              isDestructive: true,
+            ),
+          ]),
+
+          const SizedBox(height: 16),
+
+          // ── App version ──────────────────────────────────────
+          Center(
+            child: Text(
+              'SapPIIre v1.0.0',
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey.shade400,
               ),
             ),
           ),
@@ -492,7 +535,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ── Section Header ────────────────────────────────────────
+  // ── Section Header ─────────────────────────────────────────
 
   Widget _buildSectionHeader(String title, IconData icon) {
     return Row(
@@ -512,7 +555,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ── Card wrapper ──────────────────────────────────────────
+  // ── Card wrapper ────────────────────────────────────────────
 
   Widget _buildCard(List<Widget> children) {
     return Container(
@@ -532,9 +575,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildDivider() => const Divider(height: 1, indent: 16, endIndent: 16);
+  Widget _buildDivider() =>
+      const Divider(height: 1, indent: 16, endIndent: 16);
 
-  // ── Text Field ────────────────────────────────────────────
+  // ── Text Field ──────────────────────────────────────────────
 
   Widget _buildTextField({
     required String label,
@@ -558,8 +602,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               decoration: InputDecoration(
                 labelText: label,
                 hintText: hint,
-                labelStyle: TextStyle(
-                    fontSize: 12, color: Colors.grey.shade500),
+                labelStyle:
+                    TextStyle(fontSize: 12, color: Colors.grey.shade500),
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding:
@@ -572,7 +616,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ── Date Field ────────────────────────────────────────────
+  // ── Date Field ──────────────────────────────────────────────
 
   Widget _buildDateField() {
     return InkWell(
@@ -588,11 +632,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Date of Birth',
-                    style: TextStyle(
-                        fontSize: 12, color: Colors.grey.shade500),
-                  ),
+                  Text('Date of Birth',
+                      style: TextStyle(
+                          fontSize: 12, color: Colors.grey.shade500)),
                   const SizedBox(height: 2),
                   Text(
                     _dobCtrl.text.isEmpty ? 'Select date' : _dobCtrl.text,
@@ -614,7 +656,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ── Dropdown Field ────────────────────────────────────────
+  // ── Dropdown Field ──────────────────────────────────────────
 
   Widget _buildDropdownField({
     required String label,
@@ -623,12 +665,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required List<String> items,
     required void Function(String?) onChanged,
   }) {
-    // Defensive: sanitize value to ensure it matches an item or is null
     String? safeValue = value;
     if (safeValue != null && !items.contains(safeValue)) {
-      safeValue = null; // discard invalid value
+      safeValue = null;
     }
-    
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Row(
@@ -645,13 +686,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 isExpanded: true,
                 icon: Icon(Icons.expand_more,
                     size: 18, color: Colors.grey.shade400),
-                style: const TextStyle(
-                    fontSize: 14, color: Colors.black87),
+                style:
+                    const TextStyle(fontSize: 14, color: Colors.black87),
                 items: items
-                    .map((item) => DropdownMenuItem(
-                          value: item,
-                          child: Text(item),
-                        ))
+                    .map((item) =>
+                        DropdownMenuItem(value: item, child: Text(item)))
                     .toList(),
                 onChanged: onChanged,
                 selectedItemBuilder: (context) => items
@@ -659,16 +698,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Text(
-                              label,
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade500),
-                            ),
+                            Text(label,
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade500)),
                             Text(item,
                                 style: const TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.black87)),
+                                    fontSize: 14, color: Colors.black87)),
                           ],
                         ))
                     .toList(),
@@ -676,6 +712,64 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ── Action Row (for Account Settings) ──────────────────────
+
+  Widget _buildActionRow({
+    required IconData icon,
+    required String label,
+    required String subtitle,
+    required VoidCallback onTap,
+    bool isDestructive = false,
+  }) {
+    final color = isDestructive ? AppColors.dangerRed : AppColors.primaryBlue;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 18, color: color),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: isDestructive
+                          ? AppColors.dangerRed
+                          : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                        fontSize: 11, color: Colors.grey.shade500),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right,
+                size: 18, color: Colors.grey.shade400),
+          ],
+        ),
       ),
     );
   }

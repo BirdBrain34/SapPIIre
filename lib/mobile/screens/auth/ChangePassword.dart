@@ -5,10 +5,16 @@ import 'package:sappiire/mobile/widgets/custom_text_field.dart';
 import 'package:sappiire/mobile/screens/auth/login_screen.dart';
 import 'package:sappiire/services/supabase_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:http/http.dart' as http;
 
 class ChangePasswordScreen extends StatefulWidget {
-  const ChangePasswordScreen({super.key});
+  /// When true: came from ProfileScreen — no sign-out on success, pops back.
+  /// When false (default): came from LoginScreen — signs out, goes to Login.
+  final bool fromProfile;
+
+  const ChangePasswordScreen({
+    super.key,
+    this.fromProfile = false,
+  });
 
   @override
   State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
@@ -18,32 +24,20 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   final PageController _pageController = PageController();
   final SupabaseService _supabaseService = SupabaseService();
 
-  // Pages:
-  // 0 → Choose method (Email / Phone) + input
-  // 1 → OTP verification
-  // 2 → New password + confirm
-
   int _currentPage = 0;
   bool _isLoading = false;
+  bool _useEmail = true;
 
-  // Method toggle
-  bool _useEmail = true; // true = Email, false = Phone
-
-  // Page 0
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
-
-  // Page 1
   final _otpController = TextEditingController();
   bool _otpSent = false;
 
-  // Page 2
   final _newPasswordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   bool _showNewPassword = false;
   bool _showConfirmPassword = false;
 
-  // Resolved user info after OTP
   String? _resolvedUserId;
   String? _resolvedEmail;
 
@@ -80,57 +74,37 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   String _getStepTitle() {
     switch (_currentPage) {
-      case 0:
-        return 'Step 1 of 3 — Identify Account';
-      case 1:
-        return 'Step 2 of 3 — Verify Identity';
-      case 2:
-        return 'Step 3 of 3 — New Password';
-      default:
-        return '';
+      case 0: return 'Step 1 of 3 — Identify Account';
+      case 1: return 'Step 2 of 3 — Verify Identity';
+      case 2: return 'Step 3 of 3 — New Password';
+      default: return '';
     }
   }
 
-  void _showError(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: Colors.red),
-    );
-  }
+  void _showError(String msg) => ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), backgroundColor: Colors.red),
+      );
 
-  void _showSuccess(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: Colors.green),
-    );
-  }
+  void _showSuccess(String msg) => ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), backgroundColor: Colors.green),
+      );
 
-  void _goNext() {
-    _pageController.nextPage(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
-  }
+  void _goNext() => _pageController.nextPage(
+      duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
 
-  void _goPrev() {
-    _pageController.previousPage(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
-  }
+  void _goPrev() => _pageController.previousPage(
+      duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
 
   bool _isPageValid() {
     switch (_currentPage) {
       case 0:
-        if (_useEmail) {
-          return _emailController.text.contains('@');
-        } else {
-          return _phoneController.text.length >= 10;
-        }
+        return _useEmail
+            ? _emailController.text.contains('@')
+            : _phoneController.text.length >= 10;
       case 1:
-        if (_useEmail) {
-          return _otpController.text.length == 8;
-        } else {
-          return _otpController.text.length == 6;
-        }
+        return _useEmail
+            ? _otpController.text.length == 8
+            : _otpController.text.length == 6;
       case 2:
         return _newPasswordController.text.length >= 6 &&
             _newPasswordController.text == _confirmPasswordController.text;
@@ -141,15 +115,9 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   void _onNext() {
     switch (_currentPage) {
-      case 0:
-        _useEmail ? _handleSendEmailOtp() : _handleSendPhoneOtp();
-        break;
-      case 1:
-        _useEmail ? _handleVerifyEmailOtp() : _handleVerifyPhoneOtp();
-        break;
-      case 2:
-        _handleChangePassword();
-        break;
+      case 0: _useEmail ? _handleSendEmailOtp() : _handleSendPhoneOtp(); break;
+      case 1: _useEmail ? _handleVerifyEmailOtp() : _handleVerifyPhoneOtp(); break;
+      case 2: _handleChangePassword(); break;
     }
   }
 
@@ -157,31 +125,19 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   Future<void> _handleSendEmailOtp() async {
     setState(() => _isLoading = true);
-
     try {
-      // Check if email exists in user_accounts
       final account = await Supabase.instance.client
           .from('user_accounts')
           .select('user_id, email, is_active')
           .eq('email', _emailController.text.trim())
           .maybeSingle();
 
-      if (account == null) {
-        _showError('No account found with that email.');
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      if (account['is_active'] == false) {
-        _showError('This account is deactivated.');
-        setState(() => _isLoading = false);
-        return;
-      }
+      if (account == null) { _showError('No account found with that email.'); return; }
+      if (account['is_active'] == false) { _showError('This account is deactivated.'); return; }
 
       _resolvedUserId = account['user_id'];
       _resolvedEmail = account['email'];
 
-      // Send OTP via Supabase
       await Supabase.instance.client.auth.signInWithOtp(
         email: _emailController.text.trim(),
         shouldCreateUser: false,
@@ -219,13 +175,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         token: _otpController.text.trim(),
         type: OtpType.email,
       );
-
-      if (response.user == null) {
-        _showError('Invalid or expired code.');
-        setState(() => _isLoading = false);
-        return;
-      }
-
+      if (response.user == null) { _showError('Invalid or expired code.'); return; }
       _resolvedUserId = response.user!.id;
       _goNext();
     } on AuthException catch (e) {
@@ -239,9 +189,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   Future<void> _handleSendPhoneOtp() async {
     setState(() => _isLoading = true);
-
     try {
-      // Check if phone exists in user_field_values via canonical key
       final phoneRows = await Supabase.instance.client
           .from('user_field_values')
           .select('user_id, field_value')
@@ -249,28 +197,18 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           .limit(1)
           .maybeSingle();
 
-      if (phoneRows == null) {
-        _showError('No account found with that phone number.');
-        setState(() => _isLoading = false);
-        return;
-      }
+      if (phoneRows == null) { _showError('No account found with that phone number.'); return; }
 
       _resolvedUserId = phoneRows['user_id'];
 
-      // Resolve email for later password update
       final account = await Supabase.instance.client
           .from('user_accounts')
           .select('email')
           .eq('user_id', _resolvedUserId!)
           .maybeSingle();
-
       _resolvedEmail = account?['email'];
 
-      // Send OTP via Semaphore
-      final result = await _supabaseService.sendPhoneOtp(
-        _phoneController.text.trim(),
-      );
-
+      final result = await _supabaseService.sendPhoneOtp(_phoneController.text.trim());
       if (result['success']) {
         setState(() => _otpSent = true);
         _goNext();
@@ -286,16 +224,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   Future<void> _handleResendPhoneOtp() async {
     setState(() => _isLoading = true);
-    final result = await _supabaseService.sendPhoneOtp(
-      _phoneController.text.trim(),
-    );
+    final result = await _supabaseService.sendPhoneOtp(_phoneController.text.trim());
     if (mounted) {
       setState(() => _isLoading = false);
-      if (result['success']) {
-        _showSuccess('Code resent!');
-      } else {
-        _showError(result['message']);
-      }
+      result['success'] ? _showSuccess('Code resent!') : _showError(result['message']);
     }
   }
 
@@ -308,14 +240,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     if (mounted) {
       setState(() => _isLoading = false);
       if (result['success']) {
-        // Sign in the user so we can update their password
         if (_resolvedEmail != null) {
-          // We need the user to be authenticated to change password.
-          // Send email OTP silently to authenticate the session.
           try {
             await Supabase.instance.client.auth.signInWithOtp(
-              email: _resolvedEmail!,
-              shouldCreateUser: false,
+              email: _resolvedEmail!, shouldCreateUser: false,
             );
           } catch (_) {}
         }
@@ -335,29 +263,31 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
       if (response.user == null) {
         _showError('Failed to update password. Please try again.');
-        setState(() => _isLoading = false);
         return;
       }
 
-      // Sign out so user logs in fresh
-      await Supabase.instance.client.auth.signOut();
-
-      if (!mounted) return;
-
-      // Show success then navigate to login
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const _PasswordChangedDialog(),
-      ).then((_) {
-        if (mounted) {
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (_) => const LoginScreen()),
-            (route) => false,
-          );
-        }
-      });
+      if (widget.fromProfile) {
+        // ── From ProfileScreen: pop back, snackbar shown there
+        if (!mounted) return;
+        Navigator.pop(context);
+      } else {
+        // ── From LoginScreen: sign out → show dialog → go to Login
+        await Supabase.instance.client.auth.signOut();
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const _PasswordChangedDialog(),
+        ).then((_) {
+          if (mounted) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (_) => const LoginScreen()),
+              (route) => false,
+            );
+          }
+        });
+      }
     } catch (e) {
       _showError('Error: ${e.toString()}');
     } finally {
@@ -367,38 +297,36 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   // ── Build ─────────────────────────────────────────────────────────────────
 
+  Future<bool> _confirmCancel() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel password reset?'),
+        content: const Text('Going back will cancel the process. Are you sure?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Stay'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.dangerRed),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        if (_currentPage == 0) {
-          Navigator.pop(context);
-          return;
-        }
-        final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Cancel password reset?'),
-            content: const Text(
-                'Going back will cancel the process. Are you sure?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Stay'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.dangerRed),
-                child: const Text('Cancel',
-                    style: TextStyle(color: Colors.white)),
-              ),
-            ],
-          ),
-        );
-        if (confirmed == true && context.mounted) Navigator.pop(context);
+        if (_currentPage == 0) { Navigator.pop(context); return; }
+        if (await _confirmCancel() && context.mounted) Navigator.pop(context);
       },
       child: Scaffold(
         backgroundColor: AppColors.primaryBlue,
@@ -411,45 +339,20 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
             icon: const Icon(Icons.arrow_back),
             onPressed: () async {
               if (_currentPage > 0) {
-                final confirmed = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('Cancel password reset?'),
-                    content: const Text(
-                        'Going back will cancel the process. Are you sure?'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        child: const Text('Stay'),
-                      ),
-                      ElevatedButton(
-                        onPressed: () => Navigator.pop(ctx, true),
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.dangerRed),
-                        child: const Text('Cancel',
-                            style: TextStyle(color: Colors.white)),
-                      ),
-                    ],
-                  ),
-                );
-                if (confirmed == true && mounted) Navigator.pop(context);
+                if (await _confirmCancel() && mounted) Navigator.pop(context);
               } else {
                 Navigator.pop(context);
               }
             },
           ),
-          title: Text(
-            _getStepTitle(),
-            style: const TextStyle(color: Colors.white, fontSize: 16),
-          ),
+          title: Text(_getStepTitle(),
+              style: const TextStyle(color: Colors.white, fontSize: 16)),
         ),
         body: SafeArea(
           child: Column(
             children: [
-              // Progress indicator
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
                 child: LinearProgressIndicator(
                   value: (_currentPage + 1) / 3,
                   backgroundColor: Colors.white24,
@@ -485,21 +388,13 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Reset Password',
-            style: TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.bold),
-          ),
+          const Text('Reset Password',
+              style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          const Text(
-            'Verify your identity to reset your password.',
-            style: TextStyle(color: Colors.white60, fontSize: 13),
-          ),
+          const Text('Verify your identity to reset your password.',
+              style: TextStyle(color: Colors.white60, fontSize: 13)),
           const SizedBox(height: 24),
 
-          // Toggle: Email / Phone
           Container(
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.1),
@@ -508,24 +403,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
             ),
             child: Row(
               children: [
-                _buildToggleTab(
-                  label: 'Email',
-                  icon: Icons.email_outlined,
-                  selected: _useEmail,
-                  onTap: () => setState(() {
-                    _useEmail = true;
-                    _otpController.clear();
-                  }),
-                ),
-                _buildToggleTab(
-                  label: 'Phone',
-                  icon: Icons.phone_android_outlined,
-                  selected: !_useEmail,
-                  onTap: () => setState(() {
-                    _useEmail = false;
-                    _otpController.clear();
-                  }),
-                ),
+                _buildToggleTab(label: 'Email', icon: Icons.email_outlined, selected: _useEmail,
+                    onTap: () => setState(() { _useEmail = true; _otpController.clear(); })),
+                _buildToggleTab(label: 'Phone', icon: Icons.phone_android_outlined, selected: !_useEmail,
+                    onTap: () => setState(() { _useEmail = false; _otpController.clear(); })),
               ],
             ),
           ),
@@ -533,28 +414,22 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           const SizedBox(height: 20),
 
           if (_useEmail) ...[
-            const Text(
-              'Enter your registered email address.',
-              style: TextStyle(color: Colors.white60, fontSize: 13),
-            ),
+            const Text('Enter your registered email address.',
+                style: TextStyle(color: Colors.white60, fontSize: 13)),
             const SizedBox(height: 12),
             CustomTextField(
               hintText: 'Email Address',
               controller: _emailController,
-              prefixIcon:
-                  const Icon(Icons.email_outlined, color: Colors.white),
+              prefixIcon: const Icon(Icons.email_outlined, color: Colors.white),
             ),
           ] else ...[
-            const Text(
-              'Enter your registered phone number.',
-              style: TextStyle(color: Colors.white60, fontSize: 13),
-            ),
+            const Text('Enter your registered phone number.',
+                style: TextStyle(color: Colors.white60, fontSize: 13)),
             const SizedBox(height: 12),
             CustomTextField(
               hintText: '09XXXXXXXXX',
               controller: _phoneController,
-              prefixIcon:
-                  const Icon(Icons.phone_android_outlined, color: Colors.white),
+              prefixIcon: const Icon(Icons.phone_android_outlined, color: Colors.white),
             ),
           ],
         ],
@@ -581,18 +456,14 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon,
-                  color: selected ? Colors.white : Colors.white54, size: 18),
+              Icon(icon, color: selected ? Colors.white : Colors.white54, size: 18),
               const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  color: selected ? Colors.white : Colors.white54,
-                  fontWeight:
-                      selected ? FontWeight.bold : FontWeight.normal,
-                  fontSize: 14,
-                ),
-              ),
+              Text(label,
+                  style: TextStyle(
+                    color: selected ? Colors.white : Colors.white54,
+                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                    fontSize: 14,
+                  )),
             ],
           ),
         ),
@@ -601,11 +472,9 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   }
 
   Widget _buildOtpPage() {
-    final isEmail = _useEmail;
-    final destination =
-        isEmail ? _emailController.text : _phoneController.text;
-    final digitCount = isEmail ? '8-digit' : '6-digit';
-    final icon = isEmail ? Icons.mark_email_read : Icons.sms_outlined;
+    final destination = _useEmail ? _emailController.text : _phoneController.text;
+    final digitCount = _useEmail ? '8-digit' : '6-digit';
+    final icon = _useEmail ? Icons.mark_email_read : Icons.sms_outlined;
 
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -614,35 +483,18 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         children: [
           Icon(icon, size: 80, color: Colors.white),
           const SizedBox(height: 20),
-          Text(
-            isEmail ? 'Check Your Email' : 'Check Your Phone',
-            style: const TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.bold),
-          ),
+          Text(_useEmail ? 'Check Your Email' : 'Check Your Phone',
+              style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          Text(
-            'A $digitCount code was sent to\n$destination',
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white70, fontSize: 14),
-          ),
+          Text('A $digitCount code was sent to\n$destination',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white70, fontSize: 14)),
           const SizedBox(height: 30),
-          CustomTextField(
-            hintText: 'Enter $digitCount code',
-            controller: _otpController,
-          ),
+          CustomTextField(hintText: 'Enter $digitCount code', controller: _otpController),
           const SizedBox(height: 16),
           TextButton(
-            onPressed: _isLoading
-                ? null
-                : () => isEmail
-                    ? _handleResendEmailOtp()
-                    : _handleResendPhoneOtp(),
-            child: const Text(
-              'Resend Code',
-              style: TextStyle(color: Colors.white60, fontSize: 13),
-            ),
+            onPressed: _isLoading ? null : () => _useEmail ? _handleResendEmailOtp() : _handleResendPhoneOtp(),
+            child: const Text('Resend Code', style: TextStyle(color: Colors.white60, fontSize: 13)),
           ),
         ],
       ),
@@ -661,18 +513,11 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 20),
-          const Text(
-            'New Password',
-            style: TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.bold),
-          ),
+          const Text('New Password',
+              style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          const Text(
-            'Choose a strong password for your account.',
-            style: TextStyle(color: Colors.white60, fontSize: 13),
-          ),
+          const Text('Choose a strong password for your account.',
+              style: TextStyle(color: Colors.white60, fontSize: 13)),
           const SizedBox(height: 24),
 
           CustomTextField(
@@ -682,22 +527,16 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
             prefixIcon: const Icon(Icons.lock_outline, color: Colors.white),
             suffixIcon: IconButton(
               icon: Icon(
-                _showNewPassword
-                    ? Icons.visibility_off_outlined
-                    : Icons.visibility_outlined,
-                color: Colors.white60,
-                size: 20,
+                _showNewPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                color: Colors.white60, size: 20,
               ),
-              onPressed: () =>
-                  setState(() => _showNewPassword = !_showNewPassword),
+              onPressed: () => setState(() => _showNewPassword = !_showNewPassword),
             ),
           ),
           if (tooShort) ...[
             const SizedBox(height: 4),
-            const Text(
-              'Password must be at least 6 characters.',
-              style: TextStyle(color: Colors.orangeAccent, fontSize: 12),
-            ),
+            const Text('Password must be at least 6 characters.',
+                style: TextStyle(color: Colors.orangeAccent, fontSize: 12)),
           ],
           const SizedBox(height: 12),
 
@@ -708,35 +547,24 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
             prefixIcon: const Icon(Icons.lock_outline, color: Colors.white),
             suffixIcon: IconButton(
               icon: Icon(
-                _showConfirmPassword
-                    ? Icons.visibility_off_outlined
-                    : Icons.visibility_outlined,
-                color: Colors.white60,
-                size: 20,
+                _showConfirmPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                color: Colors.white60, size: 20,
               ),
-              onPressed: () => setState(
-                  () => _showConfirmPassword = !_showConfirmPassword),
+              onPressed: () => setState(() => _showConfirmPassword = !_showConfirmPassword),
             ),
           ),
           if (_confirmPasswordController.text.isNotEmpty && !passwordsMatch) ...[
             const SizedBox(height: 4),
-            const Text(
-              'Passwords do not match.',
-              style: TextStyle(color: Colors.orangeAccent, fontSize: 12),
-            ),
+            const Text('Passwords do not match.',
+                style: TextStyle(color: Colors.orangeAccent, fontSize: 12)),
           ],
           if (_confirmPasswordController.text.isNotEmpty && passwordsMatch) ...[
             const SizedBox(height: 4),
             const Row(
               children: [
-                Icon(Icons.check_circle_outline,
-                    color: Colors.greenAccent, size: 14),
+                Icon(Icons.check_circle_outline, color: Colors.greenAccent, size: 14),
                 SizedBox(width: 4),
-                Text(
-                  'Passwords match!',
-                  style:
-                      TextStyle(color: Colors.greenAccent, fontSize: 12),
-                ),
+                Text('Passwords match!', style: TextStyle(color: Colors.greenAccent, fontSize: 12)),
               ],
             ),
           ],
@@ -773,8 +601,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           if (_currentPage > 0)
             TextButton(
               onPressed: _goPrev,
-              child: const Text('Back',
-                  style: TextStyle(color: Colors.white70)),
+              child: const Text('Back', style: TextStyle(color: Colors.white70)),
             ),
         ],
       ),
@@ -782,7 +609,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   }
 }
 
-// ── Success Dialog ─────────────────────────────────────────────────────────
+// ── Success Dialog (only shown when fromProfile = false) ──────────────────
 
 class _PasswordChangedDialog extends StatelessWidget {
   const _PasswordChangedDialog();
@@ -796,16 +623,10 @@ class _PasswordChangedDialog extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           const SizedBox(height: 12),
-          const Icon(Icons.check_circle_outline,
-              color: Colors.white, size: 70),
+          const Icon(Icons.check_circle_outline, color: Colors.white, size: 70),
           const SizedBox(height: 16),
-          const Text(
-            'Password Changed!',
-            style: TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.bold),
-          ),
+          const Text('Password Changed!',
+              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           const Text(
             'Your password has been updated successfully. Please log in with your new password.',
@@ -820,11 +641,9 @@ class _PasswordChangedDialog extends StatelessWidget {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: AppColors.primaryBlue,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: const Text('Back to Login',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              child: const Text('Back to Login', style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ),
         ],
