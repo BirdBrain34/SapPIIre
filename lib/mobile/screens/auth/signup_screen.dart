@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/mobile/widgets/custom_button.dart';
 import 'package:sappiire/mobile/widgets/custom_text_field.dart';
-import 'package:sappiire/mobile/widgets/InfoScannerButton.dart';
+
 import 'package:sappiire/mobile/screens/auth/InfoScannerScreen.dart';
 import 'package:sappiire/models/id_information.dart';
 import 'package:sappiire/mobile/screens/auth/manage_info_screen.dart';
@@ -429,14 +429,7 @@ Future<void> _handleCreateAccount() async {
         title: Text(_getStepTitle(),
             style: const TextStyle(color: Colors.white, fontSize: 16)),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
-      floatingActionButton:
-          (_currentPage == 0 && MediaQuery.of(context).viewInsets.bottom == 0)
-              ? Padding(
-                  padding: const EdgeInsets.only(bottom: 120.0, left: 10.0),
-                  child: InfoScannerButton(onTap: _handleInfoScan),
-                )
-              : null,
+      
       body: SafeArea(
         child: Column(
           children: [
@@ -496,6 +489,19 @@ Future<void> _handleCreateAccount() async {
           const SizedBox(height: 10),
           CustomTextField(hintText: 'Middle Name', controller: _middleNameController),
           const SizedBox(height: 10),
+
+          OutlinedButton.icon(
+            onPressed: _handleInfoScan,
+            icon: const Icon(Icons.document_scanner_outlined, color: Colors.white70),
+            label: const Text('Scan National ID to autofill',
+                style: TextStyle(color: Colors.white70, fontSize: 13)),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Colors.white30),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+          const SizedBox(height: 16),
 
           // Date of Birth picker
           GestureDetector(

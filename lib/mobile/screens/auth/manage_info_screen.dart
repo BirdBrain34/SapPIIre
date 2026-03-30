@@ -14,7 +14,6 @@ import 'package:sappiire/mobile/screens/auth/login_screen.dart';
 import 'package:sappiire/mobile/screens/auth/InfoScannerScreen.dart';
 import 'package:sappiire/mobile/screens/auth/ProfileScreen.dart';
 import 'package:sappiire/mobile/screens/auth/HistoryScreen.dart';
-import 'package:sappiire/mobile/widgets/form_popup.dart'; // ← NEW
 
 class ManageInfoScreen extends StatefulWidget {
   final String userId;
@@ -26,7 +25,6 @@ class ManageInfoScreen extends StatefulWidget {
 
 class _ManageInfoScreenState extends State<ManageInfoScreen> {
   final _supabaseService = SupabaseService();
-  final _supabase = Supabase.instance.client; // ← NEW: for popup fetch
   late final ManageInfoController _controller;
   int _currentNavIndex = 0;
 
@@ -64,6 +62,9 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   }
 
   // ── QR Transmit ───────────────────────────────────────────
+  // The popup now fires inside QrScannerScreen after the user scans
+  // a code, keyed to the specific form that QR belongs to.
+  // This method just validates selection and opens the scanner.
   Future<void> _scanAndTransmit() async {
     final dataToTransmit = _controller.buildTransmitPayload();
     if (dataToTransmit == null) {
@@ -73,38 +74,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       );
       return;
     }
-
-    // ── NEW: check if selected form has a popup configured ──
-    final templateId = _controller.selectedTemplate?.templateId;
-    if (templateId != null) {
-      try {
-        final row = await _supabase
-            .from('form_templates')
-            .select('popup_enabled, popup_subtitle, popup_description, form_name')
-            .eq('template_id', templateId)
-            .maybeSingle();
-
-        final popupEnabled = (row?['popup_enabled'] as bool?) ?? false;
-
-        if (popupEnabled && mounted) {
-          final proceed = await FormIntroPopupDialog.show(
-            context: context,
-            formTitle: (row?['form_name'] as String?) ??
-                _controller.selectedTemplate?.formName ??
-                'Form',
-            subtitle: row?['popup_subtitle'] as String?,
-            description: row?['popup_description'] as String?,
-          );
-
-          // User tapped Cancel — abort the QR scan entirely
-          if (!proceed || !mounted) return;
-        }
-      } catch (e) {
-        // If the fetch fails, silently skip the popup and continue
-        debugPrint('Popup fetch error: $e');
-      }
-    }
-    // ── END NEW ─────────────────────────────────────────────
 
     final sessionId = await Navigator.push<String>(
       context,
@@ -117,7 +86,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
 
     if (sessionId != null && mounted) {
-      // Push field values + JSONB to web session
       final success = await _supabaseService.sendDataToWebSession(
         sessionId,
         dataToTransmit,
@@ -145,9 +113,9 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.dangerRed,
-            ),
-            child: const Text('Log Out', style: TextStyle(color: Colors.white)),
+                backgroundColor: AppColors.dangerRed),
+            child: const Text('Log Out',
+                style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -171,7 +139,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         setState(() => _currentNavIndex = 0);
         break;
       case 1:
-        // AutoFill QR — show popup (if configured) then transmit
         setState(() => _currentNavIndex = 1);
         _scanAndTransmit().then((_) {
           if (mounted) setState(() => _currentNavIndex = 0);
@@ -183,7 +150,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     }
   }
 
-  // ── Camera Scanner ────────────────────────────────────────
   Future<void> _openCamera() async {
     await Navigator.push(
       context,
@@ -215,7 +181,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
             context: context,
             builder: (ctx) => AlertDialog(
               title: const Text('Log out?'),
-              content: const Text('Are you sure you want to log out?'),
+              content:
+                  const Text('Are you sure you want to log out?'),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx, false),
@@ -245,10 +212,12 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           backgroundColor: AppColors.pageBg,
           appBar: _buildAppBar(),
           floatingActionButton:
-              (_controller.formController != null && _currentNavIndex == 0)
+              (_controller.formController != null &&
+                      _currentNavIndex == 0)
               ? _buildSelectAllFAB()
               : null,
-          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+          floatingActionButtonLocation:
+              FloatingActionButtonLocation.endFloat,
           bottomNavigationBar: _buildBottomNav(),
           body: _currentNavIndex == 2
               ? HistoryScreen(userId: widget.userId, embedded: true)
@@ -262,14 +231,14 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
   }
 
-  // ── AppBar ────────────────────────────────────────────────
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
       backgroundColor: AppColors.primaryBlue,
       elevation: 0,
       automaticallyImplyLeading: false,
       leading: IconButton(
-        icon: const Icon(Icons.logout_rounded, color: Colors.white70, size: 22),
+        icon: const Icon(Icons.logout_rounded,
+            color: Colors.white70, size: 22),
         onPressed: _handleLogout,
         tooltip: 'Log out',
       ),
@@ -277,8 +246,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => ProfileScreen(userId: widget.userId),
-          ),
+              builder: (_) =>
+                  ProfileScreen(userId: widget.userId)),
         ),
         child: Row(
           children: [
@@ -288,11 +257,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                 color: Colors.white.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(
-                Icons.person_outline,
-                color: Colors.white,
-                size: 18,
-              ),
+              child: const Icon(Icons.person_outline,
+                  color: Colors.white, size: 18),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -327,11 +293,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       ),
       actions: [
         IconButton(
-          icon: const Icon(
-            Icons.camera_alt_outlined,
-            color: Colors.white,
-            size: 22,
-          ),
+          icon: const Icon(Icons.camera_alt_outlined,
+              color: Colors.white, size: 22),
           onPressed: _openCamera,
           tooltip: 'Scan ID',
         ),
@@ -341,11 +304,10 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                   height: 20,
                   width: 20,
                   child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
+                      strokeWidth: 2, color: Colors.white),
                 )
-              : const Icon(Icons.save_outlined, color: Colors.white, size: 22),
+              : const Icon(Icons.save_outlined,
+                  color: Colors.white, size: 22),
           onPressed: _controller.isSaving ? null : _saveProfile,
           tooltip: 'Save Profile',
         ),
@@ -354,7 +316,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
   }
 
-  // ── Empty / error state ───────────────────────────────────
   Widget _buildEmptyState() {
     return RefreshIndicator(
       onRefresh: _loadAll,
@@ -362,8 +323,10 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          SizedBox(height: MediaQuery.of(context).size.height * 0.3),
-          const Icon(Icons.error_outline, size: 48, color: Colors.grey),
+          SizedBox(
+              height: MediaQuery.of(context).size.height * 0.3),
+          const Icon(Icons.error_outline,
+              size: 48, color: Colors.grey),
           const SizedBox(height: 12),
           Text(
             'No forms available.',
@@ -373,7 +336,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           const SizedBox(height: 8),
           Text(
             'Pull down to refresh',
-            style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+            style: TextStyle(
+                color: Colors.grey.shade400, fontSize: 12),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 24),
@@ -393,7 +357,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
   }
 
-  // ── Main form content ─────────────────────────────────────
   Widget _buildFormContent() {
     return Column(
       children: [
@@ -406,7 +369,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
               child: _controller.formController == null
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const Center(
+                      child: CircularProgressIndicator())
                   : DynamicFormRenderer(
                       template: _controller.selectedTemplate!,
                       controller: _controller.formController!,
@@ -423,25 +387,28 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   Widget _buildFormSelector() {
     return Container(
       color: AppColors.primaryBlue.withOpacity(0.04),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(
+          horizontal: 16, vertical: 10),
       child: Row(
         children: [
-          const Text(
-            'Form:',
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-          ),
+          const Text('Form:',
+              style: TextStyle(
+                  fontWeight: FontWeight.w600, fontSize: 13)),
           const SizedBox(width: 12),
           Expanded(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFDDDDEE)),
+                border:
+                    Border.all(color: const Color(0xFFDDDDEE)),
               ),
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<String>(
-                  value: _controller.selectedTemplate?.templateId,
+                  value:
+                      _controller.selectedTemplate?.templateId,
                   isExpanded: true,
                   items: _controller.templates
                       .map(
@@ -471,9 +438,9 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
   }
 
-  // ── Floating Select All Button ────────────────────────────
   Widget _buildSelectAllFAB() {
-    final isSelectAll = _controller.formController?.selectAll ?? false;
+    final isSelectAll =
+        _controller.formController?.selectAll ?? false;
     return FloatingActionButton.extended(
       onPressed: () {
         _controller.formController?.setSelectAll(!isSelectAll);
@@ -483,7 +450,9 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           isSelectAll ? AppColors.highlight : AppColors.primaryBlue,
       elevation: 6,
       icon: Icon(
-        isSelectAll ? Icons.deselect_rounded : Icons.select_all_rounded,
+        isSelectAll
+            ? Icons.deselect_rounded
+            : Icons.select_all_rounded,
         color: Colors.white,
         size: 20,
       ),
@@ -498,7 +467,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
   }
 
-  // ── Bottom nav ────────────────────────────────────────────
   Widget _buildBottomNav() {
     return Container(
       decoration: BoxDecoration(
@@ -519,7 +487,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _buildNavItem(0, Icons.edit_document, 'Manage Info'),
-              _buildNavItem(1, Icons.qr_code_scanner, 'Autofill QR'),
+              _buildNavItem(
+                  1, Icons.qr_code_scanner, 'Autofill QR'),
               _buildNavItem(2, Icons.history, 'History'),
             ],
           ),
@@ -533,7 +502,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     return InkWell(
       onTap: () => _onNavTap(index),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
+        padding: const EdgeInsets.symmetric(
+            vertical: 4, horizontal: 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -547,24 +517,31 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                 ),
                 child: Icon(
                   icon,
-                  color:
-                      isActive ? AppColors.highlight : AppColors.primaryBlue,
+                  color: isActive
+                      ? AppColors.highlight
+                      : AppColors.primaryBlue,
                   size: 24,
                 ),
               )
             else
               Icon(
                 icon,
-                color: isActive ? AppColors.highlight : Colors.white60,
+                color: isActive
+                    ? AppColors.highlight
+                    : Colors.white60,
                 size: 24,
               ),
             const SizedBox(height: 3),
             Text(
               label,
               style: TextStyle(
-                color: isActive ? AppColors.highlight : Colors.white60,
+                color: isActive
+                    ? AppColors.highlight
+                    : Colors.white60,
                 fontSize: 10,
-                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                fontWeight: isActive
+                    ? FontWeight.w600
+                    : FontWeight.w400,
               ),
             ),
           ],

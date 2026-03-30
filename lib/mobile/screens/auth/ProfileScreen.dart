@@ -8,6 +8,7 @@ import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/mobile/screens/auth/login_screen.dart';
 import 'package:sappiire/mobile/screens/auth/ChangePassword.dart';
 import 'package:sappiire/mobile/widgets/TermsAndCondition.dart';
+import 'package:sappiire/mobile/screens/auth/InfoScannerScreen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userId;
@@ -303,6 +304,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       actions: [
         IconButton(
+          icon: const Icon(Icons.camera_alt_outlined, color: Colors.white, size: 22),
+          onPressed: _openCamera,
+          tooltip: 'Scan ID',
+        ),
+        IconButton(
           icon: _isSaving
               ? const SizedBox(
                   height: 20,
@@ -316,6 +322,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         const SizedBox(width: 8),
       ],
+    );
+  }
+
+      Future<void> _openCamera() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const InfoScannerScreen()),
     );
   }
 
@@ -534,6 +547,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
+
+
 
   // ── Section Header ─────────────────────────────────────────
 
