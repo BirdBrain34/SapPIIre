@@ -483,14 +483,7 @@ Future<void> _handleCreateAccount() async {
               style: TextStyle(color: Colors.white60, fontSize: 13)),
           const SizedBox(height: 20),
 
-          CustomTextField(hintText: 'Last Name', controller: _lastNameController),
-          const SizedBox(height: 10),
-          CustomTextField(hintText: 'First Name / Given Name', controller: _firstNameController),
-          const SizedBox(height: 10),
-          CustomTextField(hintText: 'Middle Name', controller: _middleNameController),
-          const SizedBox(height: 10),
-
-          OutlinedButton.icon(
+                    OutlinedButton.icon(
             onPressed: _handleInfoScan,
             icon: const Icon(Icons.document_scanner_outlined, color: Colors.white70),
             label: const Text('Scan National ID to autofill',
@@ -502,6 +495,15 @@ Future<void> _handleCreateAccount() async {
             ),
           ),
           const SizedBox(height: 16),
+
+          CustomTextField(hintText: 'Last Name', controller: _lastNameController),
+          const SizedBox(height: 10),
+          CustomTextField(hintText: 'First Name / Given Name', controller: _firstNameController),
+          const SizedBox(height: 10),
+          CustomTextField(hintText: 'Middle Name', controller: _middleNameController),
+          const SizedBox(height: 10),
+
+
 
           // Date of Birth picker
           GestureDetector(
