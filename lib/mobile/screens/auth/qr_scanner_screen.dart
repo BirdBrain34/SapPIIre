@@ -167,27 +167,19 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                 if (barcodes.isEmpty) return;
 
                 final String? code = barcodes.first.rawValue;
-                if (code == null) return;
-
-                setState(() => _isProcessing = true);
-                debugPrint('QR Code Detected: $code');
-
-                // Show popup (if configured for this form).
-                // _handleScannedCode stops the camera internally.
-                final proceed = await _handleScannedCode(code);
-
-                if (!mounted) return;
-
-                if (proceed) {
-                  // User tapped Continue — return the session ID to
-                  // ManageInfoScreen so it can transmit the data.
-                  Navigator.pop(context, code);
-                } else {
-                  // User tapped Cancel — restart the camera for re-scan.
-                  setState(() => _isProcessing = false);
-                  await controller.start();
+                if (code != null) {
+                  isPopping = true; 
+                  debugPrint('QR Code Detected: $code');
+                  
+                  // STOP THE CAMERA FIRST
+                  await controller.stop(); 
+                  
+                  if (mounted) {
+                    Navigator.pop(context, code); 
+                  }
                 }
-              },
+              }
+            },
             )
           else
             Center(

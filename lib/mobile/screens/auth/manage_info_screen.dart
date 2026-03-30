@@ -27,6 +27,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   final _supabaseService = SupabaseService();
   late final ManageInfoController _controller;
   int _currentNavIndex = 0;
+  String? _activeTransmitSessionId;
 
   // ── Lifecycle ─────────────────────────────────────────────
   @override
@@ -86,6 +87,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
 
     if (sessionId != null && mounted) {
+      // Push field values + JSONB to web session
       final success = await _supabaseService.sendDataToWebSession(
         sessionId,
         dataToTransmit,

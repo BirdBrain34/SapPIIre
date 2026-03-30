@@ -71,6 +71,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   bool _isStartingSession = false;
   bool _isLoading = true;
   bool _isFinalizing = false;
+  bool _isSubmitting = false;
   String _lastSavedReference = '';
   String? _lastAppliedPayloadFingerprint;
 
@@ -268,7 +269,12 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   // ── Finalize: save form data to client_submissions ───────
   Future<void> _finalizeEntry() async {
     if (_formCtrl == null || _selectedTemplate == null) return;
-    setState(() => _isFinalizing = true);
+    // Guard: prevent double finalize taps from creating duplicate submissions.
+    if (_isSubmitting) return;
+    setState(() {
+      _isSubmitting = true;
+      _isFinalizing = true;
+    });
 
     try {
       final formData = _formCtrl!.toJson();
@@ -285,15 +291,17 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       );
 
       // ── Audit copy (JSONB keeps __family_composition for record) ──
+      // Idempotent save keyed by session_id so repeated submits update one row.
       final created = await _supabase
           .from('client_submissions')
-          .insert({
+          .upsert({
+            'session_id': _currentSessionId,
             'template_id': _selectedTemplate!.templateId,
             'form_code': _selectedTemplate!.formCode,
             'form_type': _selectedTemplate!.formName,
             'data': formData,
             'created_by': widget.cswd_id,
-          })
+          }, onConflict: 'session_id')
           .select('id, intake_reference')
           .single();
 
@@ -341,6 +349,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         _sessionStarted = false;
         _currentSessionId = 'WAITING-FOR-SESSION';
         _isFinalizing = false;
+        _isSubmitting = false;
         _lastSavedReference = intakeReference;
       });
       _formSubscription?.cancel();
@@ -358,7 +367,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           ),
         );
       }
-      setState(() => _isFinalizing = false);
+      setState(() {
+        _isFinalizing = false;
+        _isSubmitting = false;
+      });
     }
   }
 
@@ -1012,177 +1024,190 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     final tempReference = _buildTempReferencePreview();
     return Container(
       width: 300,
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: Colors.white.withOpacity(0.2)),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.qr_code_scanner_rounded,
-                  color: Colors.white,
-                  size: 14,
-                ),
-                SizedBox(width: 6),
-                Text(
-                  'Live Form QR',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Scan with SapPIIre Mobile',
-            style: TextStyle(color: Colors.white70, fontSize: 12),
-          ),
-          const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.all(15),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: QrImageView(
-              data: _currentSessionId,
-              version: QrVersions.auto,
-              size: 200.0,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Session: ${_currentSessionId.split('-').first}...',
-            style: const TextStyle(color: Colors.white70, fontSize: 11),
-          ),
-          const SizedBox(height: 14),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.amber.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.amber.withOpacity(0.4)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Temporary Reference',
-                  style: TextStyle(
-                    color: Colors.amber,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  tempReference,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontFamily: 'monospace',
-                    fontWeight: FontWeight.w700,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 3),
-                const Text(
-                  'Final value is generated when saved',
-                  style: TextStyle(color: Colors.white60, fontSize: 10),
-                ),
-              ],
-            ),
-          ),
-          if (_lastSavedReference.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.green.withOpacity(0.45)),
-              ),
+      padding: const EdgeInsets.fromLTRB(18, 16, 14, 16),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return Scrollbar(
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.only(right: 6),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Last Saved Reference',
-                    style: TextStyle(
-                      color: Colors.greenAccent,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: Colors.white.withOpacity(0.2)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.qr_code_scanner_rounded,
+                          color: Colors.white,
+                          size: 14,
+                        ),
+                        SizedBox(width: 6),
+                        Text(
+                          'Live Form QR',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _lastSavedReference,
-                    style: const TextStyle(
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Scan with SapPIIre Mobile',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
                       color: Colors.white,
-                      fontSize: 13,
-                      fontFamily: 'monospace',
-                      fontWeight: FontWeight.w700,
+                      borderRadius: BorderRadius.circular(18),
                     ),
-                    overflow: TextOverflow.ellipsis,
+                    child: QrImageView(
+                      data: _currentSessionId,
+                      version: QrVersions.auto,
+                      size: 184.0,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Session: ${_currentSessionId.split('-').first}...',
+                    style: const TextStyle(color: Colors.white70, fontSize: 11),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.amber.withOpacity(0.4)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Temporary Reference',
+                          style: TextStyle(
+                            color: Colors.amber,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          tempReference,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.w700,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 3),
+                        const Text(
+                          'Final value is generated when saved',
+                          style: TextStyle(color: Colors.white60, fontSize: 10),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_lastSavedReference.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.green.withOpacity(0.45)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Last Saved Reference',
+                            style: TextStyle(
+                              color: Colors.greenAccent,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _lastSavedReference,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.w700,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+
+                  // Instructions
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'How it works:',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                        SizedBox(height: 6),
+                        Text(
+                          '1. Client opens SapPIIre app',
+                          style: TextStyle(color: Colors.white70, fontSize: 11),
+                        ),
+                        Text(
+                          '2. Selects fields to share',
+                          style: TextStyle(color: Colors.white70, fontSize: 11),
+                        ),
+                        Text(
+                          '3. Scans this QR code',
+                          style: TextStyle(color: Colors.white70, fontSize: 11),
+                        ),
+                        Text(
+                          '4. Form autofills instantly',
+                          style: TextStyle(color: Colors.white70, fontSize: 11),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
-          ],
-          const SizedBox(height: 24),
-
-          // Instructions
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'How it works:',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
-                SizedBox(height: 6),
-                Text(
-                  '1. Client opens SapPIIre app',
-                  style: TextStyle(color: Colors.white70, fontSize: 11),
-                ),
-                Text(
-                  '2. Selects fields to share',
-                  style: TextStyle(color: Colors.white70, fontSize: 11),
-                ),
-                Text(
-                  '3. Scans this QR code',
-                  style: TextStyle(color: Colors.white70, fontSize: 11),
-                ),
-                Text(
-                  '4. Form autofills instantly',
-                  style: TextStyle(color: Colors.white70, fontSize: 11),
-                ),
-              ],
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }

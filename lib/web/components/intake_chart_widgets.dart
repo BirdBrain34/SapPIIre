@@ -57,9 +57,14 @@ class SimpleBarChart extends StatelessWidget {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
-                    color: (primaryColor ?? AppColors.highlight).withValues(alpha: 0.1),
+                    color: (primaryColor ?? AppColors.highlight).withValues(
+                      alpha: 0.1,
+                    ),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
@@ -75,12 +80,14 @@ class SimpleBarChart extends StatelessWidget {
             ),
           ),
           // Bars
-          ...data.entries.map((entry) => _buildBarItem(
-            label: entry.key,
-            value: entry.value,
-            maxValue: max,
-            color: primaryColor ?? AppColors.highlight,
-          )),
+          ...data.entries.map(
+            (entry) => _buildBarItem(
+              label: entry.key,
+              value: entry.value,
+              maxValue: max,
+              color: primaryColor ?? AppColors.highlight,
+            ),
+          ),
         ],
       ),
     );
@@ -193,7 +200,9 @@ class SimpleBarChart extends StatelessWidget {
   }
 
   int _calculateMaxValue(Map<String, int> data) {
-    return data.values.isEmpty ? 1 : data.values.reduce((a, b) => a > b ? a : b);
+    return data.values.isEmpty
+        ? 1
+        : data.values.reduce((a, b) => a > b ? a : b);
   }
 }
 
@@ -252,7 +261,10 @@ class SimpleDistributionPie extends StatelessWidget {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.highlight.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(6),
@@ -324,7 +336,10 @@ class SimpleDistributionPie extends StatelessWidget {
               final percentage = (entry.value / total) * 100;
 
               return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.grey.shade50,
                   borderRadius: BorderRadius.circular(6),
@@ -459,6 +474,14 @@ class MetricCard extends StatelessWidget {
   final IconData icon;
   final Color color;
   final String? subtitle;
+  final VoidCallback? onTap;
+  final bool expand;
+  final Color? backgroundColor;
+  final Color? borderColor;
+  final double borderWidth;
+  final Color? valueColor;
+  final Color? labelColor;
+  final Color? subtitleColor;
 
   const MetricCard({
     super.key,
@@ -468,17 +491,29 @@ class MetricCard extends StatelessWidget {
     required this.color,
     this.unit,
     this.subtitle,
+    this.onTap,
+    this.expand = true,
+    this.backgroundColor,
+    this.borderColor,
+    this.borderWidth = 1,
+    this.valueColor,
+    this.labelColor,
+    this.subtitleColor,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
+    final card = GestureDetector(
+      onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: AppColors.cardBg,
+          color: backgroundColor ?? AppColors.cardBg,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.cardBorder),
+          border: Border.all(
+            color: borderColor ?? AppColors.cardBorder,
+            width: borderWidth,
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.06),
@@ -498,14 +533,17 @@ class MetricCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
+                    color: color.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(icon, color: color, size: 28),
                 ),
                 if (subtitle != null)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: color.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(6),
@@ -515,7 +553,7 @@ class MetricCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        color: color,
+                        color: subtitleColor ?? color,
                       ),
                     ),
                   ),
@@ -525,12 +563,14 @@ class MetricCard extends StatelessWidget {
             // Label
             Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
-                color: AppColors.textMuted,
+                color: labelColor ?? AppColors.textMuted,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0.3,
               ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 10),
             // Value
@@ -540,10 +580,10 @@ class MetricCard extends StatelessWidget {
               children: [
                 Text(
                   value,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 40,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.textDark,
+                    color: valueColor ?? AppColors.textDark,
                     letterSpacing: -1,
                   ),
                 ),
@@ -564,5 +604,10 @@ class MetricCard extends StatelessWidget {
         ),
       ),
     );
+
+    if (expand) {
+      return Expanded(child: card);
+    }
+    return card;
   }
 }
