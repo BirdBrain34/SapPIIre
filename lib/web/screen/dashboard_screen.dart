@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
-import 'package:sappiire/web/widget/web_shell.dart';
+import 'package:sappiire/services/dashboard_analytics_service.dart';
+import 'package:sappiire/services/form_template_service.dart';
+import 'package:sappiire/web/components/auto_chart_builder.dart';
+import 'package:sappiire/web/components/intake_chart_widgets.dart';
+import 'package:sappiire/web/screen/applicants_screen.dart';
+import 'package:sappiire/web/screen/audit_logs_screen.dart';
+import 'package:sappiire/web/screen/create_staff_screen.dart';
+import 'package:sappiire/web/screen/form_builder_screen.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/screen/manage_staff_screen.dart';
-import 'package:sappiire/web/screen/create_staff_screen.dart';
-import 'package:sappiire/web/screen/applicants_screen.dart';
-import 'package:sappiire/web/screen/form_builder_screen.dart';
-import 'package:sappiire/web/screen/audit_logs_screen.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
-import 'package:sappiire/services/intake_analytics_service.dart';
-import 'package:sappiire/web/components/intake_chart_widgets.dart';
+import 'package:sappiire/web/widget/web_shell.dart';
 
 class DashboardScreen extends StatefulWidget {
   final String cswd_id;
@@ -30,67 +32,266 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  late IntakeAnalyticsService _analyticsService;
-  
-  // State variables for analytics data
-  int _totalSubmissions = 0;
-  Map<String, int> _genderDistribution = {};
-  Map<String, int> _ageDistribution = {};
-  Map<String, int> _membershipDistribution = {};
-  Map<String, int> _incomeDistribution = {};
-  Map<String, int> _employmentDistribution = {};
-  Map<String, int> _educationDistribution = {};
-  Map<String, int> _housingDistribution = {};
-  int _youthCount = 0;
-  double _averageHouseholdSize = 0;
-  bool _isLoading = true;
+  Map<String, int> _countsByFormType = {};
+  int _totalCount = 0;
+  List<String> _availableFormTypes = [];
+  bool _isLoadingCounts = true;
+
+  String _selectedFormType = 'All';
+
+  List<ChartConfig> _charts = [];
+  bool _isLoadingCharts = false;
+
+  bool _isLoadingInsights = true;
+  SlaComplianceSummary _sla = const SlaComplianceSummary(
+    compliant: 0,
+    breached: 0,
+  );
+  Map<String, int> _pendingVsCompleted = const {'Pending': 0, 'Completed': 0};
+  Map<String, int> _staffWorkload = {};
+  Map<String, int> _genderRatio = {};
+  Map<String, int> _ageBrackets = {};
+  Map<String, int> _barangayVolume = {};
+  List<IssueTrendItem> _issueTrends = [];
+  String _planningScopeFormType = 'All';
+
+  final TextEditingController _clientSearchController = TextEditingController();
+  bool _isSearchingClients = false;
+  bool _isLoadingClientHistory = false;
+  List<Map<String, String>> _clientSearchResults = [];
+  String? _selectedClientId;
+  String _selectedClientName = '';
+  List<Map<String, dynamic>> _selectedClientHistory = [];
+  Map<String, String> _selectedClientFlags = {};
+
+  final _analyticsService = DashboardAnalyticsService();
+  final _templateService = FormTemplateService();
+  final _chartBuilder = AutoChartBuilder();
 
   @override
   void initState() {
     super.initState();
-    _analyticsService = IntakeAnalyticsService();
-    _loadAnalyticsData();
+    _loadSummary();
   }
 
-  Future<void> _loadAnalyticsData() async {
-    try {
-      setState(() => _isLoading = true);
+  @override
+  void dispose() {
+    _clientSearchController.dispose();
+    super.dispose();
+  }
 
-      final stats = await _analyticsService.getSummaryStats();
-      final [
-        genderDist,
-        ageDist,
-        membershipDist,
-        incomeDist,
-        employmentDist,
-        educationDist,
-        housingDist,
-      ] = await Future.wait([
-        _analyticsService.getGenderDistribution(),
-        _analyticsService.getAgeGroupDistribution(),
-        _analyticsService.getMembershipDistribution(),
-        _analyticsService.getIncomeDistribution(),
-        _analyticsService.getEmploymentDistribution(),
-        _analyticsService.getEducationDistribution(),
-        _analyticsService.getHousingDistribution(),
-      ]);
+  Future<void> _loadSummary() async {
+    setState(() => _isLoadingCounts = true);
+    try {
+      final counts = await _analyticsService.fetchCountsByFormType();
+      final types = counts.keys.toList()..sort();
+
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
-        _totalSubmissions = stats['totalSubmissions'] as int;
-        _genderDistribution = genderDist;
-        _ageDistribution = ageDist;
-        _membershipDistribution = membershipDist;
-        _incomeDistribution = incomeDist;
-        _employmentDistribution = employmentDist;
-        _educationDistribution = educationDist;
-        _housingDistribution = housingDist;
-        _youthCount = stats['youthCount'] as int;
-        _averageHouseholdSize = stats['averageHouseholdSize'] as double;
-        _isLoading = false;
+        _countsByFormType = counts;
+        _totalCount = counts.values.fold(0, (a, b) => a + b);
+        _availableFormTypes = types;
+        _isLoadingCounts = false;
+      });
+
+      await Future.wait([
+        _loadOperationalInsights(),
+        _loadPlanningInsights('All'),
+        _loadChartsFor('All'),
+      ]);
+    } catch (e) {
+      debugPrint('_loadSummary error: $e');
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isLoadingCounts = false);
+    }
+  }
+
+  Future<void> _loadOperationalInsights() async {
+    try {
+      final results = await Future.wait([
+        _analyticsService.fetchCitizenCharterCompliance(),
+        _analyticsService.fetchPendingVsCompletedLoad(),
+        _analyticsService.fetchStaffWorkloadDistribution(),
+      ]);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _sla = results[0] as SlaComplianceSummary;
+        _pendingVsCompleted = results[1] as Map<String, int>;
+        _staffWorkload = results[2] as Map<String, int>;
       });
     } catch (e) {
-      debugPrint('Error loading analytics data: $e');
-      setState(() => _isLoading = false);
+      debugPrint('_loadOperationalInsights error: $e');
+    }
+  }
+
+  Future<void> _loadPlanningInsights(String formType) async {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isLoadingInsights = true;
+      _planningScopeFormType = formType;
+    });
+
+    try {
+      final scopedForm = formType == 'All' ? 'All' : formType;
+      final results = await Future.wait([
+        _analyticsService.fetchGenderRatio(formType: scopedForm),
+        _analyticsService.fetchAgeBracketDistribution(formType: scopedForm),
+        _analyticsService.fetchBarangayVolume(formType: scopedForm),
+        _analyticsService.fetchIssueTrends(formType: scopedForm),
+      ]);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _genderRatio = results[0] as Map<String, int>;
+        _ageBrackets = results[1] as Map<String, int>;
+        _barangayVolume = results[2] as Map<String, int>;
+        _issueTrends = results[3] as List<IssueTrendItem>;
+        _isLoadingInsights = false;
+      });
+    } catch (e) {
+      debugPrint('_loadPlanningInsights error: $e');
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isLoadingInsights = false);
+    }
+  }
+
+  Future<void> _loadChartsFor(String formType) async {
+    final planningFuture = _loadPlanningInsights(formType);
+
+    setState(() {
+      _selectedFormType = formType;
+      _isLoadingCharts = true;
+      _charts = [];
+    });
+
+    if (formType == 'All') {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isLoadingCharts = false);
+      await planningFuture;
+      return;
+    }
+
+    try {
+      final templates = await _templateService.fetchActiveTemplates();
+      final matched = templates.where((t) => t.formName == formType);
+      final template = matched.isEmpty ? null : matched.first;
+
+      if (template == null) {
+        if (!mounted) {
+          return;
+        }
+        setState(() => _isLoadingCharts = false);
+        return;
+      }
+
+      final charts = await _chartBuilder.buildCharts(
+        template: template,
+        formType: formType,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _charts = charts;
+        _isLoadingCharts = false;
+      });
+
+      await planningFuture;
+    } catch (e) {
+      debugPrint('_loadChartsFor error: $e');
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isLoadingCharts = false);
+      await planningFuture;
+    }
+  }
+
+  Future<void> _searchClients() async {
+    final query = _clientSearchController.text.trim();
+    if (query.isEmpty) {
+      setState(() {
+        _clientSearchResults = [];
+      });
+      return;
+    }
+
+    setState(() => _isSearchingClients = true);
+    try {
+      final results = await _analyticsService.searchClientsByName(query);
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _clientSearchResults = results;
+        _isSearchingClients = false;
+      });
+    } catch (e) {
+      debugPrint('_searchClients error: $e');
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isSearchingClients = false);
+    }
+  }
+
+  Future<void> _selectClient(Map<String, String> client) async {
+    final clientId = client['user_id'] ?? '';
+    if (clientId.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _selectedClientId = clientId;
+      _selectedClientName = client['name'] ?? '';
+      _selectedClientHistory = [];
+      _selectedClientFlags = {};
+      _isLoadingClientHistory = true;
+    });
+
+    try {
+      final results = await Future.wait([
+        _analyticsService.fetchClientHistory(clientId),
+        _analyticsService.fetchEligibilityFrequencyFlags(clientId),
+      ]);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _selectedClientHistory = results[0] as List<Map<String, dynamic>>;
+        _selectedClientFlags = results[1] as Map<String, String>;
+        _isLoadingClientHistory = false;
+      });
+    } catch (e) {
+      debugPrint('_selectClient error: $e');
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isLoadingClientHistory = false);
     }
   }
 
@@ -98,291 +299,631 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     return WebShell(
       activePath: 'Dashboard',
-      pageTitle: 'Intake Analytics Dashboard',
-      pageSubtitle: 'Comprehensive insights from General Intake submissions',
+      pageTitle: 'Analytics Dashboard',
+      pageSubtitle: 'Operations, planning, and client insight center',
       role: widget.role,
       cswd_id: widget.cswd_id,
       displayName: widget.displayName,
       onLogout: widget.onLogout,
-      onNavigate: (screenPath) => _navigateToScreen(context, screenPath),
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: SingleChildScrollView(
-          child: _isLoading
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(40),
-                    child: CircularProgressIndicator(),
-                  ),
-                )
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // ─── HEADER SECTION ───────────────────────────────────────────
-                    _buildHeaderSection(),
-                    const SizedBox(height: 40),
+      onNavigate: (path) => _navigateToScreen(context, path),
+      child: _isLoadingCounts
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildSummaryCards(),
+                  const SizedBox(height: 24),
+                  _buildFilterTabs(),
+                  const SizedBox(height: 28),
+                  _buildChartsSection(),
+                ],
+              ),
+            ),
+    );
+  }
 
-                    // ─── KEY METRICS ──────────────────────────────────────────────
-                    _buildKeyMetricsSection(),
-                    const SizedBox(height: 40),
-
-                    // ─── DEMOGRAPHICS SECTION ─────────────────────────────────────
-                    _buildSectionHeader(
-                      'Demographics',
-                      Icons.people_outline,
-                      AppColors.highlight,
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: SimpleDistributionPie(
-                            title: 'Gender Distribution',
-                            data: _genderDistribution,
-                            showPercentage: true,
-                          ),
-                        ),
-                        const SizedBox(width: 20),
-                        Expanded(
-                          child: SimpleBarChart(
-                            title: 'Age Groups',
-                            data: _ageDistribution,
-                            primaryColor: const Color(0xFF95E1D3),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 40),
-
-                    // ─── ECONOMIC & INCOME SECTION ────────────────────────────────
-                    _buildSectionHeader(
-                      'Economic Status',
-                      Icons.trending_up,
-                      const Color(0xFFFFA500),
-                    ),
-                    const SizedBox(height: 20),
-                    SimpleBarChart(
-                      title: 'Monthly Income Distribution',
-                      data: _incomeDistribution,
-                      primaryColor: const Color(0xFFFFA500),
-                    ),
-                    const SizedBox(height: 40),
-
-                    // ─── ASSISTANCE PROGRAMS SECTION ──────────────────────────────
-                    _buildSectionHeader(
-                      'Government Assistance Programs',
-                      Icons.card_membership,
-                      const Color(0xFFFF6B6B),
-                    ),
-                    const SizedBox(height: 20),
-                    SimpleBarChart(
-                      title: 'Program Membership Status',
-                      data: _membershipDistribution,
-                      primaryColor: const Color(0xFFFF6B6B),
-                    ),
-                    const SizedBox(height: 40),
-
-                    // ─── EDUCATION & EMPLOYMENT ───────────────────────────────────
-                    _buildSectionHeader(
-                      'Education & Employment',
-                      Icons.school_outlined,
-                      const Color(0xFFAA96DA),
-                    ),
-                    const SizedBox(height: 20),
-                    if (_educationDistribution.isNotEmpty)
-                      SimpleBarChart(
-                        title: 'Educational Attainment',
-                        data: _educationDistribution,
-                        primaryColor: const Color(0xFFF38181),
-                      )
-                    else
-                      const SizedBox(),
-                    if (_educationDistribution.isNotEmpty)
-                      const SizedBox(height: 20)
-                    else
-                      const SizedBox(),
-                    if (_employmentDistribution.isNotEmpty)
-                      SimpleBarChart(
-                        title: 'Employment Status',
-                        data: _employmentDistribution,
-                        primaryColor: const Color(0xFFAA96DA),
-                      )
-                    else
-                      const SizedBox(),
-                    if (_employmentDistribution.isNotEmpty)
-                      const SizedBox(height: 40)
-                    else
-                      const SizedBox(),
-
-                    // ─── HOUSING & LIVING CONDITIONS ──────────────────────────────
-                    if (_housingDistribution.isNotEmpty)
-                      _buildSectionHeader(
-                        'Housing & Living Conditions',
-                        Icons.home_outlined,
-                        const Color(0xFF4ECDC4),
-                      )
-                    else
-                      const SizedBox(),
-                    if (_housingDistribution.isNotEmpty)
-                      const SizedBox(height: 20)
-                    else
-                      const SizedBox(),
-                    if (_housingDistribution.isNotEmpty)
-                      SimpleDistributionPie(
-                        title: 'Housing Status Distribution',
-                        data: _housingDistribution,
-                        showPercentage: true,
-                      )
-                    else
-                      const SizedBox(),
-                    const SizedBox(height: 20),
-                  ],
-                ),
-        ),
+  Widget _buildSummaryCards() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _SummaryCard(
+            label: 'All Forms',
+            count: _totalCount,
+            isActive: _selectedFormType == 'All',
+            onTap: () => _loadChartsFor('All'),
+          ),
+          ..._availableFormTypes.map((ft) {
+            return Padding(
+              padding: const EdgeInsets.only(left: 16),
+              child: _SummaryCard(
+                label: ft,
+                count: _countsByFormType[ft] ?? 0,
+                isActive: _selectedFormType == ft,
+                onTap: () => _loadChartsFor(ft),
+              ),
+            );
+          }),
+        ],
       ),
     );
   }
 
-  /// Build header section with welcome message and last updated info
-  Widget _buildHeaderSection() {
+  Widget _buildFilterTabs() {
+    final tabs = ['All', ..._availableFormTypes];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: tabs.map((tab) {
+          final isActive = _selectedFormType == tab;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () => _loadChartsFor(tab),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: isActive ? AppColors.highlight : AppColors.pageBg,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: isActive
+                        ? AppColors.highlight
+                        : AppColors.cardBorder,
+                    width: isActive ? 2 : 1,
+                  ),
+                ),
+                child: Text(
+                  tab == 'All' ? 'All Forms' : tab,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: isActive ? Colors.white : AppColors.textMuted,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildChartsSection() {
+    if (_selectedFormType == 'All') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildAllFormsOverview(),
+          const SizedBox(height: 28),
+          _buildOperationalSection(),
+          const SizedBox(height: 28),
+          _buildPlanningSection(),
+          const SizedBox(height: 28),
+          _buildClientHistorySection(),
+        ],
+      );
+    }
+
+    if (_isLoadingCharts) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(60),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_charts.isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildNoChartsPlaceholder(),
+          const SizedBox(height: 24),
+          _buildPlanningSection(),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ..._charts.map((chart) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 24),
+            child: chart.style == ChartStyle.pie
+                ? SimpleDistributionPie(title: chart.title, data: chart.data)
+                : SimpleBarChart(
+                    title: chart.title,
+                    data: chart.data,
+                    primaryColor: AppColors.highlight,
+                  ),
+          );
+        }),
+        _buildPlanningSection(),
+      ],
+    );
+  }
+
+  Widget _buildAllFormsOverview() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Submission Overview',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textDark,
+          ),
+        ),
+        const SizedBox(height: 16),
+        SimpleBarChart(
+          title: 'Submissions by Form Type',
+          data: _countsByFormType,
+          primaryColor: AppColors.highlight,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOperationalSection() {
+    if (_isLoadingInsights) {
+      return _buildLoadingCard('Loading operational metrics...');
+    }
+
+    final complianceRate = _sla.total > 0
+        ? (_sla.compliant / _sla.total) * 100
+        : 0.0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Operational & Efficiency',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textDark,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 16,
+          runSpacing: 16,
+          children: [
+            _MetricTile(
+              title: 'Citizen Charter Compliance',
+              value: '${complianceRate.toStringAsFixed(1)}%',
+              subtitle:
+                  '${_sla.compliant} on-time | ${_sla.breached} over 1 hour',
+            ),
+            _MetricTile(
+              title: 'Pending Cases',
+              value: (_pendingVsCompleted['Pending'] ?? 0).toString(),
+              subtitle: 'Active sessions and pending workflows',
+            ),
+            _MetricTile(
+              title: 'Completed Cases',
+              value: (_pendingVsCompleted['Completed'] ?? 0).toString(),
+              subtitle: 'Finalized submissions in records',
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        SimpleBarChart(
+          title: 'Pending vs Completed Load',
+          data: _pendingVsCompleted,
+          primaryColor: const Color(0xFFFF8C42),
+        ),
+        const SizedBox(height: 20),
+        SimpleBarChart(
+          title: 'Staff Workload Distribution (Audit Activity)',
+          data: _staffWorkload,
+          primaryColor: const Color(0xFF4ECDC4),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPlanningSection() {
+    if (_isLoadingInsights) {
+      return _buildLoadingCard('Loading planning analytics...');
+    }
+
+    final scopeLabel = _planningScopeFormType == 'All'
+        ? 'All Forms'
+        : _planningScopeFormType;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Demographic & Trend Analytics - $scopeLabel',
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textDark,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: SimpleDistributionPie(
+                title: 'Automated GAD Report (Gender Ratio)',
+                data: _genderRatio,
+              ),
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: SimpleBarChart(
+                title: 'Age Bracket Distribution',
+                data: _ageBrackets,
+                primaryColor: const Color(0xFF9B6EF3),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        SimpleBarChart(
+          title: 'Barangay Volume (Top Requests)',
+          data: _barangayVolume,
+          primaryColor: const Color(0xFF2EC4B6),
+        ),
+        const SizedBox(height: 20),
+        _buildTopNeedsPanel(),
+      ],
+    );
+  }
+
+  Widget _buildTopNeedsPanel() {
+    if (_issueTrends.isEmpty) {
+      return _buildInfoCard(
+        title: 'Top Needs Trend Detection',
+        body: 'No issue trend signals were detected from current submissions.',
+      );
+    }
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppColors.highlight.withValues(alpha: 0.1),
-            AppColors.highlight.withValues(alpha: 0.05),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: AppColors.cardBg,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.cardBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          const Text(
+            'Top Needs Trend Detection',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textDark,
+            ),
+          ),
+          const SizedBox(height: 14),
+          ..._issueTrends.map((item) {
+            final deltaLabel = item.delta >= 0
+                ? '+${item.delta}'
+                : item.delta.toString();
+            final deltaColor = item.delta >= 0
+                ? AppColors.warningAmber
+                : AppColors.successGreen;
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      item.label,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textDark,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    'Now ${item.currentCount} | Prev ${item.previousCount}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: deltaColor.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      deltaLabel,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: deltaColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildClientHistorySection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Holistic Client History (360 View)',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textDark,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: AppColors.cardBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.cardBorder),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'General Intake Data Overview',
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            color: AppColors.textDark,
-                            fontWeight: FontWeight.bold,
-                          ),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _clientSearchController,
+                      decoration: const InputDecoration(
+                        labelText: 'Search client by name',
+                        hintText: 'Type first name or last name',
+                      ),
+                      onSubmitted: (_) => _searchClients(),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Real-time analytics and demographic insights',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: AppColors.textMuted,
+                  ),
+                  const SizedBox(width: 10),
+                  ElevatedButton(
+                    onPressed: _isSearchingClients ? null : _searchClients,
+                    child: _isSearchingClients
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Lookup'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              if (_clientSearchResults.isNotEmpty)
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _clientSearchResults.map((client) {
+                    final isSelected =
+                        (client['user_id'] ?? '') == _selectedClientId;
+                    return GestureDetector(
+                      onTap: () => _selectClient(client),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? AppColors.highlight.withValues(alpha: 0.15)
+                              : AppColors.pageBg,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: isSelected
+                                ? AppColors.highlight
+                                : AppColors.cardBorder,
                           ),
+                        ),
+                        child: Text(
+                          client['name'] ?? 'Unknown',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isSelected
+                                ? AppColors.highlight
+                                : AppColors.textMuted,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              if (_isLoadingClientHistory)
+                const Padding(
+                  padding: EdgeInsets.only(top: 18),
+                  child: CircularProgressIndicator(),
+                ),
+              if (!_isLoadingClientHistory && _selectedClientId != null) ...[
+                const SizedBox(height: 16),
+                Text(
+                  'Selected: $_selectedClientName',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textDark,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                if (_selectedClientFlags.isNotEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.warningAmber.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.highlight.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.assessment,
-                  color: AppColors.highlight,
-                  size: 32,
-                ),
-              ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: _selectedClientFlags.entries.map((entry) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            '${entry.key}: ${entry.value}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textDark,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  )
+                else
+                  _buildInfoCard(
+                    title: 'Eligibility Frequency Check',
+                    body: 'No high-frequency assistance flags this year.',
+                  ),
+                const SizedBox(height: 12),
+                if (_selectedClientHistory.isNotEmpty)
+                  SimpleBarChart(
+                    title: 'Cross-Service History (By Form Type)',
+                    data: _groupHistoryByFormType(_selectedClientHistory),
+                    primaryColor: AppColors.highlight,
+                  )
+                else
+                  _buildInfoCard(
+                    title: 'Cross-Service History',
+                    body: 'No service history found for this client yet.',
+                  ),
+              ],
             ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Map<String, int> _groupHistoryByFormType(List<Map<String, dynamic>> history) {
+    final grouped = <String, int>{};
+    for (final item in history) {
+      final key = item['form_type']?.toString().trim() ?? 'Unknown';
+      grouped[key] = (grouped[key] ?? 0) + 1;
+    }
+    return grouped;
+  }
+
+  Widget _buildNoChartsPlaceholder() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(48),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            Icons.bar_chart_outlined,
+            size: 64,
+            color: AppColors.textMuted.withValues(alpha: 0.4),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'No charts available for this form',
+            style: TextStyle(fontSize: 16, color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Charts appear automatically when this form has dropdown, radio,\n'
+            'checkbox, or number fields with enough collected data.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              color: AppColors.textMuted.withValues(alpha: 0.7),
+            ),
           ),
         ],
       ),
     );
   }
 
-  /// Build key metrics section with 3-column grid
-  Widget _buildKeyMetricsSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: Text(
-            'Key Metrics',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: AppColors.textDark,
-                  fontWeight: FontWeight.bold,
-                ),
+  Widget _buildLoadingCard(String message) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
           ),
-        ),
-        Row(
-          children: [
-            MetricCard(
-              label: "Total Submissions",
-              value: _totalSubmissions.toString(),
-              icon: Icons.description,
-              color: AppColors.highlight,
-              subtitle: 'Entries collected',
+          const SizedBox(width: 12),
+          Text(
+            message,
+            style: const TextStyle(
+              color: AppColors.textMuted,
+              fontWeight: FontWeight.w500,
             ),
-            const SizedBox(width: 20),
-            MetricCard(
-              label: "Youth (≤17 years)",
-              value: _youthCount.toString(),
-              icon: Icons.child_care,
-              color: const Color(0xFF4ECDC4),
-              subtitle: _totalSubmissions > 0
-                  ? '${((_youthCount / _totalSubmissions) * 100).toStringAsFixed(1)}%'
-                  : '0%',
-            ),
-            const SizedBox(width: 20),
-            MetricCard(
-              label: "Avg Household",
-              value: _averageHouseholdSize.toStringAsFixed(1),
-              unit: 'persons',
-              icon: Icons.people,
-              color: AppColors.successGreen,
-              subtitle: 'Per family',
-            ),
-          ],
-        ),
-      ],
+          ),
+        ],
+      ),
     );
   }
 
-  /// Build section header with icon and divider
-  Widget _buildSectionHeader(String title, IconData icon, Color color) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
+  Widget _buildInfoCard({required String title, required String body}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.pageBg,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textDark,
+            ),
           ),
-          child: Icon(icon, color: color, size: 24),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: AppColors.textDark,
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-            ],
+          const SizedBox(height: 4),
+          Text(
+            body,
+            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -441,8 +982,132 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return;
     }
 
-    Navigator.of(context).pushReplacement(
-      ContentFadeRoute(page: nextScreen),
+    Navigator.of(context).pushReplacement(ContentFadeRoute(page: nextScreen));
+  }
+}
+
+class _SummaryCard extends StatelessWidget {
+  final String label;
+  final int count;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _SummaryCard({
+    required this.label,
+    required this.count,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 170,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: isActive ? AppColors.highlight : AppColors.cardBg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isActive ? AppColors.highlight : AppColors.cardBorder,
+            width: isActive ? 2 : 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              count.toString(),
+              style: TextStyle(
+                fontSize: 36,
+                fontWeight: FontWeight.bold,
+                color: isActive ? Colors.white : AppColors.textDark,
+                letterSpacing: -1,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Submissions',
+              style: TextStyle(
+                fontSize: 11,
+                color: isActive ? Colors.white70 : AppColors.textMuted,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isActive ? Colors.white : AppColors.textDark,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MetricTile extends StatelessWidget {
+  final String title;
+  final String value;
+  final String subtitle;
+
+  const _MetricTile({
+    required this.title,
+    required this.value,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 260,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppColors.textMuted,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 24,
+              color: AppColors.textDark,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+          ),
+        ],
+      ),
     );
   }
 }
