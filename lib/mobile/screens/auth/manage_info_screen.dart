@@ -1,6 +1,7 @@
 // Mobile Manage Info Screen
 // Loads templates + profile, renders dynamic form, saves to Supabase,
 // and transmits selected fields to the web portal via QR.
+//.
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
