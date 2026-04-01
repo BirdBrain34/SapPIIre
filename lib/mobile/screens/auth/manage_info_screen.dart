@@ -130,7 +130,35 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       }
 
       _activeTransmitSessionId = sessionId;
+      
+      // Show loading indicator
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                ),
+                SizedBox(width: 12),
+                Text('Transmitting data to web...'),
+              ],
+            ),
+            duration: Duration(seconds: 5),
+            backgroundColor: Colors.blue,
+          ),
+        );
+      }
+      
       try {
+        // Add delay to ensure web subscription is ready
+        await Future.delayed(const Duration(milliseconds: 500));
+        
         // Push field values + JSONB to web session
         final success = await _supabaseService.sendDataToWebSession(
           sessionId,
@@ -141,7 +169,9 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).clearSnackBars();
           _showFeedback(
-            success ? 'Data transmitted successfully!' : 'Failed to send data. Please try again.',
+            success 
+              ? 'Data transmitted successfully! ✓' 
+              : 'Failed to send data. Please try again.',
             success ? Colors.green : Colors.red,
           );
         }
