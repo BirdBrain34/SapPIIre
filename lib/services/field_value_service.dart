@@ -38,16 +38,7 @@ class FieldValueService {
       if (eligibleFieldIds.isEmpty) return true;
 
       final now = DateTime.now().toIso8601String();
-      final existingRows = await _supabase
-          .from('user_field_values')
-          .select('field_id')
-          .eq('user_id', userId)
-          .inFilter('field_id', eligibleFieldIds);
-      final existingFieldIds = existingRows
-          .map((r) => r['field_id'] as String?)
-          .whereType<String>()
-          .toSet();
-
+      // Build rows for fields that currently have values.
       final rows = _buildFieldRows(
         template,
         formData,
@@ -64,31 +55,43 @@ class FieldValueService {
           .whereType<String>()
           .toSet();
 
-      // Fields that previously had direct rows but are now empty should be
-      // marked as cleared to suppress cross-form fallback repopulation.
-      final clearedFieldIds = existingFieldIds
+      // Fields that are now empty are marked as cleared so cross-form
+      // fallback won't repopulate values the user intentionally removed.
+      final clearedFieldIds = eligibleFieldIds
           .where((id) => !savedFieldIds.contains(id))
           .toList();
-      if (clearedFieldIds.isNotEmpty) {
-        final clearedRows = clearedFieldIds
-            .map(
-              (id) => <String, dynamic>{
-                'user_id': userId,
-                'field_id': id,
-                'field_value': _clearedSentinel,
-                'updated_at': now,
-              },
-            )
-            .toList();
-        await _upsertChunked(
-          'user_field_values',
-          clearedRows,
-          'user_id,field_id',
+
+      final clearedRows = clearedFieldIds
+          .map(
+            (id) => <String, dynamic>{
+              'user_id': userId,
+              'field_id': id,
+              'field_value': _clearedSentinel,
+              'updated_at': now,
+            },
+          )
+          .toList();
+
+      final allRows = [...rows, ...clearedRows];
+      if (allRows.isEmpty) return true;
+
+      // Delete first, then insert fresh rows. This avoids relying on upsert
+      // conflict constraints for correctness.
+      for (var i = 0; i < eligibleFieldIds.length; i += 50) {
+        final chunk = eligibleFieldIds.sublist(
+          i,
+          (i + 50).clamp(0, eligibleFieldIds.length),
         );
+        await _supabase
+            .from('user_field_values')
+            .delete()
+            .eq('user_id', userId)
+            .inFilter('field_id', chunk);
       }
 
-      if (rows.isNotEmpty) {
-        await _upsertChunked('user_field_values', rows, 'user_id,field_id');
+      for (var i = 0; i < allRows.length; i += 50) {
+        final chunk = allRows.sublist(i, (i + 50).clamp(0, allRows.length));
+        await _supabase.from('user_field_values').insert(chunk);
       }
       return true;
     } catch (e) {
@@ -113,13 +116,25 @@ class FieldValueService {
           .from('user_field_values')
           .select('field_id, field_value')
           .eq('user_id', userId)
-          .inFilter('field_id', eligible.map((f) => f.fieldId).toList());
+          .inFilter('field_id', eligible.map((f) => f.fieldId).toList())
+          .order('updated_at', ascending: false);
+
+      // If duplicates still exist before DB migration runs, keep the newest row
+      // per field_id for deterministic reads.
+      final seenFieldIds = <String>{};
+      final deduped = <Map<String, dynamic>>[];
+      for (final row in List<Map<String, dynamic>>.from(rows)) {
+        final fid = row['field_id'] as String?;
+        if (fid != null && seenFieldIds.add(fid)) {
+          deduped.add(row);
+        }
+      }
 
       // Reverse map: field_id → field_name and field_id → field_type
       final idToName = {for (final f in eligible) f.fieldId: f.fieldName};
       final idToType = {for (final f in eligible) f.fieldId: f.fieldType};
       final result = <String, dynamic>{};
-      for (final row in rows) {
+      for (final row in deduped) {
         final fid = row['field_id'] as String?;
         final fval = row['field_value'] as String?;
         if (fid == null ||
@@ -527,7 +542,11 @@ class FieldValueService {
   ) async {
     for (var i = 0; i < rows.length; i += 50) {
       final chunk = rows.sublist(i, (i + 50).clamp(0, rows.length));
-      await _supabase.from(table).upsert(chunk, onConflict: onConflict);
+      await _supabase.from(table).upsert(
+        chunk,
+        onConflict: onConflict,
+        ignoreDuplicates: false,
+      );
     }
   }
 

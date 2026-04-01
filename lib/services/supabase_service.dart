@@ -421,7 +421,8 @@ class SupabaseService {
           .from('user_field_values')
           .select('field_id, field_value')
           .eq('user_id', userId)
-          .inFilter('field_id', fieldIds);
+          .inFilter('field_id', fieldIds)
+          .order('updated_at', ascending: false);
 
       // Map field_id → canonical_field_key (for deduplication)
       // If multiple templates have same canonical key, use first value found
@@ -431,7 +432,12 @@ class SupabaseService {
       for (final row in rows) {
         final fid = row['field_id'] as String?;
         final fval = row['field_value'] as String?;
-        if (fid == null || fval == null) continue;
+        if (fid == null ||
+            fval == null ||
+            fval.isEmpty ||
+            fval == '__CLEARED__') {
+          continue;
+        }
         
         final canonicalKey = idToCanonicalKey[fid];
         if (canonicalKey != null && canonicalKey.isNotEmpty) {

@@ -112,6 +112,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return raw;
   }
 
+  String _normalizeKey(String raw) {
+    final lowered = raw.trim().toLowerCase();
+    return lowered
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+  }
+
+  String? _findTemplateFieldName(List<String> aliases) {
+    final template = _activeTemplate;
+    if (template == null) return null;
+
+    final wanted = aliases.map(_normalizeKey).toSet();
+    for (final field in template.allFields) {
+      if (field.parentFieldId != null) continue;
+      final fieldKey = _normalizeKey(field.fieldName);
+      final canonical = field.canonicalFieldKey == null
+          ? null
+          : _normalizeKey(field.canonicalFieldKey!);
+      final source =
+          field.autofillSource == null ? null : _normalizeKey(field.autofillSource!);
+      if (wanted.contains(fieldKey) ||
+          (canonical != null && wanted.contains(canonical)) ||
+          (source != null && wanted.contains(source))) {
+        return field.fieldName;
+      }
+    }
+
+    return null;
+  }
+
+  void _putMappedValue(
+    Map<String, dynamic> formData,
+    List<String> aliases,
+    dynamic value,
+  ) {
+    final fieldName = _findTemplateFieldName(aliases);
+    if (fieldName == null) return;
+    formData[fieldName] = value;
+  }
+
   Future<void> _saveProfile() async {
     if (_activeTemplate == null) {
       _showFeedback('No active form template found', Colors.orange);
@@ -127,25 +168,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final barangay =
           addressParts.length > 2 ? addressParts[2].trim() : '';
 
-      final formData = {
-        'last_name': _lastNameCtrl.text.trim(),
-        'first_name': _firstNameCtrl.text.trim(),
-        'middle_name': _middleNameCtrl.text.trim(),
-        'date_of_birth': _dobCtrl.text.trim(),
-        'kasarian_sex': _sex,
-        'estadong_sibil_civil_status': _maritalStatus,
-        'lugar_ng_kapanganakan_place_of_birth':
-            _placeOfBirthCtrl.text.trim(),
-        'house_number_street_name_phase_purok': addressLine,
-        'subdivison_': subdivision,
-        'barangay': barangay,
-      };
+      final formData = <String, dynamic>{};
+      _putMappedValue(formData, const ['last_name', 'lastname'], _lastNameCtrl.text.trim());
+      _putMappedValue(formData, const ['first_name', 'firstname'], _firstNameCtrl.text.trim());
+      _putMappedValue(formData, const ['middle_name', 'middlename'], _middleNameCtrl.text.trim());
+      _putMappedValue(
+        formData,
+        const ['date_of_birth', 'birth_date'],
+        _dobCtrl.text.trim(),
+      );
+      _putMappedValue(formData, const ['kasarian_sex', 'gender', 'sex'], _sex);
+      _putMappedValue(
+        formData,
+        const ['estadong_sibil_civil_status', 'civil_status', 'marital_status'],
+        _maritalStatus,
+      );
+      _putMappedValue(
+        formData,
+        const [
+          'lugar_ng_kapanganakan_place_of_birth',
+          'place_of_birth',
+          'birth_place',
+          'birthplace',
+        ],
+        _placeOfBirthCtrl.text.trim(),
+      );
+      _putMappedValue(
+        formData,
+        const ['house_number_street_name_phase_purok', 'address_line', 'house_no_street'],
+        addressLine,
+      );
+      _putMappedValue(formData, const ['subdivison_', 'subdivision'], subdivision);
+      _putMappedValue(formData, const ['barangay'], barangay);
 
-      await _fieldValueService.saveUserFieldValues(
+      final saved = await _fieldValueService.saveUserFieldValues(
         userId: widget.userId,
         template: _activeTemplate!,
         formData: formData,
       );
+
+      if (!saved) {
+        _showFeedback('Failed to save profile. Please try again.', Colors.red);
+        return;
+      }
 
       _showFeedback('Profile saved!', Colors.green);
     } catch (e) {

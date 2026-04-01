@@ -126,11 +126,17 @@ class ManageInfoController extends ChangeNotifier {
         ctrl.signatureBase64 = data['__signature'];
       }
 
-      await _fieldValueService.saveUserFieldValues(
+      final saved = await _fieldValueService.saveUserFieldValues(
         userId: userId,
         template: template,
         formData: data,
       );
+
+      if (!saved) {
+        errorMessage = 'Failed to save field values. Please try again.';
+        return false;
+      }
+
       return true;
     } catch (e) {
       errorMessage = e.toString();
