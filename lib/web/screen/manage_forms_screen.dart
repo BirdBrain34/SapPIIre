@@ -204,27 +204,31 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   }
 
   void _applySessionRow(Map<String, dynamic> row) {
+    debugPrint('\n=== WEB WORKER SCREEN: Received Realtime Update ===');
     debugPrint('Web: Row status: ${row['status']}');
     final incoming = row['form_data'] as Map<String, dynamic>? ?? {};
     debugPrint('Web: Incoming data keys: ${incoming.keys.toList()}');
     debugPrint('Web: Incoming data size: ${incoming.length} fields');
     if (incoming.isEmpty) {
-      debugPrint('Web: Incoming data is empty, skipping');
+      debugPrint('Web: ⚠️ Incoming data is EMPTY - mobile may not have transmitted yet');
+      debugPrint('===================================================\n');
       return;
     }
 
     final fingerprint = _fingerprintPayload(incoming);
     if (fingerprint != null && fingerprint == _lastAppliedPayloadFingerprint) {
-      debugPrint('Web: Duplicate payload detected, skipping re-apply');
+      debugPrint('Web: ♻️ Duplicate payload detected, skipping re-apply');
+      debugPrint('===================================================\n');
       return;
     }
     _lastAppliedPayloadFingerprint = fingerprint;
 
     if (!mounted) return;
-    debugPrint('Web: Loading data into form controller');
+    debugPrint('Web: ✅ Loading data into form controller...');
     _formCtrl?.loadFromJson(incoming);
     setState(() {});
-    debugPrint('Web: Form updated successfully');
+    debugPrint('Web: ✅ Form updated successfully with ${incoming.length} fields');
+    debugPrint('===================================================\n');
   }
 
   String? _fingerprintPayload(Map<String, dynamic> payload) {

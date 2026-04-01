@@ -467,6 +467,10 @@ class SupabaseService {
   /// This allows the user to choose exactly which fields to transmit via checkboxes.
 Future<bool> sendDataToWebSession(String sessionId, Map<String, dynamic> data, {String? userId}) async {
   try {
+    debugPrint('Mobile: Sending data to session $sessionId');
+    debugPrint('Mobile: Data keys: ${data.keys.toList()}');
+    debugPrint('Mobile: Data size: ${data.length} fields');
+    
     final response = await _supabase
         .from('form_submission')
         .update({
@@ -478,12 +482,19 @@ Future<bool> sendDataToWebSession(String sessionId, Map<String, dynamic> data, {
         .select()
         .maybeSingle();
 
+    if (response != null) {
+      debugPrint('Mobile: ✅ Data successfully written to form_submission');
+      debugPrint('Mobile: Response form_data keys: ${(response['form_data'] as Map?)?.keys.toList()}');
+    } else {
+      debugPrint('Mobile: ❌ Update returned null - session may not exist');
+    }
+
     // Intentionally do not write to client_submissions here.
     // client_submissions must only be written during staff finalize on web.
 
     return response != null;
   } catch (e) {
-    debugPrint('Supabase Update Error: $e');
+    debugPrint('Mobile: ❌ Supabase Update Error: $e');
     return false;
   }
 }
