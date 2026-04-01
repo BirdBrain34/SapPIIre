@@ -1,7 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import '../models/form_template_models.dart';
+
 import 'package:sappiire/services/form_template_service.dart';
 
 class SupabaseService {
@@ -467,13 +467,11 @@ Future<bool> sendDataToWebSession(String sessionId, Map<String, dynamic> data, {
           'form_data': data,
           'status': 'scanned',
           'scanned_at': DateTime.now().toIso8601String(),
+          if (userId != null) 'user_id': userId,  // ← ADD THIS LINE
         })
         .eq('id', sessionId)
         .select()
         .maybeSingle();
-
-    // Intentionally do not write to client_submissions here.
-    // client_submissions must only be written during staff finalize on web.
 
     return response != null;
   } catch (e) {

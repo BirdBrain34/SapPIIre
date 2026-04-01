@@ -14,7 +14,7 @@ import 'package:sappiire/mobile/screens/auth/login_screen.dart';
 import 'package:sappiire/mobile/screens/auth/InfoScannerScreen.dart';
 import 'package:sappiire/mobile/screens/auth/ProfileScreen.dart';
 import 'package:sappiire/mobile/screens/auth/HistoryScreen.dart';
-import 'package:sappiire/mobile/widgets/form_popup.dart'; // ← NEW
+import 'package:sappiire/mobile/widgets/form_popup.dart';
 
 class ManageInfoScreen extends StatefulWidget {
   final String userId;
@@ -26,10 +26,13 @@ class ManageInfoScreen extends StatefulWidget {
 
 class _ManageInfoScreenState extends State<ManageInfoScreen> {
   final _supabaseService = SupabaseService();
-  final _supabase = Supabase.instance.client; // ← NEW: for popup fetch
+  final _supabase = Supabase.instance.client;
   late final ManageInfoController _controller;
   int _currentNavIndex = 0;
   String? _activeTransmitSessionId;
+
+  // ── NEW: controls whether the form intro card is shown ───
+  bool _showFormIntro = true;
 
   // ── Lifecycle ─────────────────────────────────────────────
   @override
@@ -48,6 +51,10 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   // ── Data Loading ──────────────────────────────────────────
   Future<void> _loadAll() async {
     await _controller.loadAll(forceRefresh: true);
+    // Always show the intro card after (re)loading
+    if (mounted) {
+      setState(() => _showFormIntro = true);
+    }
   }
 
   // ── Save to Supabase ──────────────────────────────────────
@@ -75,7 +82,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       return;
     }
 
-    // ── NEW: check if selected form has a popup configured ──
     final templateId = _controller.selectedTemplate?.templateId;
     if (templateId != null) {
       try {
@@ -97,15 +103,12 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
             description: row?['popup_description'] as String?,
           );
 
-          // User tapped Cancel — abort the QR scan entirely
           if (!proceed || !mounted) return;
         }
       } catch (e) {
-        // If the fetch fails, silently skip the popup and continue
         debugPrint('Popup fetch error: $e');
       }
     }
-    // ── END NEW ─────────────────────────────────────────────
 
     final sessionId = await Navigator.push<String>(
       context,
@@ -118,7 +121,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
 
     if (sessionId != null && mounted) {
-      // Guard: if one scan result is already being synced, ignore duplicates.
       if (_activeTransmitSessionId != null) {
         debugPrint(
           'Ignoring duplicate QR session result: $sessionId (active: $_activeTransmitSessionId)',
@@ -128,7 +130,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
       _activeTransmitSessionId = sessionId;
       try {
-        // Push field values + JSONB to web session
         final success = await _supabaseService.sendDataToWebSession(
           sessionId,
           dataToTransmit,
@@ -182,10 +183,13 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   void _onNavTap(int index) {
     switch (index) {
       case 0:
-        setState(() => _currentNavIndex = 0);
+        setState(() {
+          _currentNavIndex = 0;
+          // Return to intro card when tapping Manage Info again
+          _showFormIntro = true;
+        });
         break;
       case 1:
-        // AutoFill QR — show popup (if configured) then transmit
         setState(() => _currentNavIndex = 1);
         _scanAndTransmit().then((_) {
           if (mounted) setState(() => _currentNavIndex = 0);
@@ -259,7 +263,9 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           backgroundColor: AppColors.pageBg,
           appBar: _buildAppBar(),
           floatingActionButton:
-              (_controller.formController != null && _currentNavIndex == 0)
+              (_controller.formController != null &&
+                  _currentNavIndex == 0 &&
+                  !_showFormIntro)
               ? _buildSelectAllFAB()
               : null,
           floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
@@ -270,6 +276,9 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
               ? const Center(child: CircularProgressIndicator())
               : _controller.templates.isEmpty
               ? _buildEmptyState()
+              // ── NEW: show intro card or the actual form ──
+              : _showFormIntro
+              ? _buildFormIntroCard()
               : _buildFormContent(),
         ),
       ),
@@ -349,22 +358,185 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           onPressed: _openCamera,
           tooltip: 'Scan ID',
         ),
-        IconButton(
-          icon: _controller.isSaving
-              ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : const Icon(Icons.save_outlined, color: Colors.white, size: 22),
-          onPressed: _controller.isSaving ? null : _saveProfile,
-          tooltip: 'Save Profile',
-        ),
+        // Only show Save when the form is visible (not on intro card)
+        if (!_showFormIntro)
+          IconButton(
+            icon: _controller.isSaving
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.save_outlined, color: Colors.white, size: 22),
+            onPressed: _controller.isSaving ? null : _saveProfile,
+            tooltip: 'Save Profile',
+          ),
         const SizedBox(width: 8),
       ],
+    );
+  }
+
+  // ── NEW: Form Intro / Selection Card ──────────────────────
+  Widget _buildFormIntroCard() {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+        child: Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Icon badge
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: AppColors.primaryBlue.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Icon(
+                  Icons.edit_document,
+                  size: 36,
+                  color: AppColors.primaryBlue,
+                ),
+              ),
+              const SizedBox(height: 8),
+              // Session Setup chip
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryBlue.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  'Form Setup',
+                  style: TextStyle(
+                    color: AppColors.primaryBlue,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Title
+              const Text(
+                'Ready to manage your info?',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1A1A2E),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              // Subtitle
+              Text(
+                'Select a form type below. Your saved information will be pre-filled and ready to transmit.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey.shade600,
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 28),
+              // Form Dropdown
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF5F5FA),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFDDDDEE)),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _controller.selectedTemplate?.templateId,
+                    isExpanded: true,
+                    icon: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: AppColors.primaryBlue,
+                    ),
+                    items: _controller.templates
+                        .map(
+                          (t) => DropdownMenuItem(
+                            value: t.templateId,
+                            child: Text(
+                              t.formName,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF1A1A2E),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (id) async {
+                      if (id == null) return;
+                      await _controller.switchTemplate(id);
+                      setState(() {}); // refresh dropdown display
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Continue button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _controller.selectedTemplate == null
+                      ? null
+                      : () => setState(() => _showFormIntro = false),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryBlue,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor:
+                        AppColors.primaryBlue.withOpacity(0.4),
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.arrow_forward_rounded, size: 18),
+                      SizedBox(width: 8),
+                      Text(
+                        'Continue',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -512,78 +684,52 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
   }
 
-  // ── Bottom nav ────────────────────────────────────────────
+  // ── Bottom nav ─────────────────────────────────────────────
   Widget _buildBottomNav() {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.primaryBlue,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
-          ),
-        ],
+    return BottomNavigationBar(
+      currentIndex: _currentNavIndex == 1 ? 0 : _currentNavIndex,
+      onTap: _onNavTap,
+      backgroundColor: AppColors.primaryBlue,
+      selectedItemColor: AppColors.highlight,
+      unselectedItemColor: Colors.white60,
+      selectedLabelStyle: const TextStyle(
+        fontSize: 10,
+        fontWeight: FontWeight.w600,
       ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildNavItem(0, Icons.edit_document, 'Manage Info'),
-              _buildNavItem(1, Icons.qr_code_scanner, 'Autofill QR'),
-              _buildNavItem(2, Icons.history, 'History'),
-            ],
-          ),
+      unselectedLabelStyle: const TextStyle(
+        fontSize: 10,
+        fontWeight: FontWeight.w400,
+      ),
+      type: BottomNavigationBarType.fixed,
+      elevation: 10,
+      items: [
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.edit_document, size: 24),
+          label: 'Manage Info',
         ),
-      ),
-    );
-  }
-
-  Widget _buildNavItem(int index, IconData icon, String label) {
-    final isActive = _currentNavIndex == index;
-    return InkWell(
-      onTap: () => _onNavTap(index),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (index == 1)
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Icon(
-                  icon,
-                  color:
-                      isActive ? AppColors.highlight : AppColors.primaryBlue,
-                  size: 24,
-                ),
-              )
-            else
-              Icon(
-                icon,
-                color: isActive ? AppColors.highlight : Colors.white60,
-                size: 24,
-              ),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              style: TextStyle(
-                color: isActive ? AppColors.highlight : Colors.white60,
-                fontSize: 10,
-                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-              ),
+        BottomNavigationBarItem(
+          icon: Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(4),
             ),
-          ],
+            child: Icon(
+              Icons.qr_code_scanner,
+              color: _currentNavIndex == 1
+                  ? AppColors.highlight
+                  : AppColors.primaryBlue,
+              size: 22,
+            ),
+          ),
+          label: 'Autofill QR',
         ),
-      ),
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.history, size: 24),
+          label: 'History',
+        ),
+      ],
     );
   }
 }

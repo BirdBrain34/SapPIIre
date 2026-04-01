@@ -4,6 +4,9 @@ import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/mobile/screens/auth/login_screen.dart';
 import 'package:sappiire/services/supabase_service.dart';
 
+enum _SortField { date, formType }
+enum _SortOrder { asc, desc }
+
 class HistoryScreen extends StatefulWidget {
   final String userId;
   final bool embedded;
@@ -18,8 +21,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
   final _supabaseService = SupabaseService();
 
   List<Map<String, dynamic>> _submissions = [];
+  List<Map<String, dynamic>> _filtered = [];
   bool _isLoading = true;
   String _username = '';
+
+  _SortField _sortField = _SortField.date;
+  _SortOrder _sortOrder = _SortOrder.desc;
 
   @override
   void initState() {
@@ -29,23 +36,112 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Future<void> _loadHistory() async {
     setState(() => _isLoading = true);
-    
+
     try {
       final username = await _supabaseService.getUsername(widget.userId);
-      final response = await _supabase
-          .from('client_submissions')
-          .select('id, form_type, created_at')
-          .eq('created_by', widget.userId)
-          .order('created_at', ascending: false);
+      debugPrint('🔍 Loading history for userId: ${widget.userId}');
+
+      // Step 1: get all session IDs from form_submission where user_id matches
+      final sessionRows = await _supabase
+          .from('form_submission')
+          .select('id')
+          .eq('user_id', widget.userId);
+
+      final sessionIds = (sessionRows as List)
+          .map((r) => r['id']?.toString())
+          .whereType<String>()
+          .toList();
+
+      debugPrint('📋 Sessions found for user: ${sessionIds.length} → $sessionIds');
+
+      List<Map<String, dynamic>> submissions = [];
+
+      if (sessionIds.isNotEmpty) {
+        // Step 2a: match via session_id column (populated by newer web saves)
+        final byColumn = await _supabase
+            .from('client_submissions')
+            .select('id, form_type, intake_reference, created_at, session_id, data')
+            .inFilter('session_id', sessionIds)
+            .order('created_at', ascending: false);
+
+        debugPrint('✅ Matched by session_id column: ${(byColumn as List).length}');
+        submissions = List<Map<String, dynamic>>.from(byColumn);
+
+        // Step 2b: match via data->>'__session_id' JSONB field
+        // This mirrors exactly how applicants_screen.dart (web) resolves names —
+        // it traces client_submissions.data.__session_id → form_submission.user_id
+        // We do the reverse: user_id → session IDs → match JSONB field
+        try {
+          final byJsonb = await _supabase
+              .from('client_submissions')
+              .select('id, form_type, intake_reference, created_at, session_id, data')
+              .inFilter('data->>__session_id', sessionIds)
+              .order('created_at', ascending: false);
+
+          debugPrint('✅ Matched by JSONB __session_id: ${(byJsonb as List).length}');
+
+          // Merge without duplicates (dedup by id)
+          final seen = <dynamic>{for (final s in submissions) s['id']};
+          for (final s in byJsonb) {
+            if (!seen.contains(s['id'])) {
+              submissions.add(Map<String, dynamic>.from(s));
+              seen.add(s['id']);
+            }
+          }
+        } catch (e) {
+          // JSONB filter may not be supported on all Supabase plans — safe to skip
+          debugPrint('⚠️ JSONB filter failed (non-critical): $e');
+        }
+
+        debugPrint('📦 Total unique submissions after merge: ${submissions.length}');
+      } else {
+        debugPrint('❌ No sessions found for user — check that form_submission.user_id is being set when client scans QR');
+      }
 
       setState(() {
         _username = username ?? '';
-        _submissions = List<Map<String, dynamic>>.from(response);
+        _submissions = submissions;
+        _filtered = List.from(submissions);
+        _isLoading = false;
       });
+
+      _applySort();
     } catch (e) {
-      debugPrint('HistoryScreen._loadHistory error: $e');
+      debugPrint('❌ _loadHistory error: $e');
+      setState(() => _isLoading = false);
     }
-    setState(() => _isLoading = false);
+  }
+
+  void _applySort() {
+    final sorted = List<Map<String, dynamic>>.from(_submissions);
+    sorted.sort((a, b) {
+      int cmp;
+      if (_sortField == _SortField.date) {
+        final aDate = DateTime.tryParse(a['created_at'] ?? '') ?? DateTime(0);
+        final bDate = DateTime.tryParse(b['created_at'] ?? '') ?? DateTime(0);
+        cmp = aDate.compareTo(bDate);
+      } else {
+        final aType = (a['form_type'] ?? '').toString().toLowerCase();
+        final bType = (b['form_type'] ?? '').toString().toLowerCase();
+        cmp = aType.compareTo(bType);
+      }
+      return _sortOrder == _SortOrder.desc ? -cmp : cmp;
+    });
+    setState(() => _filtered = sorted);
+  }
+
+  void _toggleSortField(_SortField field) {
+    setState(() {
+      if (_sortField == field) {
+        _sortOrder =
+            _sortOrder == _SortOrder.desc ? _SortOrder.asc : _SortOrder.desc;
+      } else {
+        _sortField = field;
+        _sortOrder =
+            field == _SortField.date ? _SortOrder.desc : _SortOrder.asc;
+      }
+    });
+    _applySort();
   }
 
   Future<void> _handleLogout() async {
@@ -83,9 +179,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (raw == null) return '—';
     try {
       final dt = DateTime.parse(raw).toLocal();
-      final months = [
+      const months = [
         'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
       ];
       final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
       final min = dt.minute.toString().padLeft(2, '0');
@@ -105,7 +201,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _submissions.isEmpty
               ? _buildEmptyState()
-              : _buildList(),
+              : Column(
+                  children: [
+                    _buildSortBar(),
+                    Expanded(child: _buildList()),
+                  ],
+                ),
     );
   }
 
@@ -117,7 +218,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
       leading: IconButton(
         icon: const Icon(Icons.arrow_back, color: Colors.white),
         onPressed: () => Navigator.pop(context),
-        tooltip: 'Back',
       ),
       title: Row(
         children: [
@@ -136,17 +236,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
             children: [
               const Text(
                 'Submission History',
-                style: TextStyle(
-                    color: Colors.white60,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w400),
+                style: TextStyle(color: Colors.white60, fontSize: 10),
               ),
               Text(
                 _username.isEmpty ? 'User' : _username,
                 style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold),
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),
@@ -156,10 +254,49 @@ class _HistoryScreenState extends State<HistoryScreen> {
         IconButton(
           icon: const Icon(Icons.refresh, color: Colors.white, size: 22),
           onPressed: _loadHistory,
-          tooltip: 'Refresh',
         ),
         const SizedBox(width: 8),
       ],
+    );
+  }
+
+  Widget _buildSortBar() {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          Text(
+            '${_filtered.length} submission${_filtered.length == 1 ? '' : 's'}',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade500,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const Spacer(),
+          const Text(
+            'Sort by:',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(width: 8),
+          _SortChip(
+            label: 'Date',
+            icon: Icons.calendar_today_outlined,
+            isActive: _sortField == _SortField.date,
+            isDesc: _sortOrder == _SortOrder.desc,
+            onTap: () => _toggleSortField(_SortField.date),
+          ),
+          const SizedBox(width: 6),
+          _SortChip(
+            label: 'Form',
+            icon: Icons.article_outlined,
+            isActive: _sortField == _SortField.formType,
+            isDesc: _sortOrder == _SortOrder.desc,
+            onTap: () => _toggleSortField(_SortField.formType),
+          ),
+        ],
+      ),
     );
   }
 
@@ -192,8 +329,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Your form transmissions will appear here.',
+            'Your form transmissions will appear here\nonce a staff member saves your record.',
             style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -205,9 +343,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
       onRefresh: _loadHistory,
       color: AppColors.primaryBlue,
       child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-        itemCount: _submissions.length,
-        itemBuilder: (context, index) => _buildCard(_submissions[index]),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+        itemCount: _filtered.length,
+        itemBuilder: (context, index) => _buildCard(_filtered[index]),
       ),
     );
   }
@@ -215,6 +353,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget _buildCard(Map<String, dynamic> item) {
     final formType = item['form_type'] as String? ?? 'Unknown Form';
     final createdAt = item['created_at'] as String?;
+    final intakeRef = item['intake_reference'] as String?;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -265,35 +404,51 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: AppColors.primaryBlue.withOpacity(0.1),
+                          color: Colors.green.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(20),
                         ),
-                        child: Text(
-                          'Transmitted',
+                        child: const Text(
+                          'Submitted',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: AppColors.primaryBlue,
+                            color: Colors.green,
                           ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  if (intakeRef != null && intakeRef.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.tag,
+                            size: 12, color: AppColors.primaryBlue),
+                        const SizedBox(width: 4),
+                        Text(
+                          intakeRef,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primaryBlue,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 6),
                   Row(
                     children: [
                       Icon(Icons.access_time,
                           size: 12, color: Colors.grey.shade400),
                       const SizedBox(width: 5),
                       Text(
-                        createdAt != null
-                            ? _formatDate(createdAt)
-                            : 'Date unavailable',
+                        _formatDate(createdAt),
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.grey.shade500,
@@ -304,6 +459,74 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ],
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Sort chip ──────────────────────────────────────────────────
+class _SortChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool isActive;
+  final bool isDesc;
+  final VoidCallback onTap;
+
+  const _SortChip({
+    required this.label,
+    required this.icon,
+    required this.isActive,
+    required this.isDesc,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isActive
+              ? AppColors.primaryBlue.withOpacity(0.1)
+              : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isActive
+                ? AppColors.primaryBlue.withOpacity(0.4)
+                : Colors.transparent,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon,
+                size: 12,
+                color: isActive
+                    ? AppColors.primaryBlue
+                    : Colors.grey.shade500),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                color: isActive
+                    ? AppColors.primaryBlue
+                    : Colors.grey.shade600,
+              ),
+            ),
+            if (isActive) ...[
+              const SizedBox(width: 3),
+              Icon(
+                isDesc ? Icons.arrow_downward : Icons.arrow_upward,
+                size: 11,
+                color: AppColors.primaryBlue,
+              ),
+            ],
           ],
         ),
       ),
