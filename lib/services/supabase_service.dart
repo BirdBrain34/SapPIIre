@@ -467,9 +467,11 @@ class SupabaseService {
   /// This allows the user to choose exactly which fields to transmit via checkboxes.
 Future<bool> sendDataToWebSession(String sessionId, Map<String, dynamic> data, {String? userId}) async {
   try {
-    debugPrint('Mobile: Sending data to session $sessionId');
+    debugPrint('\n=== MOBILE: Starting Data Transmission ===');
+    debugPrint('Mobile: Session ID: $sessionId');
     debugPrint('Mobile: Data keys: ${data.keys.toList()}');
     debugPrint('Mobile: Data size: ${data.length} fields');
+    debugPrint('Mobile: Sample data: ${data.entries.take(3).map((e) => '${e.key}: ${e.value}').join(', ')}');
     
     final response = await _supabase
         .from('form_submission')
@@ -484,17 +486,29 @@ Future<bool> sendDataToWebSession(String sessionId, Map<String, dynamic> data, {
 
     if (response != null) {
       debugPrint('Mobile: ✅ Data successfully written to form_submission');
-      debugPrint('Mobile: Response form_data keys: ${(response['form_data'] as Map?)?.keys.toList()}');
+      final savedData = response['form_data'] as Map<String, dynamic>?;
+      if (savedData != null && savedData.isNotEmpty) {
+        debugPrint('Mobile: ✅ Verified - Database contains ${savedData.length} fields');
+        debugPrint('Mobile: ✅ Database keys: ${savedData.keys.toList()}');
+      } else {
+        debugPrint('Mobile: ⚠️ WARNING - Database returned empty form_data!');
+      }
     } else {
       debugPrint('Mobile: ❌ Update returned null - session may not exist');
+      debugPrint('Mobile: ❌ Check if session $sessionId exists in form_submission table');
     }
+    debugPrint('==========================================\n');
 
     // Intentionally do not write to client_submissions here.
     // client_submissions must only be written during staff finalize on web.
 
     return response != null;
   } catch (e) {
+    debugPrint('\n=== MOBILE: Transmission Error ===');
     debugPrint('Mobile: ❌ Supabase Update Error: $e');
+    debugPrint('Mobile: Session ID: $sessionId');
+    debugPrint('Mobile: Error type: ${e.runtimeType}');
+    debugPrint('===================================\n');
     return false;
   }
 }
