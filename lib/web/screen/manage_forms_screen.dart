@@ -181,7 +181,6 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         .from('form_submission')
         .stream(primaryKey: ['id'])
         .eq('id', sessionId)
-        .timeout(const Duration(minutes: 30), onTimeout: (sink) => sink.close())
         .listen(
           (List<Map<String, dynamic>> data) {
             debugPrint('Web: Realtime update received');
@@ -191,40 +190,65 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
             }
             _applySessionRow(data.first);
           },
-          onError: (e) => debugPrint('Session stream error: $e'),
+          onError: (e) {
+            debugPrint('Session stream error: $e');
+            // On error, try to fetch data directly
+            _hydrateFromSessionSnapshot(sessionId);
+          },
           cancelOnError: false,
         );
 
     // Cold-start race guard: if mobile updates before the stream fully attaches,
-    // fetch current session state directly and hydrate once.
+    // fetch current session state directly and hydrate multiple times.
     _hydrateFromSessionSnapshot(sessionId);
-    Future.delayed(const Duration(milliseconds: 800), () {
+    Future.delayed(const Duration(milliseconds: 500), () {
+      _hydrateFromSessionSnapshot(sessionId);
+    });
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      _hydrateFromSessionSnapshot(sessionId);
+    });
+    Future.delayed(const Duration(milliseconds: 3000), () {
+      _hydrateFromSessionSnapshot(sessionId);
+    });
+    
+    // Set up periodic polling as backup (every 2 seconds for first 30 seconds)
+    int pollCount = 0;
+    Timer.periodic(const Duration(seconds: 2), (timer) {
+      pollCount++;
+      if (pollCount > 15 || !mounted || _currentSessionId != sessionId) {
+        timer.cancel();
+        return;
+      }
       _hydrateFromSessionSnapshot(sessionId);
     });
   }
 
   void _applySessionRow(Map<String, dynamic> row) {
+    debugPrint('\n=== WEB WORKER SCREEN: Received Realtime Update ===');
     debugPrint('Web: Row status: ${row['status']}');
     final incoming = row['form_data'] as Map<String, dynamic>? ?? {};
     debugPrint('Web: Incoming data keys: ${incoming.keys.toList()}');
     debugPrint('Web: Incoming data size: ${incoming.length} fields');
     if (incoming.isEmpty) {
-      debugPrint('Web: Incoming data is empty, skipping');
+      debugPrint('Web: ⚠️ Incoming data is EMPTY - mobile may not have transmitted yet');
+      debugPrint('===================================================\n');
       return;
     }
 
     final fingerprint = _fingerprintPayload(incoming);
     if (fingerprint != null && fingerprint == _lastAppliedPayloadFingerprint) {
-      debugPrint('Web: Duplicate payload detected, skipping re-apply');
+      debugPrint('Web: ♻️ Duplicate payload detected, skipping re-apply');
+      debugPrint('===================================================\n');
       return;
     }
     _lastAppliedPayloadFingerprint = fingerprint;
 
     if (!mounted) return;
-    debugPrint('Web: Loading data into form controller');
+    debugPrint('Web: ✅ Loading data into form controller...');
     _formCtrl?.loadFromJson(incoming);
     setState(() {});
-    debugPrint('Web: Form updated successfully');
+    debugPrint('Web: ✅ Form updated successfully with ${incoming.length} fields');
+    debugPrint('===================================================\n');
   }
 
   String? _fingerprintPayload(Map<String, dynamic> payload) {
@@ -253,13 +277,23 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
 
   Future<void> _hydrateFromSessionSnapshot(String sessionId) async {
     try {
+      debugPrint('Web: Polling session $sessionId for data...');
       final row = await _supabase
           .from('form_submission')
           .select('id, status, form_data')
           .eq('id', sessionId)
           .maybeSingle();
 
-      if (row == null) return;
+      if (row == null) {
+        debugPrint('Web: Session not found in database');
+        return;
+      }
+      
+      final formData = row['form_data'] as Map<String, dynamic>? ?? {};
+      if (formData.isNotEmpty) {
+        debugPrint('Web: ✅ Found data via polling! Keys: ${formData.keys.toList()}');
+      }
+      
       _applySessionRow(Map<String, dynamic>.from(row));
     } catch (e) {
       debugPrint('Session snapshot hydrate error: $e');

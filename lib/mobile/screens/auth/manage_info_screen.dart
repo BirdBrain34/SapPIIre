@@ -131,15 +131,29 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
       _activeTransmitSessionId = sessionId;
       try {
+        // Push field values + JSONB to web session
         final success = await _supabaseService.sendDataToWebSession(
           sessionId,
           dataToTransmit,
           userId: widget.userId,
         );
-        _showFeedback(
-          success ? 'Data transmitted!' : 'Failed to send data.',
-          success ? Colors.green : Colors.red,
-        );
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).clearSnackBars();
+          _showFeedback(
+            success ? 'Data transmitted successfully!' : 'Failed to send data. Please try again.',
+            success ? Colors.green : Colors.red,
+          );
+        }
+      } catch (e) {
+        debugPrint('Transmission error: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).clearSnackBars();
+          _showFeedback(
+            'Error: ${e.toString()}',
+            Colors.red,
+          );
+        }
       } finally {
         _activeTransmitSessionId = null;
       }

@@ -55,6 +55,14 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
       widget.stationId,
       (row) {
         if (!mounted) return;
+        debugPrint('\n=== CUSTOMER DISPLAY SCREEN: Realtime Update ===');
+        debugPrint('Customer Display: This screen only shows QR code status');
+        debugPrint('Customer Display: Form data goes to WORKER screen, not here');
+        debugPrint('Customer Display: Row status: ${row?['status']}');
+        debugPrint('Customer Display: Session ID: ${row?['session_id']}');
+        debugPrint('Customer Display: Form name: ${row?['form_name']}');
+        debugPrint('==============================================\n');
+        
         setState(() {
           _status = row?['status'] ?? 'standby';
           _sessionId = row?['session_id'];

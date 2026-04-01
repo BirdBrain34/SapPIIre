@@ -421,7 +421,8 @@ class SupabaseService {
           .from('user_field_values')
           .select('field_id, field_value')
           .eq('user_id', userId)
-          .inFilter('field_id', fieldIds);
+          .inFilter('field_id', fieldIds)
+          .order('updated_at', ascending: false);
 
       // Map field_id → canonical_field_key (for deduplication)
       // If multiple templates have same canonical key, use first value found
@@ -431,7 +432,12 @@ class SupabaseService {
       for (final row in rows) {
         final fid = row['field_id'] as String?;
         final fval = row['field_value'] as String?;
-        if (fid == null || fval == null) continue;
+        if (fid == null ||
+            fval == null ||
+            fval.isEmpty ||
+            fval == '__CLEARED__') {
+          continue;
+        }
         
         final canonicalKey = idToCanonicalKey[fid];
         if (canonicalKey != null && canonicalKey.isNotEmpty) {
@@ -461,6 +467,12 @@ class SupabaseService {
   /// This allows the user to choose exactly which fields to transmit via checkboxes.
 Future<bool> sendDataToWebSession(String sessionId, Map<String, dynamic> data, {String? userId}) async {
   try {
+    debugPrint('\n=== MOBILE: Starting Data Transmission ===');
+    debugPrint('Mobile: Session ID: $sessionId');
+    debugPrint('Mobile: Data keys: ${data.keys.toList()}');
+    debugPrint('Mobile: Data size: ${data.length} fields');
+    debugPrint('Mobile: Sample data: ${data.entries.take(3).map((e) => '${e.key}: ${e.value}').join(', ')}');
+    
     final response = await _supabase
         .from('form_submission')
         .update({
@@ -473,9 +485,16 @@ Future<bool> sendDataToWebSession(String sessionId, Map<String, dynamic> data, {
         .select()
         .maybeSingle();
 
+    // Intentionally do not write to client_submissions here.
+    // client_submissions must only be written during staff finalize on web.
+
     return response != null;
   } catch (e) {
-    debugPrint('Supabase Update Error: $e');
+    debugPrint('\n=== MOBILE: Transmission Error ===');
+    debugPrint('Mobile: ❌ Supabase Update Error: $e');
+    debugPrint('Mobile: Session ID: $sessionId');
+    debugPrint('Mobile: Error type: ${e.runtimeType}');
+    debugPrint('===================================\n');
     return false;
   }
 }
