@@ -210,7 +210,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     Future.delayed(const Duration(milliseconds: 3000), () {
       _hydrateFromSessionSnapshot(sessionId);
     });
-    
+
     // Set up periodic polling as backup (every 2 seconds for first 30 seconds)
     int pollCount = 0;
     Timer.periodic(const Duration(seconds: 2), (timer) {
@@ -230,7 +230,9 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     debugPrint('Web: Incoming data keys: ${incoming.keys.toList()}');
     debugPrint('Web: Incoming data size: ${incoming.length} fields');
     if (incoming.isEmpty) {
-      debugPrint('Web: ⚠️ Incoming data is EMPTY - mobile may not have transmitted yet');
+      debugPrint(
+        'Web: ⚠️ Incoming data is EMPTY - mobile may not have transmitted yet',
+      );
       debugPrint('===================================================\n');
       return;
     }
@@ -247,7 +249,9 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     debugPrint('Web: ✅ Loading data into form controller...');
     _formCtrl?.loadFromJson(incoming);
     setState(() {});
-    debugPrint('Web: ✅ Form updated successfully with ${incoming.length} fields');
+    debugPrint(
+      'Web: ✅ Form updated successfully with ${incoming.length} fields',
+    );
     debugPrint('===================================================\n');
   }
 
@@ -288,12 +292,14 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         debugPrint('Web: Session not found in database');
         return;
       }
-      
+
       final formData = row['form_data'] as Map<String, dynamic>? ?? {};
       if (formData.isNotEmpty) {
-        debugPrint('Web: ✅ Found data via polling! Keys: ${formData.keys.toList()}');
+        debugPrint(
+          'Web: ✅ Found data via polling! Keys: ${formData.keys.toList()}',
+        );
       }
-      
+
       _applySessionRow(Map<String, dynamic>.from(row));
     } catch (e) {
       debugPrint('Session snapshot hydrate error: $e');
@@ -485,11 +491,40 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     return preview;
   }
 
+  /// Resolves a user's name via canonical_field_key values in form_fields.
+  /// Works even when template autofill_source is not configured.
+  Future<Map<String, String>?> _resolveNameViaCanonicalRpc(
+    String userId,
+  ) async {
+    try {
+      final result =
+          await _supabase.rpc(
+                'get_user_names_by_canonical',
+                params: {
+                  'p_user_ids': [userId],
+                },
+              )
+              as List<dynamic>;
+
+      if (result.isEmpty) return null;
+      final row = result.first as Map<String, dynamic>;
+      final last = (row['last_name'] as String?)?.trim() ?? '';
+      final first = (row['first_name'] as String?)?.trim() ?? '';
+      final mid = (row['middle_name'] as String?)?.trim() ?? '';
+
+      if (last.isEmpty && first.isEmpty) return null;
+      return {'last': last, 'first': first, 'middle': mid};
+    } catch (e) {
+      debugPrint('_resolveNameViaCanonicalRpc error: $e');
+      return null;
+    }
+  }
+
   /// Embeds __applicant_name into the JSONB data.
-  /// Tries: 1) session user_id → user_profiles, 2) autofill_source fields,
+  /// Tries: 1) session user_id → canonical key RPC, 2) autofill_source fields,
   /// 3) brute-force key name matching.
   Future<void> _embedApplicantName(Map<String, dynamic> formData) async {
-    // Strategy 1: session → user_profiles (most reliable)
+    // Strategy 1: session → user_id → canonical key lookup.
     if (_currentSessionId != 'WAITING-FOR-SESSION') {
       try {
         final session = await _supabase
@@ -497,25 +532,13 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
             .select('user_id')
             .eq('id', _currentSessionId)
             .maybeSingle();
-        final userId = session?['user_id'] as String?;
-        if (userId != null) {
-          final profile = await _supabase
-              .from('user_profiles')
-              .select('lastname, firstname, middle_name')
-              .eq('user_id', userId)
-              .maybeSingle();
-          if (profile != null) {
-            final last = (profile['lastname'] ?? '').toString().trim();
-            final first = (profile['firstname'] ?? '').toString().trim();
-            final mid = (profile['middle_name'] ?? '').toString().trim();
-            if (last.isNotEmpty || first.isNotEmpty) {
-              formData['__applicant_name'] = {
-                'last': last,
-                'first': first,
-                'middle': mid,
-              };
-              return;
-            }
+        final userId = session?['user_id']?.toString();
+
+        if (userId != null && userId.isNotEmpty) {
+          final name = await _resolveNameViaCanonicalRpc(userId);
+          if (name != null) {
+            formData['__applicant_name'] = name;
+            return;
           }
         }
       } catch (e) {
@@ -1168,7 +1191,9 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                       decoration: BoxDecoration(
                         color: Colors.green.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.green.withOpacity(0.45)),
+                        border: Border.all(
+                          color: Colors.green.withOpacity(0.45),
+                        ),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,

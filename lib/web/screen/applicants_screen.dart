@@ -113,7 +113,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   }
 
   /// Resolves names for legacy submissions missing __applicant_name.
-  /// Traces __session_id → form_submission.user_id → user_profiles in batch.
+  /// Traces __session_id → form_submission.user_id → canonical key RPC in batch.
   Future<void> _resolveUnknownNames(
     List<Map<String, dynamic>> submissions,
   ) async {
@@ -156,22 +156,26 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
 
       if (userIds.isEmpty) return;
 
-      // user_ids → profile names
-      final profiles = await _supabase
-          .from('user_profiles')
-          .select('user_id, lastname, firstname, middle_name')
-          .inFilter('user_id', userIds.toList());
+      // user_ids → names via canonical_field_key
+      final rpcResult =
+          await _supabase.rpc(
+                'get_user_names_by_canonical',
+                params: {'p_user_ids': userIds.toList()},
+              )
+              as List<dynamic>;
 
       final userIdToName = <String, Map<String, String>>{};
-      for (final p in profiles) {
-        userIdToName[p['user_id'].toString()] = {
-          'last': (p['lastname'] ?? '').toString().trim(),
-          'first': (p['firstname'] ?? '').toString().trim(),
-          'middle': (p['middle_name'] ?? '').toString().trim(),
+      for (final row in rpcResult.cast<Map<String, dynamic>>()) {
+        final uid = row['user_id']?.toString();
+        if (uid == null) continue;
+        userIdToName[uid] = {
+          'last': (row['last_name'] as String?)?.trim() ?? '',
+          'first': (row['first_name'] as String?)?.trim() ?? '',
+          'middle': (row['middle_name'] as String?)?.trim() ?? '',
         };
       }
 
-      // Embed resolved names into submissions
+      // Embed resolved names into submissions (mutates in place)
       for (final sub in needsResolution) {
         final data = sub['data'] as Map<String, dynamic>? ?? {};
         final sessionId = data['__session_id']?.toString();
@@ -180,7 +184,8 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         if (userId == null) continue;
         final name = userIdToName[userId];
         if (name != null &&
-            (name['last']!.isNotEmpty || name['first']!.isNotEmpty)) {
+            ((name['last'] ?? '').isNotEmpty ||
+                (name['first'] ?? '').isNotEmpty)) {
           data['__applicant_name'] = name;
         }
       }
@@ -644,7 +649,8 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       onLogout: _handleLogout,
       headerActions: [
         _buildHeaderButton('Refresh', Icons.refresh, onPressed: _loadData),
-        if (_selectedSubmission != null && _rightPanelView == _RightPanelView.form) ...[
+        if (_selectedSubmission != null &&
+            _rightPanelView == _RightPanelView.form) ...[
           if (!_isEditMode)
             _buildHeaderButton(
               'Edit',
@@ -816,8 +822,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                                 _selectedApplicantKey = group.key;
                                 _rightPanelView = _RightPanelView.records;
                                 _formTypeFilter = 'All';
-                                _recordSortOrder =
-                                    _RecordSortOrder.latestFirst;
+                                _recordSortOrder = _RecordSortOrder.latestFirst;
                                 _selectedSubmission = null;
                                 _activeTemplate = null;
                                 _isEditMode = false;
@@ -849,8 +854,9 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                                     alignment: Alignment.center,
                                     decoration: BoxDecoration(
                                       color: isSelected
-                                          ? const Color(0xFF7CC3FF)
-                                              .withOpacity(0.25)
+                                          ? const Color(
+                                              0xFF7CC3FF,
+                                            ).withOpacity(0.25)
                                           : Colors.white.withOpacity(0.12),
                                       shape: BoxShape.circle,
                                       border: Border.all(
@@ -1033,310 +1039,312 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
           child: SlideTransition(position: offsetAnimation, child: child),
         );
       },
-        child: Container(
+      child: Container(
         key: const ValueKey('right-records-view'),
         margin: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.06),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white24),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    group.displayName,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.2,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    alignment: WrapAlignment.end,
-                    children: [
-                      SizedBox(
-                        width: 158,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Padding(
-                              padding: EdgeInsets.only(left: 6, bottom: 4),
-                              child: Text(
-                                '↕ Date',
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            DropdownButtonFormField<_RecordSortOrder>(
-                              isExpanded: true,
-                              value: _recordSortOrder,
-                              onChanged: (value) {
-                                if (value == null) return;
-                                setState(() {
-                                  _recordSortOrder = value;
-                                });
-                              },
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF243047),
-                                fontWeight: FontWeight.w600,
-                              ),
-                              decoration: InputDecoration(
-                                isDense: true,
-                                filled: true,
-                                fillColor: Colors.white,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 9,
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(999),
-                                  borderSide: BorderSide(
-                                    color: Colors.white.withOpacity(0.22),
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(999),
-                                  borderSide: const BorderSide(
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                              items: const [
-                                DropdownMenuItem(
-                                  value: _RecordSortOrder.latestFirst,
-                                  child: Text('Latest First'),
-                                ),
-                                DropdownMenuItem(
-                                  value: _RecordSortOrder.oldestFirst,
-                                  child: Text('Oldest First'),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(
-                        width: 148,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Padding(
-                              padding: EdgeInsets.only(left: 6, bottom: 4),
-                              child: Text(
-                                '⊞ Type',
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            DropdownButtonFormField<String>(
-                              isExpanded: true,
-                              value: _formTypeFilter,
-                              onChanged: (value) {
-                                if (value == null) return;
-                                setState(() {
-                                  _formTypeFilter = value;
-                                });
-                              },
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF243047),
-                                fontWeight: FontWeight.w600,
-                              ),
-                              decoration: InputDecoration(
-                                isDense: true,
-                                filled: true,
-                                fillColor: Colors.white,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 9,
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(999),
-                                  borderSide: BorderSide(
-                                    color: Colors.white.withOpacity(0.22),
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(999),
-                                  borderSide: const BorderSide(
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                              items: options
-                                  .map(
-                                    (type) => DropdownMenuItem<String>(
-                                      value: type,
-                                      child: Text(
-                                        type,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          if (records.isEmpty)
-            const Expanded(
-              child: Center(
-                child: Text(
-                  'No records available for this applicant.',
-                  style: TextStyle(color: Colors.white70),
-                ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white24),
               ),
-            )
-          else
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.white24),
-                ),
-                child: Scrollbar(
-                  thumbVisibility: true,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    itemCount: records.length,
-                    separatorBuilder: (_, __) => Divider(
-                      height: 1,
-                      color: Colors.white.withOpacity(0.10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      group.displayName,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.2,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    itemBuilder: (_, idx) {
-                      final record = records[idx];
-                      final formType =
-                          record['form_type']?.toString() ?? 'Unknown Form';
-                      final badgeText = _formTypeBadgeText(formType);
-                      final badgeColor = _formTypeBadgeColor(formType);
-
-                      return Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          hoverColor: Colors.white.withOpacity(0.06),
-                          splashColor: Colors.white.withOpacity(0.08),
-                          onTap: () {
-                            _loadSubmission(record);
-                            setState(() {
-                              _rightPanelView = _RightPanelView.form;
-                            });
-                          },
-                          child: SizedBox(
-                            height: 78,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
+                  ),
+                  const SizedBox(width: 12),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      alignment: WrapAlignment.end,
+                      children: [
+                        SizedBox(
+                          width: 158,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.only(left: 6, bottom: 4),
+                                child: Text(
+                                  '↕ Date',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
                               ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: badgeColor.withOpacity(0.18),
-                                      borderRadius: BorderRadius.circular(999),
-                                      border: Border.all(
-                                        color: badgeColor.withOpacity(0.6),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      badgeText,
-                                      style: TextStyle(
-                                        color: badgeColor,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                        letterSpacing: 0.3,
-                                      ),
+                              DropdownButtonFormField<_RecordSortOrder>(
+                                isExpanded: true,
+                                value: _recordSortOrder,
+                                onChanged: (value) {
+                                  if (value == null) return;
+                                  setState(() {
+                                    _recordSortOrder = value;
+                                  });
+                                },
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF243047),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                decoration: InputDecoration(
+                                  isDense: true,
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 9,
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(999),
+                                    borderSide: BorderSide(
+                                      color: Colors.white.withOpacity(0.22),
                                     ),
                                   ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Text(
-                                          formType,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 13,
-                                          ),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          _getFormattedDate(
-                                            record['created_at']?.toString(),
-                                          ),
-                                          style: const TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 11,
-                                          ),
-                                        ),
-                                        Text(
-                                          'Ref: ${_getIntakeRefLabel(record)}',
-                                          style: const TextStyle(
-                                            color: Colors.white60,
-                                            fontSize: 10,
-                                          ),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ],
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(999),
+                                    borderSide: const BorderSide(
+                                      color: Colors.white,
                                     ),
                                   ),
-                                  const Icon(
-                                    Icons.chevron_right,
-                                    color: Colors.white54,
-                                    size: 18,
+                                ),
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: _RecordSortOrder.latestFirst,
+                                    child: Text('Latest First'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: _RecordSortOrder.oldestFirst,
+                                    child: Text('Oldest First'),
                                   ),
                                 ],
                               ),
-                            ),
+                            ],
                           ),
                         ),
-                      );
-                    },
+                        SizedBox(
+                          width: 148,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.only(left: 6, bottom: 4),
+                                child: Text(
+                                  '⊞ Type',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              DropdownButtonFormField<String>(
+                                isExpanded: true,
+                                value: _formTypeFilter,
+                                onChanged: (value) {
+                                  if (value == null) return;
+                                  setState(() {
+                                    _formTypeFilter = value;
+                                  });
+                                },
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF243047),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                decoration: InputDecoration(
+                                  isDense: true,
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 9,
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(999),
+                                    borderSide: BorderSide(
+                                      color: Colors.white.withOpacity(0.22),
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(999),
+                                    borderSide: const BorderSide(
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                                items: options
+                                    .map(
+                                      (type) => DropdownMenuItem<String>(
+                                        value: type,
+                                        child: Text(
+                                          type,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            if (records.isEmpty)
+              const Expanded(
+                child: Center(
+                  child: Text(
+                    'No records available for this applicant.',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                ),
+              )
+            else
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: Scrollbar(
+                    thumbVisibility: true,
+                    child: ListView.separated(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      itemCount: records.length,
+                      separatorBuilder: (_, __) => Divider(
+                        height: 1,
+                        color: Colors.white.withOpacity(0.10),
+                      ),
+                      itemBuilder: (_, idx) {
+                        final record = records[idx];
+                        final formType =
+                            record['form_type']?.toString() ?? 'Unknown Form';
+                        final badgeText = _formTypeBadgeText(formType);
+                        final badgeColor = _formTypeBadgeColor(formType);
+
+                        return Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            hoverColor: Colors.white.withOpacity(0.06),
+                            splashColor: Colors.white.withOpacity(0.08),
+                            onTap: () {
+                              _loadSubmission(record);
+                              setState(() {
+                                _rightPanelView = _RightPanelView.form;
+                              });
+                            },
+                            child: SizedBox(
+                              height: 78,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: badgeColor.withOpacity(0.18),
+                                        borderRadius: BorderRadius.circular(
+                                          999,
+                                        ),
+                                        border: Border.all(
+                                          color: badgeColor.withOpacity(0.6),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        badgeText,
+                                        style: TextStyle(
+                                          color: badgeColor,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 0.3,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Text(
+                                            formType,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 13,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            _getFormattedDate(
+                                              record['created_at']?.toString(),
+                                            ),
+                                            style: const TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                          Text(
+                                            'Ref: ${_getIntakeRefLabel(record)}',
+                                            style: const TextStyle(
+                                              color: Colors.white60,
+                                              fontSize: 10,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const Icon(
+                                      Icons.chevron_right,
+                                      color: Colors.white54,
+                                      size: 18,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),
-            ),
           ],
         ),
       ),

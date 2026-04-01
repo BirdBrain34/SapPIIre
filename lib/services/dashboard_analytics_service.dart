@@ -321,25 +321,26 @@ class DashboardAnalyticsService {
     }
 
     try {
-      final rows = await _supabase
-          .from('user_profiles')
-          .select('user_id, lastname, firstname, middle_name')
-          .or('lastname.ilike.%$text%,firstname.ilike.%$text%')
-          .limit(12);
+      final rpcResult =
+          await _supabase.rpc(
+                'search_users_by_name_canonical',
+                params: {'p_search': text, 'p_limit': 12},
+              )
+              as List<dynamic>;
 
-      return List<Map<String, dynamic>>.from(rows)
+      return rpcResult
+          .cast<Map<String, dynamic>>()
           .map((row) {
-            final first = (row['firstname'] ?? '').toString().trim();
-            final last = (row['lastname'] ?? '').toString().trim();
-            final middle = (row['middle_name'] ?? '').toString().trim();
-            final full = [
-              last,
-              first,
-              middle,
-            ].where((v) => v.isNotEmpty).join(', ');
+            final uid = row['user_id']?.toString() ?? '';
+            final last = (row['last_name'] as String?)?.trim() ?? '';
+            final first = (row['first_name'] as String?)?.trim() ?? '';
+            final middle = (row['middle_name'] as String?)?.trim() ?? '';
+            final full =
+                '$last, $first${middle.isNotEmpty ? ' ${middle[0]}.' : ''}'
+                    .trim();
 
             return {
-              'user_id': row['user_id']?.toString() ?? '',
+              'user_id': uid,
               'name': full.isEmpty ? 'Unknown Client' : full,
             };
           })
