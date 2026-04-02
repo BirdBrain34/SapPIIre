@@ -5,7 +5,6 @@
 //
 // Used by DynamicFormRenderer to build the complete form UI.
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'dart:ui' as ui;
 import 'package:sappiire/constants/app_colors.dart';
@@ -639,7 +638,7 @@ class _BooleanField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     bool current;
-    if (field.fieldName == 'has_support') {
+    if (controller.isSupportBooleanField(field)) {
       current = controller.hasSupport;
     } else {
       final raw = controller.getValue(
@@ -656,7 +655,7 @@ class _BooleanField extends StatelessWidget {
           onChanged: isReadOnly
               ? null
               : (v) {
-                  if (field.fieldName == 'has_support') {
+                  if (controller.isSupportBooleanField(field)) {
                     controller.hasSupport = v;
                   }
                   controller.setValue(field.fieldName, v, notify: true);
@@ -1452,6 +1451,7 @@ class _SignatureField extends StatefulWidget {
 
 class _SignatureFieldState extends State<_SignatureField> {
   final List<Offset?> _points = [];
+  int _conversionToken = 0;
 
   @override
   void initState() {
@@ -1493,9 +1493,12 @@ class _SignatureFieldState extends State<_SignatureField> {
         ),
         TextButton(
           onPressed: () {
+            _conversionToken++;
             _points.clear();
             widget.controller.signatureBase64 = null;
             widget.controller.signaturePoints = null;
+            widget.controller.signatureIsProcessing = false;
+            widget.controller.fieldChecks['Signature'] = false;
             widget.controller.notifyFormChanged();
             setState(() {});
           },
@@ -1564,15 +1567,25 @@ class _SignatureFieldState extends State<_SignatureField> {
               setState(() {});
 
               if (_points.whereType<Offset>().length >= 2) {
-                final b64 = await compute(
-                  convertSignatureToBase64,
-                  List<Offset?>.from(_points),
-                );
-                if (b64 != null) {
-                  widget.controller.signatureBase64 = b64;
-                  widget.controller.signaturePoints = List.from(_points);
-                  widget.controller.fieldChecks['Signature'] = true;
-                  widget.controller.notifyFormChanged();
+                final token = ++_conversionToken;
+                widget.controller.signatureIsProcessing = true;
+                widget.controller.notifyFormChanged();
+                try {
+                  final b64 = await convertSignatureToBase64(
+                    List<Offset?>.from(_points),
+                  );
+                  if (!mounted || token != _conversionToken) return;
+
+                  if (b64 != null) {
+                    widget.controller.signatureBase64 = b64;
+                    widget.controller.signaturePoints = List.from(_points);
+                    widget.controller.fieldChecks['Signature'] = true;
+                  }
+                } finally {
+                  if (mounted && token == _conversionToken) {
+                    widget.controller.signatureIsProcessing = false;
+                    widget.controller.notifyFormChanged();
+                  }
                 }
               }
             },
@@ -1585,7 +1598,15 @@ class _SignatureFieldState extends State<_SignatureField> {
         Align(
           alignment: Alignment.centerRight,
           child: TextButton(
-            onPressed: () => setState(() => _points.clear()),
+            onPressed: () {
+              _conversionToken++;
+              setState(() => _points.clear());
+              widget.controller.signatureBase64 = null;
+              widget.controller.signaturePoints = null;
+              widget.controller.signatureIsProcessing = false;
+              widget.controller.fieldChecks['Signature'] = false;
+              widget.controller.notifyFormChanged();
+            },
             child: const Text('Clear', style: TextStyle(color: Colors.red)),
           ),
         ),

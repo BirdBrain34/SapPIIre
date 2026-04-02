@@ -340,6 +340,26 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     try {
       final formData = _formCtrl!.toJson();
 
+      // Preserve scanned computed values if controller serialization omitted them.
+      final snapshot = await _submissionService.fetchSessionSnapshot(
+        _currentSessionId,
+      );
+      final snapshotRaw = snapshot?['form_data'];
+      final scannedData = snapshotRaw is Map
+          ? Map<String, dynamic>.from(snapshotRaw)
+          : <String, dynamic>{};
+
+      for (final field in _selectedTemplate!.allFields) {
+        if (field.fieldType != FormFieldType.computed) continue;
+        if (formData.containsKey(field.fieldName)) continue;
+
+        final scannedValue = scannedData[field.fieldName];
+        if (scannedValue == null) continue;
+        if (scannedValue.toString().trim().isEmpty) continue;
+
+        formData[field.fieldName] = scannedValue;
+      }
+
       // Embed applicant name + session ID for traceability
       await _embedApplicantName(formData);
       formData['__session_id'] = _currentSessionId;

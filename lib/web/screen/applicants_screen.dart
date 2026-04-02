@@ -206,6 +206,32 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     setState(() => _isSaving = true);
     try {
       final updatedData = _editCtrl!.toJson();
+      final existingRaw = _selectedSubmission!['data'];
+      final existingData = existingRaw is Map
+          ? Map<String, dynamic>.from(existingRaw)
+          : <String, dynamic>{};
+
+      // Keep metadata keys (like __applicant_name / __session_id) if present.
+      for (final entry in existingData.entries) {
+        if (!entry.key.startsWith('__')) continue;
+        updatedData.putIfAbsent(entry.key, () => entry.value);
+      }
+
+      // Preserve computed values if they were in storage and serializer omitted them.
+      final template = _activeTemplate;
+      if (template != null) {
+        for (final field in template.allFields) {
+          if (field.fieldType != FormFieldType.computed) continue;
+          if (updatedData.containsKey(field.fieldName)) continue;
+
+          final existingValue = existingData[field.fieldName];
+          if (existingValue == null) continue;
+          if (existingValue.toString().trim().isEmpty) continue;
+
+          updatedData[field.fieldName] = existingValue;
+        }
+      }
+
       await _submissionService.updateClientSubmission(
         submissionId: _selectedSubmission!['id'],
         data: updatedData,
