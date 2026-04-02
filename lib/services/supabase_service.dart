@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import 'package:sappiire/services/crypto/hybrid_crypto_service.dart';
 import 'package:sappiire/services/form_template_service.dart';
 
 class SupabaseService {
@@ -649,17 +652,52 @@ class SupabaseService {
     String? userId,
   }) async {
     try {
+      final publicKey = await HybridCryptoService.fetchAndCacheRsaPublicKey(
+        forceRefresh: true,
+      );
+
+      if (publicKey.trim().isEmpty) {
+        final fallbackResponse = await _supabase
+            .from('form_submission')
+            .update({
+              'form_data': data,
+              'transmission_version': 0,
+              'status': 'scanned',
+              'scanned_at': DateTime.now().toUtc().toIso8601String(),
+              if (userId != null) 'user_id': userId,
+            })
+            .eq('id', sessionId)
+            .select()
+            .maybeSingle();
+        return fallbackResponse != null;
+      }
+
+      final envelope = await HybridCryptoService.encryptForTransmission(
+        data,
+        publicKey,
+      );
+
       final response = await _supabase
           .from('form_submission')
           .update({
-            'form_data': data,
+            'encrypted_payload': envelope.encryptedPayload,
+            'payload_iv': envelope.payloadIv,
+            'encrypted_aes_key': envelope.encryptedAesKey,
+            'transmission_version': 1,
             'status': 'scanned',
-            'scanned_at': DateTime.now().toIso8601String(),
-            if (userId != null) 'user_id': userId, // ← ADD THIS LINE
+            'scanned_at': DateTime.now().toUtc().toIso8601String(),
+            if (userId != null) 'user_id': userId,
           })
           .eq('id', sessionId)
+          .eq('status', 'active')
           .select()
           .maybeSingle();
+
+      if (response == null) {
+        return false;
+      }
+
+      await _invokeDecryptQrPayloadWithRetry(sessionId);
 
       // Intentionally do not write to client_submissions here.
       // client_submissions must only be written during staff finalize on web.
@@ -679,4 +717,56 @@ class SupabaseService {
   // Legacy methods removed - all data now flows through user_field_values
   // and submission_field_values. No more writes to family_composition or
   // other legacy tables.
+
+  Future<void> _invokeDecryptQrPayloadWithRetry(
+    String sessionId, {
+    int attempt = 1,
+  }) async {
+    try {
+      final accessToken = _supabase.auth.currentSession?.accessToken;
+      if (accessToken == null || accessToken.isEmpty) {
+        if (kDebugMode) {
+          debugPrint(
+            'sendDataToWebSession decrypt-qr-payload session=$sessionId: missing access token, skipping invoke',
+          );
+        }
+        return;
+      }
+
+      final response = await _supabase.functions.invoke(
+        'decrypt-qr-payload',
+        body: {'sessionId': sessionId},
+        headers: {'Authorization': 'Bearer $accessToken'},
+      );
+
+      final data = response.data;
+      final reason = data is Map ? data['reason']?.toString() : null;
+      final success = data is Map ? data['success'] == true : false;
+
+      if (!success && kDebugMode) {
+        debugPrint(
+          'sendDataToWebSession decrypt-qr-payload session=$sessionId attempt=$attempt returned: $data',
+        );
+      }
+
+      // Retry only for transient timing/readiness failures.
+      if (!success &&
+          attempt < 4 &&
+          (reason == 'session_not_found_or_fetch_failed' ||
+              reason == 'missing_encrypted_columns')) {
+        final delayMs = attempt == 1 ? 400 : attempt == 2 ? 900 : 1600;
+        await Future<void>.delayed(Duration(milliseconds: delayMs));
+        await _invokeDecryptQrPayloadWithRetry(
+          sessionId,
+          attempt: attempt + 1,
+        );
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+          'sendDataToWebSession decrypt-qr-payload session=$sessionId warning attempt=$attempt: $e',
+        );
+      }
+    }
+  }
 }

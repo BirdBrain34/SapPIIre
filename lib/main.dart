@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sappiire/mobile/screens/auth/login_screen.dart';
+import 'package:sappiire/services/crypto/hybrid_crypto_service.dart';
 import 'package:sappiire/web/screen/web_login_screen.dart';
 import 'package:sappiire/web/screen/customer_display_screen.dart';
 
@@ -13,6 +14,8 @@ Future<void> main() async {
     anonKey:
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnYmZ4ZXBsZHBkc3d4ZWhobGt4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NDYzMDcsImV4cCI6MjA4NjQyMjMwN30.DhoD6RHExKynXw34mibc3XRP-NwfmDnq1PttVM7-GL4',
   );
+
+  await HybridCryptoService.fetchAndCacheRsaPublicKey();
 
   runApp(const MyApp());
 }

@@ -4,6 +4,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:sappiire/services/crypto/hybrid_crypto_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/form_template_models.dart';
 import 'form_template_service.dart';
@@ -50,6 +51,24 @@ class FieldValueService {
         },
       );
 
+      final aesKey = HybridCryptoService.deriveUserAesKey(userId);
+      for (final row in rows) {
+        final fieldValue = row['field_value'] as String? ?? '';
+        if (fieldValue.isEmpty || fieldValue == _clearedSentinel) {
+          row['iv'] = null;
+          row['encryption_version'] = 0;
+          continue;
+        }
+
+        final encrypted = await HybridCryptoService.encryptField(
+          fieldValue,
+          aesKey,
+        );
+        row['field_value'] = encrypted.ciphertext;
+        row['iv'] = encrypted.iv;
+        row['encryption_version'] = 1;
+      }
+
       final savedFieldIds = rows
           .map((r) => r['field_id'] as String?)
           .whereType<String>()
@@ -67,6 +86,8 @@ class FieldValueService {
               'user_id': userId,
               'field_id': id,
               'field_value': _clearedSentinel,
+              'iv': null,
+              'encryption_version': 0,
               'updated_at': now,
             },
           )
@@ -114,10 +135,12 @@ class FieldValueService {
 
       final rows = await _supabase
           .from('user_field_values')
-          .select('field_id, field_value')
+          .select('field_id, field_value, iv, encryption_version')
           .eq('user_id', userId)
           .inFilter('field_id', eligible.map((f) => f.fieldId).toList())
           .order('updated_at', ascending: false);
+
+      final aesKey = HybridCryptoService.deriveUserAesKey(userId);
 
       // If duplicates still exist before DB migration runs, keep the newest row
       // per field_id for deterministic reads.
@@ -137,18 +160,38 @@ class FieldValueService {
       for (final row in deduped) {
         final fid = row['field_id'] as String?;
         final fval = row['field_value'] as String?;
-        if (fid == null ||
-            fval == null ||
-            fval.isEmpty ||
-            fval == _clearedSentinel) {
+        if (fid == null || fval == null || fval.isEmpty) {
           continue;
         }
+
+        final rawVersion = row['encryption_version'];
+        final version = rawVersion is int
+            ? rawVersion
+            : int.tryParse(rawVersion?.toString() ?? '') ?? 0;
+        final decryptedValue = version == 1
+            ? await HybridCryptoService.decryptField(
+                fval,
+                row['iv'] as String? ?? '',
+                aesKey,
+              )
+            : fval;
+
+        if (version == 1 && decryptedValue.isEmpty && fval.trim().isNotEmpty) {
+          debugPrint(
+            'loadUserFieldValues warning: decryption failed for field_id=$fid',
+          );
+        }
+
+        if (decryptedValue.isEmpty || decryptedValue == _clearedSentinel) {
+          continue;
+        }
+
         final name = idToName[fid];
         if (name == null) continue;
 
         if (idToType[fid] == FormFieldType.memberTable) {
           try {
-            result[name] = (jsonDecode(fval) as List)
+            result[name] = (jsonDecode(decryptedValue) as List)
                 .map((e) => Map<String, dynamic>.from(e as Map))
                 .toList();
           } catch (_) {
@@ -157,7 +200,7 @@ class FieldValueService {
           continue;
         }
 
-        result[name] = fval;
+        result[name] = decryptedValue;
       }
       return result;
     } catch (e) {
