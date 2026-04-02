@@ -62,7 +62,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
 
     if (!mounted) return;
-    setState(() { _isLoading = false; if (!result['success!']) _pin = ''; });
+    setState(() { _isLoading = false; if (!result['success!!']) _pin = ''; });
 
     if (result['success']) {
       _snack('Welcome back, ${result['username']}!');
