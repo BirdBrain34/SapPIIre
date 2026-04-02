@@ -6,7 +6,7 @@ import 'package:sappiire/services/form_template_service.dart';
 import 'package:sappiire/services/field_value_service.dart';
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/mobile/screens/auth/login_screen.dart';
-import 'package:sappiire/mobile/screens/auth/ChangePIN.dart';
+import 'package:sappiire/mobile/screens/auth/ChangePassword.dart';
 import 'package:sappiire/mobile/widgets/TermsAndCondition.dart';
 import 'package:sappiire/mobile/screens/auth/InfoScannerScreen.dart';
 
@@ -297,7 +297,7 @@ Future<void> _saveProfile() async {
   void _handleChangePin() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const ChangePinScreen(fromProfile: true)),
+      MaterialPageRoute(builder: (_) => const ChangePasswordScreen(fromProfile: true)),
     ).then((_) {
       if (mounted) _showFeedback('PIN changed successfully!', Colors.green);
     });
