@@ -587,22 +587,152 @@ class FormStateController extends ChangeNotifier {
       if (formula.trim().isEmpty) continue;
       try {
         final result = _evalFormula(formula);
-        _setComputed(field.fieldName, result);
+        final shouldShowZero = RegExp(r'\bSUM_COLUMN\s*\(').hasMatch(formula);
+        _setComputed(field.fieldName, result, showZero: shouldShowZero);
       } catch (_) {
         // Leave field blank if formula is invalid
       }
     }
   }
 
+  /// Preprocess formula to expand SUM_COLUMN() aggregate function calls.
+  /// Converts SUM_COLUMN(__family_composition, "allowance") → numeric sum
+  String _expandAggregates(String formula) {
+    // Match: SUM_COLUMN(tableKey, "columnKey") or SUM_COLUMN(tableKey, 'columnKey')
+    final regex = RegExp(
+      'SUM_COLUMN\\(([a-zA-Z_][a-zA-Z0-9_]*)\\s*,\\s*[\'"]([a-zA-Z_][a-zA-Z0-9_]*)[\'"]\\s*\\)',
+    );
+    return formula.replaceAllMapped(regex, (m) {
+      final tableKey = m.group(1)!;
+      final columnKey = m.group(2)!;
+      final sum = _sumTableColumn(tableKey, columnKey);
+      return sum.toString();
+    });
+  }
+
+  /// Sum all numeric values in a specific column across all rows of a table field.
+  /// Returns 0 if table is empty, not found, or contains no valid numeric values.
+  /// Handles null, empty string, and non-numeric values safely (treated as 0).
+  double _sumTableColumn(String tableKey, String columnKey) {
+    final table = _resolveTableRows(tableKey);
+
+    if (table == null || table.isEmpty) return 0.0;
+
+    double sum = 0.0;
+    for (final row in table) {
+      final rawValue = _readRowColumnValue(row, tableKey, columnKey);
+      // Treat null and empty string as 0
+      if (rawValue == null || rawValue == '') {
+        continue;
+      }
+      // Parse as number; non-numeric → 0
+      final numVal =
+          double.tryParse(rawValue.toString().replaceAll(',', '')) ?? 0.0;
+      sum += numVal;
+    }
+    return sum;
+  }
+
+  dynamic _readRowColumnValue(
+    Map<String, dynamic> row,
+    String tableKey,
+    String columnKey,
+  ) {
+    final direct = row[columnKey];
+    if (direct != null && direct.toString().trim().isNotEmpty) {
+      return direct;
+    }
+
+    final aliases = _columnAliasesForTable(tableKey, columnKey);
+    for (final alias in aliases) {
+      final v = row[alias];
+      if (v != null && v.toString().trim().isNotEmpty) return v;
+    }
+    return direct;
+  }
+
+  List<String> _columnAliasesForTable(String tableKey, String columnKey) {
+    FormFieldModel? tableField;
+
+    if (tableKey == '__family_composition') {
+      tableField = template.allFields
+          .where((f) => f.fieldType == FormFieldType.familyTable)
+          .cast<FormFieldModel?>()
+          .firstWhere((f) => f != null, orElse: () => null);
+    } else if (tableKey == '__supporting_family') {
+      return const <String>[];
+    } else {
+      final normalized = tableKey.startsWith('__')
+          ? tableKey.replaceFirst(RegExp(r'^__+'), '')
+          : tableKey;
+      tableField = template.allFields
+          .where(
+            (f) =>
+                f.fieldType == FormFieldType.memberTable &&
+                f.fieldName == normalized,
+          )
+          .cast<FormFieldModel?>()
+          .firstWhere((f) => f != null, orElse: () => null);
+    }
+
+    if (tableField == null || tableField.columns.isEmpty) {
+      return const <String>[];
+    }
+
+    final aliases = <String>[];
+    for (final col in tableField.columns) {
+      final dbMapKey = (col.validationRules?['db_map_key'] as String?)?.trim();
+      if (dbMapKey == columnKey && col.fieldName.trim().isNotEmpty) {
+        aliases.add(col.fieldName.trim());
+      }
+    }
+    return aliases;
+  }
+
+  List<Map<String, dynamic>>? _resolveTableRows(String tableKey) {
+    final formState = _currentFormStateJson();
+    final normalizedKey = tableKey.trim();
+
+    final raw =
+        formState[normalizedKey] ??
+        (normalizedKey.startsWith('__')
+            ? formState[normalizedKey.replaceFirst(RegExp(r'^__+'), '')]
+            : null);
+
+    if (raw is! List) return null;
+
+    return raw
+        .whereType<dynamic>()
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+  }
+
+  Map<String, dynamic> _currentFormStateJson() {
+    final state = <String, dynamic>{};
+
+    state.addAll(_values);
+    state['__family_composition'] = familyMembers;
+    state['__supporting_family'] = supportingFamily;
+    state.addAll(memberTableData);
+
+    return state;
+  }
+
   /// Tokenise and evaluate a simple arithmetic formula.
   double _evalFormula(String formula) {
-    final resolved = formula.replaceAllMapped(
+    // Step 1: Expand aggregate functions (SUM_COLUMN, etc.)
+    final expanded = _expandAggregates(formula);
+
+    // Step 2: Replace field names with their numeric values
+    final resolved = expanded.replaceAllMapped(
       RegExp(r'[a-zA-Z_][a-zA-Z0-9_]*'),
       (m) {
         final name = m.group(0)!;
         return _parseNum(name).toString();
       },
     );
+
+    // Step 3: Evaluate the arithmetic expression
     return _evalExpr(resolved.replaceAll(' ', ''), _Pos(0));
   }
 
@@ -655,8 +785,8 @@ class FormStateController extends ChangeNotifier {
     return double.tryParse(raw) ?? 0.0;
   }
 
-  void _setComputed(String key, double value) {
-    final str = value == 0 ? '' : value.toStringAsFixed(2);
+  void _setComputed(String key, double value, {bool showZero = false}) {
+    final str = value == 0 ? (showZero ? '0' : '') : value.toStringAsFixed(2);
     if (textControllers.containsKey(key)) {
       if (textControllers[key]!.text != str) {
         textControllers[key]!.text = str;

@@ -35,24 +35,42 @@ enum FormFieldType {
 
   static FormFieldType fromString(String v) {
     switch (v) {
-      case 'text':                    return FormFieldType.text;
-      case 'paragraph':               return FormFieldType.paragraph;
-      case 'date':                    return FormFieldType.date;
-      case 'time':                    return FormFieldType.time;
-      case 'number':                  return FormFieldType.number;
-      case 'dropdown':                return FormFieldType.dropdown;
-      case 'radio':                   return FormFieldType.radio;
-      case 'checkbox':                return FormFieldType.checkbox;
-      case 'boolean':                 return FormFieldType.boolean;
-      case 'linear_scale':            return FormFieldType.linearScale;
-      case 'computed':                return FormFieldType.computed;
-      case 'conditional':             return FormFieldType.conditional;
-      case 'membership_group':        return FormFieldType.membershipGroup;
-      case 'family_table':            return FormFieldType.familyTable;
-      case 'supporting_family_table': return FormFieldType.supportingFamilyTable;
-      case 'member_table':            return FormFieldType.memberTable;
-      case 'signature':               return FormFieldType.signature;
-      default:                        return FormFieldType.unknown;
+      case 'text':
+        return FormFieldType.text;
+      case 'paragraph':
+        return FormFieldType.paragraph;
+      case 'date':
+        return FormFieldType.date;
+      case 'time':
+        return FormFieldType.time;
+      case 'number':
+        return FormFieldType.number;
+      case 'dropdown':
+        return FormFieldType.dropdown;
+      case 'radio':
+        return FormFieldType.radio;
+      case 'checkbox':
+        return FormFieldType.checkbox;
+      case 'boolean':
+        return FormFieldType.boolean;
+      case 'linear_scale':
+        return FormFieldType.linearScale;
+      case 'computed':
+        return FormFieldType.computed;
+      case 'conditional':
+        return FormFieldType.conditional;
+      case 'membership_group':
+        return FormFieldType.membershipGroup;
+      case 'family_table':
+        return FormFieldType.familyTable;
+      case 'supporting_family_table':
+        return FormFieldType.supportingFamilyTable;
+      case 'member_table':
+        return FormFieldType.memberTable;
+      case 'signature':
+        return FormFieldType.signature;
+      default:
+        return FormFieldType.unknown;
     }
   }
 
@@ -70,24 +88,42 @@ enum FormFieldType {
   /// Convert enum value back to the database string representation.
   String toDbString() {
     switch (this) {
-      case FormFieldType.text:                    return 'text';
-      case FormFieldType.paragraph:               return 'paragraph';
-      case FormFieldType.date:                    return 'date';
-      case FormFieldType.time:                    return 'time';
-      case FormFieldType.number:                  return 'number';
-      case FormFieldType.dropdown:                return 'dropdown';
-      case FormFieldType.radio:                   return 'radio';
-      case FormFieldType.checkbox:                return 'checkbox';
-      case FormFieldType.boolean:                 return 'boolean';
-      case FormFieldType.linearScale:             return 'linear_scale';
-      case FormFieldType.computed:                return 'computed';
-      case FormFieldType.conditional:             return 'conditional';
-      case FormFieldType.membershipGroup:         return 'membership_group';
-      case FormFieldType.familyTable:             return 'family_table';
-      case FormFieldType.supportingFamilyTable:   return 'supporting_family_table';
-      case FormFieldType.memberTable:              return 'member_table';
-      case FormFieldType.signature:               return 'signature';
-      case FormFieldType.unknown:                 return 'unknown';
+      case FormFieldType.text:
+        return 'text';
+      case FormFieldType.paragraph:
+        return 'paragraph';
+      case FormFieldType.date:
+        return 'date';
+      case FormFieldType.time:
+        return 'time';
+      case FormFieldType.number:
+        return 'number';
+      case FormFieldType.dropdown:
+        return 'dropdown';
+      case FormFieldType.radio:
+        return 'radio';
+      case FormFieldType.checkbox:
+        return 'checkbox';
+      case FormFieldType.boolean:
+        return 'boolean';
+      case FormFieldType.linearScale:
+        return 'linear_scale';
+      case FormFieldType.computed:
+        return 'computed';
+      case FormFieldType.conditional:
+        return 'conditional';
+      case FormFieldType.membershipGroup:
+        return 'membership_group';
+      case FormFieldType.familyTable:
+        return 'family_table';
+      case FormFieldType.supportingFamilyTable:
+        return 'supporting_family_table';
+      case FormFieldType.memberTable:
+        return 'member_table';
+      case FormFieldType.signature:
+        return 'signature';
+      case FormFieldType.unknown:
+        return 'unknown';
     }
   }
 }
@@ -109,12 +145,12 @@ class FieldOption {
   });
 
   factory FieldOption.fromMap(Map<String, dynamic> m) => FieldOption(
-        optionId: m['option_id'] as String,
-        value: m['option_value'] as String,
-        label: m['option_label'] as String,
-        order: (m['option_order'] as int?) ?? 0,
-        isDefault: (m['is_default'] as bool?) ?? false,
-      );
+    optionId: m['option_id'] as String,
+    value: m['option_value'] as String,
+    label: m['option_label'] as String,
+    order: (m['option_order'] as int?) ?? 0,
+    isDefault: (m['is_default'] as bool?) ?? false,
+  );
 }
 
 // Field condition for conditional visibility
@@ -134,12 +170,12 @@ class FieldCondition {
   });
 
   factory FieldCondition.fromMap(Map<String, dynamic> m) => FieldCondition(
-        conditionId: m['condition_id'] as String,
-        fieldId: m['field_id'] as String,
-        triggerFieldId: m['trigger_field_id'] as String,
-        triggerValue: m['trigger_value'] as String?,
-        action: (m['action'] as String?) ?? 'show',
-      );
+    conditionId: m['condition_id'] as String,
+    fieldId: m['field_id'] as String,
+    triggerFieldId: m['trigger_field_id'] as String,
+    triggerValue: m['trigger_value'] as String?,
+    action: (m['action'] as String?) ?? 'show',
+  );
 }
 
 // Form field definition
@@ -147,20 +183,22 @@ class FormFieldModel {
   final String fieldId;
   final String templateId;
   final String? sectionId;
-  final String fieldName;   // internal key, used as map key in form_data
-  final String fieldLabel;  // display label
+  final String fieldName; // internal key, used as map key in form_data
+  final String fieldLabel; // display label
   final FormFieldType fieldType;
   final bool isRequired;
   final Map<String, dynamic>? validationRules;
   final String? defaultValue;
   final int fieldOrder;
-  final String? autofillSource; // e.g. 'lastname', 'address.barangay', 'socio.house_rent'
+  final String?
+  autofillSource; // e.g. 'lastname', 'address.barangay', 'socio.house_rent'
   final String? canonicalFieldKey;
   final String? placeholder;
   final List<FieldOption> options;
   final List<FieldCondition> conditions;
   final String? parentFieldId;
-  final List<FormFieldModel> columns; // child column definitions for memberTable
+  final List<FormFieldModel>
+  columns; // child column definitions for memberTable
 
   const FormFieldModel({
     required this.fieldId,
@@ -183,28 +221,29 @@ class FormFieldModel {
   });
 
   factory FormFieldModel.fromMap(Map<String, dynamic> m) => FormFieldModel(
-        fieldId: m['field_id'] as String,
-        templateId: m['template_id'] as String,
-        sectionId: m['section_id'] as String?,
-        fieldName: m['field_name'] as String,
-        fieldLabel: m['field_label'] as String,
-        fieldType: FormFieldType.fromString(m['field_type'] as String? ?? ''),
-        isRequired: (m['is_required'] as bool?) ?? false,
-        validationRules: m['validation_rules'] as Map<String, dynamic>?,
-        defaultValue: m['default_value'] as String?,
-        fieldOrder: (m['field_order'] as int?) ?? 0,
-        autofillSource: m['autofill_source'] as String?,
-        canonicalFieldKey: m['canonical_field_key'] as String?,
-        placeholder: m['placeholder'] as String?,
-        options: (m['form_field_options'] as List<dynamic>? ?? [])
+    fieldId: m['field_id'] as String,
+    templateId: m['template_id'] as String,
+    sectionId: m['section_id'] as String?,
+    fieldName: m['field_name'] as String,
+    fieldLabel: m['field_label'] as String,
+    fieldType: FormFieldType.fromString(m['field_type'] as String? ?? ''),
+    isRequired: (m['is_required'] as bool?) ?? false,
+    validationRules: m['validation_rules'] as Map<String, dynamic>?,
+    defaultValue: m['default_value'] as String?,
+    fieldOrder: (m['field_order'] as int?) ?? 0,
+    autofillSource: m['autofill_source'] as String?,
+    canonicalFieldKey: m['canonical_field_key'] as String?,
+    placeholder: m['placeholder'] as String?,
+    options:
+        (m['form_field_options'] as List<dynamic>? ?? [])
             .map((o) => FieldOption.fromMap(o as Map<String, dynamic>))
             .toList()
           ..sort((a, b) => a.order.compareTo(b.order)),
-        conditions: (m['form_field_conditions'] as List<dynamic>? ?? [])
-            .map((c) => FieldCondition.fromMap(c as Map<String, dynamic>))
-            .toList(),
-        parentFieldId: m['parent_field_id'] as String?,
-      );
+    conditions: (m['form_field_conditions'] as List<dynamic>? ?? [])
+        .map((c) => FieldCondition.fromMap(c as Map<String, dynamic>))
+        .toList(),
+    parentFieldId: m['parent_field_id'] as String?,
+  );
 
   /// Display key for checkbox/sharing UI (avoids duplicating this across files).
   String get checkKey {
@@ -299,16 +338,18 @@ class FormSection {
     this.fields = const [],
   });
 
-  factory FormSection.fromMap(Map<String, dynamic> m, List<FormFieldModel> fields) =>
-      FormSection(
-        sectionId: m['section_id'] as String,
-        templateId: m['template_id'] as String,
-        sectionName: m['section_name'] as String,
-        sectionDesc: m['section_desc'] as String?,
-        sectionOrder: (m['section_order'] as int?) ?? 0,
-        isCollapsible: (m['is_collapsible'] as bool?) ?? false,
-        fields: fields..sort((a, b) => a.fieldOrder.compareTo(b.fieldOrder)),
-      );
+  factory FormSection.fromMap(
+    Map<String, dynamic> m,
+    List<FormFieldModel> fields,
+  ) => FormSection(
+    sectionId: m['section_id'] as String,
+    templateId: m['template_id'] as String,
+    sectionName: m['section_name'] as String,
+    sectionDesc: m['section_desc'] as String?,
+    sectionOrder: (m['section_order'] as int?) ?? 0,
+    isCollapsible: (m['is_collapsible'] as bool?) ?? false,
+    fields: fields..sort((a, b) => a.fieldOrder.compareTo(b.fieldOrder)),
+  );
 }
 
 // Form template definition
@@ -349,22 +390,25 @@ class FormTemplate {
   }
 
   factory FormTemplate.fromMap(Map<String, dynamic> m) {
-    final rawSections =
-        (m['form_sections'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
-    final rawFields =
-        (m['form_fields'] as List<dynamic>? ?? [])
-            .cast<Map<String, dynamic>>()
-            .where((f) {
-      final vr = f['validation_rules'] as Map<String, dynamic>?;
-      return vr == null || vr['_archived'] != true;
-    }).toList();
+    final rawSections = (m['form_sections'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
+    final rawFields = (m['form_fields'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>()
+        .where((f) {
+          final vr = f['validation_rules'] as Map<String, dynamic>?;
+          return vr == null || vr['_archived'] != true;
+        })
+        .toList();
 
-    final allParsed =
-        rawFields.map((f) => FormFieldModel.fromMap(f)).toList();
+    final allParsed = rawFields.map((f) => FormFieldModel.fromMap(f)).toList();
 
     // Separate child column-definition fields from top-level fields
-    final childFields = allParsed.where((f) => f.parentFieldId != null).toList();
-    final topLevelFields = allParsed.where((f) => f.parentFieldId == null).toList();
+    final childFields = allParsed
+        .where((f) => f.parentFieldId != null)
+        .toList();
+    final topLevelFields = allParsed
+        .where((f) => f.parentFieldId == null)
+        .toList();
 
     // Group children by parent ID
     final childrenByParent = <String, List<FormFieldModel>>{};
@@ -373,7 +417,7 @@ class FormTemplate {
     }
 
     // Attach columns to memberTable and familyTable fields
-    final assembledFields = topLevelFields.map((f) {
+    final assembledWithColumns = topLevelFields.map((f) {
       if ((f.fieldType == FormFieldType.memberTable ||
               f.fieldType == FormFieldType.familyTable) &&
           childrenByParent.containsKey(f.fieldId)) {
@@ -384,13 +428,31 @@ class FormTemplate {
       return f;
     }).toList();
 
+    // Defensive dedupe: duplicate field_name keys cause shared controller state
+    // and can let computed outputs overwrite unrelated inputs.
+    final seenFieldNames = <String>{};
+    final assembledFields = assembledWithColumns.map((f) {
+      final key = f.fieldName.trim();
+      if (key.isEmpty) return f;
+      if (!seenFieldNames.contains(key)) {
+        seenFieldNames.add(key);
+        return f;
+      }
+
+      final suffix = f.fieldId.length >= 8
+          ? f.fieldId.substring(0, 8)
+          : f.fieldId;
+      final newKey = '${key}_$suffix';
+      seenFieldNames.add(newKey);
+      return f.copyWith(fieldName: newKey);
+    }).toList();
+
     final sections = rawSections.map((s) {
       final sectionFields = assembledFields
           .where((f) => f.sectionId == s['section_id'])
           .toList();
       return FormSection.fromMap(s, sectionFields);
-    }).toList()
-      ..sort((a, b) => a.sectionOrder.compareTo(b.sectionOrder));
+    }).toList()..sort((a, b) => a.sectionOrder.compareTo(b.sectionOrder));
 
     return FormTemplate(
       templateId: m['template_id'] as String,
@@ -399,7 +461,8 @@ class FormTemplate {
       isActive: (m['is_active'] as bool?) ?? true,
       formCode: m['form_code'] as String?,
       referencePrefix: m['reference_prefix'] as String?,
-      referenceFormat: (m['reference_format'] as String?)?.trim().isNotEmpty == true
+      referenceFormat:
+          (m['reference_format'] as String?)?.trim().isNotEmpty == true
           ? m['reference_format'] as String
           : '{FORMCODE}-{YYYY}-{MM}-{####}',
       requiresReference: (m['requires_reference'] as bool?) ?? true,

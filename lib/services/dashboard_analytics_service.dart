@@ -143,11 +143,26 @@ class DashboardAnalyticsService {
           .order('created_at', ascending: false)
           .limit(500);
 
+      final actorIds = List<Map<String, dynamic>>.from(rows)
+          .map((row) => row['actor_id']?.toString().trim() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList();
+      final nameByActorId = await _fetchStaffDisplayNames(actorIds);
+
       final output = <String, int>{};
       for (final row in List<Map<String, dynamic>>.from(rows)) {
         final actorId = row['actor_id']?.toString().trim() ?? '';
         final actorName = row['actor_name']?.toString().trim() ?? '';
-        final label = actorName.isNotEmpty ? actorName : actorId;
+
+        var label = nameByActorId[actorId] ?? '';
+        if (label.isEmpty) {
+          label = _sanitizeActorLabel(actorName);
+        }
+        if (label.isEmpty) {
+          label = _sanitizeActorLabel(actorId);
+        }
+
         if (label.isEmpty) {
           continue;
         }
@@ -163,6 +178,94 @@ class DashboardAnalyticsService {
       debugPrint('fetchStaffWorkloadDistribution error: $e');
       return {};
     }
+  }
+
+  Future<Map<String, String>> _fetchStaffDisplayNames(
+    List<String> actorIds,
+  ) async {
+    if (actorIds.isEmpty) {
+      return {};
+    }
+
+    try {
+      final accounts = await _supabase
+          .from('staff_accounts')
+          .select('cswd_id, username, email')
+          .inFilter('cswd_id', actorIds);
+      final profiles = await _supabase
+          .from('staff_profiles')
+          .select('cswd_id, first_name, middle_name, last_name')
+          .inFilter('cswd_id', actorIds);
+
+      final profileById = <String, Map<String, dynamic>>{};
+      for (final row in List<Map<String, dynamic>>.from(profiles)) {
+        final id = row['cswd_id']?.toString().trim() ?? '';
+        if (id.isEmpty) {
+          continue;
+        }
+        profileById[id] = row;
+      }
+
+      final displayNames = <String, String>{};
+      for (final row in List<Map<String, dynamic>>.from(accounts)) {
+        final id = row['cswd_id']?.toString().trim() ?? '';
+        if (id.isEmpty) {
+          continue;
+        }
+
+        final profile = profileById[id] ?? const <String, dynamic>{};
+        final first = profile['first_name']?.toString().trim() ?? '';
+        final middle = profile['middle_name']?.toString().trim() ?? '';
+        final last = profile['last_name']?.toString().trim() ?? '';
+
+        final middleInitial = middle.isNotEmpty ? ' ${middle[0]}.' : '';
+        final fullName = '$first$middleInitial $last'.trim();
+        final username = row['username']?.toString().trim() ?? '';
+        final email = row['email']?.toString().trim() ?? '';
+
+        var label = fullName;
+        if (label.isEmpty) {
+          label = _sanitizeActorLabel(username);
+        }
+        if (label.isEmpty) {
+          label = _sanitizeActorLabel(email);
+        }
+
+        if (label.isNotEmpty) {
+          displayNames[id] = label;
+        }
+      }
+
+      return displayNames;
+    } catch (e) {
+      debugPrint('_fetchStaffDisplayNames error: $e');
+      return {};
+    }
+  }
+
+  String _sanitizeActorLabel(String rawValue) {
+    final value = rawValue.trim();
+    if (value.isEmpty) {
+      return '';
+    }
+
+    if (_isUuid(value)) {
+      return '';
+    }
+
+    if (value.contains('@')) {
+      final localPart = value.split('@').first.trim();
+      return _isUuid(localPart) ? '' : localPart;
+    }
+
+    return value;
+  }
+
+  bool _isUuid(String value) {
+    final uuid = RegExp(
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
+    );
+    return uuid.hasMatch(value);
   }
 
   Future<Map<String, int>> fetchGenderRatio({String formType = 'All'}) async {
@@ -781,8 +884,21 @@ class DashboardAnalyticsService {
 
   String _extractIssueValue(Map<String, dynamic> data) {
     final value = _extractFieldValue(data, 'Issue');
+    String codedValue = '';
+
     if (value.isNotEmpty) {
-      return value;
+      if (!_isNumericCode(value)) {
+        return value;
+      }
+      codedValue = value;
+    }
+
+    final structuredLabel = _extractIssueLabelFromStructuredData(
+      data,
+      codedValue: codedValue,
+    );
+    if (structuredLabel.isNotEmpty) {
+      return structuredLabel;
     }
 
     final keys = data.keys.toList();
@@ -799,19 +915,114 @@ class DashboardAnalyticsService {
 
       final raw = data[key];
       if (raw is List && raw.isNotEmpty) {
-        final first = raw.first.toString().trim();
-        if (first.isNotEmpty) {
-          return first;
+        for (final item in raw) {
+          if (item is Map<String, dynamic>) {
+            final label = _extractReadableLabelFromMap(
+              item,
+              codedValue: codedValue,
+            );
+            if (label.isNotEmpty) {
+              return label;
+            }
+            continue;
+          }
+
+          final text = item.toString().trim();
+          if (text.isEmpty) {
+            continue;
+          }
+          if (_isNumericCode(text)) {
+            codedValue = codedValue.isEmpty ? text : codedValue;
+            continue;
+          }
+          return text;
         }
+      }
+
+      if (raw is Map<String, dynamic>) {
+        final label = _extractReadableLabelFromMap(raw, codedValue: codedValue);
+        if (label.isNotEmpty) {
+          return label;
+        }
+        continue;
       }
 
       final text = raw?.toString().trim() ?? '';
       if (text.isNotEmpty) {
+        if (_isNumericCode(text)) {
+          codedValue = codedValue.isEmpty ? text : codedValue;
+          continue;
+        }
         return text;
       }
     }
 
+    return codedValue.isEmpty ? '' : 'Need Code $codedValue';
+  }
+
+  String _extractIssueLabelFromStructuredData(
+    Map<String, dynamic> data, {
+    required String codedValue,
+  }) {
+    for (final entry in data.entries) {
+      final normalizedKey = _normalize(entry.key);
+      if (!(normalizedKey.contains('issue') ||
+          normalizedKey.contains('need') ||
+          normalizedKey.contains('concern') ||
+          normalizedKey.contains('problem') ||
+          normalizedKey.contains('assistance') ||
+          normalizedKey.contains('service') ||
+          normalizedKey.contains('reason'))) {
+        continue;
+      }
+
+      final value = entry.value;
+      if (value is Map<String, dynamic>) {
+        final label = _extractReadableLabelFromMap(
+          value,
+          codedValue: codedValue,
+        );
+        if (label.isNotEmpty) {
+          return label;
+        }
+      }
+    }
+
     return '';
+  }
+
+  String _extractReadableLabelFromMap(
+    Map<String, dynamic> mapValue, {
+    required String codedValue,
+  }) {
+    const preferredKeys = ['label', 'name', 'title', 'text'];
+    for (final key in preferredKeys) {
+      final value = mapValue[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty && !_isNumericCode(value)) {
+        return value;
+      }
+    }
+
+    if (codedValue.isNotEmpty) {
+      const matchKeys = ['value', 'id', 'code'];
+      for (final key in matchKeys) {
+        final v = mapValue[key]?.toString().trim() ?? '';
+        if (v == codedValue) {
+          for (final preferred in preferredKeys) {
+            final label = mapValue[preferred]?.toString().trim() ?? '';
+            if (label.isNotEmpty && !_isNumericCode(label)) {
+              return label;
+            }
+          }
+        }
+      }
+    }
+
+    return '';
+  }
+
+  bool _isNumericCode(String value) {
+    return RegExp(r'^\d+$').hasMatch(value.trim());
   }
 
   Future<List<Map<String, dynamic>>> _fetchSubmissionDataRows({

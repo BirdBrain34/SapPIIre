@@ -77,14 +77,36 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
   }
 
   void _snack(String msg, {bool error = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg),
-      backgroundColor: error ? const Color(0xFFE63946) : const Color(0xFF2EC4B6),
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: error
+            ? const Color(0xFFE63946)
+            : const Color(0xFF2EC4B6),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    if (screenWidth <= 900) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF0D1B4E),
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 460),
+                child: _buildLoginPanel(isCompact: true),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       // Deep navy — primary brand blue
       backgroundColor: const Color(0xFF0D1B4E),
@@ -134,14 +156,20 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
                       const SizedBox(height: 48),
 
                       // Feature chips
-                      _featureRow(Icons.enhanced_encryption_outlined,
-                          'Hybrid cryptosystem PII protection'),
+                      _featureRow(
+                        Icons.enhanced_encryption_outlined,
+                        'Hybrid cryptosystem PII protection',
+                      ),
                       const SizedBox(height: 16),
-                      _featureRow(Icons.qr_code_2_outlined,
-                          'QR-based autofill for fast intake'),
+                      _featureRow(
+                        Icons.qr_code_2_outlined,
+                        'QR-based autofill for fast intake',
+                      ),
                       const SizedBox(height: 16),
-                      _featureRow(Icons.admin_panel_settings_outlined,
-                          'Role-based staff access control'),
+                      _featureRow(
+                        Icons.admin_panel_settings_outlined,
+                        'Role-based staff access control',
+                      ),
                     ],
                   ),
                 ),
@@ -163,183 +191,173 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
                 ),
               ],
             ),
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 40),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Header
-                    const Text(
-                      'Welcome back',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Sign in to access the staff dashboard',
-                      style: TextStyle(
-                        color: Color(0xFF8BAEE0),
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 40),
+            child: Center(child: _buildLoginPanel(isCompact: false)),
+          ),
+        ],
+      ),
+    );
+  }
 
-                    // Identifier field
-                    _fieldLabel('Email (Staff) or Username (Superadmin)'),
-                    const SizedBox(height: 8),
-                    _styledField(
-                      controller: _identifierController,
-                      hint: 'Staff: email | Superadmin: username',
-                      icon: Icons.badge_outlined,
-                      textInputAction: TextInputAction.next,
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Staff accounts must sign in with email. Superadmin signs in with username.',
-                      style: TextStyle(
-                        color: Color(0xFF8BAEE0),
-                        fontSize: 12,
-                        height: 1.4,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Password field
-                    _fieldLabel('Password'),
-                    const SizedBox(height: 8),
-                    _styledField(
-                      controller: _passwordController,
-                      hint: 'Enter your password',
-                      icon: Icons.lock_outline,
-                      obscure: true,
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) => _isLoading ? null : _handleLogin(),
-                    ),
-
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        TextButton(
-                          onPressed: () => Navigator.push(
-                            context,
-                            ContentFadeRoute(page: const NewStaffSetupScreen()),
-                          ),
-                          child: const Text(
-                            'New staff? Set your password',
-                            style: TextStyle(
-                              color: Color(0xFF6EA8FE),
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.push(
-                            context,
-                            ContentFadeRoute(page: const ForgotPasswordScreen()),
-                          ),
-                          child: const Text(
-                            'Forgot password?',
-                            style: TextStyle(
-                              color: Color(0xFF8BAEE0),
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Login button
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          // Gold/amber accent — complementary to blue (color theory)
-                          backgroundColor: const Color(0xFF4C8BF5),
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        onPressed: _isLoading ? null : _handleLogin,
-                        child: _isLoading
-                            ? const SizedBox(
-                                height: 22,
-                                width: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.5,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text(
-                                'Log In to System',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  letterSpacing: 0.3,
-                                ),
-                              ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-                    // Divider
-                    Row(children: [
-                      const Expanded(child: Divider(color: Color(0xFF2A3F7A))),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 12),
-                        child: Text('or',
-                            style: TextStyle(
-                                color: Color(0xFF8BAEE0), fontSize: 13)),
-                      ),
-                      const Expanded(child: Divider(color: Color(0xFF2A3F7A))),
-                    ]),
-                    const SizedBox(height: 20),
-
-                    // Register button
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Color(0xFF2A3F7A), width: 1.5),
-                          foregroundColor: const Color(0xFF8BAEE0),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        onPressed: () => Navigator.push(
-                          context,
-                          ContentFadeRoute(page: const WebSignupScreen()),
-                        ),
-                        child: const Text(
-                          "Don't have an account? Register",
-                          style: TextStyle(fontSize: 14),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 36),
-                    const Center(
-                      child: Text(
-                        '© 2026 City Social Welfare and Development Office\nSanta Rosa City',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Color(0xFF3D5A99),
-                          fontSize: 11,
-                          height: 1.6,
-                        ),
-                      ),
-                    ),
-                  ],
+  Widget _buildLoginPanel({required bool isCompact}) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.symmetric(
+        horizontal: isCompact ? 24 : 48,
+        vertical: isCompact ? 28 : 40,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'Welcome back',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Sign in to access the staff dashboard',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: Color(0xFF8BAEE0), fontSize: 14),
+          ),
+          const SizedBox(height: 40),
+          _fieldLabel('Email (Staff) or Username (Superadmin)'),
+          const SizedBox(height: 8),
+          _styledField(
+            controller: _identifierController,
+            hint: 'Staff: email | Superadmin: username',
+            icon: Icons.badge_outlined,
+            textInputAction: TextInputAction.next,
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Staff accounts must sign in with email. Superadmin signs in with username.',
+            style: TextStyle(
+              color: Color(0xFF8BAEE0),
+              fontSize: 12,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 20),
+          _fieldLabel('Password'),
+          const SizedBox(height: 8),
+          _styledField(
+            controller: _passwordController,
+            hint: 'Enter your password',
+            icon: Icons.lock_outline,
+            obscure: true,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _isLoading ? null : _handleLogin(),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            spacing: 8,
+            runSpacing: 0,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  ContentFadeRoute(page: const NewStaffSetupScreen()),
                 ),
+                child: const Text(
+                  'New staff? Set your password',
+                  style: TextStyle(color: Color(0xFF6EA8FE), fontSize: 13),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  ContentFadeRoute(page: const ForgotPasswordScreen()),
+                ),
+                child: const Text(
+                  'Forgot password?',
+                  style: TextStyle(color: Color(0xFF8BAEE0), fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4C8BF5),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: _isLoading ? null : _handleLogin,
+              child: _isLoading
+                  ? const SizedBox(
+                      height: 22,
+                      width: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text(
+                      'Log In to System',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              const Expanded(child: Divider(color: Color(0xFF2A3F7A))),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: Text(
+                  'or',
+                  style: TextStyle(color: Color(0xFF8BAEE0), fontSize: 13),
+                ),
+              ),
+              const Expanded(child: Divider(color: Color(0xFF2A3F7A))),
+            ],
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFF2A3F7A), width: 1.5),
+                foregroundColor: const Color(0xFF8BAEE0),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: () => Navigator.push(
+                context,
+                ContentFadeRoute(page: const WebSignupScreen()),
+              ),
+              child: const Text(
+                "Don't have an account? Register",
+                style: TextStyle(fontSize: 14),
+              ),
+            ),
+          ),
+          const SizedBox(height: 36),
+          const Center(
+            child: Text(
+              '© 2026 City Social Welfare and Development Office\nSanta Rosa City',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Color(0xFF3D5A99),
+                fontSize: 11,
+                height: 1.6,
               ),
             ),
           ),
@@ -388,8 +406,10 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
           hintStyle: const TextStyle(color: Color(0xFF4A6499), fontSize: 14),
           prefixIcon: Icon(icon, color: const Color(0xFF6EA8FE), size: 20),
           border: InputBorder.none,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 16,
+          ),
         ),
       ),
     );
@@ -421,4 +441,3 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
     );
   }
 }
-

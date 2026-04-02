@@ -328,6 +328,70 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     await _loadData();
   }
 
+  Future<void> _deleteApplicant() async {
+    final group = _selectedApplicantGroup;
+    if (group == null) return;
+
+    final count = group.submissions.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete entire applicant?'),
+        content: Text(
+          'This will permanently delete all $count form(s) for ${group.displayName}. This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text(
+              'Delete All',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    // Delete all submissions for this applicant
+    for (final submission in group.submissions) {
+      await AuditLogService().log(
+        actionType: kAuditSubmissionDeleted,
+        category: kCategorySubmission,
+        severity: kSeverityCritical,
+        actorId: widget.cswd_id,
+        actorName: widget.displayName,
+        actorRole: widget.role,
+        targetType: 'client_submission',
+        targetId: submission['id'].toString(),
+        targetLabel: _getApplicantName(submission),
+        details: {'form_type': submission['form_type'], 'bulk_delete': true},
+      );
+
+      await _supabase
+          .from('client_submissions')
+          .delete()
+          .eq('id', submission['id']);
+    }
+
+    setState(() {
+      _selectedApplicantKey = null;
+      _selectedSubmission = null;
+      _activeTemplate = null;
+      _viewCtrl?.dispose();
+      _viewCtrl = null;
+      _editCtrl?.dispose();
+      _editCtrl = null;
+      _isEditMode = false;
+    });
+    await _loadData();
+  }
+
   // ── Applicant name resolution (3-tier fallback) ──────────
   String _getApplicantName(Map<String, dynamic> submission) {
     final data = submission['data'] as Map<String, dynamic>? ?? {};
@@ -1067,147 +1131,164 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      alignment: WrapAlignment.end,
-                      children: [
-                        SizedBox(
-                          width: 158,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Padding(
-                                padding: EdgeInsets.only(left: 6, bottom: 4),
-                                child: Text(
-                                  '↕ Date',
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    alignment: WrapAlignment.end,
+                    children: [
+                      SizedBox(
+                        width: 158,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Padding(
+                              padding: EdgeInsets.only(left: 6, bottom: 4),
+                              child: Text(
+                                '↕ Date',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            DropdownButtonFormField<_RecordSortOrder>(
+                              isExpanded: true,
+                              value: _recordSortOrder,
+                              onChanged: (value) {
+                                if (value == null) return;
+                                setState(() {
+                                  _recordSortOrder = value;
+                                });
+                              },
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF243047),
+                                fontWeight: FontWeight.w600,
+                              ),
+                              decoration: InputDecoration(
+                                isDense: true,
+                                filled: true,
+                                fillColor: Colors.white,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 9,
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(999),
+                                  borderSide: BorderSide(
+                                    color: Colors.white.withOpacity(0.22),
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(999),
+                                  borderSide: const BorderSide(
+                                    color: Colors.white,
                                   ),
                                 ),
                               ),
-                              DropdownButtonFormField<_RecordSortOrder>(
-                                isExpanded: true,
-                                value: _recordSortOrder,
-                                onChanged: (value) {
-                                  if (value == null) return;
-                                  setState(() {
-                                    _recordSortOrder = value;
-                                  });
-                                },
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF243047),
-                                  fontWeight: FontWeight.w600,
+                              items: const [
+                                DropdownMenuItem(
+                                  value: _RecordSortOrder.latestFirst,
+                                  child: Text('Latest First'),
                                 ),
-                                decoration: InputDecoration(
-                                  isDense: true,
-                                  filled: true,
-                                  fillColor: Colors.white,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 9,
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(999),
-                                    borderSide: BorderSide(
-                                      color: Colors.white.withOpacity(0.22),
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(999),
-                                    borderSide: const BorderSide(
-                                      color: Colors.white,
-                                    ),
-                                  ),
+                                DropdownMenuItem(
+                                  value: _RecordSortOrder.oldestFirst,
+                                  child: Text('Oldest First'),
                                 ),
-                                items: const [
-                                  DropdownMenuItem(
-                                    value: _RecordSortOrder.latestFirst,
-                                    child: Text('Latest First'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: _RecordSortOrder.oldestFirst,
-                                    child: Text('Oldest First'),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
+                              ],
+                            ),
+                          ],
                         ),
-                        SizedBox(
-                          width: 148,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Padding(
-                                padding: EdgeInsets.only(left: 6, bottom: 4),
-                                child: Text(
-                                  '⊞ Type',
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
+                      ),
+                      SizedBox(
+                        width: 148,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Padding(
+                              padding: EdgeInsets.only(left: 6, bottom: 4),
+                              child: Text(
+                                '⊞ Type',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            DropdownButtonFormField<String>(
+                              isExpanded: true,
+                              value: _formTypeFilter,
+                              onChanged: (value) {
+                                if (value == null) return;
+                                setState(() {
+                                  _formTypeFilter = value;
+                                });
+                              },
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF243047),
+                                fontWeight: FontWeight.w600,
+                              ),
+                              decoration: InputDecoration(
+                                isDense: true,
+                                filled: true,
+                                fillColor: Colors.white,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 9,
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(999),
+                                  borderSide: BorderSide(
+                                    color: Colors.white.withOpacity(0.22),
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(999),
+                                  borderSide: const BorderSide(
+                                    color: Colors.white,
                                   ),
                                 ),
                               ),
-                              DropdownButtonFormField<String>(
-                                isExpanded: true,
-                                value: _formTypeFilter,
-                                onChanged: (value) {
-                                  if (value == null) return;
-                                  setState(() {
-                                    _formTypeFilter = value;
-                                  });
-                                },
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF243047),
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                decoration: InputDecoration(
-                                  isDense: true,
-                                  filled: true,
-                                  fillColor: Colors.white,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 9,
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(999),
-                                    borderSide: BorderSide(
-                                      color: Colors.white.withOpacity(0.22),
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(999),
-                                    borderSide: const BorderSide(
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                                items: options
-                                    .map(
-                                      (type) => DropdownMenuItem<String>(
-                                        value: type,
-                                        child: Text(
-                                          type,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
+                              items: options
+                                  .map(
+                                    (type) => DropdownMenuItem<String>(
+                                      value: type,
+                                      child: Text(
+                                        type,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                    )
-                                    .toList(),
-                              ),
-                            ],
-                          ),
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 12),
+                  OutlinedButton.icon(
+                    onPressed: _deleteApplicant,
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    label: const Text('Delete'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red.shade300,
+                      side: BorderSide(
+                        color: Colors.red.withOpacity(0.5),
+                        width: 1.5,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
                 ],

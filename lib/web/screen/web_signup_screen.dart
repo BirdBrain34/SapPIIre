@@ -26,7 +26,8 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
 
   bool _isLoading = false;
   String _selectedRequestedRole = 'viewer';
@@ -40,10 +41,12 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message),
-      backgroundColor: isError ? AppColors.dangerRed : AppColors.successGreen,
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? AppColors.dangerRed : AppColors.successGreen,
+      ),
+    );
   }
 
   Future<void> _handleSignUp() async {
@@ -93,10 +96,10 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
             'email': _emailController.text.trim(),
             'username': _usernameController.text.trim(),
             'password_hash': _hashPassword(_passwordController.text),
-            'role': 'viewer',           // always starts as viewer, never admin
+            'role': 'viewer', // always starts as viewer, never admin
             'requested_role': _selectedRequestedRole, // what they want
             'account_status': 'pending', // admin must approve
-            'is_active': false,          // cannot log in until approved
+            'is_active': false, // cannot log in until approved
           })
           .select('cswd_id')
           .single();
@@ -167,13 +170,14 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.pageBg,
-      body: screenWidth > 900
-          ? _buildDesktopLayout()
-          : _buildMobileLayout(),
+      body: screenWidth > 900 ? _buildDesktopLayout() : _buildMobileLayout(),
     );
   }
 
   Widget _buildDesktopLayout() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final formPadding = screenWidth < 1200 ? 24.0 : 48.0;
+
     return Row(
       children: [
         // ── Left Panel: Branding ──────────────────────────────────
@@ -231,9 +235,9 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
             color: Color(0xFF152257),
             child: Center(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(48),
-                child: SizedBox(
-                  width: 420,
+                padding: EdgeInsets.all(formPadding),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -254,16 +258,28 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
                         ),
                       ),
                       const SizedBox(height: 32),
-                      _styledField('CSWD Employee ID', _cswdIdController, false),
+                      _styledField(
+                        'CSWD Employee ID',
+                        _cswdIdController,
+                        false,
+                      ),
                       const SizedBox(height: 16),
                       Row(
                         children: [
                           Expanded(
-                            child: _styledField('First Name', _firstNameController, false),
+                            child: _styledField(
+                              'First Name',
+                              _firstNameController,
+                              false,
+                            ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: _styledField('Middle Name', _middleNameController, false),
+                            child: _styledField(
+                              'Middle Name',
+                              _middleNameController,
+                              false,
+                            ),
                           ),
                         ],
                       ),
@@ -271,12 +287,20 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
                       Row(
                         children: [
                           Expanded(
-                            child: _styledField('Last Name', _lastNameController, false),
+                            child: _styledField(
+                              'Last Name',
+                              _lastNameController,
+                              false,
+                            ),
                           ),
                           const SizedBox(width: 12),
                           SizedBox(
                             width: 100,
-                            child: _styledField('Suffix', _nameSuffixController, false),
+                            child: _styledField(
+                              'Suffix',
+                              _nameSuffixController,
+                              false,
+                            ),
                           ),
                         ],
                       ),
@@ -284,11 +308,19 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
                       Row(
                         children: [
                           Expanded(
-                            child: _styledField('Position', _positionController, false),
+                            child: _styledField(
+                              'Position',
+                              _positionController,
+                              false,
+                            ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: _styledField('Department', _departmentController, false),
+                            child: _styledField(
+                              'Department',
+                              _departmentController,
+                              false,
+                            ),
                           ),
                         ],
                       ),
@@ -303,7 +335,11 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
                       const SizedBox(height: 16),
                       _styledField('Password', _passwordController, true),
                       const SizedBox(height: 16),
-                      _styledField('Confirm Password', _confirmPasswordController, true),
+                      _styledField(
+                        'Confirm Password',
+                        _confirmPasswordController,
+                        true,
+                      ),
                       const SizedBox(height: 28),
                       SizedBox(
                         height: 48,
@@ -373,8 +409,8 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
-        child: SizedBox(
-          width: 600,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -414,7 +450,11 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
               const SizedBox(height: 16),
               _styledField('Password', _passwordController, true),
               const SizedBox(height: 16),
-              _styledField('Confirm Password', _confirmPasswordController, true),
+              _styledField(
+                'Confirm Password',
+                _confirmPasswordController,
+                true,
+              ),
               const SizedBox(height: 28),
               SizedBox(
                 height: 48,
@@ -451,10 +491,7 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
                 children: [
                   Text(
                     'Already have an account? ',
-                    style: TextStyle(
-                      color: AppColors.textMuted,
-                      fontSize: 13,
-                    ),
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 13),
                   ),
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
@@ -497,10 +534,7 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
         TextField(
           controller: controller,
           obscureText: obscure,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 14,
-          ),
+          style: const TextStyle(color: Colors.white, fontSize: 14),
           decoration: InputDecoration(
             filled: true,
             fillColor: Color(0xFF0D1B4E),
@@ -513,26 +547,17 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(
-                color: Color(0xFF4C8BF5),
-                width: 1,
-              ),
+              borderSide: const BorderSide(color: Color(0xFF4C8BF5), width: 1),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(
-                color: Color(0xFF6EA8FE),
-                width: 2,
-              ),
+              borderSide: const BorderSide(color: Color(0xFF6EA8FE), width: 2),
             ),
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 16,
               vertical: 14,
             ),
-            hintStyle: const TextStyle(
-              color: Colors.white54,
-              fontSize: 13,
-            ),
+            hintStyle: const TextStyle(color: Colors.white54, fontSize: 13),
           ),
           cursorColor: AppColors.highlight,
         ),
@@ -557,10 +582,7 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
         DropdownButtonFormField<String>(
           value: _selectedRequestedRole,
           dropdownColor: Color(0xFF0D1B4E),
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 14,
-          ),
+          style: const TextStyle(color: Colors.white, fontSize: 14),
           decoration: InputDecoration(
             filled: true,
             fillColor: Color(0xFF0D1B4E),
@@ -573,17 +595,11 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(
-                color: Color(0xFF4C8BF5),
-                width: 1,
-              ),
+              borderSide: const BorderSide(color: Color(0xFF4C8BF5), width: 1),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(
-                color: Color(0xFF6EA8FE),
-                width: 2,
-              ),
+              borderSide: const BorderSide(color: Color(0xFF6EA8FE), width: 2),
             ),
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 16,
@@ -591,10 +607,7 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
             ),
           ),
           items: _requestedRoles.map((role) {
-            return DropdownMenuItem<String>(
-              value: role,
-              child: Text(role),
-            );
+            return DropdownMenuItem<String>(value: role, child: Text(role));
           }).toList(),
           onChanged: (value) {
             if (value != null) {
@@ -612,9 +625,7 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppColors.lightBlue.withOpacity(0.3),
-        ),
+        border: Border.all(color: AppColors.lightBlue.withOpacity(0.3)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,

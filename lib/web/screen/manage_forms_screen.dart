@@ -59,6 +59,9 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   final _displayService = DisplaySessionService();
   final _fieldValueService = FieldValueService();
   final _supabase = Supabase.instance.client;
+  final ScrollController _formScrollController = ScrollController();
+  final ScrollController _qrSidebarScrollController = ScrollController();
+  final PageStorageBucket _pageStorageBucket = PageStorageBucket();
 
   List<FormTemplate> _templates = [];
   FormTemplate? _selectedTemplate;
@@ -78,6 +81,32 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   /// Derive a stable station ID from the worker's cswd_id.
   String get _stationId => 'desk_${widget.cswd_id}';
 
+  void _setStatePreserveScroll(VoidCallback fn) {
+    final formOffset = _formScrollController.hasClients
+        ? _formScrollController.offset
+        : null;
+    final qrOffset = _qrSidebarScrollController.hasClients
+        ? _qrSidebarScrollController.offset
+        : null;
+
+    if (!mounted) return;
+    setState(fn);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      if (formOffset != null && _formScrollController.hasClients) {
+        final max = _formScrollController.position.maxScrollExtent;
+        _formScrollController.jumpTo(formOffset.clamp(0.0, max));
+      }
+
+      if (qrOffset != null && _qrSidebarScrollController.hasClients) {
+        final max = _qrSidebarScrollController.position.maxScrollExtent;
+        _qrSidebarScrollController.jumpTo(qrOffset.clamp(0.0, max));
+      }
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -90,7 +119,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       forceRefresh: true,
     );
     debugPrint('Web: Received ${templates.length} templates');
-    setState(() {
+    _setStatePreserveScroll(() {
       _templates = templates;
       _selectedTemplate = templates.isNotEmpty
           ? (templates.firstWhere(
@@ -109,7 +138,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   // ── Start a new QR session ────────────────────────────────
   Future<void> _createNewSession() async {
     if (_selectedTemplate == null) return;
-    setState(() => _isStartingSession = true);
+    _setStatePreserveScroll(() => _isStartingSession = true);
 
     try {
       // Close previous session if open
@@ -134,7 +163,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           .select()
           .single();
 
-      setState(() {
+      _setStatePreserveScroll(() {
         _currentSessionId = response['id'].toString();
         _sessionStarted = true;
         _isStartingSession = false;
@@ -169,7 +198,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       );
     } catch (e) {
       debugPrint('_createNewSession error: $e');
-      setState(() => _isStartingSession = false);
+      _setStatePreserveScroll(() => _isStartingSession = false);
     }
   }
 
@@ -246,9 +275,18 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     _lastAppliedPayloadFingerprint = fingerprint;
 
     if (!mounted) return;
+    final currentFormOffset = _formScrollController.hasClients
+        ? _formScrollController.offset
+        : 0.0;
     debugPrint('Web: ✅ Loading data into form controller...');
     _formCtrl?.loadFromJson(incoming);
-    setState(() {});
+    _setStatePreserveScroll(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_formScrollController.hasClients) return;
+      final max = _formScrollController.position.maxScrollExtent;
+      final target = currentFormOffset.clamp(0.0, max);
+      _formScrollController.jumpTo(target);
+    });
     debugPrint(
       'Web: ✅ Form updated successfully with ${incoming.length} fields',
     );
@@ -311,7 +349,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     if (_formCtrl == null || _selectedTemplate == null) return;
     // Guard: prevent double finalize taps from creating duplicate submissions.
     if (_isSubmitting) return;
-    setState(() {
+    _setStatePreserveScroll(() {
       _isSubmitting = true;
       _isFinalizing = true;
     });
@@ -385,7 +423,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       }
 
       // Reset for next client
-      setState(() {
+      _setStatePreserveScroll(() {
         _sessionStarted = false;
         _currentSessionId = 'WAITING-FOR-SESSION';
         _isFinalizing = false;
@@ -407,7 +445,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           ),
         );
       }
-      setState(() {
+      _setStatePreserveScroll(() {
         _isFinalizing = false;
         _isSubmitting = false;
       });
@@ -707,68 +745,74 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   // ── Build ─────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    return WebShell(
-      activePath: 'Forms',
-      pageTitle: 'Forms Management',
-      pageSubtitle: _sessionStarted
-          ? 'Session active — client can scan the QR code'
-          : 'Start a session to generate a QR code',
-      role: widget.role,
-      cswd_id: widget.cswd_id,
-      displayName: widget.displayName,
-      onLogout: _handleLogout,
-      headerActions: [
-        // "Open Customer Display" button — always visible
-        _buildHeaderButton(
-          'Open Customer Display',
-          Icons.desktop_windows,
-          onPressed: _openCustomerDisplay,
-        ),
-        if (_sessionStarted) ...[
-          const SizedBox(width: 8),
+    return PageStorage(
+      bucket: _pageStorageBucket,
+      child: WebShell(
+        activePath: 'Forms',
+        pageTitle: 'Forms Management',
+        pageSubtitle: _sessionStarted
+            ? 'Session active — client can scan the QR code'
+            : 'Start a session to generate a QR code',
+        role: widget.role,
+        cswd_id: widget.cswd_id,
+        displayName: widget.displayName,
+        onLogout: _handleLogout,
+        headerActions: [
+          // "Open Customer Display" button — always visible
           _buildHeaderButton(
-            'New Session',
-            Icons.refresh,
-            onPressed: _createNewSession,
+            'Open Customer Display',
+            Icons.desktop_windows,
+            onPressed: _openCustomerDisplay,
           ),
-          const SizedBox(width: 8),
-          ElevatedButton.icon(
-            onPressed: _isFinalizing ? null : _finalizeEntry,
-            icon: _isFinalizing
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2,
-                    ),
-                  )
-                : const Icon(Icons.save_alt, color: Colors.white, size: 18),
-            label: const Text(
-              'Save to Applicants',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
+          if (_sessionStarted) ...[
+            const SizedBox(width: 8),
+            _buildHeaderButton(
+              'New Session',
+              Icons.refresh,
+              onPressed: _createNewSession,
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton.icon(
+              onPressed: _isFinalizing ? null : _finalizeEntry,
+              icon: _isFinalizing
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Icon(Icons.save_alt, color: Colors.white, size: 18),
+              label: const Text(
+                'Save to Applicants',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 14,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
+          ],
         ],
-      ],
-      onNavigate: (path) => _navigateToScreen(context, path),
-      child: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppColors.primaryBlue),
-            )
-          : _sessionStarted
-          ? _buildActiveFormView()
-          : _buildStartSessionGate(),
+        onNavigate: (path) => _navigateToScreen(context, path),
+        child: _isLoading
+            ? const Center(
+                child: CircularProgressIndicator(color: AppColors.primaryBlue),
+              )
+            : _sessionStarted
+            ? _buildActiveFormView()
+            : _buildStartSessionGate(),
+      ),
     );
   }
 
@@ -881,7 +925,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                     final tpl = _templates.firstWhere(
                       (t) => t.templateId == id,
                     );
-                    setState(() {
+                    _setStatePreserveScroll(() {
                       _selectedTemplate = tpl;
                       _formCtrl?.dispose();
                       _formCtrl = FormStateController(template: tpl);
@@ -1055,15 +1099,16 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: SingleChildScrollView(
+                        key: const PageStorageKey<String>(
+                          'manage_forms_form_scroll',
+                        ),
+                        controller: _formScrollController,
                         padding: const EdgeInsets.all(16),
-                        child: AnimatedBuilder(
-                          animation: _formCtrl!,
-                          builder: (context, _) => DynamicFormRenderer(
-                            template: _selectedTemplate!,
-                            controller: _formCtrl!,
-                            mode: 'web',
-                            showCheckboxes: false,
-                          ),
+                        child: DynamicFormRenderer(
+                          template: _selectedTemplate!,
+                          controller: _formCtrl!,
+                          mode: 'web',
+                          showCheckboxes: false,
                         ),
                       ),
                     ),
@@ -1087,6 +1132,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           return Scrollbar(
             thumbVisibility: true,
             child: SingleChildScrollView(
+              controller: _qrSidebarScrollController,
               padding: const EdgeInsets.only(right: 6),
               child: Column(
                 children: [
@@ -1298,6 +1344,8 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   void dispose() {
     _formSubscription?.cancel();
     _formCtrl?.dispose();
+    _formScrollController.dispose();
+    _qrSidebarScrollController.dispose();
     super.dispose();
   }
 }

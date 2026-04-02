@@ -27,7 +27,11 @@ class SideMenu extends StatelessWidget {
           colors: [Color(0xFF0D1B4E), Color(0xFF0A1640)],
         ),
         boxShadow: [
-          BoxShadow(color: Color(0x33000000), blurRadius: 16, offset: Offset(2, 0)),
+          BoxShadow(
+            color: Color(0x33000000),
+            blurRadius: 16,
+            offset: Offset(2, 0),
+          ),
         ],
       ),
       child: Column(
@@ -70,6 +74,8 @@ class SideMenu extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 6),
             child: Text(
               'MAIN MENU',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: AppColors.mutedBlue.withOpacity(0.6),
                 fontSize: 10,
@@ -78,78 +84,84 @@ class SideMenu extends StatelessWidget {
               ),
             ),
           ),
-
-          _navItem(
-            context,
-            Icons.dashboard_outlined,
-            'Dashboard',
-            'Dashboard',
-            activePath,
-          ),
-          _navItem(
-            context,
-            Icons.description_outlined,
-            'Manage Forms',
-            'Forms',
-            activePath,
-          ),
-          _navItem(
-            context,
-            Icons.people_outline,
-            'Applicants',
-            'Applicants',
-            activePath,
-          ),
-
-          const SizedBox(height: 16),
-          Container(height: 1, color: const Color(0xFF1E2E60)),
-          const SizedBox(height: 8),
-
-          if (role == 'superadmin') ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 6),
-              child: Text(
-                'ADMIN',
-                style: TextStyle(
-                  color: AppColors.mutedBlue.withOpacity(0.6),
-                  fontSize: 10,
-                  letterSpacing: 1.5,
-                  fontWeight: FontWeight.w600,
-                ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.zero,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _navItem(
+                    context,
+                    Icons.dashboard_outlined,
+                    'Dashboard',
+                    'Dashboard',
+                    activePath,
+                  ),
+                  _navItem(
+                    context,
+                    Icons.description_outlined,
+                    'Manage Forms',
+                    'Forms',
+                    activePath,
+                  ),
+                  _navItem(
+                    context,
+                    Icons.people_outline,
+                    'Applicants',
+                    'Applicants',
+                    activePath,
+                  ),
+                  const SizedBox(height: 16),
+                  Container(height: 1, color: const Color(0xFF1E2E60)),
+                  const SizedBox(height: 8),
+                  if (role == 'superadmin') ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 6),
+                      child: Text(
+                        'ADMIN',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: AppColors.mutedBlue.withOpacity(0.6),
+                          fontSize: 10,
+                          letterSpacing: 1.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    _navItem(
+                      context,
+                      Icons.construction_outlined,
+                      'Form Builder',
+                      'FormBuilder',
+                      activePath,
+                    ),
+                    _navItem(
+                      context,
+                      Icons.manage_accounts_outlined,
+                      'Manage Staff',
+                      'Staff',
+                      activePath,
+                    ),
+                    _navItem(
+                      context,
+                      Icons.person_add_outlined,
+                      'Create Staff',
+                      'CreateStaff',
+                      activePath,
+                    ),
+                    _navItem(
+                      context,
+                      Icons.history_outlined,
+                      'Audit Logs',
+                      'AuditLogs',
+                      activePath,
+                    ),
+                  ],
+                ],
               ),
             ),
-
-            _navItem(
-              context,
-              Icons.construction_outlined,
-              'Form Builder',
-              'FormBuilder',
-              activePath,
-            ),
-            _navItem(
-              context,
-              Icons.manage_accounts_outlined,
-              'Manage Staff',
-              'Staff',
-              activePath,
-            ),
-            _navItem(
-              context,
-              Icons.person_add_outlined,
-              'Create Staff',
-              'CreateStaff',
-              activePath,
-            ),
-            _navItem(
-              context,
-              Icons.history_outlined,
-              'Audit Logs',
-              'AuditLogs',
-              activePath,
-            ),
-          ],
-
-          const Spacer(),
+          ),
           Container(height: 1, color: const Color(0xFF1E2E60)),
 
           // ── Logout ───────────────────────────────────────────────
@@ -169,14 +181,21 @@ class SideMenu extends StatelessWidget {
                   }
                 },
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
                   child: Row(
                     children: [
                       const Icon(Icons.logout, color: Colors.white38, size: 18),
                       const SizedBox(width: 12),
-                      const Text(
-                        'Log Out',
-                        style: TextStyle(color: Colors.white54, fontSize: 14),
+                      const Expanded(
+                        child: Text(
+                          'Log Out',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: Colors.white54, fontSize: 14),
+                        ),
                       ),
                     ],
                   ),
@@ -201,7 +220,9 @@ class SideMenu extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       child: Material(
-        color: isActive ? AppColors.highlight.withOpacity(0.18) : Colors.transparent,
+        color: isActive
+            ? AppColors.highlight.withOpacity(0.18)
+            : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
@@ -232,12 +253,18 @@ class SideMenu extends StatelessWidget {
                   size: 18,
                 ),
                 const SizedBox(width: 10),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: isActive ? Colors.white : Colors.white60,
-                    fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-                    fontSize: 14,
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: isActive ? Colors.white : Colors.white60,
+                      fontWeight: isActive
+                          ? FontWeight.w600
+                          : FontWeight.normal,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
               ],

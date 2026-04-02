@@ -50,104 +50,180 @@ class WebShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.pageBg,
-      body: Row(
-        children: [
-          // Sidebar — static, never transitions
-          SideMenu(
-            activePath: activePath,
-            role: role,
-            onLogout: onLogout,
-            onNavigate: onNavigate,
-          ),
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isNarrow = screenWidth < 960;
+    final scaffoldKey = GlobalKey<ScaffoldState>();
 
-          // Content area — this is what fades on navigation
-          Expanded(
-            child: Column(
+    void onMenuTap() {
+      final scaffoldState = scaffoldKey.currentState;
+      if (scaffoldState == null) {
+        return;
+      }
+
+      if (scaffoldState.isDrawerOpen) {
+        Navigator.of(scaffoldState.context).pop();
+      } else {
+        scaffoldState.openDrawer();
+      }
+    }
+
+    void onNavigateWithDrawerClose(String path) {
+      final scaffoldState = scaffoldKey.currentState;
+      if (isNarrow && scaffoldState?.isDrawerOpen == true) {
+        Navigator.of(scaffoldState!.context).pop();
+      }
+      onNavigate?.call(path);
+    }
+
+    return Scaffold(
+      key: scaffoldKey,
+      backgroundColor: AppColors.pageBg,
+      drawer: isNarrow
+          ? Drawer(
+              child: SideMenu(
+                activePath: activePath,
+                role: role,
+                onLogout: onLogout,
+                onNavigate: onNavigateWithDrawerClose,
+              ),
+            )
+          : null,
+      body: isNarrow
+          ? Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── Top bar ──────────────────────────────────────
-                Container(
-                  height: 70,
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  decoration: const BoxDecoration(
-                    color: AppColors.cardBg,
-                    border: Border(
-                      bottom: BorderSide(color: AppColors.cardBorder),
+                _buildTopBar(context, isNarrow: true, onMenuTap: onMenuTap),
+                Expanded(child: child),
+              ],
+            )
+          : Row(
+              children: [
+                SideMenu(
+                  activePath: activePath,
+                  role: role,
+                  onLogout: onLogout,
+                  onNavigate: onNavigateWithDrawerClose,
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildTopBar(context, isNarrow: false, onMenuTap: null),
+                      Expanded(child: child),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildTopBar(
+    BuildContext context, {
+    required bool isNarrow,
+    required VoidCallback? onMenuTap,
+  }) {
+    return Container(
+      height: 70,
+      padding: EdgeInsets.symmetric(horizontal: isNarrow ? 14 : 32),
+      decoration: const BoxDecoration(
+        color: AppColors.cardBg,
+        border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              child: Row(
+                children: [
+                  if (isNarrow)
+                    IconButton(
+                      onPressed: onMenuTap,
+                      icon: const Icon(Icons.menu),
+                    ),
+                  SizedBox(
+                    width: isNarrow ? 200 : 320,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          pageTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.textDark,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          pageSubtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  child: Row(
-                    children: [
-                      // Page title
-                      Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            pageTitle,
-                            style: const TextStyle(
-                              color: AppColors.textDark,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
+                  const SizedBox(width: 12),
+                  if (!isNarrow && headerActions != null) ...headerActions!,
+                  if (!isNarrow) const SizedBox(width: 16),
+                  Tooltip(
+                    message: 'Change Password',
+                    child: GestureDetector(
+                      onTap: () => Navigator.push(
+                        context,
+                        ContentFadeRoute(
+                          page: ChangePasswordScreen(
+                            cswd_id: cswd_id,
+                            role: role,
+                            displayName: displayName,
                           ),
-                          Text(
-                            pageSubtitle,
-                            style: const TextStyle(
-                              color: AppColors.textMuted,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                      const Spacer(),
-                      // Header action buttons (optional)
-                      if (headerActions != null) ...headerActions!,
-                      const SizedBox(width: 16),
-                      Tooltip(
-                        message: 'Change Password',
-                        child: GestureDetector(
-                          onTap: () => Navigator.push(
-                            context,
-                            ContentFadeRoute(
-                              page: ChangePasswordScreen(
-                                cswd_id: cswd_id,
-                                role: role,
-                                displayName: displayName,
-                              ),
-                            ),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.highlight.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: AppColors.highlight.withValues(alpha: 0.2),
                           ),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.highlight.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: AppColors.highlight.withOpacity(0.2),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 30,
+                              height: 30,
+                              decoration: BoxDecoration(
+                                color: AppColors.highlight.withValues(
+                                  alpha: 0.15,
+                                ),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.person_outline,
+                                color: AppColors.highlight,
+                                size: 18,
                               ),
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 30,
-                                  height: 30,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.highlight.withOpacity(0.15),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.person_outline,
-                                    color: AppColors.highlight,
-                                    size: 18,
-                                  ),
+                            if (!isNarrow) ...[
+                              const SizedBox(width: 10),
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxWidth: 180,
                                 ),
-                                const SizedBox(width: 10),
-                                Column(
+                                child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
@@ -155,6 +231,8 @@ class WebShell extends StatelessWidget {
                                       displayName.isEmpty
                                           ? 'My Account'
                                           : displayName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
                                         fontSize: 13,
                                         fontWeight: FontWeight.w600,
@@ -163,6 +241,8 @@ class WebShell extends StatelessWidget {
                                     ),
                                     Text(
                                       _roleLabel(role),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
                                         fontSize: 11,
                                         color: AppColors.textMuted,
@@ -170,27 +250,24 @@ class WebShell extends StatelessWidget {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(width: 8),
-                                const Icon(
-                                  Icons.expand_more,
-                                  size: 16,
-                                  color: AppColors.textMuted,
-                                ),
-                              ],
-                            ),
-                          ),
+                              ),
+                              const SizedBox(width: 8),
+                              const Icon(
+                                Icons.expand_more,
+                                size: 16,
+                                color: AppColors.textMuted,
+                              ),
+                            ],
+                          ],
                         ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
-
-                // ── Page content ─────────────────────────────────
-                Expanded(child: child),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }

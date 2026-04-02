@@ -38,21 +38,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isLoadingCounts = true;
 
   String _selectedFormType = 'All';
+  String _formSearchQuery = '';
+  bool _showFormListView = false;
 
   List<ChartConfig> _charts = [];
   bool _isLoadingCharts = false;
 
   bool _isLoadingInsights = true;
-  SlaComplianceSummary _sla = const SlaComplianceSummary(
-    compliant: 0,
-    breached: 0,
-  );
-  Map<String, int> _pendingVsCompleted = const {'Pending': 0, 'Completed': 0};
   Map<String, int> _staffWorkload = {};
   Map<String, int> _genderRatio = {};
   Map<String, int> _ageBrackets = {};
   Map<String, int> _barangayVolume = {};
-  List<IssueTrendItem> _issueTrends = [];
   String _planningScopeFormType = 'All';
 
   final TextEditingController _clientSearchController = TextEditingController();
@@ -113,20 +109,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _loadOperationalInsights() async {
     try {
-      final results = await Future.wait([
-        _analyticsService.fetchCitizenCharterCompliance(),
-        _analyticsService.fetchPendingVsCompletedLoad(),
-        _analyticsService.fetchStaffWorkloadDistribution(),
-      ]);
+      final workload = await _analyticsService.fetchStaffWorkloadDistribution();
 
       if (!mounted) {
         return;
       }
 
       setState(() {
-        _sla = results[0] as SlaComplianceSummary;
-        _pendingVsCompleted = results[1] as Map<String, int>;
-        _staffWorkload = results[2] as Map<String, int>;
+        _staffWorkload = workload;
       });
     } catch (e) {
       debugPrint('_loadOperationalInsights error: $e');
@@ -149,7 +139,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _analyticsService.fetchGenderRatio(formType: scopedForm),
         _analyticsService.fetchAgeBracketDistribution(formType: scopedForm),
         _analyticsService.fetchBarangayVolume(formType: scopedForm),
-        _analyticsService.fetchIssueTrends(formType: scopedForm),
       ]);
 
       if (!mounted) {
@@ -160,7 +149,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _genderRatio = results[0] as Map<String, int>;
         _ageBrackets = results[1] as Map<String, int>;
         _barangayVolume = results[2] as Map<String, int>;
-        _issueTrends = results[3] as List<IssueTrendItem>;
         _isLoadingInsights = false;
       });
     } catch (e) {
@@ -313,9 +301,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildSummaryCards(),
-                  const SizedBox(height: 24),
-                  _buildFilterTabs(),
+                  _buildFormCardsSection(),
                   const SizedBox(height: 28),
                   _buildChartsSection(),
                 ],
@@ -324,74 +310,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildSummaryCards() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          _SummaryCard(
-            label: 'All Forms',
-            count: _totalCount,
-            isActive: _selectedFormType == 'All',
-            onTap: () => _loadChartsFor('All'),
-          ),
-          ..._availableFormTypes.map((ft) {
-            return Padding(
-              padding: const EdgeInsets.only(left: 16),
-              child: _SummaryCard(
-                label: ft,
-                count: _countsByFormType[ft] ?? 0,
-                isActive: _selectedFormType == ft,
-                onTap: () => _loadChartsFor(ft),
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFilterTabs() {
-    final tabs = ['All', ..._availableFormTypes];
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: tabs.map((tab) {
-          final isActive = _selectedFormType == tab;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: GestureDetector(
-              onTap: () => _loadChartsFor(tab),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: isActive ? AppColors.highlight : AppColors.pageBg,
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: isActive
-                        ? AppColors.highlight
-                        : AppColors.cardBorder,
-                    width: isActive ? 2 : 1,
-                  ),
-                ),
-                child: Text(
-                  tab == 'All' ? 'All Forms' : tab,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: isActive ? Colors.white : AppColors.textMuted,
-                  ),
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
+  Widget _buildFormCardsSection() {
+    return _FormCardsSection(
+      countsByFormType: _countsByFormType,
+      totalCount: _totalCount,
+      availableFormTypes: _availableFormTypes,
+      selectedFormType: _selectedFormType,
+      onSelectForm: _loadChartsFor,
     );
   }
 
@@ -478,10 +403,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return _buildLoadingCard('Loading operational metrics...');
     }
 
-    final complianceRate = _sla.total > 0
-        ? (_sla.compliant / _sla.total) * 100
-        : 0.0;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -494,35 +415,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        Wrap(
-          spacing: 16,
-          runSpacing: 16,
-          children: [
-            _MetricTile(
-              title: 'Citizen Charter Compliance',
-              value: '${complianceRate.toStringAsFixed(1)}%',
-              subtitle:
-                  '${_sla.compliant} on-time | ${_sla.breached} over 1 hour',
-            ),
-            _MetricTile(
-              title: 'Pending Cases',
-              value: (_pendingVsCompleted['Pending'] ?? 0).toString(),
-              subtitle: 'Active sessions and pending workflows',
-            ),
-            _MetricTile(
-              title: 'Completed Cases',
-              value: (_pendingVsCompleted['Completed'] ?? 0).toString(),
-              subtitle: 'Finalized submissions in records',
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        SimpleBarChart(
-          title: 'Pending vs Completed Load',
-          data: _pendingVsCompleted,
-          primaryColor: const Color(0xFFFF8C42),
-        ),
-        const SizedBox(height: 20),
         SimpleBarChart(
           title: 'Staff Workload Distribution (Audit Activity)',
           data: _staffWorkload,
@@ -553,24 +445,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: SimpleDistributionPie(
-                title: 'Automated GAD Report (Gender Ratio)',
-                data: _genderRatio,
-              ),
-            ),
-            const SizedBox(width: 20),
-            Expanded(
-              child: SimpleBarChart(
-                title: 'Age Bracket Distribution',
-                data: _ageBrackets,
-                primaryColor: const Color(0xFF9B6EF3),
-              ),
-            ),
-          ],
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 900;
+            if (compact) {
+              return Column(
+                children: [
+                  SimpleDistributionPie(
+                    title: 'Automated GAD Report (Gender Ratio)',
+                    data: _genderRatio,
+                  ),
+                  const SizedBox(height: 20),
+                  SimpleBarChart(
+                    title: 'Age Bracket Distribution',
+                    data: _ageBrackets,
+                    primaryColor: const Color(0xFF9B6EF3),
+                  ),
+                ],
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: SimpleDistributionPie(
+                    title: 'Automated GAD Report (Gender Ratio)',
+                    data: _genderRatio,
+                  ),
+                ),
+                const SizedBox(width: 20),
+                Expanded(
+                  child: SimpleBarChart(
+                    title: 'Age Bracket Distribution',
+                    data: _ageBrackets,
+                    primaryColor: const Color(0xFF9B6EF3),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
         const SizedBox(height: 20),
         SimpleBarChart(
@@ -578,94 +491,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           data: _barangayVolume,
           primaryColor: const Color(0xFF2EC4B6),
         ),
-        const SizedBox(height: 20),
-        _buildTopNeedsPanel(),
       ],
-    );
-  }
-
-  Widget _buildTopNeedsPanel() {
-    if (_issueTrends.isEmpty) {
-      return _buildInfoCard(
-        title: 'Top Needs Trend Detection',
-        body: 'No issue trend signals were detected from current submissions.',
-      );
-    }
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.cardBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Top Needs Trend Detection',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textDark,
-            ),
-          ),
-          const SizedBox(height: 14),
-          ..._issueTrends.map((item) {
-            final deltaLabel = item.delta >= 0
-                ? '+${item.delta}'
-                : item.delta.toString();
-            final deltaColor = item.delta >= 0
-                ? AppColors.warningAmber
-                : AppColors.successGreen;
-
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      item.label,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textDark,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    'Now ${item.currentCount} | Prev ${item.previousCount}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textMuted,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: deltaColor.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      deltaLabel,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: deltaColor,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-        ],
-      ),
     );
   }
 
@@ -693,30 +519,70 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _clientSearchController,
-                      decoration: const InputDecoration(
-                        labelText: 'Search client by name',
-                        hintText: 'Type first name or last name',
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact = constraints.maxWidth < 640;
+                  if (compact) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TextField(
+                          controller: _clientSearchController,
+                          decoration: const InputDecoration(
+                            labelText: 'Search client by name',
+                            hintText: 'Type first name or last name',
+                          ),
+                          onSubmitted: (_) => _searchClients(),
+                        ),
+                        const SizedBox(height: 10),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: ElevatedButton(
+                            onPressed: _isSearchingClients
+                                ? null
+                                : _searchClients,
+                            child: _isSearchingClients
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text('Lookup'),
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _clientSearchController,
+                          decoration: const InputDecoration(
+                            labelText: 'Search client by name',
+                            hintText: 'Type first name or last name',
+                          ),
+                          onSubmitted: (_) => _searchClients(),
+                        ),
                       ),
-                      onSubmitted: (_) => _searchClients(),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: _isSearchingClients ? null : _searchClients,
-                    child: _isSearchingClients
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Lookup'),
-                  ),
-                ],
+                      const SizedBox(width: 10),
+                      ElevatedButton(
+                        onPressed: _isSearchingClients ? null : _searchClients,
+                        child: _isSearchingClients
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text('Lookup'),
+                      ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 14),
               if (_clientSearchResults.isNotEmpty)
@@ -1005,7 +871,8 @@ class _SummaryCard extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        width: 170,
+        width: 190,
+        height: 180,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: isActive ? AppColors.highlight : AppColors.cardBg,
@@ -1043,21 +910,299 @@ class _SummaryCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: isActive ? Colors.white : AppColors.textDark,
+            Tooltip(
+              message: label,
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: isActive ? Colors.white : AppColors.textDark,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
       ),
     );
   }
+}
+
+class _FormCardsSection extends StatefulWidget {
+  final Map<String, int> countsByFormType;
+  final int totalCount;
+  final List<String> availableFormTypes;
+  final String selectedFormType;
+  final ValueChanged<String> onSelectForm;
+
+  const _FormCardsSection({
+    required this.countsByFormType,
+    required this.totalCount,
+    required this.availableFormTypes,
+    required this.selectedFormType,
+    required this.onSelectForm,
+  });
+
+  @override
+  State<_FormCardsSection> createState() => _FormCardsSectionState();
+}
+
+class _FormCardsSectionState extends State<_FormCardsSection> {
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  bool _showListView = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(_syncSearchQuery);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_syncSearchQuery);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _syncSearchQuery() {
+    final next = _searchController.text;
+    if (next == _searchQuery) {
+      return;
+    }
+
+    setState(() => _searchQuery = next);
+  }
+
+  List<_FormCardItem> _visibleFormCards() {
+    final cards = <_FormCardItem>[
+      _FormCardItem(
+        label: 'All Forms',
+        count: widget.totalCount,
+        formType: 'All',
+      ),
+      ...widget.availableFormTypes.map(
+        (formType) => _FormCardItem(
+          label: formType,
+          count: widget.countsByFormType[formType] ?? 0,
+          formType: formType,
+        ),
+      ),
+    ];
+
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) {
+      return cards;
+    }
+
+    return cards
+        .where((item) => item.label.toLowerCase().contains(query))
+        .toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleCards = _visibleFormCards();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: _searchController,
+          decoration: InputDecoration(
+            hintText: 'Search forms...',
+            prefixIcon: const Icon(Icons.search),
+            isDense: true,
+            filled: true,
+            fillColor: AppColors.cardBg,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.cardBorder),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.cardBorder),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () {
+              setState(() => _showListView = !_showListView);
+            },
+            icon: Icon(
+              _showListView ? Icons.grid_view : Icons.view_list,
+              size: 18,
+            ),
+            label: Text(_showListView ? 'View as cards' : 'View as list'),
+          ),
+        ),
+        const SizedBox(height: 16),
+        if (visibleCards.isEmpty)
+          _buildInfoCard(
+            title: 'No matching forms',
+            body: 'Try a different search term to find a form.',
+          )
+        else if (_showListView)
+          _buildFormListView(visibleCards)
+        else
+          _buildSummaryCards(visibleCards),
+      ],
+    );
+  }
+
+  Widget _buildSummaryCards(List<_FormCardItem> cards) {
+    return Wrap(
+      spacing: 16,
+      runSpacing: 16,
+      children: cards.map((item) {
+        return _SummaryCard(
+          label: item.label,
+          count: item.count,
+          isActive: widget.selectedFormType == item.formType,
+          onTap: () => widget.onSelectForm(item.formType),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildFormListView(List<_FormCardItem> cards) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
+            ),
+            child: const Row(
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: Text(
+                    'Form Name',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'Submission Count',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                ),
+                SizedBox(width: 72),
+              ],
+            ),
+          ),
+          ...cards.map((item) {
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 5,
+                    child: Tooltip(
+                      message: item.label,
+                      child: Text(
+                        item.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textDark,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      item.count.toString(),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 72,
+                    child: TextButton(
+                      onPressed: () => widget.onSelectForm(item.formType),
+                      child: const Text('View'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoCard({required String title, required String body}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.pageBg,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textDark,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            body,
+            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FormCardItem {
+  final String label;
+  final int count;
+  final String formType;
+
+  const _FormCardItem({
+    required this.label,
+    required this.count,
+    required this.formType,
+  });
 }
 
 class _MetricTile extends StatelessWidget {

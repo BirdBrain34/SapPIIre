@@ -4,12 +4,10 @@
 // family composition table, supporting family table, membership group, and signature.
 //
 // Used by DynamicFormRenderer to build the complete form UI.
-// Handles both mobile (with checkboxes) and web (read-only) modes.
-
-import 'dart:ui' as ui;
-import 'dart:convert';
-import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:convert';
+import 'dart:ui' as ui;
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
@@ -166,7 +164,6 @@ InputDecoration _inputDeco({
 }) => InputDecoration(
   hintText: hint,
   hintStyle: const TextStyle(color: Colors.black38, fontSize: 13),
-  filled: true,
   fillColor: readOnly ? const Color(0xFFF5F5F8) : Colors.white,
   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
   border: OutlineInputBorder(
@@ -879,7 +876,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
                     ...members,
                     {for (final c in cols) c: ''},
                   ];
-                  widget.controller.notifyFormChanged();
+                  widget.controller.recomputeFromFamilyChange();
                   setState(() {});
                 },
                 icon: const Icon(Icons.add, size: 16),
@@ -1025,7 +1022,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
               widget.controller.familyMembers[i][col] = formatted;
               widget.controller.familyMembers[i][ageCol] = age.toString();
               widget.controller.fieldChecks['Family Composition'] = true;
-              widget.controller.notifyFormChanged();
+              widget.controller.recomputeFromFamilyChange();
               setState(() {});
             }
           },
@@ -1070,6 +1067,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
           onChanged: (v) {
             widget.controller.familyMembers[i][col] = v;
             widget.controller.fieldChecks['Family Composition'] = true;
+            widget.controller.recomputeFromFamilyChange();
           },
         );
 
@@ -1085,6 +1083,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
             onChanged: (v) {
               widget.controller.familyMembers[i][col] = v;
               widget.controller.fieldChecks['Family Composition'] = true;
+              widget.controller.recomputeFromFamilyChange();
             },
           );
         }
@@ -1097,7 +1096,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
               onTap: () {
                 widget.controller.familyMembers[i][col] = opt.value;
                 widget.controller.fieldChecks['Family Composition'] = true;
-                widget.controller.notifyFormChanged();
+                widget.controller.recomputeFromFamilyChange();
                 setState(() {});
               },
               child: AnimatedContainer(
@@ -1155,11 +1154,12 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
           onFallbackChange: (v) {
             widget.controller.familyMembers[i][col] = v;
             widget.controller.fieldChecks['Family Composition'] = true;
+            widget.controller.recomputeFromFamilyChange();
           },
           onDropdownChange: (v) {
             widget.controller.familyMembers[i][col] = v;
             widget.controller.fieldChecks['Family Composition'] = true;
-            widget.controller.notifyFormChanged();
+            widget.controller.recomputeFromFamilyChange();
             setState(() {});
           },
         );
@@ -1173,11 +1173,12 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
           onFallbackChange: (v) {
             widget.controller.familyMembers[i][col] = v;
             widget.controller.fieldChecks['Family Composition'] = true;
+            widget.controller.recomputeFromFamilyChange();
           },
           onDropdownChange: (v) {
             widget.controller.familyMembers[i][col] = v;
             widget.controller.fieldChecks['Family Composition'] = true;
-            widget.controller.notifyFormChanged();
+            widget.controller.recomputeFromFamilyChange();
             setState(() {});
           },
         );
@@ -1205,6 +1206,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
           onChanged: (v) {
             widget.controller.familyMembers[i][col] = v;
             widget.controller.fieldChecks['Family Composition'] = true;
+            widget.controller.recomputeFromFamilyChange();
           },
         );
     }
@@ -1324,7 +1326,7 @@ class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
                     ...members,
                     {'name': '', 'relationship': '', 'regular_sustento': ''},
                   ];
-                  widget.controller.notifyFormChanged();
+                  widget.controller.recomputeFromFamilyChange();
                   setState(() {});
                 },
                 icon: const Icon(Icons.add, size: 16),
@@ -1360,11 +1362,13 @@ class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
                                   hint: 'Name',
                                 ).copyWith(isDense: true),
                                 style: const TextStyle(fontSize: 12),
-                                onChanged: (v) =>
-                                    widget
-                                            .controller
-                                            .supportingFamily[i]['name'] =
-                                        v,
+                                onChanged: (v) {
+                                  widget
+                                          .controller
+                                          .supportingFamily[i]['name'] =
+                                      v;
+                                  widget.controller.recomputeFromFamilyChange();
+                                },
                               ),
                               const SizedBox(height: 4),
                               // FIX: always vertical — eliminates overflow regardless of screen width
@@ -1419,7 +1423,7 @@ class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
                       onPressed: () {
                         widget.controller.supportingFamily = List.from(members)
                           ..removeAt(i);
-                        widget.controller.notifyFormChanged();
+                        widget.controller.recomputeFromFamilyChange();
                         setState(() {});
                       },
                     ),

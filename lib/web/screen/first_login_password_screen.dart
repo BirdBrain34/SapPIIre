@@ -128,10 +128,7 @@ class _FirstLoginPasswordScreenState extends State<FirstLoginPasswordScreen> {
               color: const Color(0xFF152257),
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.4),
-                  blurRadius: 40,
-                ),
+                BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 40),
               ],
             ),
             child: Column(
@@ -247,10 +244,7 @@ class _FirstLoginPasswordScreenState extends State<FirstLoginPasswordScreen> {
                   const SizedBox(height: 6),
                   const Text(
                     'Passwords do not match',
-                    style: TextStyle(
-                      color: AppColors.dangerRed,
-                      fontSize: 12,
-                    ),
+                    style: TextStyle(color: AppColors.dangerRed, fontSize: 12),
                   ),
                 ],
                 const SizedBox(height: 28),
@@ -301,11 +295,15 @@ class _FirstLoginPasswordScreenState extends State<FirstLoginPasswordScreen> {
           color: met ? AppColors.successGreen : Colors.white38,
         ),
         const SizedBox(width: 8),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: met ? AppColors.successGreen : Colors.white54,
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              color: met ? AppColors.successGreen : Colors.white54,
+            ),
           ),
         ),
       ],
@@ -313,14 +311,14 @@ class _FirstLoginPasswordScreenState extends State<FirstLoginPasswordScreen> {
   }
 
   Widget _fieldLabel(String text) => Text(
-        text,
-        style: const TextStyle(
-          color: Color(0xFFB8CCF0),
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.3,
-        ),
-      );
+    text,
+    style: const TextStyle(
+      color: Color(0xFFB8CCF0),
+      fontSize: 13,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.3,
+    ),
+  );
 
   Widget _passwordField({
     required TextEditingController controller,
