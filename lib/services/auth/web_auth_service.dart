@@ -1,8 +1,10 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:crypto/crypto.dart';
 import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
-import 'package:sappiire/web/services/audit_log_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'package:sappiire/services/audit/audit_log_service.dart';
 
 class WebAuthService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -21,9 +23,6 @@ class WebAuthService {
       final normalizedIdentifier = loginIdentifier.trim().toLowerCase();
       final hashedPassword = _hashPassword(password);
 
-      // Strict split policy:
-      // - superadmin authenticates via username
-      // - non-superadmin staff authenticate via email
       Map<String, dynamic>? accountResponse = await _supabase
           .from('staff_accounts')
           .select(
@@ -76,13 +75,11 @@ class WebAuthService {
 
       final String cswdId = accountResponse['cswd_id'];
 
-      // Update last_login
       await _supabase
           .from('staff_accounts')
           .update({'last_login': DateTime.now().toIso8601String()})
           .eq('cswd_id', cswdId);
 
-      // Fetch from staff_profiles — NOT user_profiles
       final profileResponse = await _supabase
           .from('staff_profiles')
           .select(
@@ -92,7 +89,6 @@ class WebAuthService {
           .eq('cswd_id', cswdId)
           .maybeSingle();
 
-      // Fall back to username when no profile row exists (e.g., seeded superadmin).
       String displayName = accountResponse['username'] as String;
       if (profileResponse != null) {
         final first = (profileResponse['first_name'] ?? '').toString().trim();
@@ -130,9 +126,6 @@ class WebAuthService {
     }
   }
 
-  /// Changes the password for a staff account.
-  /// Verifies the current password before updating.
-  /// Returns { 'success': bool, 'message': String }
   Future<Map<String, dynamic>> changePassword({
     required String cswd_id,
     required String currentPassword,
@@ -151,10 +144,7 @@ class WebAuthService {
 
       final currentHash = _hashPassword(currentPassword);
       if (currentHash != account['password_hash']) {
-        return {
-          'success': false,
-          'message': 'Current password is incorrect.',
-        };
+        return {'success': false, 'message': 'Current password is incorrect.'};
       }
 
       if (newPassword.length < 8) {
@@ -168,7 +158,8 @@ class WebAuthService {
       if (newHash == account['password_hash']) {
         return {
           'success': false,
-          'message': 'New password must be different from your current password.',
+          'message':
+              'New password must be different from your current password.',
         };
       }
 
@@ -193,8 +184,6 @@ class WebAuthService {
     }
   }
 
-  /// Called after a successful first-login password change.
-  /// Clears the is_first_login flag so the user reaches the dashboard normally.
   Future<void> clearFirstLoginFlag(String cswd_id) async {
     try {
       await _supabase
@@ -202,12 +191,12 @@ class WebAuthService {
           .update({'is_first_login': false})
           .eq('cswd_id', cswd_id);
     } catch (e) {
-      debugPrint('clearFirstLoginFlag error: $e');
+      if (kDebugMode) {
+        debugPrint('WebAuthService.clearFirstLoginFlag error: $e');
+      }
     }
   }
 
-  /// Resets a staff password without requiring the current password.
-  /// Only callable after OTP verification - never expose directly in UI.
   Future<Map<String, dynamic>> resetPasswordWithOtp({
     required String cswd_id,
     required String newPassword,
@@ -235,7 +224,6 @@ class WebAuthService {
     }
   }
 
-  /// Deactivates a staff account. Never deletes - preserves audit trail.
   Future<Map<String, dynamic>> deactivateStaffAccount(String cswd_id) async {
     try {
       await _supabase
@@ -248,7 +236,6 @@ class WebAuthService {
     }
   }
 
-  /// Reactivates a previously deactivated account.
   Future<Map<String, dynamic>> reactivateStaffAccount(String cswd_id) async {
     try {
       await _supabase
@@ -259,5 +246,9 @@ class WebAuthService {
     } catch (e) {
       return {'success': false, 'message': 'Error: ${e.toString()}'};
     }
+  }
+
+  Future<void> signOut() {
+    return _supabase.auth.signOut();
   }
 }

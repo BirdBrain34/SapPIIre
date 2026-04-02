@@ -33,28 +33,28 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _phoneOtpController = TextEditingController();
 
   // Page 0 — Personal info
-  final _lastNameController       = TextEditingController();
-  final _firstNameController      = TextEditingController();
-  final _middleNameController     = TextEditingController();
-  final _dobController            = TextEditingController();
-  final _addressController        = TextEditingController();
-  final _placeOfBirthController   = TextEditingController();
+  final _lastNameController = TextEditingController();
+  final _firstNameController = TextEditingController();
+  final _middleNameController = TextEditingController();
+  final _dobController = TextEditingController();
+  final _addressController = TextEditingController();
+  final _placeOfBirthController = TextEditingController();
   String _sex = '';
   String _maritalStatus = '';
 
   // Page 1 — Email + Password
-  final _emailController          = TextEditingController();
-  final _passwordController       = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
   // Page 2 — OTP
-  final _otpController            = TextEditingController();
+  final _otpController = TextEditingController();
 
   // Page 3 — Phone
-  final _phoneController          = TextEditingController();
+  final _phoneController = TextEditingController();
 
   // Page 4 — Username
-  final _usernameController       = TextEditingController();
+  final _usernameController = TextEditingController();
 
   @override
   void initState() {
@@ -89,19 +89,25 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   String _getStepTitle() {
     switch (_currentPage) {
-      case 0: return 'Step 1 of 4 — Personal Info';
-      case 1: return 'Step 2 of 4 — Email';         // email only now
-      case 2: return 'Step 2 of 4 — Verify Email';
-      case 3: return 'Step 3 of 4 — Phone Number';
-      case 4: return 'Step 4 of 4 — Username & Password'; // password moved here
-      default: return '';
+      case 0:
+        return 'Step 1 of 4 — Personal Info';
+      case 1:
+        return 'Step 2 of 4 — Email'; // email only now
+      case 2:
+        return 'Step 2 of 4 — Verify Email';
+      case 3:
+        return 'Step 3 of 4 — Phone Number';
+      case 4:
+        return 'Step 4 of 4 — Username & Password'; // password moved here
+      default:
+        return '';
     }
   }
 
   void _showError(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: Colors.red),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
   }
 
   void _goNext() {
@@ -146,25 +152,32 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Future<void> _handleInfoScan() async {
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const InfoScannerScreen(returnOnly: true)),
+      MaterialPageRoute(
+        builder: (_) => const InfoScannerScreen(returnOnly: true),
+      ),
     );
     if (result != null && result is IdInformation) {
       setState(() {
-        _firstNameController.text  = result.firstName;
+        _firstNameController.text = result.firstName;
         _middleNameController.text = result.middleName;
-        _lastNameController.text   = result.lastName;
-        _dobController.text        = result.dateOfBirth;
+        _lastNameController.text = result.lastName;
+        _dobController.text = result.dateOfBirth;
         if (result.address.isNotEmpty) _addressController.text = result.address;
         if (result.sex.isNotEmpty) {
           _sex = result.sex.toLowerCase().startsWith('f') ? 'Female' : 'Male';
         }
         if (result.maritalStatus.isNotEmpty) {
           final l = result.maritalStatus.toLowerCase();
-          if (l.contains('single')) _maritalStatus = 'Single';
-          else if (l.contains('married')) _maritalStatus = 'Married';
-          else if (l.contains('widow')) _maritalStatus = 'Widowed';
-          else if (l.contains('separated')) _maritalStatus = 'Separated';
-          else if (l.contains('annul')) _maritalStatus = 'Annulled';
+          if (l.contains('single'))
+            _maritalStatus = 'Single';
+          else if (l.contains('married'))
+            _maritalStatus = 'Married';
+          else if (l.contains('widow'))
+            _maritalStatus = 'Widowed';
+          else if (l.contains('separated'))
+            _maritalStatus = 'Separated';
+          else if (l.contains('annul'))
+            _maritalStatus = 'Annulled';
         }
       });
     }
@@ -182,7 +195,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
             _sex.isNotEmpty &&
             _maritalStatus.isNotEmpty;
       case 1:
-        return _emailController.text.contains('@');  // email only
+        return _emailController.text.contains('@'); // email only
       case 2:
         return _otpController.text.length == 8;
       case 3:
@@ -202,17 +215,25 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   void _onNext() {
     switch (_currentPage) {
-      case 0: _goNext(); break;
-      case 1: _handleSendOtp(); break;
-      case 2: _handleVerifyOtp(); break;
+      case 0:
+        _goNext();
+        break;
+      case 1:
+        _handleSendOtp();
+        break;
+      case 2:
+        _handleVerifyOtp();
+        break;
       case 3:
-      if (!_phoneSent) {
-        _handleSendPhoneOtp();
-      } else {
-        _handleVerifyPhoneOtp();
-      }
-      break;
-      case 4: _handleCreateAccount(); break;
+        if (!_phoneSent) {
+          _handleSendPhoneOtp();
+        } else {
+          _handleVerifyPhoneOtp();
+        }
+        break;
+      case 4:
+        _handleCreateAccount();
+        break;
     }
   }
 
@@ -251,45 +272,44 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   Future<void> _handleResendOtp() async {
     setState(() => _isLoading = true);
-    try {
-      await Supabase.instance.client.auth.signInWithOtp(
-        email: _emailController.text.trim(),
-      );
-      if (!mounted) return;
+    final result = await _supabaseService.resendEmailOtp(_emailController.text);
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (result['success'] == true) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Code resent! Check your email.'),
+        SnackBar(
+          content: Text(
+            result['message']?.toString() ?? 'Code resent! Check your email.',
+          ),
           backgroundColor: Colors.green,
         ),
       );
-    } catch (e) {
-      if (!mounted) return;
-      _showError('Failed to resend: $e');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+    } else {
+      _showError(result['message']?.toString() ?? 'Failed to resend OTP.');
     }
   }
 
   Future<void> _handleSendPhoneOtp() async {
-  setState(() => _isLoading = true);
-  final result = await _supabaseService.sendPhoneOtp(
-    _phoneController.text.trim(),
-  );
-  setState(() => _isLoading = false);
-  if (!mounted) return;
-
-  if (result['success']) {
-    setState(() => _phoneSent = true);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Code sent to your phone!'),
-        backgroundColor: Colors.green,
-      ),
+    setState(() => _isLoading = true);
+    final result = await _supabaseService.sendPhoneOtp(
+      _phoneController.text.trim(),
     );
-  } else {
-    _showError(result['message']);
+    setState(() => _isLoading = false);
+    if (!mounted) return;
+
+    if (result['success']) {
+      setState(() => _phoneSent = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Code sent to your phone!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      _showError(result['message']);
+    }
   }
-}
 
   Future<void> _handleVerifyPhoneOtp() async {
     setState(() => _isLoading = true);
@@ -307,19 +327,22 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
-Future<void> _handleCreateAccount() async {
-  if (_verifiedUserId == null) {
-    _showError('Session expired. Please start over.');
-    _pageController.animateToPage(0,
-        duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
-    return;
-  }
+  Future<void> _handleCreateAccount() async {
+    if (_verifiedUserId == null) {
+      _showError('Session expired. Please start over.');
+      _pageController.animateToPage(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+      return;
+    }
 
     setState(() => _isLoading = true);
     final result = await _supabaseService.saveProfileAfterVerification(
       userId: _verifiedUserId!,
       username: _usernameController.text.trim(),
-      password: _passwordController.text,   // ← pass password here now
+      password: _passwordController.text, // ← pass password here now
       email: _emailController.text.trim(),
       firstName: _firstNameController.text.trim(),
       middleName: _middleNameController.text.trim(),
@@ -327,12 +350,21 @@ Future<void> _handleCreateAccount() async {
       dateOfBirth: _dobController.text,
       phoneNumber: _phoneController.text.trim(),
       birthplace: _placeOfBirthController.text.trim(),
-      gender: _sex == 'Male' ? 'M' : _sex == 'Female' ? 'F' : _sex,
-      civilStatus: _maritalStatus == 'Single' ? 'S'
-          : _maritalStatus == 'Married' ? 'M'
-          : _maritalStatus == 'Widowed' ? 'W'
-          : _maritalStatus == 'Separated' ? 'Sep'
-          : _maritalStatus == 'Annulled' ? 'A'
+      gender: _sex == 'Male'
+          ? 'M'
+          : _sex == 'Female'
+          ? 'F'
+          : _sex,
+      civilStatus: _maritalStatus == 'Single'
+          ? 'S'
+          : _maritalStatus == 'Married'
+          ? 'M'
+          : _maritalStatus == 'Widowed'
+          ? 'W'
+          : _maritalStatus == 'Separated'
+          ? 'Sep'
+          : _maritalStatus == 'Annulled'
+          ? 'A'
           : _maritalStatus,
       addressLine: _addressController.text.trim(),
     );
@@ -356,112 +388,124 @@ Future<void> _handleCreateAccount() async {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-    canPop: false,
-    onPopInvokedWithResult: (didPop, result) async {
-      if (didPop) return;
-      if (_currentPage == 0) {
-        Navigator.pop(context);
-        return;
-      }
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Cancel sign up?'),
-          content: const Text(
-              'Going back will lose your progress. Are you sure you want to cancel?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Stay'),
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (_currentPage == 0) {
+          Navigator.pop(context);
+          return;
+        }
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Cancel sign up?'),
+            content: const Text(
+              'Going back will lose your progress. Are you sure you want to cancel?',
             ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.dangerRed),
-              child: const Text('Cancel Sign Up',
-                  style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        ),
-      );
-      if (confirmed == true && context.mounted) Navigator.pop(context);
-    }, 
-    child: Scaffold(
-      backgroundColor: AppColors.primaryBlue,
-      resizeToAvoidBottomInset: false,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () async {
-            if (_currentPage > 0) {
-              // Warn before going back mid-signup
-              final confirmed = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('Cancel sign up?'),
-                  content: const Text(
-                    'Going back will lose your progress. Are you sure you want to cancel?'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      child: const Text('Stay'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Stay'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.dangerRed,
+                ),
+                child: const Text(
+                  'Cancel Sign Up',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+        );
+        if (confirmed == true && context.mounted) Navigator.pop(context);
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.primaryBlue,
+        resizeToAvoidBottomInset: false,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: Colors.white),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () async {
+              if (_currentPage > 0) {
+                // Warn before going back mid-signup
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Cancel sign up?'),
+                    content: const Text(
+                      'Going back will lose your progress. Are you sure you want to cancel?',
                     ),
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.dangerRed,
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('Stay'),
                       ),
-                      child: const Text('Cancel Sign Up',
-                          style: TextStyle(color: Colors.white)),
-                    ),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.dangerRed,
+                        ),
+                        child: const Text(
+                          'Cancel Sign Up',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirmed == true && mounted) Navigator.pop(context);
+              } else {
+                Navigator.pop(context);
+              }
+            },
+          ),
+          title: Text(
+            _getStepTitle(),
+            style: const TextStyle(color: Colors.white, fontSize: 16),
+          ),
+        ),
+
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Progress indicator
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 8,
+                ),
+                child: LinearProgressIndicator(
+                  value: (_currentPage + 1) / 5,
+                  backgroundColor: Colors.white24,
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              Expanded(
+                child: PageView(
+                  controller: _pageController,
+                  physics: const NeverScrollableScrollPhysics(),
+                  onPageChanged: (p) => setState(() => _currentPage = p),
+                  children: [
+                    _buildPersonalInfoPage(),
+                    _buildEmailPage(),
+                    _buildOtpPage(),
+                    _buildPhonePage(),
+                    _buildUsernamePasswordPage(),
                   ],
                 ),
-              );
-              if (confirmed == true && mounted) Navigator.pop(context);
-            } else {
-              Navigator.pop(context);
-            }
-          },
-        ),
-        title: Text(_getStepTitle(),
-            style: const TextStyle(color: Colors.white, fontSize: 16)),
-      ),
-      
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Progress indicator
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-              child: LinearProgressIndicator(
-                value: (_currentPage + 1) / 5,
-                backgroundColor: Colors.white24,
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(4),
               ),
-            ),
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                physics: const NeverScrollableScrollPhysics(),
-                onPageChanged: (p) => setState(() => _currentPage = p),
-                children: [
-                  _buildPersonalInfoPage(),
-                  _buildEmailPage(),           
-                  _buildOtpPage(),
-                  _buildPhonePage(),
-                  _buildUsernamePasswordPage(), 
-                ],
-              ),
-            ),
-            _buildFooter(),
-          ],
+              _buildFooter(),
+            ],
+          ),
         ),
       ),
-    ),
     );
   }
 
@@ -473,37 +517,56 @@ Future<void> _handleCreateAccount() async {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Personal Information',
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold)),
+          const Text(
+            'Personal Information',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 4),
-          const Text('This info will be used for form autofill.',
-              style: TextStyle(color: Colors.white60, fontSize: 13)),
+          const Text(
+            'This info will be used for form autofill.',
+            style: TextStyle(color: Colors.white60, fontSize: 13),
+          ),
           const SizedBox(height: 20),
 
-                    OutlinedButton.icon(
+          OutlinedButton.icon(
             onPressed: _handleInfoScan,
-            icon: const Icon(Icons.document_scanner_outlined, color: Colors.white70),
-            label: const Text('Scan National ID to autofill',
-                style: TextStyle(color: Colors.white70, fontSize: 13)),
+            icon: const Icon(
+              Icons.document_scanner_outlined,
+              color: Colors.white70,
+            ),
+            label: const Text(
+              'Scan National ID to autofill',
+              style: TextStyle(color: Colors.white70, fontSize: 13),
+            ),
             style: OutlinedButton.styleFrom(
               side: const BorderSide(color: Colors.white30),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
           ),
           const SizedBox(height: 16),
 
-          CustomTextField(hintText: 'Last Name', controller: _lastNameController),
+          CustomTextField(
+            hintText: 'Last Name',
+            controller: _lastNameController,
+          ),
           const SizedBox(height: 10),
-          CustomTextField(hintText: 'First Name / Given Name', controller: _firstNameController),
+          CustomTextField(
+            hintText: 'First Name / Given Name',
+            controller: _firstNameController,
+          ),
           const SizedBox(height: 10),
-          CustomTextField(hintText: 'Middle Name', controller: _middleNameController),
+          CustomTextField(
+            hintText: 'Middle Name',
+            controller: _middleNameController,
+          ),
           const SizedBox(height: 10),
-
-
 
           // Date of Birth picker
           GestureDetector(
@@ -512,15 +575,24 @@ Future<void> _handleCreateAccount() async {
               decoration: BoxDecoration(
                 color: AppColors.white.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.buttonOutlineBlue, width: 2),
+                border: Border.all(
+                  color: AppColors.buttonOutlineBlue,
+                  width: 2,
+                ),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
               child: Row(
                 children: [
-                  const Icon(Icons.calendar_today, color: Colors.white, size: 18),
+                  const Icon(
+                    Icons.calendar_today,
+                    color: Colors.white,
+                    size: 18,
+                  ),
                   const SizedBox(width: 12),
                   Text(
-                    _dobController.text.isEmpty ? 'Date of Birth' : _dobController.text,
+                    _dobController.text.isEmpty
+                        ? 'Date of Birth'
+                        : _dobController.text,
                     style: TextStyle(
                       color: _dobController.text.isEmpty
                           ? Colors.white60
@@ -536,7 +608,10 @@ Future<void> _handleCreateAccount() async {
 
           CustomTextField(hintText: 'Address', controller: _addressController),
           const SizedBox(height: 10),
-          CustomTextField(hintText: 'Place of Birth', controller: _placeOfBirthController),
+          CustomTextField(
+            hintText: 'Place of Birth',
+            controller: _placeOfBirthController,
+          ),
           const SizedBox(height: 16),
 
           // Sex dropdown
@@ -552,7 +627,13 @@ Future<void> _handleCreateAccount() async {
           _buildDropdownField(
             label: 'Marital Status',
             value: _maritalStatus.isEmpty ? null : _maritalStatus,
-            items: const ['Single', 'Married', 'Widowed', 'Separated', 'Annulled'],
+            items: const [
+              'Single',
+              'Married',
+              'Widowed',
+              'Separated',
+              'Annulled',
+            ],
             onChanged: (v) => setState(() => _maritalStatus = v ?? ''),
           ),
         ],
@@ -560,29 +641,34 @@ Future<void> _handleCreateAccount() async {
     );
   }
 
-Widget _buildEmailPage() {
-  return SingleChildScrollView(
-    padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Email Address',
+  Widget _buildEmailPage() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Email Address',
             style: TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.bold)),
-        const SizedBox(height: 4),
-        const Text('A verification code will be sent to your email.',
-            style: TextStyle(color: Colors.white60, fontSize: 13)),
-        const SizedBox(height: 20),
-        CustomTextField(
-          hintText: 'Email Address',
-          controller: _emailController,
-        ),
-      ],
-    ),
-  );
-}
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'A verification code will be sent to your email.',
+            style: TextStyle(color: Colors.white60, fontSize: 13),
+          ),
+          const SizedBox(height: 20),
+          CustomTextField(
+            hintText: 'Email Address',
+            controller: _emailController,
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildOtpPage() {
     return Padding(
@@ -592,11 +678,14 @@ Widget _buildEmailPage() {
         children: [
           const Icon(Icons.mark_email_read, size: 80, color: Colors.white),
           const SizedBox(height: 20),
-          const Text('Check Your Email',
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold)),
+          const Text(
+            'Check Your Email',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 8),
           Text(
             'A 8-digit code was sent to\n${_emailController.text}',
@@ -614,28 +703,38 @@ Widget _buildEmailPage() {
             children: [
               TextButton(
                 onPressed: _isLoading ? null : _handleResendOtp,
-                child: const Text('Resend Code',
-                    style: TextStyle(color: Colors.white60, fontSize: 13)),
+                child: const Text(
+                  'Resend Code',
+                  style: TextStyle(color: Colors.white60, fontSize: 13),
+                ),
               ),
               const SizedBox(width: 16),
               // TESTING ONLY: Skip OTP verification
               TextButton(
-                onPressed: _isLoading ? null : () {
-                  // Skip OTP verification for testing
-                  setState(() {
-                    if (_verifiedUserId == null) {
-                      // Generate a test user ID if not set
-                      _verifiedUserId = Supabase.instance.client.auth.currentUser?.id;
-                    }
-                  });
-                  _goNext();
-                },
+                onPressed: _isLoading
+                    ? null
+                    : () {
+                        // Skip OTP verification for testing
+                        setState(() {
+                          if (_verifiedUserId == null) {
+                            // Generate a test user ID if not set
+                            _verifiedUserId =
+                                Supabase.instance.client.auth.currentUser?.id;
+                          }
+                        });
+                        _goNext();
+                      },
                 style: TextButton.styleFrom(
                   backgroundColor: Colors.orange.withOpacity(0.2),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                 ),
-                child: const Text('Skip (Testing)',
-                    style: TextStyle(color: Colors.orange, fontSize: 13)),
+                child: const Text(
+                  'Skip (Testing)',
+                  style: TextStyle(color: Colors.orange, fontSize: 13),
+                ),
               ),
             ],
           ),
@@ -651,11 +750,14 @@ Widget _buildEmailPage() {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 40),
-          const Text('Phone Number',
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold)),
+          const Text(
+            'Phone Number',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 8),
           const Text(
             'A verification code will be sent via SMS.',
@@ -668,8 +770,10 @@ Widget _buildEmailPage() {
           ),
           if (_phoneSent) ...[
             const SizedBox(height: 16),
-            const Text('Enter the 6-digit code sent to your number',
-                style: TextStyle(color: Colors.white60, fontSize: 13)),
+            const Text(
+              'Enter the 6-digit code sent to your number',
+              style: TextStyle(color: Colors.white60, fontSize: 13),
+            ),
             const SizedBox(height: 8),
             CustomTextField(
               hintText: 'Enter 6-digit code',
@@ -681,21 +785,30 @@ Widget _buildEmailPage() {
               children: [
                 TextButton(
                   onPressed: _isLoading ? null : _handleSendPhoneOtp,
-                  child: const Text('Resend Code',
-                      style: TextStyle(color: Colors.white60, fontSize: 13)),
+                  child: const Text(
+                    'Resend Code',
+                    style: TextStyle(color: Colors.white60, fontSize: 13),
+                  ),
                 ),
                 const SizedBox(width: 16),
                 // TESTING ONLY: Skip phone OTP verification
                 TextButton(
-                  onPressed: _isLoading ? null : () {
-                    _goNext();
-                  },
+                  onPressed: _isLoading
+                      ? null
+                      : () {
+                          _goNext();
+                        },
                   style: TextButton.styleFrom(
                     backgroundColor: Colors.orange.withOpacity(0.2),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                   ),
-                  child: const Text('Skip (Testing)',
-                      style: TextStyle(color: Colors.orange, fontSize: 13)),
+                  child: const Text(
+                    'Skip (Testing)',
+                    style: TextStyle(color: Colors.orange, fontSize: 13),
+                  ),
                 ),
               ],
             ),
@@ -705,60 +818,72 @@ Widget _buildEmailPage() {
     );
   }
 
-Widget _buildUsernamePasswordPage() {
-  final passwordsMatch = _passwordController.text.isNotEmpty &&
-      _passwordController.text == _confirmPasswordController.text;
-  final tooShort = _passwordController.text.isNotEmpty &&
-      _passwordController.text.length < 6;
+  Widget _buildUsernamePasswordPage() {
+    final passwordsMatch =
+        _passwordController.text.isNotEmpty &&
+        _passwordController.text == _confirmPasswordController.text;
+    final tooShort =
+        _passwordController.text.isNotEmpty &&
+        _passwordController.text.length < 6;
 
-  return SingleChildScrollView(
-    padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 20),
-        const Text('Username & Password',
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 20),
+          const Text(
+            'Username & Password',
             style: TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.bold)),
-        const SizedBox(height: 4),
-        const Text('This is how you will log in to SapPIIre.',
-            style: TextStyle(color: Colors.white60, fontSize: 13)),
-        const SizedBox(height: 20),
-        CustomTextField(
-          hintText: 'Username',
-          controller: _usernameController,
-          prefixIcon: const Icon(Icons.person, color: Colors.white),
-        ),
-        const SizedBox(height: 10),
-        CustomTextField(
-          hintText: 'Password (min. 6 characters)',
-          controller: _passwordController,
-          obscureText: true,
-          prefixIcon: const Icon(Icons.lock, color: Colors.white),
-        ),
-        if (tooShort) ...[
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 4),
-          const Text('Password must be at least 6 characters.',
-              style: TextStyle(color: Colors.orangeAccent, fontSize: 12)),
+          const Text(
+            'This is how you will log in to SapPIIre.',
+            style: TextStyle(color: Colors.white60, fontSize: 13),
+          ),
+          const SizedBox(height: 20),
+          CustomTextField(
+            hintText: 'Username',
+            controller: _usernameController,
+            prefixIcon: const Icon(Icons.person, color: Colors.white),
+          ),
+          const SizedBox(height: 10),
+          CustomTextField(
+            hintText: 'Password (min. 6 characters)',
+            controller: _passwordController,
+            obscureText: true,
+            prefixIcon: const Icon(Icons.lock, color: Colors.white),
+          ),
+          if (tooShort) ...[
+            const SizedBox(height: 4),
+            const Text(
+              'Password must be at least 6 characters.',
+              style: TextStyle(color: Colors.orangeAccent, fontSize: 12),
+            ),
+          ],
+          const SizedBox(height: 10),
+          CustomTextField(
+            hintText: 'Confirm Password',
+            controller: _confirmPasswordController,
+            obscureText: true,
+            prefixIcon: const Icon(Icons.lock, color: Colors.white),
+          ),
+          if (_confirmPasswordController.text.isNotEmpty &&
+              !passwordsMatch) ...[
+            const SizedBox(height: 4),
+            const Text(
+              'Passwords do not match.',
+              style: TextStyle(color: Colors.orangeAccent, fontSize: 12),
+            ),
+          ],
         ],
-        const SizedBox(height: 10),
-        CustomTextField(
-          hintText: 'Confirm Password',
-          controller: _confirmPasswordController,
-          obscureText: true,
-          prefixIcon: const Icon(Icons.lock, color: Colors.white),
-        ),
-        if (_confirmPasswordController.text.isNotEmpty && !passwordsMatch) ...[
-          const SizedBox(height: 4),
-          const Text('Passwords do not match.',
-              style: TextStyle(color: Colors.orangeAccent, fontSize: 12)),
-        ],
-      ],
-    ),
-  );
-}
+      ),
+    );
+  }
 
   // ── Reusable dropdown ─────────────────────────────────────────────────────
 
@@ -778,8 +903,13 @@ Widget _buildUsernamePasswordPage() {
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: value,
-          hint: Text(label,
-              style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 16)),
+          hint: Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.6),
+              fontSize: 16,
+            ),
+          ),
           dropdownColor: const Color(0xFF1A237E),
           isExpanded: true,
           iconEnabledColor: Colors.white,
@@ -816,7 +946,10 @@ Widget _buildUsernamePasswordPage() {
           if (_currentPage > 0)
             TextButton(
               onPressed: _goPrev,
-              child: const Text('Back', style: TextStyle(color: Colors.white70)),
+              child: const Text(
+                'Back',
+                style: TextStyle(color: Colors.white70),
+              ),
             ),
         ],
       ),
@@ -840,25 +973,35 @@ class SignUpSuccessScreen extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.check_circle_outline, color: Colors.white, size: 80),
+              const Icon(
+                Icons.check_circle_outline,
+                color: Colors.white,
+                size: 80,
+              ),
               const SizedBox(height: 20),
-              const Text('All signed up!',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      color: AppColors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold)),
+              const Text(
+                'All signed up!',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               const SizedBox(height: 10),
-              const Text('Welcome to SapPIIre Autofill App',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.white, fontSize: 16)),
+              const Text(
+                'Welcome to SapPIIre Autofill App',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.white, fontSize: 16),
+              ),
               const SizedBox(height: 30),
               CustomButton(
                 text: 'Proceed',
                 onPressed: () => Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
-                      builder: (_) => ManageInfoScreen(userId: userId)),
+                    builder: (_) => ManageInfoScreen(userId: userId),
+                  ),
                 ),
                 backgroundColor: AppColors.white,
                 textColor: AppColors.primaryBlue,

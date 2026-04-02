@@ -4,8 +4,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
-import 'package:sappiire/web/services/web_auth_service.dart';
-import 'package:sappiire/web/services/audit_log_service.dart';
+import 'package:sappiire/services/auth/web_auth_service.dart';
+import 'package:sappiire/services/audit/audit_log_service.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 

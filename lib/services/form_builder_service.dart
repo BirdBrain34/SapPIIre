@@ -100,6 +100,7 @@ class FormBuilderService {
             template_id, form_name, form_desc, is_active, status,
             theme_config, created_by, published_at, pushed_to_mobile_at,
             form_code, reference_prefix, reference_format, requires_reference,
+            popup_enabled, popup_subtitle, popup_description,
             form_sections(
               section_id, template_id, section_name, section_desc,
               section_order, is_collapsible
@@ -125,6 +126,42 @@ class FormBuilderService {
       debugPrint('FormBuilderService.fetchTemplateWithStructure error: $e');
       return null;
     }
+  }
+
+  Future<List<String>> fetchCanonicalFieldKeys() async {
+    final res = await _supabase
+        .from('form_fields')
+        .select('canonical_field_key')
+        .not('canonical_field_key', 'is', null);
+
+    final keys = <String>{};
+    for (final row in (res as List<dynamic>)) {
+      final key = (row['canonical_field_key'] as String?)?.trim();
+      if (key != null && key.isNotEmpty) {
+        keys.add(key);
+      }
+    }
+    return keys.toList();
+  }
+
+  Future<void> savePopupMetadata({
+    required String templateId,
+    required bool popupEnabled,
+    String? popupSubtitle,
+    String? popupDescription,
+  }) async {
+    await _supabase
+        .from('form_templates')
+        .update({
+          'popup_enabled': popupEnabled,
+          'popup_subtitle': popupSubtitle?.trim().isEmpty == true
+              ? null
+              : popupSubtitle?.trim(),
+          'popup_description': popupDescription?.trim().isEmpty == true
+              ? null
+              : popupDescription?.trim(),
+        })
+        .eq('template_id', templateId);
   }
 
   /// Create a new template (draft).

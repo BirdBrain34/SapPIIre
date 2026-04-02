@@ -2,11 +2,10 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/mobile/screens/auth/manage_info_screen.dart';
 import 'package:sappiire/models/id_information.dart';
-import 'package:sappiire/services/form_template_service.dart';
+import 'package:sappiire/services/supabase_service.dart';
 
 class InfoScannerScreen extends StatefulWidget {
   /// If true, tapping Confirm returns IdInformation to the caller
@@ -20,6 +19,7 @@ class InfoScannerScreen extends StatefulWidget {
 }
 
 class _InfoScannerScreenState extends State<InfoScannerScreen> {
+  final _supabaseService = SupabaseService();
   bool _isProcessing = false;
   bool _frontScanned = false;
   bool _backScanned = false;
@@ -586,26 +586,13 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
   }
 
   Future<void> _saveToSupabase() async {
-    final userId = Supabase.instance.client.auth.currentUser?.id;
+    final userId = _supabaseService.currentUserId;
     if (userId == null) {
       _showSnack('Not logged in.', Colors.red);
       return;
     }
 
     try {
-      // Load all templates to find matching field_ids by canonical_field_key
-      final templateSvc = FormTemplateService();
-      final templates = await templateSvc.fetchActiveTemplates();
-
-      if (templates.isEmpty) {
-        _showSnack('No form templates found.', Colors.red);
-        return;
-      }
-
-      final allFields = templates.expand((t) => t.allFields).toList();
-
-      // Map canonical_field_key → value from scanned ID
-      // Only keys that exist in form_fields are included
       final sexValue = _data.sex.isNotEmpty
           ? (_data.sex.toLowerCase().startsWith('f') ? 'Female' : 'Male')
           : '';
@@ -624,31 +611,14 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
         'house_number_street_name_phase_purok': _data.address,
       };
 
-      final now = DateTime.now().toIso8601String();
-      final rows = <Map<String, dynamic>>[];
+      final result = await _supabaseService.saveScannedIdFieldValues(
+        userId: userId,
+        canonicalValues: piiMap,
+      );
 
-      for (final entry in piiMap.entries) {
-        if (entry.value.isEmpty) continue;
-
-        // Find ALL fields with this canonical key across ALL templates
-        final matchingFields = allFields
-            .where((f) => f.canonicalFieldKey == entry.key)
-            .toList();
-
-        for (final field in matchingFields) {
-          rows.add({
-            'user_id': userId,
-            'field_id': field.fieldId,
-            'field_value': entry.value,
-            'updated_at': now,
-          });
-        }
-      }
-
-      if (rows.isNotEmpty) {
-        await Supabase.instance.client
-            .from('user_field_values')
-            .upsert(rows, onConflict: 'user_id,field_id');
+      if (result['success'] != true) {
+        _showSnack(result['message']?.toString() ?? 'Save failed.', Colors.red);
+        return;
       }
 
       if (!mounted) return;

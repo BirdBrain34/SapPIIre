@@ -9,12 +9,10 @@ import 'package:sappiire/web/screen/dashboard_screen.dart';
 import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/form_builder_screen.dart';
 import 'package:sappiire/web/screen/audit_logs_screen.dart';
-import 'package:sappiire/web/services/audit_log_service.dart';
-import 'package:sappiire/web/services/staff_email_service.dart';
+import 'package:sappiire/services/audit/audit_log_service.dart';
+import 'package:sappiire/services/auth/staff_admin_service.dart';
+import 'package:sappiire/services/email/staff_email_service.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:crypto/crypto.dart';
-import 'dart:convert';
 
 class CreateStaffScreen extends StatefulWidget {
   final String role;
@@ -33,7 +31,7 @@ class CreateStaffScreen extends StatefulWidget {
 }
 
 class _CreateStaffScreenState extends State<CreateStaffScreen> {
-  final _supabase = Supabase.instance.client;
+  final _staffAdminService = StaffAdminService();
   static const String _fixedRole = 'admin';
 
   // Account creation form controllers
@@ -45,12 +43,6 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
   final TextEditingController _departmentController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   bool _isCreatingAccount = false;
-
-  String _hashPassword(String password) {
-    final bytes = utf8.encode(password);
-    final digest = sha256.convert(bytes);
-    return digest.toString();
-  }
 
   void _showSnackBar(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -114,46 +106,32 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
     setState(() => _isCreatingAccount = true);
 
     try {
-      // Check username not taken
-      final existing = await _supabase
-          .from('staff_accounts')
-          .select('username')
-          .eq('username', username)
-          .maybeSingle();
-
-      if (existing != null) {
-        _showSnackBar('Username already exists.', isError: true);
-        setState(() => _isCreatingAccount = false);
-        return;
-      }
-
       if (_fixedRole != 'admin') {
         _showSnackBar('Invalid role policy. Contact developer.', isError: true);
         setState(() => _isCreatingAccount = false);
         return;
       }
 
-      final placeholderPassword = _hashPassword(
-        'pending_setup_${DateTime.now().millisecondsSinceEpoch}',
+      final createResult = await _staffAdminService.createAdminStaffAccount(
+        email: email,
+        username: username,
+        firstName: firstName,
+        lastName: lastName,
+        position: _positionController.text,
+        department: _departmentController.text,
+        phoneNumber: _phoneController.text,
       );
 
-      // Insert into staff_accounts
-      final accountResponse = await _supabase
-          .from('staff_accounts')
-          .insert({
-            'email': email,
-            'username': username,
-            'password_hash': placeholderPassword,
-            'role': _fixedRole,
-            'requested_role': _fixedRole,
-            'account_status': 'active',
-            'is_active': true,
-            'is_first_login': true,
-          })
-          .select('cswd_id')
-          .single();
+      if (createResult['success'] != true) {
+        _showSnackBar(
+          createResult['message']?.toString() ?? 'Failed to create account.',
+          isError: true,
+        );
+        setState(() => _isCreatingAccount = false);
+        return;
+      }
 
-      final String? cswdId = accountResponse['cswd_id']?.toString();
+      final String? cswdId = createResult['cswd_id']?.toString();
 
       if (cswdId == null || cswdId.isEmpty) {
         _showSnackBar(
@@ -163,22 +141,6 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
         setState(() => _isCreatingAccount = false);
         return;
       }
-
-      // Insert into staff_profiles
-      await _supabase.from('staff_profiles').insert({
-        'cswd_id': cswdId,
-        'first_name': firstName,
-        'last_name': lastName,
-        'position': _positionController.text.trim().isEmpty
-            ? null
-            : _positionController.text.trim(),
-        'department': _departmentController.text.trim().isEmpty
-            ? null
-            : _departmentController.text.trim(),
-        'phone_number': _phoneController.text.trim().isEmpty
-            ? null
-            : _phoneController.text.trim(),
-      });
 
       final emailResult = await StaffEmailService().sendAccountCreationOtp(
         email: email,
