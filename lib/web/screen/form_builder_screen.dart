@@ -174,6 +174,7 @@ class _BuilderColumn {
   int order;
   List<_BuilderOption> options;
   String? dbMapKey;
+  String? ageFromColumnId;
 
   _BuilderColumn({
     String? id,
@@ -183,6 +184,7 @@ class _BuilderColumn {
     this.order = 0,
     List<_BuilderOption>? options,
     this.dbMapKey,
+    this.ageFromColumnId,
   }) : id = id ?? _generateUuid(),
        fieldName = fieldName ?? 'col_${_generateUuid().substring(0, 8)}',
        options = options ?? [];
@@ -614,6 +616,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                       ),
                     );
               final vr = cf['validation_rules'] as Map<String, dynamic>?;
+              final ageFromCol = (vr?['age_from_column'] as String?)?.trim();
               return _BuilderColumn(
                 id: cf['field_id'] as String,
                 label: cf['field_label'] as String? ?? '',
@@ -623,6 +626,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 ),
                 order: (cf['field_order'] as int?) ?? 0,
                 dbMapKey: vr?['db_map_key'] as String?,
+                ageFromColumnId: (ageFromCol != null && ageFromCol.isNotEmpty)
+                    ? ageFromCol
+                    : null,
                 options: colOpts
                     .map(
                       (o) => _BuilderOption(
@@ -808,6 +814,15 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             field.type == FormFieldType.familyTable) {
           for (var ci = 0; ci < field.columns.length; ci++) {
             final col = field.columns[ci];
+            final colValidationRules = <String, dynamic>{};
+            if (col.dbMapKey != null) {
+              colValidationRules['db_map_key'] = col.dbMapKey;
+            }
+            if (col.type == FormFieldType.number &&
+                col.ageFromColumnId != null &&
+                col.ageFromColumnId!.isNotEmpty) {
+              colValidationRules['age_from_column'] = col.ageFromColumnId;
+            }
             dbFields.add({
               'field_id': col.id,
               'template_id': _activeTemplateId,
@@ -819,8 +834,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               'placeholder': null,
               'field_order': ci,
               'parent_field_id': field.id,
-              if (col.dbMapKey != null)
-                'validation_rules': {'db_map_key': col.dbMapKey},
+              if (colValidationRules.isNotEmpty)
+                'validation_rules': colValidationRules,
             });
 
             if (col.type == FormFieldType.dropdown) {
@@ -1550,6 +1565,16 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       final s = _sections.removeAt(si);
       _sections.insert(ni, s);
       _activeSectionIdx = ni;
+      _hasUnsavedChanges = true;
+    });
+  }
+
+  void _moveColumn(_BuilderField field, int ci, int dir) {
+    final ni = ci + dir;
+    if (ni < 0 || ni >= field.columns.length) return;
+    setState(() {
+      final col = field.columns.removeAt(ci);
+      field.columns.insert(ni, col);
       _hasUnsavedChanges = true;
     });
   }
@@ -3568,6 +3593,96 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
+  Widget _buildColumnAutoComputeEditor(_BuilderField tableField, _BuilderColumn col) {
+    final dateColumns = tableField.columns
+        .where((c) => c.id != col.id && c.type == FormFieldType.date)
+        .toList();
+    final hasLink = col.ageFromColumnId != null && col.ageFromColumnId!.isNotEmpty;
+    final selectedValid = hasLink && dateColumns.any((c) => c.id == col.ageFromColumnId);
+    final selectedValue = selectedValid ? col.ageFromColumnId : null;
+
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: AppColors.highlight.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: AppColors.highlight.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.calculate_outlined, size: 14, color: AppColors.highlight),
+              const SizedBox(width: 6),
+              const Text(
+                'Auto-compute from column',
+                style: TextStyle(fontSize: 11, color: AppColors.textMuted, fontWeight: FontWeight.w600),
+              ),
+              const Spacer(),
+              Switch(
+                value: hasLink,
+                activeColor: AppColors.highlight,
+                onChanged: (v) => setState(() {
+                  if (!v) {
+                    col.ageFromColumnId = null;
+                  } else {
+                    col.ageFromColumnId = dateColumns.isNotEmpty ? dateColumns.first.id : null;
+                  }
+                  _hasUnsavedChanges = true;
+                }),
+              ),
+            ],
+          ),
+          if (hasLink) ...[
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: AppColors.cardBorder),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: selectedValue,
+                  isExpanded: true,
+                  hint: const Text('Select date column', style: TextStyle(fontSize: 11)),
+                  style: const TextStyle(fontSize: 11, color: AppColors.textDark),
+                  items: dateColumns
+                      .map(
+                        (c) => DropdownMenuItem<String>(
+                          value: c.id,
+                          child: Text(
+                            c.label.isNotEmpty ? c.label : c.fieldName,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: dateColumns.isEmpty
+                      ? null
+                      : (v) => setState(() {
+                          col.ageFromColumnId = v;
+                          _hasUnsavedChanges = true;
+                        }),
+                ),
+              ),
+            ),
+            if (dateColumns.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: Text(
+                  'Add a Date column to this table first.',
+                  style: TextStyle(fontSize: 10, color: AppColors.textMuted),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _textPreview(String hint) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -3737,85 +3852,124 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           final col = entry.value;
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  flex: 3,
-                  child: TextField(
-                    controller: _ctrl('col_${col.id}', col.label),
-                    style: const TextStyle(fontSize: 13),
-                    decoration: InputDecoration(
-                      hintText: 'Column name',
-                      filled: true,
-                      fillColor: AppColors.pageBg,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 10,
-                      ),
-                    ),
-                    onChanged: (v) {
-                      col.label = v;
-                      col.fieldName = _slugify(v);
-                      _hasUnsavedChanges = true;
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 2,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.cardBorder),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<FormFieldType>(
-                        value: col.type,
-                        isExpanded: true,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textDark,
+                Row(
+                  children: [
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.arrow_upward, size: 16),
+                          onPressed: ci > 0 ? () => _moveColumn(field, ci, -1) : null,
+                          tooltip: 'Move up',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          iconSize: 16,
                         ),
-                        items: columnTypes.entries.map((e) {
-                          return DropdownMenuItem(
-                            value: e.key,
-                            child: Text(e.value),
-                          );
-                        }).toList(),
+                        IconButton(
+                          icon: const Icon(Icons.arrow_downward, size: 16),
+                          onPressed: ci < field.columns.length - 1
+                              ? () => _moveColumn(field, ci, 1)
+                              : null,
+                          tooltip: 'Move down',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          iconSize: 16,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      flex: 3,
+                      child: TextField(
+                        controller: _ctrl('col_${col.id}', col.label),
+                        style: const TextStyle(fontSize: 13),
+                        decoration: InputDecoration(
+                          hintText: 'Column name',
+                          filled: true,
+                          fillColor: AppColors.pageBg,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 10,
+                          ),
+                        ),
                         onChanged: (v) {
-                          if (v == null) return;
-                          setState(() {
-                            col.type = v;
-                            if (v == FormFieldType.dropdown &&
-                                col.options.isEmpty) {
-                              col.options.add(
-                                _BuilderOption(label: 'Option 1'),
-                              );
-                            }
-                            _hasUnsavedChanges = true;
-                          });
+                          col.label = v;
+                          col.fieldName = _slugify(v);
+                          _hasUnsavedChanges = true;
                         },
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 2,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.cardBorder),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<FormFieldType>(
+                            value: col.type,
+                            isExpanded: true,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textDark,
+                            ),
+                            items: columnTypes.entries.map((e) {
+                              return DropdownMenuItem(
+                                value: e.key,
+                                child: Text(e.value),
+                              );
+                            }).toList(),
+                            onChanged: (v) {
+                              if (v == null) return;
+                              setState(() {
+                                col.type = v;
+                                if (v != FormFieldType.number) {
+                                  col.ageFromColumnId = null;
+                                }
+                                if (v == FormFieldType.dropdown &&
+                                    col.options.isEmpty) {
+                                  col.options.add(
+                                    _BuilderOption(label: 'Option 1'),
+                                  );
+                                }
+                                _hasUnsavedChanges = true;
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.close,
+                        size: 18,
+                        color: AppColors.textMuted,
+                      ),
+                      onPressed: () => setState(() {
+                        field.columns.removeAt(ci);
+                        _hasUnsavedChanges = true;
+                      }),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 4),
-                IconButton(
-                  icon: const Icon(
-                    Icons.close,
-                    size: 18,
-                    color: AppColors.textMuted,
+                if (col.type == FormFieldType.number) ...[
+                  const SizedBox(height: 6),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 40),
+                    child: _buildColumnAutoComputeEditor(field, col),
                   ),
-                  onPressed: () => setState(() {
-                    field.columns.removeAt(ci);
-                    _hasUnsavedChanges = true;
-                  }),
-                ),
+                ],
               ],
             ),
           );
@@ -3971,85 +4125,124 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           final col = entry.value;
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  flex: 3,
-                  child: TextField(
-                    controller: _ctrl('col_${col.id}', col.label),
-                    style: const TextStyle(fontSize: 13),
-                    decoration: InputDecoration(
-                      hintText: 'Column name',
-                      filled: true,
-                      fillColor: AppColors.pageBg,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 10,
-                      ),
-                    ),
-                    onChanged: (v) {
-                      col.label = v;
-                      if (col.dbMapKey == null) col.fieldName = _slugify(v);
-                      _hasUnsavedChanges = true;
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 2,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.cardBorder),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<FormFieldType>(
-                        value: col.type,
-                        isExpanded: true,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textDark,
+                Row(
+                  children: [
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.arrow_upward, size: 16),
+                          onPressed: ci > 0 ? () => _moveColumn(field, ci, -1) : null,
+                          tooltip: 'Move up',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          iconSize: 16,
                         ),
-                        items: columnTypes.entries.map((e) {
-                          return DropdownMenuItem(
-                            value: e.key,
-                            child: Text(e.value),
-                          );
-                        }).toList(),
+                        IconButton(
+                          icon: const Icon(Icons.arrow_downward, size: 16),
+                          onPressed: ci < field.columns.length - 1
+                              ? () => _moveColumn(field, ci, 1)
+                              : null,
+                          tooltip: 'Move down',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          iconSize: 16,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      flex: 3,
+                      child: TextField(
+                        controller: _ctrl('col_${col.id}', col.label),
+                        style: const TextStyle(fontSize: 13),
+                        decoration: InputDecoration(
+                          hintText: 'Column name',
+                          filled: true,
+                          fillColor: AppColors.pageBg,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 10,
+                          ),
+                        ),
                         onChanged: (v) {
-                          if (v == null) return;
-                          setState(() {
-                            col.type = v;
-                            if (v == FormFieldType.dropdown &&
-                                col.options.isEmpty) {
-                              col.options.add(
-                                _BuilderOption(label: 'Option 1'),
-                              );
-                            }
-                            _hasUnsavedChanges = true;
-                          });
+                          col.label = v;
+                          if (col.dbMapKey == null) col.fieldName = _slugify(v);
+                          _hasUnsavedChanges = true;
                         },
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 2,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.cardBorder),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<FormFieldType>(
+                            value: col.type,
+                            isExpanded: true,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textDark,
+                            ),
+                            items: columnTypes.entries.map((e) {
+                              return DropdownMenuItem(
+                                value: e.key,
+                                child: Text(e.value),
+                              );
+                            }).toList(),
+                            onChanged: (v) {
+                              if (v == null) return;
+                              setState(() {
+                                col.type = v;
+                                if (v != FormFieldType.number) {
+                                  col.ageFromColumnId = null;
+                                }
+                                if (v == FormFieldType.dropdown &&
+                                    col.options.isEmpty) {
+                                  col.options.add(
+                                    _BuilderOption(label: 'Option 1'),
+                                  );
+                                }
+                                _hasUnsavedChanges = true;
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.close,
+                        size: 18,
+                        color: AppColors.textMuted,
+                      ),
+                      onPressed: () => setState(() {
+                        field.columns.removeAt(ci);
+                        _hasUnsavedChanges = true;
+                      }),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 4),
-                IconButton(
-                  icon: const Icon(
-                    Icons.close,
-                    size: 18,
-                    color: AppColors.textMuted,
+                if (col.type == FormFieldType.number) ...[
+                  const SizedBox(height: 6),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 40),
+                    child: _buildColumnAutoComputeEditor(field, col),
                   ),
-                  onPressed: () => setState(() {
-                    field.columns.removeAt(ci);
-                    _hasUnsavedChanges = true;
-                  }),
-                ),
+                ],
               ],
             ),
           );
@@ -4382,35 +4575,44 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 style: TextStyle(fontSize: 12, color: AppColors.textMuted),
               ),
               const SizedBox(height: 12),
-              for (final col in cols)
-                ListTile(
-                  dense: true,
-                  leading: const Icon(
-                    Icons.pin,
-                    size: 18,
-                    color: AppColors.primaryBlue,
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final col in cols)
+                        ListTile(
+                          dense: true,
+                          leading: const Icon(
+                            Icons.pin,
+                            size: 18,
+                            color: AppColors.primaryBlue,
+                          ),
+                          title: Text(
+                            '${col.label} (${(col.dbMapKey?.isNotEmpty == true ? col.dbMapKey : col.fieldName)})',
+                          ),
+                          subtitle: Text(
+                            col.dbMapKey?.isNotEmpty == true
+                                ? col.dbMapKey!
+                                : col.fieldName,
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 11,
+                            ),
+                          ),
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            final columnKey = col.dbMapKey?.isNotEmpty == true
+                                ? col.dbMapKey!
+                                : col.fieldName;
+                            final formula = 'SUM_COLUMN($tableKey, "$columnKey")';
+                            _appendFormulaToken(field, formula);
+                          },
+                        ),
+                    ],
                   ),
-                  title: Text(
-                    '${col.label} (${(col.dbMapKey?.isNotEmpty == true ? col.dbMapKey : col.fieldName)})',
-                  ),
-                  subtitle: Text(
-                    col.dbMapKey?.isNotEmpty == true
-                        ? col.dbMapKey!
-                        : col.fieldName,
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 11,
-                    ),
-                  ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    final columnKey = col.dbMapKey?.isNotEmpty == true
-                        ? col.dbMapKey!
-                        : col.fieldName;
-                    final formula = 'SUM_COLUMN($tableKey, "$columnKey")';
-                    _appendFormulaToken(field, formula);
-                  },
                 ),
+              ),
               const SizedBox(height: 8),
             ],
           ),

@@ -329,6 +329,14 @@ class FormStateController extends ChangeNotifier {
     final rows = memberTableData[fieldName];
     if (rows != null && index >= 0 && index < rows.length) {
       rows.removeAt(index);
+      
+      // Trigger recompute when row is removed (affects SUM_COLUMN formulas)
+      _recomputeDebounce?.cancel();
+      _recomputeDebounce = Timer(
+        const Duration(milliseconds: 150),
+        _recomputeFields,
+      );
+      
       notifyListeners();
     }
   }
@@ -342,6 +350,14 @@ class FormStateController extends ChangeNotifier {
     final rows = memberTableData[fieldName];
     if (rows != null && rowIndex >= 0 && rowIndex < rows.length) {
       rows[rowIndex][colName] = value;
+      
+      // Trigger recompute for formulas that depend on member table data
+      _recomputeDebounce?.cancel();
+      _recomputeDebounce = Timer(
+        const Duration(milliseconds: 150),
+        _recomputeFields,
+      );
+      
       notifyListeners();
     }
   }

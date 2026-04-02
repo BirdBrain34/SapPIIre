@@ -1662,6 +1662,29 @@ class _MemberTableWidget extends StatefulWidget {
 
 class _MemberTableWidgetState extends State<_MemberTableWidget> {
   List<FormFieldModel> get _columns => widget.field.columns;
+  
+  // Cache of text controllers per row/column to prevent keyboard dismissal
+  final Map<String, TextEditingController> _controllers = {};
+
+  @override
+  void dispose() {
+    for (final ctrl in _controllers.values) {
+      ctrl.dispose();
+    }
+    _controllers.clear();
+    super.dispose();
+  }
+
+  TextEditingController _getController(int rowIdx, String colFieldName, String currentValue) {
+    final key = '${widget.field.fieldName}_${rowIdx}_$colFieldName';
+    if (!_controllers.containsKey(key)) {
+      _controllers[key] = TextEditingController(text: currentValue);
+    } else if (_controllers[key]!.text != currentValue) {
+      // Update controller text if value changed externally (e.g., auto-calculation)
+      _controllers[key]!.text = currentValue;
+    }
+    return _controllers[key]!;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1783,6 +1806,31 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
     );
   }
 
+  void _autoCalculateAgeForDate(String dateColId, DateTime birthdate, int rowIdx) {
+    // Find any number columns that reference this date column
+    for (final col in _columns) {
+      if (col.fieldType == FormFieldType.number) {
+        final ageFromColId = col.validationRules?['age_from_column'] as String?;
+        if (ageFromColId == dateColId) {
+          // Calculate age
+          final today = DateTime.now();
+          int age = today.year - birthdate.year;
+          if (today.month < birthdate.month ||
+              (today.month == birthdate.month && today.day < birthdate.day)) {
+            age--;
+          }
+          // Update the age column
+          widget.controller.updateMemberTableCell(
+            widget.field.fieldName,
+            rowIdx,
+            col.fieldName,
+            age.toString(),
+          );
+        }
+      }
+    }
+  }
+
   Widget _buildCellEditor(
     FormFieldModel col,
     Map<String, dynamic> rowData,
@@ -1793,13 +1841,17 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
     switch (col.fieldType) {
       case FormFieldType.text:
       case FormFieldType.number:
+        final hasAgeFromCol = col.fieldType == FormFieldType.number &&
+            (col.validationRules?['age_from_column'] as String?)?.isNotEmpty == true;
+        final controller = _getController(rowIdx, col.fieldName, currentValue);
         return TextFormField(
-          key: ValueKey('${widget.field.fieldName}_${rowIdx}_${col.fieldName}'),
-          initialValue: currentValue,
+          controller: controller,
+          readOnly: hasAgeFromCol,
           keyboardType: col.fieldType == FormFieldType.number
               ? const TextInputType.numberWithOptions(decimal: true)
               : TextInputType.text,
-          decoration: _inputDeco(hint: col.placeholder ?? col.fieldLabel),
+          decoration: _inputDeco(hint: col.placeholder ?? col.fieldLabel)
+              .copyWith(fillColor: hasAgeFromCol ? const Color(0xFFF5F5F8) : Colors.white),
           style: const TextStyle(fontSize: 13),
           onChanged: (v) {
             widget.controller.updateMemberTableCell(
@@ -1828,12 +1880,15 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
               builder: DatePickerHelper.themedBuilder,
             );
             if (picked != null) {
+              final formatted = DatePickerHelper.formatDate(picked);
               widget.controller.updateMemberTableCell(
                 widget.field.fieldName,
                 rowIdx,
                 col.fieldName,
-                DatePickerHelper.formatDate(picked),
+                formatted,
               );
+              // Auto-calculate age for any number columns linked to this date column
+              _autoCalculateAgeForDate(col.fieldId, picked, rowIdx);
               setState(() {});
             }
           },
@@ -1888,9 +1943,9 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
         );
 
       default:
+        final controller = _getController(rowIdx, col.fieldName, currentValue);
         return TextFormField(
-          key: ValueKey('${widget.field.fieldName}_${rowIdx}_${col.fieldName}'),
-          initialValue: currentValue,
+          controller: controller,
           decoration: _inputDeco(hint: col.fieldLabel),
           style: const TextStyle(fontSize: 13),
           onChanged: (v) {
