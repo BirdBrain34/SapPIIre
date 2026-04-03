@@ -116,7 +116,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     final needsResolution = <Map<String, dynamic>>[];
     for (final sub in submissions) {
       final data = sub['data'] as Map<String, dynamic>? ?? {};
-      if (data['__applicant_name'] is Map) continue;
+      if (_hasUsableEmbeddedApplicantName(data)) continue;
       final sid = data['__session_id']?.toString();
       if (sid != null && sid.isNotEmpty) needsResolution.add(sub);
     }
@@ -143,9 +143,8 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       if (userIds.isEmpty) return;
 
       // user_ids → names via canonical_field_key
-      final userIdToName = await _submissionService.fetchCanonicalNamesByUserIds(
-        userIds.toList(),
-      );
+      final userIdToName = await _submissionService
+          .fetchCanonicalNamesByUserIds(userIds.toList());
 
       // Embed resolved names into submissions (mutates in place)
       for (final sub in needsResolution) {
@@ -390,8 +389,11 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     // 1) Embedded name from _embedApplicantName / _resolveUnknownNames
     if (data['__applicant_name'] is Map) {
       final n = data['__applicant_name'] as Map<String, dynamic>;
-      final name = _formatName(n);
-      if (name != null) return name;
+      final embeddedNameLooksValid = _hasUsableEmbeddedApplicantName(data);
+      if (embeddedNameLooksValid) {
+        final name = _formatName(n);
+        if (name != null) return name;
+      }
     }
 
     // 2) Common key names in JSONB (GIS and custom templates)
@@ -463,6 +465,28 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       if (val.isNotEmpty) return val;
     }
     return '';
+  }
+
+  bool _hasUsableEmbeddedApplicantName(Map<String, dynamic> data) {
+    final raw = data['__applicant_name'];
+    if (raw is! Map) return false;
+
+    final last = (raw['last'] ?? '').toString().trim();
+    final first = (raw['first'] ?? '').toString().trim();
+
+    if (last.isEmpty && first.isEmpty) return false;
+    if (_looksEncryptedToken(last) || _looksEncryptedToken(first)) {
+      return false;
+    }
+    return true;
+  }
+
+  bool _looksEncryptedToken(String value) {
+    final v = value.trim();
+    if (v.length < 24) return false;
+    if (v.contains(' ') || v.contains(',')) return false;
+    if (!RegExp(r'^[A-Za-z0-9+/=]+$').hasMatch(v)) return false;
+    return RegExp(r'[0-9+/=]').hasMatch(v);
   }
 
   String? _findApplicantId(Map<String, dynamic> submission) {
