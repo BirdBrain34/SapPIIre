@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/services/crypto/hybrid_crypto_service.dart';
 import 'package:sappiire/services/form_template_service.dart';
 
@@ -325,6 +326,74 @@ class SupabaseService {
     }
   }
 
+  String _normalizeToken(String raw) {
+    return raw
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+  }
+
+  String _civilStatusBucket(String raw) {
+    final t = _normalizeToken(raw);
+    if (t.isEmpty) return '';
+
+    if (t == 's' || t.contains('single')) return 'single';
+    if (t == 'm' || t.contains('married') || t.contains('kasal')) {
+      return 'married';
+    }
+    if (t == 'w' || t.contains('widow') || t.contains('balo')) {
+      return 'widowed';
+    }
+    if (t == 'sep' ||
+        t.contains('separated') ||
+        t.contains('hiwalay') ||
+        t.contains('live_in') ||
+        t.contains('livein')) {
+      return 'separated';
+    }
+    if (t == 'a' || t.contains('annul')) return 'annulled';
+    return '';
+  }
+
+  String _civilStatusDisplayValue(String raw) {
+    switch (_civilStatusBucket(raw)) {
+      case 'single':
+        return 'Single';
+      case 'married':
+        return 'Married';
+      case 'widowed':
+        return 'Widowed';
+      case 'separated':
+        return 'Separated';
+      case 'annulled':
+        return 'Annulled';
+      default:
+        return raw;
+    }
+  }
+
+  String _resolveCivilStatusForField(FormFieldModel field, String rawValue) {
+    final input = rawValue.trim();
+    if (input.isEmpty) return input;
+
+    final bucket = _civilStatusBucket(input);
+    if (bucket.isEmpty) return input;
+
+    if (field.options.isNotEmpty) {
+      for (final option in field.options) {
+        final byValue = _civilStatusBucket(option.value);
+        final byLabel = _civilStatusBucket(option.label);
+        if (byValue == bucket || byLabel == bucket) {
+          return option.value;
+        }
+      }
+    }
+
+    return _civilStatusDisplayValue(input);
+  }
+
   /// Step 4 of signup: save profile data after OTP is verified.
   /// Writes all PII to user_field_values by dynamically matching field_name from GIS v2.
   Future<Map<String, dynamic>> saveProfileAfterVerification({
@@ -399,6 +468,8 @@ class SupabaseService {
             gender, // Already converted in signup (M/F or Male/Female)
         'estadong_sibil_civil_status':
             civilStatus, // Already converted in signup
+        'civil_status': civilStatus,
+        'marital_status': civilStatus,
         // Keep both legacy and new canonical aliases for compatibility.
         'place_of_birth': birthplace,
         'lugar_ng_kapanganakan_place_of_birth': birthplace,
@@ -429,10 +500,17 @@ class SupabaseService {
 
         // Save to ALL matching fields (across all templates)
         for (final field in matchingFields) {
+          var mappedValue = entry.value.toString();
+          if (entry.key == 'estadong_sibil_civil_status' ||
+              entry.key == 'civil_status' ||
+              entry.key == 'marital_status') {
+            mappedValue = _resolveCivilStatusForField(field, mappedValue);
+          }
+
           rows.add({
             'user_id': userId,
             'field_id': field.fieldId,
-            'field_value': entry.value.toString(),
+            'field_value': mappedValue,
             'updated_at': now,
           });
         }

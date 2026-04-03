@@ -110,7 +110,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
         _sex = _normalizeGender(pii['kasarian_sex'] ?? '') ?? '';
         _maritalStatus = _normalizeCivilStatus(
-          pii['estadong_sibil_civil_status'] ?? '',
+          _firstNonEmpty(pii, [
+            'estadong_sibil_civil_status',
+            'civil_status',
+            'marital_status',
+            'estadong_sibil',
+          ]),
         );
 
         final parts = [
@@ -128,13 +133,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   String _normalizeCivilStatus(String raw) {
-    final lower = raw.toLowerCase();
-    if (lower.contains('single') || lower == 's') return 'Single';
-    if (lower.contains('married') || lower == 'm') return 'Married';
-    if (lower.contains('widow') || lower == 'w') return 'Widowed';
-    if (lower.contains('separated') || lower == 'sep') return 'Separated';
-    if (lower.contains('annul') || lower == 'a') return 'Annulled';
-    return raw;
+    switch (_civilStatusBucket(raw)) {
+      case 'single':
+        return 'Single';
+      case 'married':
+        return 'Married';
+      case 'widowed':
+        return 'Widowed';
+      case 'separated':
+        return 'Separated';
+      case 'live_in':
+        return 'Live-in';
+      case 'minor':
+        return 'Minor';
+      case 'annulled':
+        return 'Annulled';
+      default:
+        return raw;
+    }
   }
 
   String _firstNonEmpty(Map<String, dynamic> source, List<String> keys) {
@@ -156,12 +172,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
         .replaceAll(RegExp(r'^_+|_+$'), '');
   }
 
-  String? _findTemplateFieldName(List<String> aliases) {
+  String _civilStatusBucket(String raw) {
+    final t = _normalizeKey(raw);
+    if (t.isEmpty) return '';
+
+    if (t == 's' || t.contains('single')) return 'single';
+    if (t == 'm' || t.contains('married') || t.contains('kasal')) {
+      return 'married';
+    }
+    if (t == 'w' || t.contains('widow') || t.contains('balo')) {
+      return 'widowed';
+    }
+    if (t == 'h' || t.contains('hiwalay') || t.contains('separated')) {
+      return 'separated';
+    }
+    if (t == 'li' || t.contains('live_in') || t.contains('livein')) {
+      return 'live_in';
+    }
+    if (t == 'c' || t.contains('minor')) return 'minor';
+    if (t == 'a' || t.contains('annul')) return 'annulled';
+
+    return '';
+  }
+
+  FormFieldModel? _findTemplateField(List<String> aliases) {
     final template = _activeTemplate;
     if (template == null) return null;
+
     final wanted = aliases.map(_normalizeKey).toSet();
     for (final field in template.allFields) {
       if (field.parentFieldId != null) continue;
+
       final fieldKey = _normalizeKey(field.fieldName);
       final canonical = field.canonicalFieldKey == null
           ? null
@@ -169,13 +210,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final source = field.autofillSource == null
           ? null
           : _normalizeKey(field.autofillSource!);
+
       if (wanted.contains(fieldKey) ||
           (canonical != null && wanted.contains(canonical)) ||
           (source != null && wanted.contains(source))) {
-        return field.fieldName;
+        return field;
       }
     }
+
     return null;
+  }
+
+  String? _findTemplateFieldName(List<String> aliases) {
+    return _findTemplateField(aliases)?.fieldName;
   }
 
   void _putMappedValue(
@@ -186,6 +233,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final fieldName = _findTemplateFieldName(aliases);
     if (fieldName == null) return;
     formData[fieldName] = value;
+  }
+
+  String _resolveCivilStatusForField(FormFieldModel field, String rawValue) {
+    final bucket = _civilStatusBucket(rawValue);
+    if (bucket.isEmpty) return rawValue;
+
+    if (field.options.isNotEmpty) {
+      for (final option in field.options) {
+        if (_civilStatusBucket(option.value) == bucket ||
+            _civilStatusBucket(option.label) == bucket) {
+          return option.value;
+        }
+      }
+    }
+
+    return _normalizeCivilStatus(rawValue);
+  }
+
+  void _putMappedCivilStatusValue(
+    Map<String, dynamic> formData,
+    List<String> aliases,
+    String rawValue,
+  ) {
+    final field = _findTemplateField(aliases);
+    if (field == null) return;
+    formData[field.fieldName] = _resolveCivilStatusForField(field, rawValue);
   }
 
   Future<void> _saveProfile() async {
@@ -258,7 +331,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'sex',
         'kasarian',
       ], _sex);
-      _putMappedValue(formData, const [
+      _putMappedCivilStatusValue(formData, const [
         'estadong_sibil_civil_status',
         'civil_status',
         'marital_status',
@@ -654,6 +727,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 'Married',
                 'Widowed',
                 'Separated',
+                'Live-in',
+                'Minor',
                 'Annulled',
               ],
               onChanged: (v) => setState(() => _maritalStatus = v ?? ''),
