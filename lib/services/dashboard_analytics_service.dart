@@ -281,7 +281,13 @@ class DashboardAnalyticsService {
         if (value.isEmpty) {
           continue;
         }
-        dist[value] = (dist[value] ?? 0) + 1;
+
+        final normalized = _normalizeGenderLabel(value);
+        if (normalized.isEmpty) {
+          continue;
+        }
+
+        dist[normalized] = (dist[normalized] ?? 0) + 1;
       }
 
       return dist;
@@ -854,6 +860,36 @@ class DashboardAnalyticsService {
 
   String _normalize(String value) {
     return value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+  }
+
+  String _normalizeGenderLabel(String rawValue) {
+    final trimmed = rawValue.trim();
+    if (trimmed.isEmpty) {
+      return '';
+    }
+
+    final token = _normalize(trimmed);
+    if (token.isEmpty) {
+      return '';
+    }
+
+    if (token == 'm' ||
+        token.contains('male') ||
+        token.contains('lalaki') ||
+        token.contains('boy') ||
+        token.startsWith('m_')) {
+      return 'Male';
+    }
+
+    if (token == 'f' ||
+        token.contains('female') ||
+        token.contains('babae') ||
+        token.contains('girl') ||
+        token.startsWith('f_')) {
+      return 'Female';
+    }
+
+    return trimmed;
   }
 
   static const Map<String, List<String>> _fieldKeyAliases = {

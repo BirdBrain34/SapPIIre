@@ -261,6 +261,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
     formData[field.fieldName] = _resolveCivilStatusForField(field, rawValue);
   }
 
+  Future<bool> _syncCivilStatusAcrossTemplates() async {
+    final civil = _maritalStatus.trim();
+    if (civil.isEmpty) return true;
+
+    final result = await _supabaseService.saveScannedIdFieldValues(
+      userId: widget.userId,
+      canonicalValues: {
+        'estadong_sibil_civil_status': civil,
+        'civil_status': civil,
+        'marital_status': civil,
+      },
+    );
+
+    if (result['success'] == true) {
+      return true;
+    }
+
+    debugPrint(
+      'ProfileScreen._syncCivilStatusAcrossTemplates failed: ${result['message']}',
+    );
+    return false;
+  }
+
   Future<void> _saveProfile() async {
     if (_activeTemplate == null) {
       _showFeedback('No active form template found', Colors.orange);
@@ -356,11 +379,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
         template: _activeTemplate!,
         formData: formData,
       );
+      final civilSynced = await _syncCivilStatusAcrossTemplates();
 
-      if (savedPII) {
+      if (savedPII && civilSynced) {
         _showFeedback('Profile updated successfully!', Colors.green);
         // We call setState to refresh the UI (especially the username in the AppBar)
         setState(() {});
+      } else if (savedPII) {
+        _showFeedback(
+          'Profile saved, but GIS civil status sync failed.',
+          Colors.orange,
+        );
       } else {
         _showFeedback('Account saved, but PII details failed.', Colors.orange);
       }

@@ -48,21 +48,43 @@ class SupabaseService {
 
       final allFields = templates.expand((t) => t.allFields).toList();
       final now = DateTime.now().toIso8601String();
+      final aesKey = HybridCryptoService.deriveUserAesKey(userId);
       final rows = <Map<String, dynamic>>[];
 
       for (final entry in canonicalValues.entries) {
+        final entryKey = _normalizeToken(entry.key);
         final value = entry.value.trim();
-        if (value.isEmpty) continue;
+        if (entryKey.isEmpty || value.isEmpty) continue;
+
+        final isCivilStatusKey =
+            entryKey == 'estadong_sibil_civil_status' ||
+            entryKey == 'civil_status' ||
+            entryKey == 'marital_status';
 
         final matchingFields = allFields
-            .where((f) => f.canonicalFieldKey == entry.key)
+            .where(
+              (f) => _normalizeToken(f.canonicalFieldKey ?? '') == entryKey,
+            )
             .toList();
 
         for (final field in matchingFields) {
+          var mappedValue = value;
+          if (isCivilStatusKey) {
+            mappedValue = _resolveCivilStatusForField(field, mappedValue);
+          }
+          if (mappedValue.isEmpty) continue;
+
+          final encrypted = await HybridCryptoService.encryptField(
+            mappedValue,
+            aesKey,
+          );
+
           rows.add({
             'user_id': userId,
             'field_id': field.fieldId,
-            'field_value': value,
+            'field_value': encrypted.ciphertext,
+            'iv': encrypted.iv,
+            'encryption_version': 1,
             'updated_at': now,
           });
         }
