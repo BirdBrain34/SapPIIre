@@ -83,6 +83,46 @@ class HybridCryptoService {
     }
   }
 
+  static Future<List<EncryptedValue>> encryptFieldBatch(
+    List<String> plaintexts,
+    Uint8List aesKey,
+  ) async {
+    final result = await compute(
+      _encryptFieldBatchWorker,
+      <String, dynamic>{
+        'plaintexts': plaintexts,
+        'aesKeyB64': base64Encode(aesKey),
+      },
+    );
+
+    return result
+        .map(
+          (item) => EncryptedValue(
+            ciphertext: item['ciphertext'] ?? '',
+            iv: item['iv'] ?? '',
+          ),
+        )
+        .toList();
+  }
+
+  static Future<List<String>> decryptFieldBatch(
+    List<({String ciphertext, String iv})> items,
+    Uint8List aesKey,
+  ) async {
+    try {
+      return await compute(
+        _decryptFieldBatchWorker,
+        <String, dynamic>{
+          'ciphertexts': items.map((item) => item.ciphertext).toList(),
+          'ivs': items.map((item) => item.iv).toList(),
+          'aesKeyB64': base64Encode(aesKey),
+        },
+      );
+    } catch (_) {
+      return List<String>.filled(items.length, '');
+    }
+  }
+
   static Future<QRPayloadEnvelope> encryptForTransmission(
     Map<String, dynamic> payload,
     String rsaPublicKeyPem,
@@ -198,6 +238,70 @@ String _decryptFieldWorker(Map<String, String> input) {
   } catch (_) {
     return '';
   }
+}
+
+List<Map<String, String>> _encryptFieldBatchWorker(Map<String, dynamic> input) {
+  final keyBytes = base64Decode(input['aesKeyB64'] as String? ?? '');
+  final key = encrypt.Key(Uint8List.fromList(keyBytes));
+  final plaintexts = (input['plaintexts'] as List<dynamic>? ?? const [])
+      .map((value) => value?.toString() ?? '')
+      .toList();
+
+  final encrypter = encrypt.Encrypter(
+    encrypt.AES(key, mode: encrypt.AESMode.gcm),
+  );
+
+  final results = <Map<String, String>>[];
+  for (final plaintext in plaintexts) {
+    if (plaintext.isEmpty) {
+      results.add(<String, String>{'ciphertext': '', 'iv': ''});
+      continue;
+    }
+
+    final iv = encrypt.IV.fromSecureRandom(12);
+    final encryptedValue = encrypter.encrypt(plaintext, iv: iv);
+    results.add(<String, String>{
+      'ciphertext': encryptedValue.base64,
+      'iv': iv.base64,
+    });
+  }
+
+  return results;
+}
+
+List<String> _decryptFieldBatchWorker(Map<String, dynamic> input) {
+  final keyBytes = base64Decode(input['aesKeyB64'] as String? ?? '');
+  final key = encrypt.Key(Uint8List.fromList(keyBytes));
+  final ciphertexts = (input['ciphertexts'] as List<dynamic>? ?? const [])
+      .map((value) => value?.toString() ?? '')
+      .toList();
+  final ivs = (input['ivs'] as List<dynamic>? ?? const [])
+      .map((value) => value?.toString() ?? '')
+      .toList();
+
+  final encrypter = encrypt.Encrypter(
+    encrypt.AES(key, mode: encrypt.AESMode.gcm),
+  );
+
+  final results = <String>[];
+  for (var i = 0; i < ciphertexts.length; i++) {
+    final ciphertext = ciphertexts[i];
+    final ivBase64 = i < ivs.length ? ivs[i] : '';
+
+    if (ciphertext.trim().isEmpty || ivBase64.trim().isEmpty) {
+      results.add('');
+      continue;
+    }
+
+    try {
+      final iv = encrypt.IV.fromBase64(ivBase64);
+      results.add(encrypter.decrypt64(ciphertext, iv: iv));
+    } catch (_) {
+      results.add('');
+    }
+  }
+
+  return results;
 }
 
 Map<String, String> _encryptForTransmissionWorker(Map<String, String> input) {

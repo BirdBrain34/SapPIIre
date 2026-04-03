@@ -19,6 +19,34 @@ This guide explains exactly how the team can run and test the hybrid cryptosyste
   4. App stores envelope (`encrypted_payload`, `payload_iv`, `encrypted_aes_key`, `transmission_version = 1`)
   5. Edge function decrypts and writes plaintext JSON to `form_data`
 
+## 1.1) Security patch sync status (2026-04-03)
+
+This section is the teammate handoff summary for the security fixes implemented in this branch.
+
+### Implemented patches
+- `lib/services/supabase_service.dart`
+  - `saveScannedIdFieldValues()` now routes writes through `FieldValueService.saveUserFieldValues()` (no direct plaintext upsert to `user_field_values`).
+  - `saveProfileAfterVerification()` now routes writes through `FieldValueService.saveUserFieldValues()` per template.
+  - `_invokeDecryptQrPayloadWithRetry()` has the null/empty access token guard to avoid invoke-time null crashes.
+- `lib/services/crypto/hybrid_crypto_service.dart`
+  - Added `encryptFieldBatch()` and `decryptFieldBatch()` with one `compute()` call each.
+  - Added `_encryptFieldBatchWorker` and `_decryptFieldBatchWorker` at file scope.
+- `lib/services/field_value_service.dart`
+  - `saveUserFieldValues()` now uses `HybridCryptoService.encryptFieldBatch()` for per-save batch encryption.
+  - `loadUserFieldValues()` now uses `HybridCryptoService.decryptFieldBatch()` for per-load batch decryption.
+  - `scanned_at` writes now use UTC (`DateTime.now().toUtc().toIso8601String()`).
+  - `updated_at` is no longer client-supplied on `user_field_values` inserts; database server timestamp/default is used.
+
+### Important note on legacy data
+- Historical plaintext rows may still exist from runs before this patch set.
+- Current flow is patched; legacy rows must be re-saved/migrated to eliminate residual plaintext-at-rest.
+
+### Team rollout checklist
+1. Pull latest branch changes.
+2. Restart running app instances (do not rely on stale hot-reload state).
+3. Execute one fresh save flow and one QR handshake flow.
+4. Run verification SQL (section 8) and store screenshots/logs for capstone evidence.
+
 ## 2) Required VS Code extensions
 
 Install these on each team machine:

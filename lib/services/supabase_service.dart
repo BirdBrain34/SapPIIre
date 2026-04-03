@@ -6,10 +6,12 @@ import 'package:http/http.dart' as http;
 
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/services/crypto/hybrid_crypto_service.dart';
+import 'package:sappiire/services/field_value_service.dart';
 import 'package:sappiire/services/form_template_service.dart';
 
 class SupabaseService {
   final _supabase = Supabase.instance.client;
+  final _fieldValueService = FieldValueService();
 
   String? get currentUserId => _supabase.auth.currentUser?.id;
 
@@ -47,9 +49,7 @@ class SupabaseService {
       }
 
       final allFields = templates.expand((t) => t.allFields).toList();
-      final now = DateTime.now().toIso8601String();
-      final aesKey = HybridCryptoService.deriveUserAesKey(userId);
-      final rows = <Map<String, dynamic>>[];
+      final formDataByTemplate = <String, Map<String, dynamic>>{};
 
       for (final entry in canonicalValues.entries) {
         final entryKey = _normalizeToken(entry.key);
@@ -74,29 +74,37 @@ class SupabaseService {
           }
           if (mappedValue.isEmpty) continue;
 
-          final encrypted = await HybridCryptoService.encryptField(
-            mappedValue,
-            aesKey,
+          final templateData = formDataByTemplate.putIfAbsent(
+            field.templateId,
+            () => <String, dynamic>{},
           );
-
-          rows.add({
-            'user_id': userId,
-            'field_id': field.fieldId,
-            'field_value': encrypted.ciphertext,
-            'iv': encrypted.iv,
-            'encryption_version': 1,
-            'updated_at': now,
-          });
+          templateData[field.fieldName] = mappedValue;
         }
       }
 
-      if (rows.isNotEmpty) {
-        await _supabase
-            .from('user_field_values')
-            .upsert(rows, onConflict: 'user_id,field_id');
+      var savedAny = false;
+      for (final template in templates) {
+        final formData = formDataByTemplate[template.templateId];
+        if (formData == null || formData.isEmpty) continue;
+
+        final saved = await _fieldValueService.saveUserFieldValues(
+          userId: userId,
+          template: template,
+          formData: formData,
+        );
+        if (saved) {
+          savedAny = true;
+        }
       }
 
-      return {'success': true};
+      if (savedAny) {
+        return {'success': true};
+      }
+
+      return {
+        'success': false,
+        'message': 'No template values were saved.',
+      };
     } catch (e) {
       return {'success': false, 'message': 'Save failed: ${e.toString()}'};
     }
@@ -503,8 +511,7 @@ class SupabaseService {
       };
 
       // 6. Match canonical_field_key → field_id across ALL templates and save
-      final now = DateTime.now().toIso8601String();
-      final rows = <Map<String, dynamic>>[];
+      final formDataByTemplate = <String, Map<String, dynamic>>{};
 
       for (final entry in piiData.entries) {
         if (entry.value.toString().isEmpty) {
@@ -529,19 +536,31 @@ class SupabaseService {
             mappedValue = _resolveCivilStatusForField(field, mappedValue);
           }
 
-          rows.add({
-            'user_id': userId,
-            'field_id': field.fieldId,
-            'field_value': mappedValue,
-            'updated_at': now,
-          });
+          final templateData = formDataByTemplate.putIfAbsent(
+            field.templateId,
+            () => <String, dynamic>{},
+          );
+          templateData[field.fieldName] = mappedValue;
         }
       }
 
-      if (rows.isNotEmpty) {
-        await _supabase
-            .from('user_field_values')
-            .upsert(rows, onConflict: 'user_id,field_id');
+      for (final template in templates) {
+        final formData = formDataByTemplate[template.templateId];
+        if (formData == null || formData.isEmpty) {
+          continue;
+        }
+
+        final saved = await _fieldValueService.saveUserFieldValues(
+          userId: userId,
+          template: template,
+          formData: formData,
+        );
+
+        if (!saved) {
+          throw Exception(
+            'Failed to save profile fields for template ${template.templateId}',
+          );
+        }
       }
 
       return {

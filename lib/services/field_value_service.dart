@@ -38,7 +38,6 @@ class FieldValueService {
       final eligibleFieldIds = eligible.map((f) => f.fieldId).toList();
       if (eligibleFieldIds.isEmpty) return true;
 
-      final now = DateTime.now().toIso8601String();
       // Build rows for fields that currently have values.
       final rows = _buildFieldRows(
         template,
@@ -47,12 +46,14 @@ class FieldValueService {
           'user_id': userId,
           'field_id': field.fieldId,
           'field_value': strValue,
-          'updated_at': now,
         },
       );
 
       final aesKey = HybridCryptoService.deriveUserAesKey(userId);
-      for (final row in rows) {
+      final encryptableIndices = <int>[];
+      final plaintexts = <String>[];
+      for (var i = 0; i < rows.length; i++) {
+        final row = rows[i];
         final fieldValue = row['field_value'] as String? ?? '';
         if (fieldValue.isEmpty || fieldValue == _clearedSentinel) {
           row['iv'] = null;
@@ -60,13 +61,27 @@ class FieldValueService {
           continue;
         }
 
-        final encrypted = await HybridCryptoService.encryptField(
-          fieldValue,
+        encryptableIndices.add(i);
+        plaintexts.add(fieldValue);
+      }
+
+      if (plaintexts.isNotEmpty) {
+        final results = await HybridCryptoService.encryptFieldBatch(
+          plaintexts,
           aesKey,
         );
-        row['field_value'] = encrypted.ciphertext;
-        row['iv'] = encrypted.iv;
-        row['encryption_version'] = 1;
+
+        if (results.length != encryptableIndices.length) {
+          throw Exception('Batch encryption result length mismatch.');
+        }
+
+        for (var i = 0; i < encryptableIndices.length; i++) {
+          final row = rows[encryptableIndices[i]];
+          final encrypted = results[i];
+          row['field_value'] = encrypted.ciphertext;
+          row['iv'] = encrypted.iv;
+          row['encryption_version'] = 1;
+        }
       }
 
       final savedFieldIds = rows
@@ -88,7 +103,6 @@ class FieldValueService {
               'field_value': _clearedSentinel,
               'iv': null,
               'encryption_version': 0,
-              'updated_at': now,
             },
           )
           .toList();
@@ -157,6 +171,31 @@ class FieldValueService {
       final idToName = {for (final f in eligible) f.fieldId: f.fieldName};
       final idToType = {for (final f in eligible) f.fieldId: f.fieldType};
       final result = <String, dynamic>{};
+      final encryptedRows = <Map<String, dynamic>>[];
+      final encryptedItems = <({String ciphertext, String iv})>[];
+
+      void applyResolvedValue(String fid, String resolvedValue) {
+        if (resolvedValue.isEmpty || resolvedValue == _clearedSentinel) {
+          return;
+        }
+
+        final name = idToName[fid];
+        if (name == null) return;
+
+        if (idToType[fid] == FormFieldType.memberTable) {
+          try {
+            result[name] = (jsonDecode(resolvedValue) as List)
+                .map((e) => Map<String, dynamic>.from(e as Map))
+                .toList();
+          } catch (_) {
+            result[name] = <Map<String, dynamic>>[];
+          }
+          return;
+        }
+
+        result[name] = resolvedValue;
+      }
+
       for (final row in deduped) {
         final fid = row['field_id'] as String?;
         final fval = row['field_value'] as String?;
@@ -168,39 +207,43 @@ class FieldValueService {
         final version = rawVersion is int
             ? rawVersion
             : int.tryParse(rawVersion?.toString() ?? '') ?? 0;
-        final decryptedValue = version == 1
-            ? await HybridCryptoService.decryptField(
-                fval,
-                row['iv'] as String? ?? '',
-                aesKey,
-              )
-            : fval;
-
-        if (version == 1 && decryptedValue.isEmpty && fval.trim().isNotEmpty) {
-          debugPrint(
-            'loadUserFieldValues warning: decryption failed for field_id=$fid',
-          );
-        }
-
-        if (decryptedValue.isEmpty || decryptedValue == _clearedSentinel) {
+        if (version == 1) {
+          encryptedRows.add(row);
+          encryptedItems.add((
+            ciphertext: fval,
+            iv: row['iv'] as String? ?? '',
+          ));
           continue;
         }
 
-        final name = idToName[fid];
-        if (name == null) continue;
+        applyResolvedValue(fid, fval);
+      }
 
-        if (idToType[fid] == FormFieldType.memberTable) {
-          try {
-            result[name] = (jsonDecode(decryptedValue) as List)
-                .map((e) => Map<String, dynamic>.from(e as Map))
-                .toList();
-          } catch (_) {
-            result[name] = <Map<String, dynamic>>[];
+      if (encryptedItems.isNotEmpty) {
+        final decryptedValues = await HybridCryptoService.decryptFieldBatch(
+          encryptedItems,
+          aesKey,
+        );
+
+        for (var i = 0; i < encryptedRows.length; i++) {
+          final row = encryptedRows[i];
+          final fid = row['field_id'] as String?;
+          final fval = row['field_value'] as String? ?? '';
+          if (fid == null) {
+            continue;
           }
-          continue;
-        }
 
-        result[name] = decryptedValue;
+          final decryptedValue = i < decryptedValues.length
+              ? decryptedValues[i]
+              : '';
+          if (decryptedValue.isEmpty && fval.trim().isNotEmpty) {
+            debugPrint(
+              'loadUserFieldValues warning: decryption failed for field_id=$fid',
+            );
+          }
+
+          applyResolvedValue(fid, decryptedValue);
+        }
       }
       return result;
     } catch (e) {
@@ -513,7 +556,7 @@ class FieldValueService {
       final payload = <String, dynamic>{
         'form_data': formData,
         'status': 'scanned',
-        'scanned_at': DateTime.now().toIso8601String(),
+        'scanned_at': DateTime.now().toUtc().toIso8601String(),
         if (uid != null) 'user_id': uid,
       };
 
