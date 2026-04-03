@@ -399,8 +399,12 @@ class SupabaseService {
             gender, // Already converted in signup (M/F or Male/Female)
         'estadong_sibil_civil_status':
             civilStatus, // Already converted in signup
+        // Keep both legacy and new canonical aliases for compatibility.
+        'place_of_birth': birthplace,
         'lugar_ng_kapanganakan_place_of_birth': birthplace,
         'cp_number': phoneNumber,
+        'phone_number': phoneNumber,
+        'contact_number': phoneNumber,
         'email_address': email,
         'house_number_street_name_phase_purok': addressLine,
       };
@@ -594,9 +598,11 @@ class SupabaseService {
 
       if (fieldIds.isEmpty) return {};
 
+      final aesKey = HybridCryptoService.deriveUserAesKey(userId);
+
       final rows = await _supabase
           .from('user_field_values')
-          .select('field_id, field_value')
+          .select('field_id, field_value, iv, encryption_version')
           .eq('user_id', userId)
           .inFilter('field_id', fieldIds)
           .order('updated_at', ascending: false);
@@ -618,11 +624,48 @@ class SupabaseService {
           continue;
         }
 
+        final rawVersion = row['encryption_version'];
+        final version = rawVersion is int
+            ? rawVersion
+            : int.tryParse(rawVersion?.toString() ?? '') ?? 0;
+
+        String resolvedValue = fval;
+        if (version == 1) {
+          final iv = row['iv'] as String? ?? '';
+          if (iv.trim().isEmpty) {
+            if (kDebugMode) {
+              debugPrint(
+                'loadPiiFromFieldValues warning: missing iv for encrypted field_id=$fid',
+              );
+            }
+            continue;
+          }
+
+          resolvedValue = await HybridCryptoService.decryptField(
+            fval,
+            iv,
+            aesKey,
+          );
+
+          if (resolvedValue.isEmpty) {
+            if (kDebugMode) {
+              debugPrint(
+                'loadPiiFromFieldValues warning: decryption failed for field_id=$fid',
+              );
+            }
+            continue;
+          }
+        }
+
+        if (resolvedValue == '__CLEARED__' || resolvedValue.trim().isEmpty) {
+          continue;
+        }
+
         final canonicalKey = idToCanonicalKey[fid];
         if (canonicalKey != null && canonicalKey.isNotEmpty) {
           // Use canonical_field_key as the key (deduplicates across templates)
           if (!result.containsKey(canonicalKey)) {
-            result[canonicalKey] = fval;
+            result[canonicalKey] = resolvedValue;
           }
         }
       }
@@ -754,12 +797,13 @@ class SupabaseService {
           attempt < 4 &&
           (reason == 'session_not_found_or_fetch_failed' ||
               reason == 'missing_encrypted_columns')) {
-        final delayMs = attempt == 1 ? 400 : attempt == 2 ? 900 : 1600;
+        final delayMs = attempt == 1
+            ? 400
+            : attempt == 2
+            ? 900
+            : 1600;
         await Future<void>.delayed(Duration(milliseconds: delayMs));
-        await _invokeDecryptQrPayloadWithRetry(
-          sessionId,
-          attempt: attempt + 1,
-        );
+        await _invokeDecryptQrPayloadWithRetry(sessionId, attempt: attempt + 1);
       }
     } catch (e) {
       if (kDebugMode) {
