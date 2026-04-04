@@ -14,17 +14,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/services/form_template_service.dart';
-import 'package:sappiire/services/form_builder_service.dart';
 import 'package:sappiire/services/display_session_service.dart';
-import 'package:sappiire/services/supabase_service.dart';
 import 'package:sappiire/services/field_value_service.dart';
+import 'package:sappiire/services/forms/submission_service.dart';
 import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/web/widget/web_shell.dart';
@@ -36,7 +34,7 @@ import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/applicants_screen.dart';
 import 'package:sappiire/web/screen/form_builder_screen.dart';
 import 'package:sappiire/web/screen/audit_logs_screen.dart';
-import 'package:sappiire/web/services/audit_log_service.dart';
+import 'package:sappiire/services/audit/audit_log_service.dart';
 
 class ManageFormsScreen extends StatefulWidget {
   final String cswd_id;
@@ -58,7 +56,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   final _templateService = FormTemplateService();
   final _displayService = DisplaySessionService();
   final _fieldValueService = FieldValueService();
-  final _supabase = Supabase.instance.client;
+  final _submissionService = SubmissionService();
   final ScrollController _formScrollController = ScrollController();
   final ScrollController _qrSidebarScrollController = ScrollController();
   final PageStorageBucket _pageStorageBucket = PageStorageBucket();
@@ -143,25 +141,16 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     try {
       // Close previous session if open
       if (_currentSessionId != 'WAITING-FOR-SESSION') {
-        await _supabase
-            .from('form_submission')
-            .update({'status': 'closed'})
-            .eq('id', _currentSessionId);
+        await _submissionService.updateSessionStatus(_currentSessionId, 'closed');
       }
 
       // Reset form state
       _formCtrl?.clearAll();
       _formSubscription?.cancel();
 
-      final response = await _supabase
-          .from('form_submission')
-          .insert({
-            'status': 'active',
-            'form_type': _selectedTemplate!.formName,
-            'form_data': {},
-          })
-          .select()
-          .single();
+      final response = await _submissionService.createSession(
+        _selectedTemplate!.formName,
+      );
 
       _setStatePreserveScroll(() {
         _currentSessionId = response['id'].toString();
@@ -206,10 +195,8 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   void _listenForMobileUpdates(String sessionId) {
     debugPrint('Web: Starting realtime listener for session $sessionId');
     _formSubscription?.cancel();
-    _formSubscription = _supabase
-        .from('form_submission')
-        .stream(primaryKey: ['id'])
-        .eq('id', sessionId)
+    _formSubscription = _submissionService
+        .streamSession(sessionId)
         .listen(
           (List<Map<String, dynamic>> data) {
             debugPrint('Web: Realtime update received');
@@ -320,11 +307,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   Future<void> _hydrateFromSessionSnapshot(String sessionId) async {
     try {
       debugPrint('Web: Polling session $sessionId for data...');
-      final row = await _supabase
-          .from('form_submission')
-          .select('id, status, form_data')
-          .eq('id', sessionId)
-          .maybeSingle();
+      final row = await _submissionService.fetchSessionSnapshot(sessionId);
 
       if (row == null) {
         debugPrint('Web: Session not found in database');
@@ -357,6 +340,26 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     try {
       final formData = _formCtrl!.toJson();
 
+      // Preserve scanned computed values if controller serialization omitted them.
+      final snapshot = await _submissionService.fetchSessionSnapshot(
+        _currentSessionId,
+      );
+      final snapshotRaw = snapshot?['form_data'];
+      final scannedData = snapshotRaw is Map
+          ? Map<String, dynamic>.from(snapshotRaw)
+          : <String, dynamic>{};
+
+      for (final field in _selectedTemplate!.allFields) {
+        if (field.fieldType != FormFieldType.computed) continue;
+        if (formData.containsKey(field.fieldName)) continue;
+
+        final scannedValue = scannedData[field.fieldName];
+        if (scannedValue == null) continue;
+        if (scannedValue.toString().trim().isEmpty) continue;
+
+        formData[field.fieldName] = scannedValue;
+      }
+
       // Embed applicant name + session ID for traceability
       await _embedApplicantName(formData);
       formData['__session_id'] = _currentSessionId;
@@ -370,18 +373,14 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
 
       // ── Audit copy (JSONB keeps __family_composition for record) ──
       // Idempotent save keyed by session_id so repeated submits update one row.
-      final created = await _supabase
-          .from('client_submissions')
-          .upsert({
-            'session_id': _currentSessionId,
-            'template_id': _selectedTemplate!.templateId,
-            'form_code': _selectedTemplate!.formCode,
-            'form_type': _selectedTemplate!.formName,
-            'data': formData,
-            'created_by': widget.cswd_id,
-          }, onConflict: 'session_id')
-          .select('id, intake_reference')
-          .single();
+      final created = await _submissionService.upsertClientSubmission(
+        sessionId: _currentSessionId,
+        templateId: _selectedTemplate!.templateId,
+        formCode: _selectedTemplate!.formCode,
+        formType: _selectedTemplate!.formName,
+        data: formData,
+        createdBy: widget.cswd_id,
+      );
 
       final intakeReference = (created['intake_reference'] as String?) ?? '';
 
@@ -403,10 +402,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       );
 
       // Close the session
-      await _supabase
-          .from('form_submission')
-          .update({'status': 'completed'})
-          .eq('id', _currentSessionId);
+      await _submissionService.updateSessionStatus(
+        _currentSessionId,
+        'completed',
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -535,20 +534,12 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     String userId,
   ) async {
     try {
-      final result =
-          await _supabase.rpc(
-                'get_user_names_by_canonical',
-                params: {
-                  'p_user_ids': [userId],
-                },
-              )
-              as List<dynamic>;
+      final row = await _submissionService.fetchCanonicalNameByUserId(userId);
+      if (row == null) return null;
 
-      if (result.isEmpty) return null;
-      final row = result.first as Map<String, dynamic>;
-      final last = (row['last_name'] as String?)?.trim() ?? '';
-      final first = (row['first_name'] as String?)?.trim() ?? '';
-      final mid = (row['middle_name'] as String?)?.trim() ?? '';
+      final last = (row['last'] ?? '').trim();
+      final first = (row['first'] ?? '').trim();
+      final mid = (row['middle'] ?? '').trim();
 
       if (last.isEmpty && first.isEmpty) return null;
       return {'last': last, 'first': first, 'middle': mid};
@@ -565,12 +556,9 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     // Strategy 1: session → user_id → canonical key lookup.
     if (_currentSessionId != 'WAITING-FOR-SESSION') {
       try {
-        final session = await _supabase
-            .from('form_submission')
-            .select('user_id')
-            .eq('id', _currentSessionId)
-            .maybeSingle();
-        final userId = session?['user_id']?.toString();
+        final userId = await _submissionService.fetchSessionUserId(
+          _currentSessionId,
+        );
 
         if (userId != null && userId.isNotEmpty) {
           final name = await _resolveNameViaCanonicalRpc(userId);
@@ -665,14 +653,11 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     if (!await _confirmLeave()) return;
     _formSubscription?.cancel();
     if (_currentSessionId != 'WAITING-FOR-SESSION') {
-      await _supabase
-          .from('form_submission')
-          .update({'status': 'closed'})
-          .eq('id', _currentSessionId);
+      await _submissionService.updateSessionStatus(_currentSessionId, 'closed');
     }
     // Reset display monitor on logout
     await _displayService.resetStation(_stationId);
-    await _supabase.auth.signOut();
+    await _submissionService.signOut();
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
         ContentFadeRoute(page: const WorkerLoginScreen()),

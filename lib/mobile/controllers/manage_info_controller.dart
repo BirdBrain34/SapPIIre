@@ -21,6 +21,18 @@ class ManageInfoController extends ChangeNotifier {
 
   ManageInfoController({required this.userId});
 
+  Future<bool> _waitForSignatureReady(FormStateController ctrl) async {
+    const timeout = Duration(seconds: 12);
+    final start = DateTime.now();
+    while (ctrl.signatureIsProcessing) {
+      if (DateTime.now().difference(start) >= timeout) {
+        return false;
+      }
+      await Future.delayed(const Duration(milliseconds: 75));
+    }
+    return true;
+  }
+
   // Parallel fetch saves initial load time.
   Future<void> loadAll({bool forceRefresh = false}) async {
     final previousTemplateId = selectedTemplate?.templateId;
@@ -121,6 +133,13 @@ class ManageInfoController extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final signatureReady = await _waitForSignatureReady(ctrl);
+      if (!signatureReady) {
+        errorMessage =
+            'Signature processing is taking longer than expected. Please wait a few seconds and save again.';
+        return false;
+      }
+
       final data = ctrl.toJson();
       if (data['__signature'] != null) {
         ctrl.signatureBase64 = data['__signature'];

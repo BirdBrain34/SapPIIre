@@ -8,10 +8,10 @@
 
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/models/form_template_models.dart';
+import 'package:sappiire/services/auth/web_auth_service.dart';
 import 'package:sappiire/services/form_builder_service.dart';
 import 'package:sappiire/web/widget/web_shell.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
@@ -22,7 +22,7 @@ import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/applicants_screen.dart';
 import 'package:sappiire/web/screen/audit_logs_screen.dart';
-import 'package:sappiire/web/services/audit_log_service.dart';
+import 'package:sappiire/services/audit/audit_log_service.dart';
 
 // ── UUID v4 generator ──────────────────────────────────────
 String _generateUuid() {
@@ -289,7 +289,7 @@ class FormBuilderScreen extends StatefulWidget {
 
 class _FormBuilderScreenState extends State<FormBuilderScreen> {
   final _service = FormBuilderService();
-  final _supabase = Supabase.instance.client;
+  final _authService = WebAuthService();
   final _scrollCtrl = ScrollController();
 
   // Template list
@@ -490,16 +490,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   Future<void> _loadCanonicalKeys() async {
     if (mounted) setState(() => _isLoadingCanonicalKeys = true);
     try {
-      final res = await _supabase
-          .from('form_fields')
-          .select('canonical_field_key')
-          .not('canonical_field_key', 'is', null);
-
-      final dbKeys = <String>{};
-      for (final row in (res as List<dynamic>)) {
-        final key = (row['canonical_field_key'] as String?)?.trim();
-        if (key != null && key.isNotEmpty) dbKeys.add(key);
-      }
+      final dbKeys = (await _service.fetchCanonicalFieldKeys()).toSet();
 
       for (final s in _standardProfileCanonicalKeys) {
         dbKeys.add(s.key);
@@ -910,18 +901,12 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     // written separately to form_templates after the main save.
     if (success) {
       try {
-        await _supabase
-            .from('form_templates')
-            .update({
-              'popup_enabled': _popupEnabled,
-              'popup_subtitle': _popupSubtitle.trim().isEmpty
-                  ? null
-                  : _popupSubtitle.trim(),
-              'popup_description': _popupDescription.trim().isEmpty
-                  ? null
-                  : _popupDescription.trim(),
-            })
-            .eq('template_id', _activeTemplateId!);
+        await _service.savePopupMetadata(
+          templateId: _activeTemplateId!,
+          popupEnabled: _popupEnabled,
+          popupSubtitle: _popupSubtitle,
+          popupDescription: _popupDescription,
+        );
       } catch (e) {
         debugPrint('Popup metadata save error: $e');
       }
@@ -1621,7 +1606,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
 
   Future<void> _handleLogout() async {
     if (!await _confirmLeave()) return;
-    await _supabase.auth.signOut();
+    await _authService.signOut();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       ContentFadeRoute(page: const WorkerLoginScreen()),

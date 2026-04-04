@@ -5,6 +5,7 @@ import 'package:sappiire/mobile/screens/auth/login_screen.dart';
 import 'package:sappiire/services/supabase_service.dart';
 
 enum _SortField { date, formType }
+
 enum _SortOrder { asc, desc }
 
 class HistoryScreen extends StatefulWidget {
@@ -17,7 +18,6 @@ class HistoryScreen extends StatefulWidget {
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
-  final _supabase = Supabase.instance.client;
   final _supabaseService = SupabaseService();
 
   List<Map<String, dynamic>> _submissions = [];
@@ -38,65 +38,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final username = await _supabaseService.getUsername(widget.userId);
-      debugPrint('🔍 Loading history for userId: ${widget.userId}');
+      final usernameFuture = _supabaseService.getUsername(widget.userId);
+      final submissionsFuture = _supabaseService
+          .fetchClientSubmissionHistoryByUser(widget.userId);
 
-      // Step 1: get all session IDs from form_submission where user_id matches
-      final sessionRows = await _supabase
-          .from('form_submission')
-          .select('id')
-          .eq('user_id', widget.userId);
-
-      final sessionIds = (sessionRows as List)
-          .map((r) => r['id']?.toString())
-          .whereType<String>()
-          .toList();
-
-      debugPrint('📋 Sessions found for user: ${sessionIds.length} → $sessionIds');
-
-      List<Map<String, dynamic>> submissions = [];
-
-      if (sessionIds.isNotEmpty) {
-        // Step 2a: match via session_id column (populated by newer web saves)
-        final byColumn = await _supabase
-            .from('client_submissions')
-            .select('id, form_type, intake_reference, created_at, session_id, data')
-            .inFilter('session_id', sessionIds)
-            .order('created_at', ascending: false);
-
-        debugPrint('✅ Matched by session_id column: ${(byColumn as List).length}');
-        submissions = List<Map<String, dynamic>>.from(byColumn);
-
-        // Step 2b: match via data->>'__session_id' JSONB field
-        // This mirrors exactly how applicants_screen.dart (web) resolves names —
-        // it traces client_submissions.data.__session_id → form_submission.user_id
-        // We do the reverse: user_id → session IDs → match JSONB field
-        try {
-          final byJsonb = await _supabase
-              .from('client_submissions')
-              .select('id, form_type, intake_reference, created_at, session_id, data')
-              .inFilter('data->>__session_id', sessionIds)
-              .order('created_at', ascending: false);
-
-          debugPrint('✅ Matched by JSONB __session_id: ${(byJsonb as List).length}');
-
-          // Merge without duplicates (dedup by id)
-          final seen = <dynamic>{for (final s in submissions) s['id']};
-          for (final s in byJsonb) {
-            if (!seen.contains(s['id'])) {
-              submissions.add(Map<String, dynamic>.from(s));
-              seen.add(s['id']);
-            }
-          }
-        } catch (e) {
-          // JSONB filter may not be supported on all Supabase plans — safe to skip
-          debugPrint('⚠️ JSONB filter failed (non-critical): $e');
-        }
-
-        debugPrint('📦 Total unique submissions after merge: ${submissions.length}');
-      } else {
-        debugPrint('❌ No sessions found for user — check that form_submission.user_id is being set when client scans QR');
-      }
+      final username = await usernameFuture;
+      final submissions = await submissionsFuture;
 
       setState(() {
         _username = username ?? '';
@@ -107,7 +54,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
       _applySort();
     } catch (e) {
-      debugPrint('❌ _loadHistory error: $e');
+      debugPrint('_loadHistory error: $e');
       setState(() => _isLoading = false);
     }
   }
@@ -133,12 +80,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
   void _toggleSortField(_SortField field) {
     setState(() {
       if (_sortField == field) {
-        _sortOrder =
-            _sortOrder == _SortOrder.desc ? _SortOrder.asc : _SortOrder.desc;
+        _sortOrder = _sortOrder == _SortOrder.desc
+            ? _SortOrder.asc
+            : _SortOrder.desc;
       } else {
         _sortField = field;
-        _sortOrder =
-            field == _SortField.date ? _SortOrder.desc : _SortOrder.asc;
+        _sortOrder = field == _SortField.date
+            ? _SortOrder.desc
+            : _SortOrder.asc;
       }
     });
     _applySort();
@@ -180,8 +129,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
     try {
       final dt = DateTime.parse(raw).toLocal();
       const months = [
-        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
       ];
       final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
       final min = dt.minute.toString().padLeft(2, '0');
@@ -200,13 +159,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _submissions.isEmpty
-              ? _buildEmptyState()
-              : Column(
-                  children: [
-                    _buildSortBar(),
-                    Expanded(child: _buildList()),
-                  ],
-                ),
+          ? _buildEmptyState()
+          : Column(
+              children: [
+                _buildSortBar(),
+                Expanded(child: _buildList()),
+              ],
+            ),
     );
   }
 
@@ -406,7 +365,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       ),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.green.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(20),
@@ -426,8 +387,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Icon(Icons.tag,
-                            size: 12, color: AppColors.primaryBlue),
+                        Icon(Icons.tag, size: 12, color: AppColors.primaryBlue),
                         const SizedBox(width: 4),
                         Text(
                           intakeRef,
@@ -444,8 +404,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      Icon(Icons.access_time,
-                          size: 12, color: Colors.grey.shade400),
+                      Icon(
+                        Icons.access_time,
+                        size: 12,
+                        color: Colors.grey.shade400,
+                      ),
                       const SizedBox(width: 5),
                       Text(
                         _formatDate(createdAt),
@@ -503,20 +466,18 @@ class _SortChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon,
-                size: 12,
-                color: isActive
-                    ? AppColors.primaryBlue
-                    : Colors.grey.shade500),
+            Icon(
+              icon,
+              size: 12,
+              color: isActive ? AppColors.primaryBlue : Colors.grey.shade500,
+            ),
             const SizedBox(width: 4),
             Text(
               label,
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-                color: isActive
-                    ? AppColors.primaryBlue
-                    : Colors.grey.shade600,
+                color: isActive ? AppColors.primaryBlue : Colors.grey.shade600,
               ),
             ),
             if (isActive) ...[

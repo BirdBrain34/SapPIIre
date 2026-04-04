@@ -1,7 +1,3 @@
-// Handles email delivery for web staff accounts.
-// Uses Semaphore's email API (same key as SMS) for consistency.
-// Falls back gracefully - email failure never blocks account creation.
-
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -10,15 +6,16 @@ class StaffEmailService {
   factory StaffEmailService() => _instance;
   StaffEmailService._internal();
 
-  final _supabase = Supabase.instance.client;
+  final SupabaseClient _supabase = Supabase.instance.client;
 
-  /// Sends Supabase Auth email OTP for newly created staff onboarding.
+  String _normalizedEmail(String email) => email.trim().toLowerCase();
+
   Future<Map<String, dynamic>> sendAccountCreationOtp({
     required String email,
   }) async {
     try {
       await _supabase.auth.signInWithOtp(
-        email: email.trim().toLowerCase(),
+        email: _normalizedEmail(email),
         shouldCreateUser: true,
       );
       return {
@@ -28,17 +25,18 @@ class StaffEmailService {
     } on AuthException catch (e) {
       return {'success': false, 'message': e.message};
     } catch (e) {
-      return {'success': false, 'message': 'Failed to send OTP: ${e.toString()}'};
+      return {
+        'success': false,
+        'message': 'Failed to send OTP: ${e.toString()}',
+      };
     }
   }
 
-  /// Validates a staff email belongs to an account that is still in setup.
-  /// This does NOT send a new OTP.
   Future<Map<String, dynamic>> validatePendingSetupEmail({
     required String email,
   }) async {
     try {
-      final normalizedEmail = email.trim().toLowerCase();
+      final normalizedEmail = _normalizedEmail(email);
       final account = await _supabase
           .from('staff_accounts')
           .select('cswd_id, is_active, account_status, is_first_login')
@@ -56,14 +54,16 @@ class StaffEmailService {
           account['account_status'] == 'deactivated') {
         return {
           'success': false,
-          'message': 'This account has been deactivated. Contact your administrator.',
+          'message':
+              'This account has been deactivated. Contact your administrator.',
         };
       }
 
       if (account['is_first_login'] != true) {
         return {
           'success': false,
-          'message': 'This account is already set up. Use Forgot password instead.',
+          'message':
+              'This account is already set up. Use Forgot password instead.',
         };
       }
 
@@ -77,12 +77,11 @@ class StaffEmailService {
     }
   }
 
-  // Password Reset OTP (Supabase email OTP)
   Future<Map<String, dynamic>> sendPasswordResetOtp({
     required String email,
   }) async {
     try {
-      final normalizedEmail = email.trim().toLowerCase();
+      final normalizedEmail = _normalizedEmail(email);
 
       final account = await _supabase
           .from('staff_accounts')
@@ -101,7 +100,8 @@ class StaffEmailService {
           account['account_status'] == 'deactivated') {
         return {
           'success': false,
-          'message': 'This account has been deactivated. Contact your administrator.',
+          'message':
+              'This account has been deactivated. Contact your administrator.',
         };
       }
 
@@ -113,17 +113,15 @@ class StaffEmailService {
         };
       }
 
-      final cswdId = account['cswd_id'] as String;
-
-      await _supabase
-          .auth
-          .signInWithOtp(
-            email: normalizedEmail,
-            shouldCreateUser: false,
-          );
+      await _supabase.auth.signInWithOtp(
+        email: normalizedEmail,
+        shouldCreateUser: false,
+      );
 
       if (kDebugMode) {
-        debugPrint('StaffEmailService: password reset OTP sent to $normalizedEmail');
+        debugPrint(
+          'StaffEmailService.sendPasswordResetOtp sent for $normalizedEmail',
+        );
       }
 
       return {
@@ -131,24 +129,26 @@ class StaffEmailService {
         'message': 'If this email is registered, a reset code has been sent.',
       };
     } on AuthException catch (e) {
-      debugPrint('StaffEmailService.sendPasswordResetOtp auth error: ${e.message}');
-      return {
-        'success': false,
-        'message': e.message,
-      };
+      if (kDebugMode) {
+        debugPrint(
+          'StaffEmailService.sendPasswordResetOtp auth error: ${e.message}',
+        );
+      }
+      return {'success': false, 'message': e.message};
     } catch (e) {
-      debugPrint('StaffEmailService.sendPasswordResetOtp error: $e');
+      if (kDebugMode) {
+        debugPrint('StaffEmailService.sendPasswordResetOtp error: $e');
+      }
       return {'success': false, 'message': 'Error: ${e.toString()}'};
     }
   }
 
-  // Verify OTP
   Future<Map<String, dynamic>> verifyPasswordResetOtp({
     required String email,
     required String otp,
   }) async {
     try {
-      final normalizedEmail = email.trim().toLowerCase();
+      final normalizedEmail = _normalizedEmail(email);
 
       final verifyRes = await _supabase.auth.verifyOTP(
         email: normalizedEmail,
@@ -167,14 +167,18 @@ class StaffEmailService {
           .maybeSingle();
 
       if (account == null) {
-        return {'success': false, 'message': 'Staff account not found for this email.'};
+        return {
+          'success': false,
+          'message': 'Staff account not found for this email.',
+        };
       }
 
       if (account['is_active'] == false ||
           account['account_status'] == 'deactivated') {
         return {
           'success': false,
-          'message': 'This account has been deactivated. Contact your administrator.',
+          'message':
+              'This account has been deactivated. Contact your administrator.',
         };
       }
 
@@ -184,22 +188,26 @@ class StaffEmailService {
         'message': 'Code verified.',
       };
     } on AuthException catch (e) {
-      debugPrint('StaffEmailService.verifyPasswordResetOtp auth error: ${e.message}');
+      if (kDebugMode) {
+        debugPrint(
+          'StaffEmailService.verifyPasswordResetOtp auth error: ${e.message}',
+        );
+      }
       return {'success': false, 'message': e.message};
     } catch (e) {
-      debugPrint('StaffEmailService.verifyPasswordResetOtp error: $e');
+      if (kDebugMode) {
+        debugPrint('StaffEmailService.verifyPasswordResetOtp error: $e');
+      }
       return {'success': false, 'message': 'Error: ${e.toString()}'};
     }
   }
 
-  /// Verifies the OTP that was originally sent during account creation.
-  /// Does NOT send a new OTP.
   Future<Map<String, dynamic>> verifyPendingSetupOtp({
     required String email,
     required String otp,
   }) async {
     try {
-      final normalizedEmail = email.trim().toLowerCase();
+      final normalizedEmail = _normalizedEmail(email);
 
       final account = await _supabase
           .from('staff_accounts')
@@ -218,14 +226,16 @@ class StaffEmailService {
           account['account_status'] == 'deactivated') {
         return {
           'success': false,
-          'message': 'This account has been deactivated. Contact your administrator.',
+          'message':
+              'This account has been deactivated. Contact your administrator.',
         };
       }
 
       if (account['is_first_login'] != true) {
         return {
           'success': false,
-          'message': 'This account is already set up. Use Forgot password instead.',
+          'message':
+              'This account is already set up. Use Forgot password instead.',
         };
       }
 

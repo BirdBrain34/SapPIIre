@@ -4,6 +4,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:sappiire/services/crypto/hybrid_crypto_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/form_template_models.dart';
 import 'form_template_service.dart';
@@ -37,7 +38,6 @@ class FieldValueService {
       final eligibleFieldIds = eligible.map((f) => f.fieldId).toList();
       if (eligibleFieldIds.isEmpty) return true;
 
-      final now = DateTime.now().toIso8601String();
       // Build rows for fields that currently have values.
       final rows = _buildFieldRows(
         template,
@@ -46,9 +46,43 @@ class FieldValueService {
           'user_id': userId,
           'field_id': field.fieldId,
           'field_value': strValue,
-          'updated_at': now,
         },
       );
+
+      final aesKey = HybridCryptoService.deriveUserAesKey(userId);
+      final encryptableIndices = <int>[];
+      final plaintexts = <String>[];
+      for (var i = 0; i < rows.length; i++) {
+        final row = rows[i];
+        final fieldValue = row['field_value'] as String? ?? '';
+        if (fieldValue.isEmpty || fieldValue == _clearedSentinel) {
+          row['iv'] = null;
+          row['encryption_version'] = 0;
+          continue;
+        }
+
+        encryptableIndices.add(i);
+        plaintexts.add(fieldValue);
+      }
+
+      if (plaintexts.isNotEmpty) {
+        final results = await HybridCryptoService.encryptFieldBatch(
+          plaintexts,
+          aesKey,
+        );
+
+        if (results.length != encryptableIndices.length) {
+          throw Exception('Batch encryption result length mismatch.');
+        }
+
+        for (var i = 0; i < encryptableIndices.length; i++) {
+          final row = rows[encryptableIndices[i]];
+          final encrypted = results[i];
+          row['field_value'] = encrypted.ciphertext;
+          row['iv'] = encrypted.iv;
+          row['encryption_version'] = 1;
+        }
+      }
 
       final savedFieldIds = rows
           .map((r) => r['field_id'] as String?)
@@ -67,7 +101,8 @@ class FieldValueService {
               'user_id': userId,
               'field_id': id,
               'field_value': _clearedSentinel,
-              'updated_at': now,
+              'iv': null,
+              'encryption_version': 0,
             },
           )
           .toList();
@@ -114,10 +149,12 @@ class FieldValueService {
 
       final rows = await _supabase
           .from('user_field_values')
-          .select('field_id, field_value')
+          .select('field_id, field_value, iv, encryption_version')
           .eq('user_id', userId)
           .inFilter('field_id', eligible.map((f) => f.fieldId).toList())
           .order('updated_at', ascending: false);
+
+      final aesKey = HybridCryptoService.deriveUserAesKey(userId);
 
       // If duplicates still exist before DB migration runs, keep the newest row
       // per field_id for deterministic reads.
@@ -134,30 +171,79 @@ class FieldValueService {
       final idToName = {for (final f in eligible) f.fieldId: f.fieldName};
       final idToType = {for (final f in eligible) f.fieldId: f.fieldType};
       final result = <String, dynamic>{};
-      for (final row in deduped) {
-        final fid = row['field_id'] as String?;
-        final fval = row['field_value'] as String?;
-        if (fid == null ||
-            fval == null ||
-            fval.isEmpty ||
-            fval == _clearedSentinel) {
-          continue;
+      final encryptedRows = <Map<String, dynamic>>[];
+      final encryptedItems = <({String ciphertext, String iv})>[];
+
+      void applyResolvedValue(String fid, String resolvedValue) {
+        if (resolvedValue.isEmpty || resolvedValue == _clearedSentinel) {
+          return;
         }
+
         final name = idToName[fid];
-        if (name == null) continue;
+        if (name == null) return;
 
         if (idToType[fid] == FormFieldType.memberTable) {
           try {
-            result[name] = (jsonDecode(fval) as List)
+            result[name] = (jsonDecode(resolvedValue) as List)
                 .map((e) => Map<String, dynamic>.from(e as Map))
                 .toList();
           } catch (_) {
             result[name] = <Map<String, dynamic>>[];
           }
+          return;
+        }
+
+        result[name] = resolvedValue;
+      }
+
+      for (final row in deduped) {
+        final fid = row['field_id'] as String?;
+        final fval = row['field_value'] as String?;
+        if (fid == null || fval == null || fval.isEmpty) {
           continue;
         }
 
-        result[name] = fval;
+        final rawVersion = row['encryption_version'];
+        final version = rawVersion is int
+            ? rawVersion
+            : int.tryParse(rawVersion?.toString() ?? '') ?? 0;
+        if (version == 1) {
+          encryptedRows.add(row);
+          encryptedItems.add((
+            ciphertext: fval,
+            iv: row['iv'] as String? ?? '',
+          ));
+          continue;
+        }
+
+        applyResolvedValue(fid, fval);
+      }
+
+      if (encryptedItems.isNotEmpty) {
+        final decryptedValues = await HybridCryptoService.decryptFieldBatch(
+          encryptedItems,
+          aesKey,
+        );
+
+        for (var i = 0; i < encryptedRows.length; i++) {
+          final row = encryptedRows[i];
+          final fid = row['field_id'] as String?;
+          final fval = row['field_value'] as String? ?? '';
+          if (fid == null) {
+            continue;
+          }
+
+          final decryptedValue = i < decryptedValues.length
+              ? decryptedValues[i]
+              : '';
+          if (decryptedValue.isEmpty && fval.trim().isNotEmpty) {
+            debugPrint(
+              'loadUserFieldValues warning: decryption failed for field_id=$fid',
+            );
+          }
+
+          applyResolvedValue(fid, decryptedValue);
+        }
       }
       return result;
     } catch (e) {
@@ -470,7 +556,7 @@ class FieldValueService {
       final payload = <String, dynamic>{
         'form_data': formData,
         'status': 'scanned',
-        'scanned_at': DateTime.now().toIso8601String(),
+        'scanned_at': DateTime.now().toUtc().toIso8601String(),
         if (uid != null) 'user_id': uid,
       };
 

@@ -7,7 +7,7 @@ import 'package:sappiire/web/screen/form_builder_screen.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/audit_logs_screen.dart';
-import 'package:sappiire/web/services/web_auth_service.dart';
+import 'package:sappiire/services/auth/web_auth_service.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/web/widget/web_shell.dart';
 

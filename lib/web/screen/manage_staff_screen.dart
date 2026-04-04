@@ -9,9 +9,9 @@ import 'package:sappiire/web/screen/applicants_screen.dart';
 import 'package:sappiire/web/screen/form_builder_screen.dart';
 import 'package:sappiire/web/screen/audit_logs_screen.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
-import 'package:sappiire/web/services/audit_log_service.dart';
-import 'package:sappiire/web/services/web_auth_service.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:sappiire/services/audit/audit_log_service.dart';
+import 'package:sappiire/services/auth/web_auth_service.dart';
+import 'package:sappiire/services/auth/staff_admin_service.dart';
 
 class ManageStaffScreen extends StatefulWidget {
   final String role;
@@ -30,7 +30,7 @@ class ManageStaffScreen extends StatefulWidget {
 }
 
 class _ManageStaffScreenState extends State<ManageStaffScreen> {
-  final _supabase = Supabase.instance.client;
+  final _staffAdminService = StaffAdminService();
   List<Map<String, dynamic>> _pendingAccounts = [];
   List<Map<String, dynamic>> _activeAccounts = [];
   bool _isLoading = true;
@@ -44,25 +44,11 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
   Future<void> _loadAccounts() async {
     setState(() => _isLoading = true);
     try {
-      // Fetch pending accounts
-      final pending = await _supabase
-          .from('staff_accounts')
-          .select('cswd_id, username, email, requested_role, created_at')
-          .eq('account_status', 'pending')
-          .order('created_at');
-
-      // Fetch active accounts
-      final active = await _supabase
-          .from('staff_accounts')
-          .select(
-            'cswd_id, username, email, role, account_status, is_active, is_first_login',
-          )
-          .neq('account_status', 'pending')
-          .order('username');
+      final data = await _staffAdminService.fetchAccounts();
 
       setState(() {
-        _pendingAccounts = List<Map<String, dynamic>>.from(pending);
-        _activeAccounts = List<Map<String, dynamic>>.from(active);
+        _pendingAccounts = data['pending'] ?? [];
+        _activeAccounts = data['active'] ?? [];
         _isLoading = false;
       });
     } catch (e) {
@@ -72,14 +58,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
   }
 
   Future<void> _approveAccount(String cswd_id, String requestedRole) async {
-    await _supabase
-        .from('staff_accounts')
-        .update({
-          'role': requestedRole,
-          'account_status': 'active',
-          'is_active': true,
-        })
-        .eq('cswd_id', cswd_id);
+    await _staffAdminService.approveAccount(cswd_id, requestedRole);
 
     await AuditLogService().log(
       actionType: kAuditStaffApproved,
@@ -97,10 +76,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
   }
 
   Future<void> _rejectAccount(String cswd_id) async {
-    await _supabase
-        .from('staff_accounts')
-        .update({'account_status': 'deactivated', 'is_active': false})
-        .eq('cswd_id', cswd_id);
+    await _staffAdminService.rejectAccount(cswd_id);
 
     await AuditLogService().log(
       actionType: kAuditStaffRejected,
@@ -128,11 +104,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
     if (targetAccount['role'] == 'superadmin') return;
 
     final oldRole = targetAccount['role'];
-
-    await _supabase
-        .from('staff_accounts')
-        .update({'role': newRole})
-        .eq('cswd_id', cswd_id);
+    await _staffAdminService.updateRole(cswd_id, newRole);
 
     await AuditLogService().log(
       actionType: kAuditRoleChanged,

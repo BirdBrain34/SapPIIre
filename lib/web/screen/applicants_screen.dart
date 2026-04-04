@@ -3,11 +3,11 @@
 // No more hardcoded GIS section imports.
 
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/services/form_template_service.dart';
+import 'package:sappiire/services/forms/submission_service.dart';
 import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/web/widget/web_shell.dart';
@@ -19,7 +19,7 @@ import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/screen/form_builder_screen.dart';
 import 'package:sappiire/web/screen/audit_logs_screen.dart';
-import 'package:sappiire/web/services/audit_log_service.dart';
+import 'package:sappiire/services/audit/audit_log_service.dart';
 
 class _ApplicantGroup {
   final String key;
@@ -54,7 +54,7 @@ class ApplicantsScreen extends StatefulWidget {
 }
 
 class _ApplicantsScreenState extends State<ApplicantsScreen> {
-  final _supabase = Supabase.instance.client;
+  final _submissionService = SubmissionService();
   final _templateService = FormTemplateService();
 
   List<Map<String, dynamic>> _submissions = [];
@@ -91,13 +91,9 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         _templateCache[t.formName] = t;
       }
 
-      final response = await _supabase
-          .from('client_submissions')
-          .select('*')
-          .order('created_at', ascending: false)
-          .range(0, 99); // paginate: first 100
-
-      final submissions = List<Map<String, dynamic>>.from(response);
+      final submissions = await _submissionService.fetchRecentClientSubmissions(
+        limit: 100,
+      );
 
       // Resolve names for older submissions that lack __applicant_name
       await _resolveUnknownNames(submissions);
@@ -120,7 +116,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     final needsResolution = <Map<String, dynamic>>[];
     for (final sub in submissions) {
       final data = sub['data'] as Map<String, dynamic>? ?? {};
-      if (data['__applicant_name'] is Map) continue;
+      if (_hasUsableEmbeddedApplicantName(data)) continue;
       final sid = data['__session_id']?.toString();
       if (sid != null && sid.isNotEmpty) needsResolution.add(sub);
     }
@@ -139,41 +135,16 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
 
     try {
       // session IDs → user_ids
-      final sessions = await _supabase
-          .from('form_submission')
-          .select('id, user_id')
-          .inFilter('id', sessionIds);
-
-      final sessionToUserId = <String, String>{};
-      final userIds = <String>{};
-      for (final row in sessions) {
-        final uid = row['user_id']?.toString();
-        if (uid != null && uid.isNotEmpty) {
-          sessionToUserId[row['id'].toString()] = uid;
-          userIds.add(uid);
-        }
-      }
+      final sessionToUserId = await _submissionService.fetchSessionUserMap(
+        sessionIds,
+      );
+      final userIds = sessionToUserId.values.toSet();
 
       if (userIds.isEmpty) return;
 
       // user_ids → names via canonical_field_key
-      final rpcResult =
-          await _supabase.rpc(
-                'get_user_names_by_canonical',
-                params: {'p_user_ids': userIds.toList()},
-              )
-              as List<dynamic>;
-
-      final userIdToName = <String, Map<String, String>>{};
-      for (final row in rpcResult.cast<Map<String, dynamic>>()) {
-        final uid = row['user_id']?.toString();
-        if (uid == null) continue;
-        userIdToName[uid] = {
-          'last': (row['last_name'] as String?)?.trim() ?? '',
-          'first': (row['first_name'] as String?)?.trim() ?? '',
-          'middle': (row['middle_name'] as String?)?.trim() ?? '',
-        };
-      }
+      final userIdToName = await _submissionService
+          .fetchCanonicalNamesByUserIds(userIds.toList());
 
       // Embed resolved names into submissions (mutates in place)
       for (final sub in needsResolution) {
@@ -234,17 +205,40 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     setState(() => _isSaving = true);
     try {
       final updatedData = _editCtrl!.toJson();
-      await _supabase
-          .from('client_submissions')
-          .update({
-            'data': updatedData,
-            'intake_reference': _intakeRefCtrl.text.trim().isEmpty
-                ? null
-                : _intakeRefCtrl.text.trim(),
-            'last_edited_by': widget.cswd_id,
-            'last_edited_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', _selectedSubmission!['id']);
+      final existingRaw = _selectedSubmission!['data'];
+      final existingData = existingRaw is Map
+          ? Map<String, dynamic>.from(existingRaw)
+          : <String, dynamic>{};
+
+      // Keep metadata keys (like __applicant_name / __session_id) if present.
+      for (final entry in existingData.entries) {
+        if (!entry.key.startsWith('__')) continue;
+        updatedData.putIfAbsent(entry.key, () => entry.value);
+      }
+
+      // Preserve computed values if they were in storage and serializer omitted them.
+      final template = _activeTemplate;
+      if (template != null) {
+        for (final field in template.allFields) {
+          if (field.fieldType != FormFieldType.computed) continue;
+          if (updatedData.containsKey(field.fieldName)) continue;
+
+          final existingValue = existingData[field.fieldName];
+          if (existingValue == null) continue;
+          if (existingValue.toString().trim().isEmpty) continue;
+
+          updatedData[field.fieldName] = existingValue;
+        }
+      }
+
+      await _submissionService.updateClientSubmission(
+        submissionId: _selectedSubmission!['id'],
+        data: updatedData,
+        intakeReference: _intakeRefCtrl.text.trim().isEmpty
+            ? null
+            : _intakeRefCtrl.text.trim(),
+        editorId: widget.cswd_id,
+      );
 
       await AuditLogService().log(
         actionType: kAuditSubmissionEdited,
@@ -311,10 +305,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       details: {'form_type': _selectedSubmission!['form_type']},
     );
 
-    await _supabase
-        .from('client_submissions')
-        .delete()
-        .eq('id', _selectedSubmission!['id']);
+    await _submissionService.deleteClientSubmission(_selectedSubmission!['id']);
 
     setState(() {
       _selectedSubmission = null;
@@ -359,6 +350,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     if (confirmed != true) return;
 
     // Delete all submissions for this applicant
+    final idsToDelete = <dynamic>[];
     for (final submission in group.submissions) {
       await AuditLogService().log(
         actionType: kAuditSubmissionDeleted,
@@ -372,12 +364,10 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         targetLabel: _getApplicantName(submission),
         details: {'form_type': submission['form_type'], 'bulk_delete': true},
       );
-
-      await _supabase
-          .from('client_submissions')
-          .delete()
-          .eq('id', submission['id']);
+      idsToDelete.add(submission['id']);
     }
+
+    await _submissionService.deleteClientSubmissions(idsToDelete);
 
     setState(() {
       _selectedApplicantKey = null;
@@ -399,8 +389,11 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     // 1) Embedded name from _embedApplicantName / _resolveUnknownNames
     if (data['__applicant_name'] is Map) {
       final n = data['__applicant_name'] as Map<String, dynamic>;
-      final name = _formatName(n);
-      if (name != null) return name;
+      final embeddedNameLooksValid = _hasUsableEmbeddedApplicantName(data);
+      if (embeddedNameLooksValid) {
+        final name = _formatName(n);
+        if (name != null) return name;
+      }
     }
 
     // 2) Common key names in JSONB (GIS and custom templates)
@@ -472,6 +465,28 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       if (val.isNotEmpty) return val;
     }
     return '';
+  }
+
+  bool _hasUsableEmbeddedApplicantName(Map<String, dynamic> data) {
+    final raw = data['__applicant_name'];
+    if (raw is! Map) return false;
+
+    final last = (raw['last'] ?? '').toString().trim();
+    final first = (raw['first'] ?? '').toString().trim();
+
+    if (last.isEmpty && first.isEmpty) return false;
+    if (_looksEncryptedToken(last) || _looksEncryptedToken(first)) {
+      return false;
+    }
+    return true;
+  }
+
+  bool _looksEncryptedToken(String value) {
+    final v = value.trim();
+    if (v.length < 24) return false;
+    if (v.contains(' ') || v.contains(',')) return false;
+    if (!RegExp(r'^[A-Za-z0-9+/=]+$').hasMatch(v)) return false;
+    return RegExp(r'[0-9+/=]').hasMatch(v);
   }
 
   String? _findApplicantId(Map<String, dynamic> submission) {
@@ -633,7 +648,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
 
   // ── Logout / navigation ───────────────────────────────────
   Future<void> _handleLogout() async {
-    await _supabase.auth.signOut();
+    await _submissionService.signOut();
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
         ContentFadeRoute(page: const WorkerLoginScreen()),

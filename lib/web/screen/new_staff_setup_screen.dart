@@ -3,9 +3,9 @@
 
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
-import 'package:sappiire/web/services/staff_email_service.dart';
-import 'package:sappiire/web/services/web_auth_service.dart';
-import 'package:sappiire/web/services/audit_log_service.dart';
+import 'package:sappiire/services/email/staff_email_service.dart';
+import 'package:sappiire/services/auth/web_auth_service.dart';
+import 'package:sappiire/services/audit/audit_log_service.dart';
 
 class NewStaffSetupScreen extends StatefulWidget {
   const NewStaffSetupScreen({super.key});

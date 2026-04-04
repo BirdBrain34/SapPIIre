@@ -31,6 +31,7 @@ class FormStateController extends ChangeNotifier {
   String? housingStatus;
   String? signatureBase64;
   List<Offset>? signaturePoints;
+  bool signatureIsProcessing = false;
 
   // ── Member table state (generic user-defined tables) ──
   Map<String, List<Map<String, dynamic>>> memberTableData = {};
@@ -94,8 +95,54 @@ class FormStateController extends ChangeNotifier {
 
   dynamic getValue(String fieldName) => _values[fieldName];
 
+  bool _truthy(dynamic v) => v == true || v?.toString().toLowerCase() == 'true';
+
+  String _normalizeSupportKey(String raw) {
+    return raw
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+  }
+
+  bool isSupportBooleanField(FormFieldModel field) {
+    if (field.fieldType != FormFieldType.boolean) return false;
+
+    final candidates = <String>{
+      field.fieldName,
+      field.fieldLabel,
+      field.canonicalFieldKey ?? '',
+      field.autofillSource ?? '',
+      (field.validationRules?['db_map_key'] ?? '').toString(),
+    };
+
+    for (final c in candidates) {
+      final n = _normalizeSupportKey(c);
+      if (n == 'has_support' ||
+          n == 'support' ||
+          n.contains('sumusuporta') ||
+          (n.contains('support') && n.contains('family'))) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  FormFieldModel? _supportBooleanField() {
+    for (final f in template.allFields) {
+      if (isSupportBooleanField(f)) return f;
+    }
+    return null;
+  }
+
   void setValue(String fieldName, dynamic value, {bool notify = true}) {
     _values[fieldName] = value;
+    final supportField = _supportBooleanField();
+    if (supportField != null && supportField.fieldName == fieldName) {
+      hasSupport = _truthy(value);
+    }
     _fieldNotifiers[fieldName]?.value = value; // Update per-field notifier
 
     if (textControllers.containsKey(fieldName)) {
@@ -379,12 +426,17 @@ class FormStateController extends ChangeNotifier {
       } else if (key == '__supporting_family' && value is List) {
         supportingFamily = value.cast<Map<String, dynamic>>();
       } else if (key == '__has_support') {
-        hasSupport = (value as bool?) ?? false;
+        hasSupport = _truthy(value);
+        final supportField = _supportBooleanField();
+        if (supportField != null) {
+          setValue(supportField.fieldName, hasSupport, notify: false);
+        }
       } else if (key == '__housing_status') {
         housingStatus = value?.toString();
       } else if (key == '__signature') {
         signatureBase64 = value?.toString();
         signaturePoints = null;
+        signatureIsProcessing = false;
       } else {
         final field = template.fieldByName(key) ?? _findByLabel(key);
         if (field != null) {
@@ -418,6 +470,7 @@ class FormStateController extends ChangeNotifier {
               if (signature != null && signature.isNotEmpty) {
                 signatureBase64 = signature;
                 signaturePoints = null;
+                signatureIsProcessing = false;
               }
               parsedValue = signature;
             }
@@ -427,8 +480,8 @@ class FormStateController extends ChangeNotifier {
             if (field.fieldName == 'housing_status') {
               housingStatus = value?.toString();
             }
-            if (field.fieldName == 'has_support') {
-              hasSupport = value == true || value == 'true';
+            if (isSupportBooleanField(field)) {
+              hasSupport = _truthy(value);
             }
           }
         } else {
@@ -443,6 +496,10 @@ class FormStateController extends ChangeNotifier {
 
   // Export form data to JSON for database storage
   Map<String, dynamic> toJson() {
+    // Flush any pending debounce and recompute derived values before save.
+    _recomputeDebounce?.cancel();
+    _recomputeFields();
+
     final result = <String, dynamic>{};
 
     for (final field in template.allFields) {
@@ -496,6 +553,10 @@ class FormStateController extends ChangeNotifier {
 
   // Export filtered data for QR transmission (only checked fields)
   Map<String, dynamic> toFilteredJson() {
+    // Flush any pending debounce and recompute derived values before transmit.
+    _recomputeDebounce?.cancel();
+    _recomputeFields();
+
     final result = <String, dynamic>{};
 
     for (final field in template.allFields) {
@@ -568,7 +629,11 @@ class FormStateController extends ChangeNotifier {
     final triggerMap = <String, dynamic>{};
     for (final f in template.allFields) {
       if (f.fieldType == FormFieldType.boolean) {
-        triggerMap[f.fieldId] = (_values[f.fieldName] ?? false).toString();
+        if (isSupportBooleanField(f)) {
+          triggerMap[f.fieldId] = hasSupport.toString();
+        } else {
+          triggerMap[f.fieldId] = (_values[f.fieldName] ?? false).toString();
+        }
       } else if (f.fieldType == FormFieldType.checkbox) {
         final raw = _values[f.fieldName];
         if (raw is List) {
@@ -586,7 +651,7 @@ class FormStateController extends ChangeNotifier {
         triggerMap[f.fieldId] = _values[f.fieldName]?.toString() ?? '';
       }
     }
-    final hasSupportField = template.fieldByName('has_support');
+    final hasSupportField = _supportBooleanField();
     if (hasSupportField != null) {
       triggerMap[hasSupportField.fieldId] = hasSupport.toString();
     }
@@ -614,9 +679,11 @@ class FormStateController extends ChangeNotifier {
   /// Preprocess formula to expand SUM_COLUMN() aggregate function calls.
   /// Converts SUM_COLUMN(__family_composition, "allowance") → numeric sum
   String _expandAggregates(String formula) {
+    formula = _normalizeFormulaFieldReferences(formula);
+
     // Match: SUM_COLUMN(tableKey, "columnKey") or SUM_COLUMN(tableKey, 'columnKey')
     final regex = RegExp(
-      'SUM_COLUMN\\(([a-zA-Z_][a-zA-Z0-9_]*)\\s*,\\s*[\'"]([a-zA-Z_][a-zA-Z0-9_]*)[\'"]\\s*\\)',
+      'SUM_COLUMN\\(([a-zA-Z_][a-zA-Z0-9_]*)\\s*,\\s*[\'\"]([^\'\"]+)[\'\"]\\s*\\)',
     );
     return formula.replaceAllMapped(regex, (m) {
       final tableKey = m.group(1)!;
@@ -624,6 +691,22 @@ class FormStateController extends ChangeNotifier {
       final sum = _sumTableColumn(tableKey, columnKey);
       return sum.toString();
     });
+  }
+
+  String _normalizeFormulaFieldReferences(String formula) {
+    // Support legacy formulas that stored human-readable labels instead of
+    // machine-safe field names (e.g. "Total Gross Family Income (A+B+C)=(D)").
+    final replacements = template.allFields
+        .where((f) => f.fieldLabel.trim().isNotEmpty)
+        .where((f) => f.fieldLabel.trim() != f.fieldName.trim())
+        .toList()
+      ..sort((a, b) => b.fieldLabel.length.compareTo(a.fieldLabel.length));
+
+    var normalized = formula;
+    for (final f in replacements) {
+      normalized = normalized.replaceAll(f.fieldLabel, f.fieldName);
+    }
+    return normalized;
   }
 
   /// Sum all numeric values in a specific column across all rows of a table field.
@@ -838,6 +921,7 @@ class FormStateController extends ChangeNotifier {
     housingStatus = null;
     signatureBase64 = null;
     signaturePoints = null;
+    signatureIsProcessing = false;
     memberTableData.clear();
     fieldChecks.updateAll((_, __) => false);
     selectAll = false;

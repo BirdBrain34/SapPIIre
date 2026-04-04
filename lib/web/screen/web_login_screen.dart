@@ -5,7 +5,7 @@ import 'package:sappiire/web/screen/first_login_password_screen.dart';
 import 'package:sappiire/web/screen/forgot_password_screen.dart';
 import 'package:sappiire/web/screen/new_staff_setup_screen.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
-import 'package:sappiire/web/services/web_auth_service.dart';
+import 'package:sappiire/services/auth/web_auth_service.dart';
 import 'package:sappiire/web/screen/web_signup_screen.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 

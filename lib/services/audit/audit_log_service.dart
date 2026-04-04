@@ -1,43 +1,36 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// Auth
 const kAuditLogin = 'login';
 const kAuditLoginFailed = 'login_failed';
 const kAuditLogout = 'logout';
 const kAuditPasswordChanged = 'password_changed';
 
-// Session / QR
 const kAuditSessionStarted = 'session_started';
 const kAuditSessionCompleted = 'session_completed';
 const kAuditSessionClosed = 'session_closed';
 
-// Submissions
 const kAuditSubmissionCreated = 'submission_created';
 const kAuditSubmissionEdited = 'submission_edited';
 const kAuditSubmissionDeleted = 'submission_deleted';
 
-// Staff management
 const kAuditStaffCreated = 'staff_created';
 const kAuditStaffApproved = 'staff_approved';
 const kAuditStaffRejected = 'staff_rejected';
 const kAuditRoleChanged = 'role_changed';
 
-// Templates
 const kAuditTemplateCreated = 'template_created';
 const kAuditTemplatePublished = 'template_published';
 const kAuditTemplatePushed = 'template_pushed_to_mobile';
 const kAuditTemplateArchived = 'template_archived';
 const kAuditTemplateDeleted = 'template_deleted';
 
-// Categories
 const kCategoryAuth = 'auth';
 const kCategorySession = 'session';
 const kCategorySubmission = 'submission';
 const kCategoryStaff = 'staff';
 const kCategoryTemplate = 'template';
 
-// Severity
 const kSeverityInfo = 'info';
 const kSeverityWarning = 'warning';
 const kSeverityCritical = 'critical';
@@ -47,7 +40,7 @@ class AuditLogService {
   factory AuditLogService() => _instance;
   AuditLogService._internal();
 
-  final _supabase = Supabase.instance.client;
+  final SupabaseClient _supabase = Supabase.instance.client;
 
   Future<void> log({
     required String actionType,
@@ -75,7 +68,9 @@ class AuditLogService {
         'details': details ?? {},
       });
     } catch (e) {
-      debugPrint('AuditLogService: failed to write log: $e');
+      if (kDebugMode) {
+        debugPrint('AuditLogService.log failed: $e');
+      }
     }
   }
 
@@ -90,22 +85,22 @@ class AuditLogService {
     DateTime? dateTo,
   }) async {
     try {
-      var q = _supabase.from('audit_logs').select('*');
+      var query = _supabase.from('audit_logs').select('*');
 
       if (categoryFilter != null && categoryFilter.isNotEmpty) {
-        q = q.eq('category', categoryFilter);
+        query = query.eq('category', categoryFilter);
       }
       if (actionFilter != null && actionFilter.isNotEmpty) {
-        q = q.eq('action_type', actionFilter);
+        query = query.eq('action_type', actionFilter);
       }
       if (severityFilter != null && severityFilter.isNotEmpty) {
-        q = q.eq('severity', severityFilter);
+        query = query.eq('severity', severityFilter);
       }
       if (actorFilter != null && actorFilter.isNotEmpty) {
-        q = q.ilike('actor_name', '%$actorFilter%');
+        query = query.ilike('actor_name', '%$actorFilter%');
       }
       if (dateFrom != null) {
-        q = q.gte('created_at', dateFrom.toIso8601String());
+        query = query.gte('created_at', dateFrom.toIso8601String());
       }
       if (dateTo != null) {
         final end = DateTime(
@@ -116,16 +111,18 @@ class AuditLogService {
           59,
           59,
         ).toUtc();
-        q = q.lte('created_at', end.toIso8601String());
+        query = query.lte('created_at', end.toIso8601String());
       }
 
-      final response = await q
+      final response = await query
           .order('created_at', ascending: false)
           .range(offset, offset + limit - 1);
 
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
-      debugPrint('AuditLogService.fetchLogs error: $e');
+      if (kDebugMode) {
+        debugPrint('AuditLogService.fetchLogs failed: $e');
+      }
       return [];
     }
   }
@@ -139,22 +136,22 @@ class AuditLogService {
     DateTime? dateTo,
   }) async {
     try {
-      var q = _supabase.from('audit_logs').select('id');
+      var query = _supabase.from('audit_logs').select('id');
 
       if (categoryFilter != null && categoryFilter.isNotEmpty) {
-        q = q.eq('category', categoryFilter);
+        query = query.eq('category', categoryFilter);
       }
       if (actionFilter != null && actionFilter.isNotEmpty) {
-        q = q.eq('action_type', actionFilter);
+        query = query.eq('action_type', actionFilter);
       }
       if (severityFilter != null && severityFilter.isNotEmpty) {
-        q = q.eq('severity', severityFilter);
+        query = query.eq('severity', severityFilter);
       }
       if (actorFilter != null && actorFilter.isNotEmpty) {
-        q = q.ilike('actor_name', '%$actorFilter%');
+        query = query.ilike('actor_name', '%$actorFilter%');
       }
       if (dateFrom != null) {
-        q = q.gte('created_at', dateFrom.toIso8601String());
+        query = query.gte('created_at', dateFrom.toIso8601String());
       }
       if (dateTo != null) {
         final end = DateTime(
@@ -165,13 +162,15 @@ class AuditLogService {
           59,
           59,
         ).toUtc();
-        q = q.lte('created_at', end.toIso8601String());
+        query = query.lte('created_at', end.toIso8601String());
       }
 
-      final response = await q;
+      final response = await query;
       return (response as List).length;
     } catch (e) {
-      debugPrint('AuditLogService.fetchCount error: $e');
+      if (kDebugMode) {
+        debugPrint('AuditLogService.fetchCount failed: $e');
+      }
       return 0;
     }
   }

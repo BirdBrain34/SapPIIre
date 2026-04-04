@@ -4,7 +4,6 @@
 //.
 
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/services/supabase_service.dart';
@@ -27,7 +26,6 @@ class ManageInfoScreen extends StatefulWidget {
 
 class _ManageInfoScreenState extends State<ManageInfoScreen> {
   final _supabaseService = SupabaseService();
-  final _supabase = Supabase.instance.client;
   late final ManageInfoController _controller;
   int _currentNavIndex = 0;
   String? _activeTransmitSessionId;
@@ -86,11 +84,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     final templateId = _controller.selectedTemplate?.templateId;
     if (templateId != null) {
       try {
-        final row = await _supabase
-            .from('form_templates')
-            .select('popup_enabled, popup_subtitle, popup_description, form_name')
-            .eq('template_id', templateId)
-            .maybeSingle();
+        final row = await _supabaseService.fetchTemplatePopupConfig(templateId);
 
         final popupEnabled = (row?['popup_enabled'] as bool?) ?? false;
 
@@ -215,7 +209,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
     if (confirmed != true || !mounted) return;
 
-    await Supabase.instance.client.auth.signOut();
+    await _supabaseService.signOutCurrentUser();
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -295,7 +289,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
             ),
           );
           if (confirmed == true && context.mounted) {
-            await Supabase.instance.client.auth.signOut();
+            await _supabaseService.signOutCurrentUser();
             if (context.mounted) {
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (_) => const LoginScreen()),

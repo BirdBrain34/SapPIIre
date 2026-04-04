@@ -6,6 +6,10 @@ A new Flutter project.
 
 This project is a starting point for a Flutter application.
 
+## Team Guides
+
+- Hybrid crypto setup and test drive: [docs/HYBRID_CRYPTO_TEST_DRIVE_GUIDE.md](docs/HYBRID_CRYPTO_TEST_DRIVE_GUIDE.md)
+
 A few resources to get you started if this is your first Flutter project:
 
 - [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
