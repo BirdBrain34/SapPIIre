@@ -34,11 +34,46 @@ class _HistoryScreenState extends State<HistoryScreen> {
     _loadHistory();
   }
 
+    // ── Logout ────────────────────────────────────────────────
+  Future<void> _handleLogout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Log out?'),
+        content: const Text('Are you sure you want to log out?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.dangerRed,
+            ),
+            child: const Text('Log Out', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    await _supabaseService.signOutCurrentUser();
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    }
+  }
+
   Future<void> _loadHistory() async {
     setState(() => _isLoading = true);
 
     try {
       final usernameFuture = _supabaseService.getUsername(widget.userId);
+      // Ensure your supabase_service.dart is updated to fetch last_edited_by/at
       final submissionsFuture = _supabaseService
           .fetchClientSubmissionHistoryByUser(widget.userId);
 
@@ -93,35 +128,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
     _applySort();
   }
 
-  Future<void> _handleLogout() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Log out?'),
-        content: const Text('Are you sure you want to log out?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.dangerRed,
-            ),
-            child: const Text('Log Out', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    await Supabase.instance.client.auth.signOut();
-    if (mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-        (route) => false,
-      );
-    }
+  // 7p — Add the _getWorkerName helper
+  String _getWorkerName(Map<String, dynamic> item) {
+    // last_edited_by stores the worker's name or ID
+    final workerName = item['last_edited_by']?.toString().trim() ?? '';
+    return workerName;
   }
 
   String _formatDate(String? raw) {
@@ -129,18 +140,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
     try {
       final dt = DateTime.parse(raw).toLocal();
       const months = [
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'May',
-        'Jun',
-        'Jul',
-        'Aug',
-        'Sep',
-        'Oct',
-        'Nov',
-        'Dec',
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
       ];
       final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
       final min = dt.minute.toString().padLeft(2, '0');
@@ -159,13 +160,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _submissions.isEmpty
-          ? _buildEmptyState()
-          : Column(
-              children: [
-                _buildSortBar(),
-                Expanded(child: _buildList()),
-              ],
-            ),
+              ? _buildEmptyState()
+              : Column(
+                  children: [
+                    _buildSortBar(),
+                    Expanded(child: _buildList()),
+                  ],
+                ),
     );
   }
 
@@ -213,6 +214,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
         IconButton(
           icon: const Icon(Icons.refresh, color: Colors.white, size: 22),
           onPressed: _loadHistory,
+        ),
+        // ── Added Logout Button ──
+        IconButton(
+          icon: const Icon(Icons.logout, color: Colors.white, size: 22),
+          onPressed: _handleLogout,
         ),
         const SizedBox(width: 8),
       ],
@@ -309,6 +315,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
+  // 7o — Updated _buildCard content
   Widget _buildCard(Map<String, dynamic> item) {
     final formType = item['form_type'] as String? ?? 'Unknown Form';
     final createdAt = item['created_at'] as String?;
@@ -401,24 +408,54 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       ],
                     ),
                   ],
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Row(
                     children: [
-                      Icon(
-                        Icons.access_time,
-                        size: 12,
-                        color: Colors.grey.shade400,
-                      ),
+                      Icon(Icons.qr_code_scanner,
+                          size: 12, color: Colors.grey.shade400),
                       const SizedBox(width: 5),
                       Text(
-                        _formatDate(createdAt),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade500,
-                        ),
+                        'Scanned: ${_formatDate(createdAt)}',
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
                       ),
                     ],
                   ),
+                  if (_getWorkerName(item).isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.person_outline,
+                            size: 12,
+                            color: AppColors.primaryBlue.withOpacity(0.7)),
+                        const SizedBox(width: 5),
+                        Expanded(
+                          child: Text(
+                            'Assisted by: ${_getWorkerName(item)}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.primaryBlue.withOpacity(0.8),
+                              fontWeight: FontWeight.w500,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  if (item['last_edited_at'] != null) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.edit_outlined,
+                            size: 12, color: Colors.grey.shade400),
+                        const SizedBox(width: 5),
+                        Text(
+                          'Processed: ${_formatDate(item['last_edited_at'] as String?)}',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -428,6 +465,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 }
+
 
 // ── Sort chip ──────────────────────────────────────────────────
 class _SortChip extends StatelessWidget {

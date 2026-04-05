@@ -13,19 +13,21 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _usernameController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
-  final SupabaseService _supabaseService = SupabaseService();
+  final _identifierCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+  final _supabaseService = SupabaseService();
   bool _isLoading = false;
+  bool _showPassword = false;
 
   @override
   void dispose() {
-    _usernameController.dispose();
-    _passwordController.dispose();
+    _identifierCtrl.dispose();
+    _passwordCtrl.dispose();
     super.dispose();
   }
 
   void _snack(String msg, {bool error = false}) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg),
       backgroundColor: error ? AppColors.dangerRed : AppColors.successGreen,
@@ -33,37 +35,45 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _onLoginPressed() async {
-    if (_usernameController.text.isEmpty || _passwordController.text.isEmpty) {
-      _snack('Please enter username and password', error: true);
+    final id = _identifierCtrl.text.trim();
+    final pw = _passwordCtrl.text;
+    if (id.isEmpty || pw.isEmpty) {
+      _snack('Please enter your username/email/phone and password', error: true);
       return;
     }
+
     setState(() => _isLoading = true);
-
-    final result = await _supabaseService.login(
-      username: _usernameController.text.trim(),
-      password: _passwordController.text,
-    );
-
-    if (!mounted) return;
-    setState(() => _isLoading = false);
-
-    if (result['success']) {
-      _snack('Welcome back, ${result['username']}!');
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ManageInfoScreen(userId: result['user_id']),
-        ),
+    try {
+      final result = await _supabaseService.login(
+        username: id,
+        password: pw,
       );
-    } else {
-      _snack(result['message'], error: true);
+
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      if (result['success'] == true) {
+        _snack('Welcome back, ${result['username']}!');
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ManageInfoScreen(userId: result['user_id']),
+          ),
+        );
+      } else {
+        _snack(result['message'] ?? 'Login failed', error: true);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _snack('Connection error. Please check your internet.', error: true);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset: true,
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -73,14 +83,15 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                const SizedBox(height: 40),
                 Image.asset(
                   'lib/logo/sappiire_logo.png',
-                  height: 200,
+                  height: 180,
                   fit: BoxFit.contain,
                 ),
                 const SizedBox(height: 8),
@@ -88,15 +99,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   'The efficient way to fill forms, and data safe.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Color.fromARGB(255, 255, 255, 255),
+                    color: Colors.white70,
                     fontSize: 12,
                     fontStyle: FontStyle.italic,
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 32),
 
                 Container(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
                     color: AppColors.accentBlue,
                     borderRadius: BorderRadius.circular(20),
@@ -105,52 +116,65 @@ class _LoginScreenState extends State<LoginScreen> {
                         color: Colors.black.withOpacity(0.3),
                         blurRadius: 15,
                         offset: const Offset(0, 8),
-                      )
+                      ),
                     ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
                     children: [
                       const Text(
                         'Sign In',
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 20,
+                          fontSize: 22,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 24),
 
-                      _fieldLabel("Username"),
-                      const SizedBox(height: 6),
-                      _buildStyledField(
-                        controller: _usernameController,
-                        hint: 'Enter your username',
+                      // ── Identifier field (floating label style) ──
+                      _FloatingLabelField(
+                        controller: _identifierCtrl,
+                        label: 'Username / Email / Phone',
                         icon: Icons.badge_outlined,
+                        textInputAction: TextInputAction.next,
+                        onSubmitted: (_) => FocusScope.of(context).nextFocus(),
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 16),
 
-                      _fieldLabel("Password"),
-                      const SizedBox(height: 6),
-                      _buildStyledField(
-                        controller: _passwordController,
-                        hint: 'Enter your password',
+                      // ── Password field ──
+                      _FloatingLabelField(
+                        controller: _passwordCtrl,
+                        label: 'Password',
                         icon: Icons.lock_outline,
-                        obscure: true,
+                        obscureText: !_showPassword,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) =>
+                            _isLoading ? null : _onLoginPressed(),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _showPassword
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            color: Colors.white60,
+                            size: 20,
+                          ),
+                          onPressed: () =>
+                              setState(() => _showPassword = !_showPassword),
+                        ),
                       ),
 
                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton(
-                          // ← NOW wired to ChangePasswordScreen
                           onPressed: () => Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (_) => const ChangePasswordScreen(),
                             ),
                           ),
-                          style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                          style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero),
                           child: const Text(
                             'Forgot account?',
                             style: TextStyle(
@@ -160,7 +184,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                       ),
-
                       const SizedBox(height: 8),
 
                       SizedBox(
@@ -172,7 +195,8 @@ class _LoginScreenState extends State<LoginScreen> {
                             backgroundColor: AppColors.highlight,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12)),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                             elevation: 0,
                           ),
                           child: _isLoading
@@ -180,17 +204,38 @@ class _LoginScreenState extends State<LoginScreen> {
                                   height: 20,
                                   width: 20,
                                   child: CircularProgressIndicator(
-                                      strokeWidth: 2, color: Colors.white))
-                              : const Text('Log In',
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  'Log In',
                                   style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16)),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
                         ),
                       ),
+                      const SizedBox(height: 20),
 
-                      const SizedBox(height: 16),
-                      _buildDivider(),
-                      const SizedBox(height: 16),
+                      Row(
+                        children: const [
+                          Expanded(child: Divider(color: AppColors.borderNavy)),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 12),
+                            child: Text(
+                              'or',
+                              style: TextStyle(
+                                color: AppColors.mutedBlue,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          Expanded(child: Divider(color: AppColors.borderNavy)),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
 
                       SizedBox(
                         width: double.infinity,
@@ -199,21 +244,26 @@ class _LoginScreenState extends State<LoginScreen> {
                           onPressed: () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                                builder: (_) => const SignUpScreen()),
+                              builder: (_) => const SignUpScreen(),
+                            ),
                           ),
                           style: OutlinedButton.styleFrom(
                             side: const BorderSide(
-                                color: AppColors.borderNavy, width: 1.5),
+                              color: AppColors.borderNavy,
+                              width: 1.5,
+                            ),
                             foregroundColor: AppColors.mutedBlue,
                             shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12)),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
-                          child: const Text("Sign Up"),
+                          child: const Text('Sign Up'),
                         ),
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(height: 40),
               ],
             ),
           ),
@@ -221,57 +271,63 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+}
 
-  Widget _fieldLabel(String text) => Text(
-        text,
-        style: const TextStyle(
-          color: AppColors.labelBlue,
+// ── Reusable floating-label style input ──────────────────────────────────────
+// Matches the Material "focused label moves up" style from the reference image.
+
+class _FloatingLabelField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final IconData icon;
+  final bool obscureText;
+  final TextInputAction textInputAction;
+  final ValueChanged<String>? onSubmitted;
+  final Widget? suffixIcon;
+
+  const _FloatingLabelField({
+    required this.controller,
+    required this.label,
+    required this.icon,
+    this.obscureText = false,
+    this.textInputAction = TextInputAction.next,
+    this.onSubmitted,
+    this.suffixIcon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      obscureText: obscureText,
+      textInputAction: textInputAction,
+      onSubmitted: onSubmitted,
+      style: const TextStyle(color: Colors.white, fontSize: 14),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.white60, fontSize: 14),
+        floatingLabelStyle: const TextStyle(
+          color: AppColors.lightBlue,
           fontSize: 12,
           fontWeight: FontWeight.w600,
         ),
-      );
-
-  Widget _buildStyledField({
-    required TextEditingController controller,
-    required String hint,
-    required IconData icon,
-    bool obscure = false,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.inputBg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.borderNavy, width: 1.5),
-      ),
-      child: TextField(
-        controller: controller,
-        obscureText: obscure,
-        style: const TextStyle(color: Colors.white, fontSize: 14),
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle:
-              const TextStyle(color: AppColors.hintText, fontSize: 13),
-          prefixIcon: Icon(icon, color: AppColors.lightBlue, size: 18),
-          border: InputBorder.none,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        prefixIcon: Icon(icon, color: AppColors.lightBlue, size: 20),
+        suffixIcon: suffixIcon,
+        filled: true,
+        fillColor: AppColors.inputBg,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.borderNavy, width: 1.5),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.lightBlue, width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
         ),
       ),
-    );
-  }
-
-  Widget _buildDivider() {
-    return const Row(
-      children: [
-        Expanded(child: Divider(color: AppColors.borderNavy)),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12),
-          child: Text('or',
-              style:
-                  TextStyle(color: AppColors.mutedBlue, fontSize: 12)),
-        ),
-        Expanded(child: Divider(color: AppColors.borderNavy)),
-      ],
     );
   }
 }

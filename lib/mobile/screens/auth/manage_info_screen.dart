@@ -14,7 +14,7 @@ import 'package:sappiire/mobile/screens/auth/login_screen.dart';
 import 'package:sappiire/mobile/screens/auth/InfoScannerScreen.dart';
 import 'package:sappiire/mobile/screens/auth/ProfileScreen.dart';
 import 'package:sappiire/mobile/screens/auth/HistoryScreen.dart';
-import 'package:sappiire/mobile/widgets/form_popup.dart';
+
 
 class ManageInfoScreen extends StatefulWidget {
   final String userId;
@@ -81,102 +81,41 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       return;
     }
 
-    final templateId = _controller.selectedTemplate?.templateId;
-    if (templateId != null) {
-      try {
-        final row = await _supabaseService.fetchTemplatePopupConfig(templateId);
-
-        final popupEnabled = (row?['popup_enabled'] as bool?) ?? false;
-
-        if (popupEnabled && mounted) {
-          final proceed = await FormIntroPopupDialog.show(
-            context: context,
-            formTitle: (row?['form_name'] as String?) ??
-                _controller.selectedTemplate?.formName ??
-                'Form',
-            subtitle: row?['popup_subtitle'] as String?,
-            description: row?['popup_description'] as String?,
-          );
-
-          if (!proceed || !mounted) return;
-        }
-      } catch (e) {
-        debugPrint('Popup fetch error: $e');
-      }
-    }
-
     final sessionId = await Navigator.push<String>(
       context,
       MaterialPageRoute(
         builder: (_) => QrScannerScreen(
           transmitData: dataToTransmit,
           userId: widget.userId,
+          templateId: _controller.selectedTemplate?.templateId,
+          formName: _controller.selectedTemplate?.formName,
+          supabaseService: _supabaseService,
         ),
       ),
     );
 
     if (sessionId != null && mounted) {
       if (_activeTransmitSessionId != null) {
-        debugPrint(
-          'Ignoring duplicate QR session result: $sessionId (active: $_activeTransmitSessionId)',
-        );
+        debugPrint('Ignoring duplicate QR session: $sessionId');
         return;
       }
-
       _activeTransmitSessionId = sessionId;
-      
-      // Show loading indicator
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Row(
-              children: [
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                ),
-                SizedBox(width: 12),
-                Text('Transmitting data to web...'),
-              ],
-            ),
-            duration: Duration(seconds: 5),
-            backgroundColor: Colors.blue,
-          ),
-        );
-      }
-      
+
       try {
-        // Add delay to ensure web subscription is ready
         await Future.delayed(const Duration(milliseconds: 500));
-        
-        // Push field values + JSONB to web session
         final success = await _supabaseService.sendDataToWebSession(
           sessionId,
           dataToTransmit,
           userId: widget.userId,
         );
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).clearSnackBars();
-          _showFeedback(
-            success 
-              ? 'Data transmitted successfully! ✓' 
-              : 'Failed to send data. Please try again.',
-            success ? Colors.green : Colors.red,
-          );
+
+        if (mounted && !success) {
+          _showFeedback('Transmission failed. Please try again.', Colors.red);
         }
       } catch (e) {
         debugPrint('Transmission error: $e');
         if (mounted) {
-          ScaffoldMessenger.of(context).clearSnackBars();
-          _showFeedback(
-            'Error: ${e.toString()}',
-            Colors.red,
-          );
+          _showFeedback('Error: ${e.toString()}', Colors.red);
         }
       } finally {
         _activeTransmitSessionId = null;

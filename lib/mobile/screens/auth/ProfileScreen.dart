@@ -87,8 +87,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() {
         _usernameCtrl.text = accountData['username'] ?? '';
         _emailCtrl.text = _firstNonEmpty(accountData, ['email']);
-        _phoneCtrl.text = _firstNonEmpty(accountData, ['phone_number']);
-        if (_phoneCtrl.text.isEmpty) {
+        final accountPhone = accountData['phone_number']?.toString().trim() ?? '';
+        if (accountPhone.isNotEmpty) {
+          _phoneCtrl.text = accountPhone;
+        } else {
           _phoneCtrl.text = _firstNonEmpty(pii, [
             'cp_number',
             'phone_number',
@@ -325,12 +327,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ], _middleNameCtrl.text.trim());
 
       // Map Birth Details
-      _putMappedValue(formData, const [
-        'date_of_birth',
-        'birth_date',
-        'petsa_ng_kapanganakan',
-        'date_of_birth_petsa_ng_kapanganakan',
-      ], _dobCtrl.text.trim());
+      final dobValue = _dobCtrl.text.trim();
+      if (dobValue.isNotEmpty) {
+        _putMappedValue(formData, const [
+          'date_of_birth',
+          'birth_date',
+          'petsa_ng_kapanganakan',
+          'date_of_birth_petsa_ng_kapanganakan',
+        ], dobValue);
+
+        // Also save via canonical key directly for cross-template coverage
+        try {
+          await _supabaseService.saveScannedIdFieldValues(
+            userId: widget.userId,
+            canonicalValues: {'date_of_birth': dobValue},
+          );
+        } catch (e) {
+          debugPrint('DOB canonical save error: $e');
+        }
+      }
 
       _putMappedValue(formData, const [
         'lugar_ng_kapanganakan_place_of_birth',
@@ -467,14 +482,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  void _handleChangePin() {
+  void _handleChangePassword() {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => const ChangePasswordScreen(fromProfile: true),
       ),
     ).then((_) {
-      if (mounted) _showFeedback('PIN changed successfully!', Colors.green);
+      if (mounted) _showFeedback('Password changed successfully!', Colors.green);
     });
   }
 
@@ -667,23 +682,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
               icon: Icons.badge_outlined,
             ),
             _buildDivider(),
-            _buildTextField(
-              label: 'Email',
-              controller: _emailCtrl,
+            _buildReadOnlyRow(
               icon: Icons.email_outlined,
+              label: 'Email',
+              value: _emailCtrl.text.isEmpty ? '—' : _emailCtrl.text,
             ),
             _buildDivider(),
-            _buildTextField(
-              label: 'Phone Number',
-              controller: _phoneCtrl,
+            _buildReadOnlyRow(
               icon: Icons.phone_android_outlined,
+              label: 'Phone Number',
+              value: _phoneCtrl.text.isEmpty ? '—' : _phoneCtrl.text,
             ),
           ]),
           const SizedBox(height: 4),
           Padding(
             padding: const EdgeInsets.only(left: 4),
             child: Text(
-              'To change username, email, or phone — contact support.',
+              'Email and phone number cannot be changed. Contact support if needed.',
               style: TextStyle(
                 fontSize: 11,
                 color: Colors.grey.shade500,
@@ -823,9 +838,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _buildCard([
             _buildActionRow(
               icon: Icons.lock_reset_outlined,
-              label: 'Change PIN',
-              subtitle: 'Update your 6-digit login PIN',
-              onTap: _handleChangePin,
+              label: 'Change Password',
+              subtitle: 'Update your account password',
+              onTap: _handleChangePassword,
             ),
             _buildDivider(),
             _buildActionRow(

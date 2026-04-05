@@ -119,7 +119,7 @@ class SupabaseService {
     try {
       final response = await _supabase
           .from('user_accounts')
-          .select('user_id, username, email, is_active, created_at, last_login')
+          .select('user_id, username, email, phone_number, is_active, created_at, last_login')
           .eq('user_id', userId)
           .maybeSingle();
 
@@ -144,10 +144,70 @@ class SupabaseService {
       // We only send username and email to match your new SQL schema
       await _supabase
           .from('user_accounts')
-          .update({'username': updates['username'], 'email': updates['email']})
+          .update({
+            'username': updates['username'],
+          })
           .eq('user_id', userId);
     } catch (e) {
       throw Exception('Failed to update account: $e');
+    }
+  }
+
+  //check duplicates for signup 
+    Future<Map<String, dynamic>> checkDuplicateSignup({
+    String? email,
+    String? phone,
+    String? username,
+  }) async {
+    try {
+      if (email != null && email.isNotEmpty) {
+        final existing = await _supabase
+            .from('user_accounts')
+            .select('user_id')
+            .eq('email', email.trim().toLowerCase())
+            .maybeSingle();
+        if (existing != null) {
+          return {
+            'success': false,
+            'field': 'email',
+            'message': 'This email is already registered. Please log in instead.',
+          };
+        }
+      }
+
+      if (phone != null && phone.isNotEmpty) {
+        final existing = await _supabase
+            .from('user_accounts')
+            .select('user_id')
+            .eq('phone_number', phone.trim())
+            .maybeSingle();
+        if (existing != null) {
+          return {
+            'success': false,
+            'field': 'phone',
+            'message': 'This phone number is already registered.',
+          };
+        }
+      }
+
+      if (username != null && username.isNotEmpty) {
+        final existing = await _supabase
+            .from('user_accounts')
+            .select('user_id')
+            .eq('username', username.trim())
+            .maybeSingle();
+        if (existing != null) {
+          return {
+            'success': false,
+            'field': 'username',
+            'message': 'This username is already taken. Please choose another.',
+          };
+        }
+      }
+
+      return {'success': true};
+    } catch (e) {
+      return {'success': false, 'message': 'Validation error: ${e.toString()}'};
     }
   }
 
@@ -457,6 +517,7 @@ class SupabaseService {
         'user_id': userId,
         'username': username,
         'email': email,
+        'phone_number': phoneNumber,
         'is_active': true,
       }, onConflict: 'user_id');
 
@@ -578,19 +639,42 @@ class SupabaseService {
   }
 
   /// Login using Supabase Auth
+  // Track failed attempts per identifier in memory
+  static final Map<String, int> _failedAttempts = {};
+  static final Map<String, DateTime> _lockoutUntil = {};
+  static const int _maxAttempts = 5;
+  static const Duration _lockoutDuration = Duration(minutes: 5);
+
   Future<Map<String, dynamic>> login({
     required String username,
     required String password,
   }) async {
+    final identifier = username.trim().toLowerCase();
+
+    // Check lockout
+    final lockout = _lockoutUntil[identifier];
+    if (lockout != null && DateTime.now().isBefore(lockout)) {
+      final remaining = lockout.difference(DateTime.now()).inMinutes + 1;
+      return {
+        'success': false,
+        'message': 'Too many failed attempts. Try again in $remaining minute(s).',
+      };
+    }
+
     try {
-      // Resolve email from username
+      // Resolve account by username, email, or phone
       final account = await _supabase
           .from('user_accounts')
-          .select('user_id, username, email, is_active')
-          .eq('username', username)
+          .select('user_id, username, email, phone_number, is_active')
+          .or(
+            'username.ilike.$identifier,'
+            'email.ilike.$identifier,'
+            'phone_number.eq.$identifier',
+          )
           .maybeSingle();
 
       if (account == null) {
+        _recordFailedAttempt(identifier);
         return {'success': false, 'message': 'Account does not exist'};
       }
 
@@ -604,7 +688,29 @@ class SupabaseService {
       );
 
       if (response.user == null) {
-        return {'success': false, 'message': 'Invalid username or password'};
+        _recordFailedAttempt(identifier);
+        final attempts = _failedAttempts[identifier] ?? 0;
+        final remaining = _maxAttempts - attempts;
+        return {
+          'success': false,
+          'message': remaining > 0
+              ? 'Invalid password. $remaining attempt(s) remaining.'
+              : 'Account locked for ${_lockoutDuration.inMinutes} minutes.',
+        };
+      }
+
+      // Clear failed attempts on success
+      _failedAttempts.remove(identifier);
+      _lockoutUntil.remove(identifier);
+
+      // Save last_login timestamp
+      try {
+        await _supabase
+            .from('user_accounts')
+            .update({'last_login': DateTime.now().toUtc().toIso8601String()})
+            .eq('user_id', account['user_id']);
+      } catch (e) {
+        debugPrint('last_login update failed: $e');
       }
 
       return {
@@ -615,12 +721,21 @@ class SupabaseService {
         'email': account['email'],
       };
     } on AuthException catch (e) {
+      _recordFailedAttempt(identifier);
       return {'success': false, 'message': e.message};
     } catch (e) {
       return {
         'success': false,
         'message': 'Error during login: ${e.toString()}',
       };
+    }
+  }
+
+  void _recordFailedAttempt(String identifier) {
+    _failedAttempts[identifier] = (_failedAttempts[identifier] ?? 0) + 1;
+    if ((_failedAttempts[identifier] ?? 0) >= _maxAttempts) {
+      _lockoutUntil[identifier] = DateTime.now().add(_lockoutDuration);
+      _failedAttempts.remove(identifier);
     }
   }
 
@@ -661,7 +776,7 @@ class SupabaseService {
       }
 
       const fields =
-          'id, form_type, intake_reference, created_at, session_id, data';
+          'id, form_type, intake_reference, created_at, session_id, data, last_edited_by, last_edited_at';
 
       final byColumn = await _supabase
           .from('client_submissions')
