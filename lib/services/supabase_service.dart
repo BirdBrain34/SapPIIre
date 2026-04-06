@@ -1097,4 +1097,4 @@ class SupabaseService {
   }) async {
     return false;
   }
-}
+} 
