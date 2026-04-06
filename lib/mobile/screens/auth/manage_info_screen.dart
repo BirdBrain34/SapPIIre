@@ -31,7 +31,9 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   // Controls whether the form intro card is shown
   bool _showFormIntro = true;
 
-  // ── Lifecycle ─────────────────────────────────────────────
+  // Tracks which required fields are still empty — used for red highlight
+  Set<String> _highlightedMissingFields = {};
+
   @override
   void initState() {
     super.initState();
@@ -45,30 +47,27 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     super.dispose();
   }
 
-  // ── Data Loading ──────────────────────────────────────────
   Future<void> _loadAll() async {
     await _controller.loadAll(forceRefresh: true);
     if (mounted) {
-      setState(() => _showFormIntro = true);
+      setState(() {
+        _showFormIntro = true;
+        _highlightedMissingFields = {};
+      });
     }
   }
 
-  // ── Save to Supabase ──────────────────────────────────────
   Future<void> _saveProfile() async {
     final ok = await _controller.saveProfile();
     if (!mounted) return;
     if (ok) {
       _showFeedback('Profile saved!', Colors.green);
     } else {
-      _showFeedback(
-        'Save failed: ${_controller.errorMessage ?? 'Unknown error'}',
-        Colors.red,
-      );
+      _showFeedback('Save failed: ${_controller.errorMessage ?? 'Unknown error'}', Colors.red);
     }
   }
 
-  // ── Required fields validation ────────────────────────────
-  /// Returns list of required fields that are still empty.
+  // ── Required fields check ─────────────────────────────────
   List<FormFieldModel> _getMissingRequiredFields() {
     final template = _controller.selectedTemplate;
     final fc = _controller.formController;
@@ -77,7 +76,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     final missing = <FormFieldModel>[];
     for (final field in template.allFields) {
       if (!field.isRequired) continue;
-      if (field.parentFieldId != null) continue; // skip sub-fields
+      if (field.parentFieldId != null) continue;
       final value = fc.getValue(field.fieldName);
       if (value == null || value.toString().trim().isEmpty) {
         missing.add(field);
@@ -86,10 +85,14 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     return missing;
   }
 
-  /// Shows the required-fields warning popup — same style as QR scanner dialog.
-  Future<bool> _showRequiredFieldsDialog(
-    List<FormFieldModel> missingFields,
-  ) async {
+  /// Shows the required-fields warning popup and HIGHLIGHTS the missing fields
+  /// in the form so the user can see exactly what's empty.
+  Future<bool> _showRequiredFieldsDialog(List<FormFieldModel> missingFields) async {
+    // First: highlight the missing fields in the form
+    setState(() {
+      _highlightedMissingFields = missingFields.map((f) => f.fieldName).toSet();
+    });
+
     final result = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -106,31 +109,18 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                   color: Colors.red.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(
-                  Icons.warning_amber_rounded,
-                  size: 32,
-                  color: Colors.red,
-                ),
+                child: const Icon(Icons.warning_amber_rounded, size: 32, color: Colors.red),
               ),
               const SizedBox(height: 16),
               const Text(
                 'Required Fields Incomplete',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1A1A2E),
-                ),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E)),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
               Text(
-                'The following required fields are still empty. '
-                'Please fill them in before transmitting.',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey.shade600,
-                  height: 1.5,
-                ),
+                'The following required fields are still empty. They are highlighted in the form below.',
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade600, height: 1.5),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
@@ -142,33 +132,20 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                         .map(
                           (f) => Container(
                             margin: const EdgeInsets.only(bottom: 6),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                             decoration: BoxDecoration(
                               color: Colors.red.withOpacity(0.06),
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: Colors.red.withOpacity(0.25),
-                              ),
+                              border: Border.all(color: Colors.red.withOpacity(0.25)),
                             ),
                             child: Row(
                               children: [
-                                const Icon(
-                                  Icons.circle,
-                                  size: 6,
-                                  color: Colors.red,
-                                ),
+                                const Icon(Icons.circle, size: 6, color: Colors.red),
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
                                     f.fieldLabel,
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.red,
-                                      fontWeight: FontWeight.w500,
-                                    ),
+                                    style: const TextStyle(fontSize: 13, color: Colors.red, fontWeight: FontWeight.w500),
                                   ),
                                 ),
                               ],
@@ -179,27 +156,31 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
+              // Single button — go back to fill them in (they're highlighted)
               SizedBox(
-                width: double.infinity, // Makes the button span the full width
+                width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () => Navigator.pop(ctx, false),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue.shade700, // Use a primary color to guide them
+                    backgroundColor: AppColors.primaryBlue,
                     padding: const EdgeInsets.symmetric(vertical: 15),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     elevation: 0,
                   ),
                   child: const Text(
-                    'Go Back to Form',
-                    style: TextStyle(
-                      color: Colors.white, 
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                    ),
+                    'Go Back to Fill In',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
                   ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              // Option to still proceed despite warnings
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(
+                  'Proceed anyway',
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
                 ),
               ),
             ],
@@ -207,6 +188,12 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         ),
       ),
     );
+
+    // If going back to fill, keep highlights. If proceeding, clear them.
+    if (result == true && mounted) {
+      setState(() => _highlightedMissingFields = {});
+    }
+
     return result ?? false;
   }
 
@@ -214,18 +201,18 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   Future<void> _scanAndTransmit() async {
     final dataToTransmit = _controller.buildTransmitPayload();
     if (dataToTransmit == null) {
-      _showFeedback(
-        'Please select at least one field to transmit',
-        AppColors.dangerRed,
-      );
+      _showFeedback('Please select at least one field to transmit', AppColors.dangerRed);
       return;
     }
 
-    // Check required fields before allowing QR scan
     final missingFields = _getMissingRequiredFields();
     if (missingFields.isNotEmpty) {
       final proceed = await _showRequiredFieldsDialog(missingFields);
-      if (!proceed || !mounted) return;
+      if (!proceed || !mounted) {
+        // Scroll back to form so user can see highlighted fields
+        setState(() => _showFormIntro = false);
+        return;
+      }
     }
 
     await Navigator.push(
@@ -241,15 +228,15 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       ),
     );
 
-    // After returning from QR scanner (back from HistoryScreen or back button),
-    // reload form data and reset to intro card
     if (mounted) {
       await _controller.loadAll(forceRefresh: true);
-      setState(() => _showFormIntro = true);
+      setState(() {
+        _showFormIntro = true;
+        _highlightedMissingFields = {};
+      });
     }
   }
 
-  // ── Logout ────────────────────────────────────────────────
   Future<void> _handleLogout() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -257,23 +244,16 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         title: const Text('Log out?'),
         content: const Text('Are you sure you want to log out?'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.dangerRed,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.dangerRed),
             child: const Text('Log Out', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
     );
-
     if (confirmed != true || !mounted) return;
-
     await _supabaseService.signOutCurrentUser();
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
@@ -283,13 +263,13 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     }
   }
 
-  // ── Navigation ────────────────────────────────────────────
   void _onNavTap(int index) {
     switch (index) {
       case 0:
         setState(() {
           _currentNavIndex = 0;
           _showFormIntro = true;
+          _highlightedMissingFields = {};
         });
         break;
       case 1:
@@ -304,13 +284,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     }
   }
 
-  // ── Camera Scanner ────────────────────────────────────────
   Future<void> _openCamera() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const InfoScannerScreen()),
-    );
-    // Reload after returning from camera — scanned data may have updated fields
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => const InfoScannerScreen()));
     if (mounted) {
       await _controller.loadAll(forceRefresh: true);
       setState(() {});
@@ -320,15 +295,10 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   void _showFeedback(String msg, Color color) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: color,
-        duration: const Duration(seconds: 2),
-      ),
+      SnackBar(content: Text(msg), backgroundColor: color, duration: const Duration(seconds: 2)),
     );
   }
 
-  // ── Build ─────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -343,19 +313,11 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
               title: const Text('Log out?'),
               content: const Text('Are you sure you want to log out?'),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Cancel'),
-                ),
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
                 ElevatedButton(
                   onPressed: () => Navigator.pop(ctx, true),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.dangerRed,
-                  ),
-                  child: const Text(
-                    'Log Out',
-                    style: TextStyle(color: Colors.white),
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.dangerRed),
+                  child: const Text('Log Out', style: TextStyle(color: Colors.white)),
                 ),
               ],
             ),
@@ -373,10 +335,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         child: Scaffold(
           backgroundColor: AppColors.pageBg,
           appBar: _buildAppBar(),
-          floatingActionButton:
-              (_controller.formController != null &&
-                  _currentNavIndex == 0 &&
-                  !_showFormIntro)
+          floatingActionButton: (_controller.formController != null && _currentNavIndex == 0 && !_showFormIntro)
               ? _buildSelectAllFAB()
               : null,
           floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
@@ -395,12 +354,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
   }
 
-  // ── AppBar ────────────────────────────────────────────────
   PreferredSizeWidget _buildAppBar() {
-    // FIX: use _controller.username which is loaded from DB
-    final displayName = _controller.username.isNotEmpty
-        ? _controller.username
-        : 'User';
+    final displayName = _controller.username.isNotEmpty ? _controller.username : 'User';
 
     return AppBar(
       backgroundColor: AppColors.primaryBlue,
@@ -413,31 +368,21 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       ),
       title: GestureDetector(
         onTap: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ProfileScreen(userId: widget.userId),
-            ),
-          );
-          // Reload after returning from ProfileScreen — username/PII may have changed
+          await Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileScreen(userId: widget.userId)));
           if (mounted) {
             await _controller.loadAll(forceRefresh: true);
-            setState(() => _showFormIntro = true);
+            setState(() {
+              _showFormIntro = true;
+              _highlightedMissingFields = {};
+            });
           }
         },
         child: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(
-                Icons.person_outline,
-                color: Colors.white,
-                size: 18,
-              ),
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+              child: const Icon(Icons.person_outline, color: Colors.white, size: 18),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -445,21 +390,10 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text(
-                    'Welcome back,',
-                    style: TextStyle(
-                      color: Colors.white60,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
+                  const Text('Welcome back,', style: TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.w400)),
                   Text(
                     displayName,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
@@ -470,31 +404,15 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       ),
       actions: [
         IconButton(
-          icon: const Icon(
-            Icons.camera_alt_outlined,
-            color: Colors.white,
-            size: 22,
-          ),
+          icon: const Icon(Icons.camera_alt_outlined, color: Colors.white, size: 22),
           onPressed: _openCamera,
           tooltip: 'Scan ID',
         ),
-        // Only show Save when the form is visible
         if (!_showFormIntro && _currentNavIndex == 0)
           IconButton(
             icon: _controller.isSaving
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(
-                    Icons.save_outlined,
-                    color: Colors.white,
-                    size: 22,
-                  ),
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.save_outlined, color: Colors.white, size: 22),
             onPressed: _controller.isSaving ? null : _saveProfile,
             tooltip: 'Save Profile',
           ),
@@ -503,7 +421,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
   }
 
-  // ── Form Intro / Selection Card ───────────────────────────
   Widget _buildFormIntroCard() {
     return Center(
       child: SingleChildScrollView(
@@ -513,13 +430,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.08),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
-              ),
-            ],
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 24, offset: const Offset(0, 8))],
           ),
           padding: const EdgeInsets.all(28),
           child: Column(
@@ -528,57 +439,24 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
               Container(
                 width: 72,
                 height: 72,
-                decoration: BoxDecoration(
-                  color: AppColors.primaryBlue.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Icon(
-                  Icons.edit_document,
-                  size: 36,
-                  color: AppColors.primaryBlue,
-                ),
+                decoration: BoxDecoration(color: AppColors.primaryBlue.withOpacity(0.08), borderRadius: BorderRadius.circular(18)),
+                child: Icon(Icons.edit_document, size: 36, color: AppColors.primaryBlue),
               ),
               const SizedBox(height: 8),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryBlue.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  'Form Setup',
-                  style: TextStyle(
-                    color: AppColors.primaryBlue,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.4,
-                  ),
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(color: AppColors.primaryBlue.withOpacity(0.08), borderRadius: BorderRadius.circular(20)),
+                child: Text('Form Setup', style: TextStyle(color: AppColors.primaryBlue, fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 0.4)),
               ),
               const SizedBox(height: 16),
-              const Text(
-                'Ready to manage your info?',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1A1A2E),
-                ),
-                textAlign: TextAlign.center,
-              ),
+              const Text('Ready to manage your info?', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E)), textAlign: TextAlign.center),
               const SizedBox(height: 8),
               Text(
-                'Select a form type below. Your saved information will be '
-                'pre-filled and ready to transmit!',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey.shade600,
-                  height: 1.5,
-                ),
+                'Select a form type below. Your saved information will be pre-filled and ready to transmit!',
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade600, height: 1.5),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 28),
-              // Form Dropdown
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -591,26 +469,11 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                   child: DropdownButton<String>(
                     value: _controller.selectedTemplate?.templateId,
                     isExpanded: true,
-                    icon: Icon(
-                      Icons.keyboard_arrow_down_rounded,
-                      color: AppColors.primaryBlue,
-                    ),
-                    items: _controller.templates
-                        .map(
-                          (t) => DropdownMenuItem(
-                            value: t.templateId,
-                            child: Text(
-                              t.formName,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF1A1A2E),
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        )
-                        .toList(),
+                    icon: Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.primaryBlue),
+                    items: _controller.templates.map((t) => DropdownMenuItem(
+                      value: t.templateId,
+                      child: Text(t.formName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1A1A2E)), overflow: TextOverflow.ellipsis),
+                    )).toList(),
                     onChanged: (id) async {
                       if (id == null) return;
                       await _controller.switchTemplate(id);
@@ -620,22 +483,16 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-              // Continue button
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _controller.selectedTemplate == null
-                      ? null
-                      : () => setState(() => _showFormIntro = false),
+                  onPressed: _controller.selectedTemplate == null ? null : () => setState(() => _showFormIntro = false),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryBlue,
                     foregroundColor: Colors.white,
-                    disabledBackgroundColor:
-                        AppColors.primaryBlue.withOpacity(0.4),
+                    disabledBackgroundColor: AppColors.primaryBlue.withOpacity(0.4),
                     padding: const EdgeInsets.symmetric(vertical: 15),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 0,
                   ),
                   child: const Row(
@@ -643,13 +500,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                     children: [
                       Icon(Icons.arrow_forward_rounded, size: 18),
                       SizedBox(width: 8),
-                      Text(
-                        'Continue',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      Text('Continue', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ),
@@ -661,7 +512,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
   }
 
-  // ── Empty / error state ───────────────────────────────────
   Widget _buildEmptyState() {
     return RefreshIndicator(
       onRefresh: _loadAll,
@@ -672,27 +522,16 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           SizedBox(height: MediaQuery.of(context).size.height * 0.3),
           const Icon(Icons.error_outline, size: 48, color: Colors.grey),
           const SizedBox(height: 12),
-          Text(
-            'No forms available.',
-            style: TextStyle(color: Colors.grey.shade600),
-            textAlign: TextAlign.center,
-          ),
+          Text('No forms available.', style: TextStyle(color: Colors.grey.shade600), textAlign: TextAlign.center),
           const SizedBox(height: 8),
-          Text(
-            'Pull down to refresh',
-            style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
-            textAlign: TextAlign.center,
-          ),
+          Text('Pull down to refresh', style: TextStyle(color: Colors.grey.shade400, fontSize: 12), textAlign: TextAlign.center),
           const SizedBox(height: 24),
           Center(
             child: ElevatedButton.icon(
               onPressed: _loadAll,
               icon: const Icon(Icons.refresh),
               label: const Text('Retry'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primaryBlue,
-                foregroundColor: Colors.white,
-              ),
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryBlue, foregroundColor: Colors.white),
             ),
           ),
         ],
@@ -700,11 +539,12 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
   }
 
-  // ── Main form content ─────────────────────────────────────
   Widget _buildFormContent() {
     return Column(
       children: [
         _buildFormSelector(),
+        // Show missing fields banner if any are highlighted
+        if (_highlightedMissingFields.isNotEmpty) _buildMissingFieldsBanner(),
         Expanded(
           child: RefreshIndicator(
             onRefresh: _loadAll,
@@ -719,11 +559,37 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                       controller: _controller.formController!,
                       mode: 'mobile',
                       showCheckboxes: true,
+                      // Pass highlighted fields so the renderer can mark them red
+                      highlightedFields: _highlightedMissingFields,
                     ),
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildMissingFieldsBanner() {
+    return Container(
+      color: Colors.red.shade50,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, color: Colors.red.shade600, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '${_highlightedMissingFields.length} required field${_highlightedMissingFields.length == 1 ? '' : 's'} still empty — highlighted below in red',
+              style: TextStyle(fontSize: 12, color: Colors.red.shade700, fontWeight: FontWeight.w500),
+            ),
+          ),
+          TextButton(
+            onPressed: () => setState(() => _highlightedMissingFields = {}),
+            style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(40, 32)),
+            child: Text('Dismiss', style: TextStyle(fontSize: 12, color: Colors.red.shade600)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -733,10 +599,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(
         children: [
-          const Text(
-            'Form:',
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-          ),
+          const Text('Form:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
           const SizedBox(width: 12),
           Expanded(
             child: Container(
@@ -750,24 +613,14 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                 child: DropdownButton<String>(
                   value: _controller.selectedTemplate?.templateId,
                   isExpanded: true,
-                  items: _controller.templates
-                      .map(
-                        (t) => DropdownMenuItem(
-                          value: t.templateId,
-                          child: Text(
-                            t.formName,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      )
-                      .toList(),
+                  items: _controller.templates.map((t) => DropdownMenuItem(
+                    value: t.templateId,
+                    child: Text(t.formName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+                  )).toList(),
                   onChanged: (id) async {
                     if (id == null) return;
                     await _controller.switchTemplate(id);
+                    setState(() => _highlightedMissingFields = {});
                   },
                 ),
               ),
@@ -778,7 +631,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
   }
 
-  // ── Floating Select All Button ────────────────────────────
   Widget _buildSelectAllFAB() {
     final isSelectAll = _controller.formController?.selectAll ?? false;
     return FloatingActionButton.extended(
@@ -788,23 +640,14 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       },
       backgroundColor: isSelectAll ? AppColors.highlight : AppColors.primaryBlue,
       elevation: 6,
-      icon: Icon(
-        isSelectAll ? Icons.deselect_rounded : Icons.select_all_rounded,
-        color: Colors.white,
-        size: 20,
-      ),
+      icon: Icon(isSelectAll ? Icons.deselect_rounded : Icons.select_all_rounded, color: Colors.white, size: 20),
       label: Text(
         isSelectAll ? 'Deselect All' : 'Select All',
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-        ),
+        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
       ),
     );
   }
 
-  // ── Bottom nav ─────────────────────────────────────────────
   Widget _buildBottomNav() {
     return BottomNavigationBar(
       currentIndex: _currentNavIndex == 1 ? 0 : _currentNavIndex,
@@ -812,43 +655,22 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       backgroundColor: AppColors.primaryBlue,
       selectedItemColor: AppColors.highlight,
       unselectedItemColor: Colors.white60,
-      selectedLabelStyle: const TextStyle(
-        fontSize: 10,
-        fontWeight: FontWeight.w600,
-      ),
-      unselectedLabelStyle: const TextStyle(
-        fontSize: 10,
-        fontWeight: FontWeight.w400,
-      ),
+      selectedLabelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+      unselectedLabelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w400),
       type: BottomNavigationBarType.fixed,
       elevation: 10,
       items: [
-        const BottomNavigationBarItem(
-          icon: Icon(Icons.edit_document, size: 24),
-          label: 'Manage Info',
-        ),
+        const BottomNavigationBarItem(icon: Icon(Icons.edit_document, size: 24), label: 'Manage Info'),
         BottomNavigationBarItem(
           icon: Container(
             width: 32,
             height: 32,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Icon(
-              Icons.qr_code_scanner,
-              color: _currentNavIndex == 1
-                  ? AppColors.highlight
-                  : AppColors.primaryBlue,
-              size: 22,
-            ),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4)),
+            child: Icon(Icons.qr_code_scanner, color: _currentNavIndex == 1 ? AppColors.highlight : AppColors.primaryBlue, size: 22),
           ),
           label: 'Autofill QR',
         ),
-        const BottomNavigationBarItem(
-          icon: Icon(Icons.history, size: 24),
-          label: 'History',
-        ),
+        const BottomNavigationBarItem(icon: Icon(Icons.history, size: 24), label: 'History'),
       ],
     );
   }
