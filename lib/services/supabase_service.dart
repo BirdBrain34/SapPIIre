@@ -1090,11 +1090,4 @@ class SupabaseService {
     return _civilStatusDisplayValue(input);
   }
 
-  @Deprecated('Legacy method — use FieldValueService.pushToSubmission instead')
-  Future<bool> pushProfileToSession({
-    required String sessionId,
-    required String userId,
-  }) async {
-    return false;
-  }
 }
