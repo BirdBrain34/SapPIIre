@@ -577,6 +577,7 @@ class SupabaseService {
         'estadong_sibil_civil_status': civilStatus,
         'civil_status': civilStatus,
         'marital_status': civilStatus,
+        // Keep both canonical aliases for compatibility.
         'place_of_birth': birthplace,
         'lugar_ng_kapanganakan_place_of_birth': birthplace,
         'cp_number': phoneNumber,
@@ -879,9 +880,8 @@ class SupabaseService {
     }
   }
 
-  // ================================================================
-  // QR TRANSMISSION — sendDataToWebSession
-  // ================================================================
+  /// Sends the specific filtered data selected by the user to the web session.
+  /// This allows the user to choose exactly which fields to transmit via checkboxes.
   Future<bool> sendDataToWebSession(
     String sessionId,
     Map<String, dynamic> data, {

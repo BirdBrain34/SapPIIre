@@ -371,7 +371,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         formData: formData,
       );
 
-      // ── Audit copy (JSONB keeps __family_composition for record) ──
+      // ── Audit copy (JSONB keeps full submitted data for record) ──
       // Idempotent save keyed by session_id so repeated submits update one row.
       final created = await _submissionService.upsertClientSubmission(
         sessionId: _currentSessionId,
