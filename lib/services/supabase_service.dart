@@ -110,8 +110,6 @@ class SupabaseService {
     }
   }
 
-  // Legacy column definitions removed - no longer needed with user_field_values architecture
-
   // ================================================================
   // AUTHENTICATION
   // ================================================================
@@ -500,7 +498,7 @@ class SupabaseService {
             civilStatus, // Already converted in signup
         'civil_status': civilStatus,
         'marital_status': civilStatus,
-        // Keep both legacy and new canonical aliases for compatibility.
+        // Keep both canonical aliases for compatibility.
         'place_of_birth': birthplace,
         'lugar_ng_kapanganakan_place_of_birth': birthplace,
         'cp_number': phoneNumber,
@@ -796,16 +794,6 @@ class SupabaseService {
     }
   }
 
-  // Legacy PII save methods removed - all PII now saved to user_field_values via FieldValueService
-
-  @Deprecated('Legacy method - use FieldValueService.pushToSubmission instead')
-  Future<bool> pushProfileToSession({
-    required String sessionId,
-    required String userId,
-  }) async {
-    return false;
-  }
-
   /// Sends the specific filtered data selected by the user to the web session.
   /// This allows the user to choose exactly which fields to transmit via checkboxes.
   Future<bool> sendDataToWebSession(
@@ -872,13 +860,6 @@ class SupabaseService {
       return false;
     }
   }
-
-  // ================================================================
-  // SUBMISSION INTERCEPTOR - REMOVED
-  // ================================================================
-  // Legacy methods removed - all data now flows through user_field_values
-  // and submission_field_values. No more writes to family_composition or
-  // other legacy tables.
 
   Future<void> _invokeDecryptQrPayloadWithRetry(
     String sessionId, {

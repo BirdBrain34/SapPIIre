@@ -677,7 +677,7 @@ class FormStateController extends ChangeNotifier {
   }
 
   /// Preprocess formula to expand SUM_COLUMN() aggregate function calls.
-  /// Converts SUM_COLUMN(__family_composition, "allowance") → numeric sum
+  /// Converts SUM_COLUMN(table_key, "allowance") → numeric sum
   String _expandAggregates(String formula) {
     formula = _normalizeFormulaFieldReferences(formula);
 

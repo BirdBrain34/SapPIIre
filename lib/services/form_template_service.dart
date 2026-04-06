@@ -4,7 +4,6 @@
 // Responsibilities:
 // - Fetch form templates with sections, fields, options, and conditions
 // - Cache templates to avoid repeated database queries
-// - Build autofill maps from user profile data for form population
 //
 // Used by both mobile and web to load form definitions.
 
