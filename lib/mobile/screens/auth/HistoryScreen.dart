@@ -11,7 +11,12 @@ enum _SortOrder { asc, desc }
 class HistoryScreen extends StatefulWidget {
   final String userId;
   final bool embedded;
-  const HistoryScreen({super.key, required this.userId, this.embedded = false});
+
+  const HistoryScreen({
+    super.key,
+    required this.userId,
+    this.embedded = false,
+  });
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -34,7 +39,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     _loadHistory();
   }
 
-    // ── Logout ────────────────────────────────────────────────
+  // ── Logout ────────────────────────────────────────────────
   Future<void> _handleLogout() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -51,7 +56,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.dangerRed,
             ),
-            child: const Text('Log Out', style: TextStyle(color: Colors.white)),
+            child: const Text(
+              'Log Out',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -68,14 +76,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
+  // ── Load ──────────────────────────────────────────────────
   Future<void> _loadHistory() async {
     setState(() => _isLoading = true);
 
     try {
       final usernameFuture = _supabaseService.getUsername(widget.userId);
-      // Ensure your supabase_service.dart is updated to fetch last_edited_by/at
-      final submissionsFuture = _supabaseService
-          .fetchClientSubmissionHistoryByUser(widget.userId);
+      final submissionsFuture =
+          _supabaseService.fetchClientSubmissionHistoryByUser(widget.userId);
 
       final username = await usernameFuture;
       final submissions = await submissionsFuture;
@@ -94,13 +102,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
+  // ── Sort ──────────────────────────────────────────────────
   void _applySort() {
     final sorted = List<Map<String, dynamic>>.from(_submissions);
     sorted.sort((a, b) {
       int cmp;
       if (_sortField == _SortField.date) {
-        final aDate = DateTime.tryParse(a['created_at'] ?? '') ?? DateTime(0);
-        final bDate = DateTime.tryParse(b['created_at'] ?? '') ?? DateTime(0);
+        // Sort by scanned_at (when the citizen scanned), fall back to created_at
+        final aDate =
+            DateTime.tryParse(a['scanned_at'] ?? a['created_at'] ?? '') ??
+            DateTime(0);
+        final bDate =
+            DateTime.tryParse(b['scanned_at'] ?? b['created_at'] ?? '') ??
+            DateTime(0);
         cmp = aDate.compareTo(bDate);
       } else {
         final aType = (a['form_type'] ?? '').toString().toLowerCase();
@@ -120,23 +134,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
             : _SortOrder.desc;
       } else {
         _sortField = field;
-        _sortOrder = field == _SortField.date
-            ? _SortOrder.desc
-            : _SortOrder.asc;
+        _sortOrder =
+            field == _SortField.date ? _SortOrder.desc : _SortOrder.asc;
       }
     });
     _applySort();
   }
 
-  // 7p — Add the _getWorkerName helper
+  // ── Worker name helper ────────────────────────────────────
+  // last_edited_by stores name (already resolved from UUID in supabase_service)
   String _getWorkerName(Map<String, dynamic> item) {
-    // last_edited_by stores the worker's name or ID
-    final workerName = item['last_edited_by']?.toString().trim() ?? '';
-    return workerName;
+    return item['last_edited_by']?.toString().trim() ?? '';
   }
 
+  // ── Date formatter ────────────────────────────────────────
   String _formatDate(String? raw) {
-    if (raw == null) return '—';
+    if (raw == null || raw.isEmpty) return '—';
     try {
       final dt = DateTime.parse(raw).toLocal();
       const months = [
@@ -152,6 +165,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
+  // ── Build ─────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -160,13 +174,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _submissions.isEmpty
-              ? _buildEmptyState()
-              : Column(
-                  children: [
-                    _buildSortBar(),
-                    Expanded(child: _buildList()),
-                  ],
-                ),
+          ? _buildEmptyState()
+          : Column(
+              children: [
+                _buildSortBar(),
+                Expanded(child: _buildList()),
+              ],
+            ),
     );
   }
 
@@ -215,7 +229,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
           icon: const Icon(Icons.refresh, color: Colors.white, size: 22),
           onPressed: _loadHistory,
         ),
-        // ── Added Logout Button ──
         IconButton(
           icon: const Icon(Icons.logout, color: Colors.white, size: 22),
           onPressed: _handleLogout,
@@ -298,6 +311,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
             style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
             textAlign: TextAlign.center,
           ),
+          const SizedBox(height: 20),
+          TextButton.icon(
+            onPressed: _loadHistory,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Refresh'),
+          ),
         ],
       ),
     );
@@ -315,11 +334,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  // 7o — Updated _buildCard content
   Widget _buildCard(Map<String, dynamic> item) {
     final formType = item['form_type'] as String? ?? 'Unknown Form';
-    final createdAt = item['created_at'] as String?;
     final intakeRef = item['intake_reference'] as String?;
+
+    // scanned_at = when citizen QR scanned (injected by supabase_service)
+    final scannedAt = item['scanned_at'] as String?;
+    // last_edited_at = when staff processed/saved
+    final processedAt = item['last_edited_at'] as String?;
+    // Worker name — already resolved from UUID to display name
+    final workerName = _getWorkerName(item);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -340,6 +364,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Icon badge
             Container(
               width: 44,
               height: 44,
@@ -358,6 +383,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Form type + status badge
                   Row(
                     children: [
                       Expanded(
@@ -390,11 +416,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       ),
                     ],
                   ),
+
+                  // Intake reference
                   if (intakeRef != null && intakeRef.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Icon(Icons.tag, size: 12, color: AppColors.primaryBlue),
+                        Icon(
+                          Icons.tag,
+                          size: 12,
+                          color: AppColors.primaryBlue,
+                        ),
                         const SizedBox(width: 4),
                         Text(
                           intakeRef,
@@ -408,32 +440,46 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       ],
                     ),
                   ],
+
+                  // Scanned at (when citizen scanned QR)
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      Icon(Icons.qr_code_scanner,
-                          size: 12, color: Colors.grey.shade400),
+                      Icon(
+                        Icons.qr_code_scanner,
+                        size: 12,
+                        color: Colors.grey.shade400,
+                      ),
                       const SizedBox(width: 5),
-                      Text(
-                        'Scanned: ${_formatDate(createdAt)}',
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                      Expanded(
+                        child: Text(
+                          'Scanned: ${_formatDate(scannedAt)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade500,
+                          ),
+                        ),
                       ),
                     ],
                   ),
-                  if (_getWorkerName(item).isNotEmpty) ...[
+
+                  // Assisted by (worker name)
+                  if (workerName.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Icon(Icons.person_outline,
-                            size: 12,
-                            color: AppColors.primaryBlue.withOpacity(0.7)),
+                        Icon(
+                          Icons.person_outline,
+                          size: 12,
+                          color: AppColors.primaryBlue.withOpacity(0.7),
+                        ),
                         const SizedBox(width: 5),
                         Expanded(
                           child: Text(
-                            'Assisted by: ${_getWorkerName(item)}',
+                            'Assisted by: $workerName',
                             style: TextStyle(
                               fontSize: 12,
-                              color: AppColors.primaryBlue.withOpacity(0.8),
+                              color: AppColors.primaryBlue.withOpacity(0.85),
                               fontWeight: FontWeight.w500,
                             ),
                             overflow: TextOverflow.ellipsis,
@@ -442,16 +488,26 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       ],
                     ),
                   ],
-                  if (item['last_edited_at'] != null) ...[
+
+                  // Processed at (when staff saved)
+                  if (processedAt != null && processedAt.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Icon(Icons.edit_outlined,
-                            size: 12, color: Colors.grey.shade400),
+                        Icon(
+                          Icons.edit_outlined,
+                          size: 12,
+                          color: Colors.grey.shade400,
+                        ),
                         const SizedBox(width: 5),
-                        Text(
-                          'Processed: ${_formatDate(item['last_edited_at'] as String?)}',
-                          style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                        Expanded(
+                          child: Text(
+                            'Processed: ${_formatDate(processedAt)}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -466,8 +522,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 }
 
-
-// ── Sort chip ──────────────────────────────────────────────────
+// ── Sort chip widget ───────────────────────────────────────────
 class _SortChip extends StatelessWidget {
   final String label;
   final IconData icon;
@@ -507,7 +562,8 @@ class _SortChip extends StatelessWidget {
             Icon(
               icon,
               size: 12,
-              color: isActive ? AppColors.primaryBlue : Colors.grey.shade500,
+              color:
+                  isActive ? AppColors.primaryBlue : Colors.grey.shade500,
             ),
             const SizedBox(width: 4),
             Text(
@@ -515,7 +571,9 @@ class _SortChip extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-                color: isActive ? AppColors.primaryBlue : Colors.grey.shade600,
+                color: isActive
+                    ? AppColors.primaryBlue
+                    : Colors.grey.shade600,
               ),
             ),
             if (isActive) ...[

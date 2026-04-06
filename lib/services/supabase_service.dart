@@ -19,6 +19,9 @@ class SupabaseService {
     return _supabase.auth.signOut();
   }
 
+  // ================================================================
+  // TEMPLATE POPUP CONFIG
+  // ================================================================
   Future<Map<String, dynamic>?> fetchTemplatePopupConfig(
     String templateId,
   ) async {
@@ -30,13 +33,14 @@ class SupabaseService {
           .maybeSingle();
       return row == null ? null : Map<String, dynamic>.from(row);
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('fetchTemplatePopupConfig error: $e');
-      }
+      debugPrint('fetchTemplatePopupConfig error: $e');
       return null;
     }
   }
 
+  // ================================================================
+  // PII SAVE — canonical key matching across all templates
+  // ================================================================
   Future<Map<String, dynamic>> saveScannedIdFieldValues({
     required String userId,
     required Map<String, String> canonicalValues,
@@ -92,14 +96,10 @@ class SupabaseService {
           template: template,
           formData: formData,
         );
-        if (saved) {
-          savedAny = true;
-        }
+        if (saved) savedAny = true;
       }
 
-      if (savedAny) {
-        return {'success': true};
-      }
+      if (savedAny) return {'success': true};
 
       return {
         'success': false,
@@ -110,16 +110,16 @@ class SupabaseService {
     }
   }
 
-  // Legacy column definitions removed - no longer needed with user_field_values architecture
-
   // ================================================================
-  // AUTHENTICATION
+  // AUTHENTICATION — getAccountInfo
   // ================================================================
   Future<Map<String, dynamic>> getAccountInfo(String userId) async {
     try {
       final response = await _supabase
           .from('user_accounts')
-          .select('user_id, username, email, phone_number, is_active, created_at, last_login')
+          .select(
+            'user_id, username, email, phone_number, is_active, created_at, last_login',
+          )
           .eq('user_id', userId)
           .maybeSingle();
 
@@ -136,25 +136,23 @@ class SupabaseService {
     }
   }
 
+  // ── updateAccountInfo — only updates username, email/phone not editable ──
   Future<void> updateAccountInfo(
     String userId,
     Map<String, dynamic> updates,
   ) async {
     try {
-      // We only send username and email to match your new SQL schema
       await _supabase
           .from('user_accounts')
-          .update({
-            'username': updates['username'],
-          })
+          .update({'username': updates['username']})
           .eq('user_id', userId);
     } catch (e) {
       throw Exception('Failed to update account: $e');
     }
   }
 
-  //check duplicates for signup 
-    Future<Map<String, dynamic>> checkDuplicateSignup({
+  // ── checkDuplicateSignup ──────────────────────────────────────────
+  Future<Map<String, dynamic>> checkDuplicateSignup({
     String? email,
     String? phone,
     String? username,
@@ -170,7 +168,8 @@ class SupabaseService {
           return {
             'success': false,
             'field': 'email',
-            'message': 'This email is already registered. Please log in instead.',
+            'message':
+                'This email is already registered. Please log in instead.',
           };
         }
       }
@@ -207,18 +206,19 @@ class SupabaseService {
 
       return {'success': true};
     } catch (e) {
-      return {'success': false, 'message': 'Validation error: ${e.toString()}'};
+      return {
+        'success': false,
+        'message': 'Validation error: ${e.toString()}',
+      };
     }
   }
 
-  /// Step 1 of signup: register with Supabase Auth.
-  /// Supabase sends an OTP to the email automatically.
+  // ── signUpWithEmail ───────────────────────────────────────────────
   Future<Map<String, dynamic>> signUpWithEmail({
     required String email,
-    String? password, // Optional: if provided, use it; otherwise generate temp
+    String? password,
   }) async {
     try {
-      // Check user_accounts for this email
       final existing = await _supabase
           .from('user_accounts')
           .select('email, user_id')
@@ -228,7 +228,6 @@ class SupabaseService {
       if (existing != null) {
         final userId = existing['user_id'] as String?;
         if (userId != null && userId.isNotEmpty) {
-          // Check if they finished signup (have field values)
           final fieldValues = await _supabase
               .from('user_field_values')
               .select('id')
@@ -237,19 +236,15 @@ class SupabaseService {
               .maybeSingle();
 
           if (fieldValues != null) {
-            // Fully registered — block
             return {
               'success': false,
               'message':
                   'This email is already registered. Please log in instead.',
             };
           } else {
-            // Verified email but never finished — send OTP via signInWithOtp
-            // and treat it as continuing their signup
             await _supabase.auth.signInWithOtp(
               email: email,
-              shouldCreateUser:
-                  false, // don't create, just send OTP to existing
+              shouldCreateUser: false,
             );
             return {
               'success': true,
@@ -260,30 +255,25 @@ class SupabaseService {
         }
       }
 
-      // Brand new email — create user and send OTP
       final signupPassword =
           password ?? DateTime.now().millisecondsSinceEpoch.toString();
       final res = await _supabase.auth.signUp(
         email: email,
         password: signupPassword,
-        emailRedirectTo: null, // Disable email confirmation link
+        emailRedirectTo: null,
       );
 
       if (res.user == null) {
         return {'success': false, 'message': 'Sign-up failed. Try again.'};
       }
 
-      // Explicitly send OTP after signup
       try {
         await _supabase.auth.signInWithOtp(
           email: email,
           shouldCreateUser: false,
         );
       } catch (e) {
-        if (kDebugMode) {
-          debugPrint('OTP send failed: $e');
-        }
-        // Continue anyway - user can use resend button
+        debugPrint('OTP send failed: $e');
       }
 
       return {
@@ -296,7 +286,7 @@ class SupabaseService {
     }
   }
 
-  /// Step 2 of signup: verify the OTP sent to email.
+  // ── verifyEmailOtp ────────────────────────────────────────────────
   Future<Map<String, dynamic>> verifyEmailOtp({
     required String email,
     required String otp,
@@ -312,11 +302,7 @@ class SupabaseService {
         return {'success': false, 'message': 'Invalid or expired code.'};
       }
 
-      return {
-        'success': true,
-        'user_id':
-            response.user!.id, // ← this is now reliable since OTP confirmed
-      };
+      return {'success': true, 'user_id': response.user!.id};
     } on AuthException catch (e) {
       return {'success': false, 'message': e.message};
     } catch (e) {
@@ -327,6 +313,7 @@ class SupabaseService {
     }
   }
 
+  // ── resendEmailOtp ────────────────────────────────────────────────
   Future<Map<String, dynamic>> resendEmailOtp(String email) async {
     try {
       await _supabase.auth.signInWithOtp(
@@ -337,15 +324,18 @@ class SupabaseService {
     } on AuthException catch (e) {
       return {'success': false, 'message': e.message};
     } catch (e) {
-      return {'success': false, 'message': 'Failed to resend: ${e.toString()}'};
+      return {
+        'success': false,
+        'message': 'Failed to resend: ${e.toString()}',
+      };
     }
   }
 
-  /// Step 3 of signup: Phone OTP.
+  // ── sendPhoneOtp ──────────────────────────────────────────────────
   Future<Map<String, dynamic>> sendPhoneOtp(String phone) async {
     try {
-      final otp = (100000 + (DateTime.now().millisecondsSinceEpoch % 900000))
-          .toString();
+      final otp =
+          (100000 + (DateTime.now().millisecondsSinceEpoch % 900000)).toString();
 
       final response = await http.post(
         Uri.parse('https://api.semaphore.co/api/v4/otp'),
@@ -355,13 +345,11 @@ class SupabaseService {
           'message':
               'Your SapPIIre verification code is {otp}. Do not share this with anyone.',
           'code': otp,
-          //'sendername': 'SEMAPHORE',
           'sendername': 'SapPIIre',
         },
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        // Store OTP in Supabase directly
         await _supabase.from('phone_otp').delete().eq('phone', phone);
         await _supabase.from('phone_otp').insert({
           'phone': phone,
@@ -383,6 +371,7 @@ class SupabaseService {
     }
   }
 
+  // ── verifyPhoneOtp ────────────────────────────────────────────────
   Future<Map<String, dynamic>> verifyPhoneOtp({
     required String phone,
     required String otp,
@@ -416,229 +405,7 @@ class SupabaseService {
     }
   }
 
-  String _normalizeToken(String raw) {
-    return raw
-        .trim()
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
-        .replaceAll(RegExp(r'_+'), '_')
-        .replaceAll(RegExp(r'^_+|_+$'), '');
-  }
-
-  String _civilStatusBucket(String raw) {
-    final t = _normalizeToken(raw);
-    if (t.isEmpty) return '';
-
-    if (t == 's' || t.contains('single')) return 'single';
-    if (t == 'm' || t.contains('married') || t.contains('kasal')) {
-      return 'married';
-    }
-    if (t == 'w' || t.contains('widow') || t.contains('balo')) {
-      return 'widowed';
-    }
-    if (t == 'sep' ||
-        t.contains('separated') ||
-        t.contains('hiwalay') ||
-        t.contains('live_in') ||
-        t.contains('livein')) {
-      return 'separated';
-    }
-    if (t == 'a' || t.contains('annul')) return 'annulled';
-    return '';
-  }
-
-  String _civilStatusDisplayValue(String raw) {
-    switch (_civilStatusBucket(raw)) {
-      case 'single':
-        return 'Single';
-      case 'married':
-        return 'Married';
-      case 'widowed':
-        return 'Widowed';
-      case 'separated':
-        return 'Separated';
-      case 'annulled':
-        return 'Annulled';
-      default:
-        return raw;
-    }
-  }
-
-  String _resolveCivilStatusForField(FormFieldModel field, String rawValue) {
-    final input = rawValue.trim();
-    if (input.isEmpty) return input;
-
-    final bucket = _civilStatusBucket(input);
-    if (bucket.isEmpty) return input;
-
-    if (field.options.isNotEmpty) {
-      for (final option in field.options) {
-        final byValue = _civilStatusBucket(option.value);
-        final byLabel = _civilStatusBucket(option.label);
-        if (byValue == bucket || byLabel == bucket) {
-          return option.value;
-        }
-      }
-    }
-
-    return _civilStatusDisplayValue(input);
-  }
-
-  /// Step 4 of signup: save profile data after OTP is verified.
-  /// Writes all PII to user_field_values by dynamically matching field_name from GIS v2.
-  Future<Map<String, dynamic>> saveProfileAfterVerification({
-    required String userId,
-    required String username,
-    required String password,
-    required String email,
-    required String firstName,
-    required String middleName,
-    required String lastName,
-    required String dateOfBirth,
-    required String phoneNumber,
-    required String birthplace,
-    required String gender,
-    required String civilStatus,
-    required String addressLine,
-  }) async {
-    try {
-      // 1. Set password in Supabase Auth (user should be authenticated after OTP verification)
-      try {
-        await _supabase.auth.updateUser(UserAttributes(password: password));
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint('Password update failed: $e');
-        }
-        // Continue anyway - user can reset password later
-      }
-
-      // 2. Ensure user_accounts row exists (upsert username and email)
-      await _supabase.from('user_accounts').upsert({
-        'user_id': userId,
-        'username': username,
-        'email': email,
-        'phone_number': phoneNumber,
-        'is_active': true,
-      }, onConflict: 'user_id');
-
-      // 3. Parse birthdate M/D/YYYY → YYYY-MM-DD
-      final dateParts = dateOfBirth.split('/');
-      final formattedDate = dateParts.length == 3
-          ? '${dateParts[2]}-'
-                '${dateParts[0].padLeft(2, '0')}-'
-                '${dateParts[1].padLeft(2, '0')}'
-          : dateOfBirth;
-      final birthYear = dateParts.length == 3
-          ? int.tryParse(dateParts[2])
-          : null;
-      final age = birthYear != null ? DateTime.now().year - birthYear : null;
-
-      // 4. Fetch ALL templates to save data across all matching canonical keys
-      final templateSvc = FormTemplateService();
-      final templates = await templateSvc.fetchActiveTemplates();
-
-      if (templates.isEmpty) {
-        return {
-          'success': false,
-          'message':
-              'System error: No form templates available. Contact administrator.',
-        };
-      }
-
-      // Collect ALL fields across ALL templates
-      final allFields = templates.expand((t) => t.allFields).toList();
-
-      // 5. Build canonical_field_key → value map
-      final piiData = {
-        'first_name': firstName,
-        'middle_name': middleName,
-        'last_name': lastName,
-        'date_of_birth': formattedDate,
-        if (age != null) 'age': age.toString(),
-        'kasarian_sex':
-            gender, // Already converted in signup (M/F or Male/Female)
-        'estadong_sibil_civil_status':
-            civilStatus, // Already converted in signup
-        'civil_status': civilStatus,
-        'marital_status': civilStatus,
-        // Keep both legacy and new canonical aliases for compatibility.
-        'place_of_birth': birthplace,
-        'lugar_ng_kapanganakan_place_of_birth': birthplace,
-        'cp_number': phoneNumber,
-        'phone_number': phoneNumber,
-        'contact_number': phoneNumber,
-        'email_address': email,
-        'house_number_street_name_phase_purok': addressLine,
-      };
-
-      // 6. Match canonical_field_key → field_id across ALL templates and save
-      final formDataByTemplate = <String, Map<String, dynamic>>{};
-
-      for (final entry in piiData.entries) {
-        if (entry.value.toString().isEmpty) {
-          continue;
-        }
-
-        // Find ALL fields with this canonical key across ALL templates
-        final matchingFields = allFields
-            .where((f) => f.canonicalFieldKey == entry.key)
-            .toList();
-
-        if (matchingFields.isEmpty) {
-          continue;
-        }
-
-        // Save to ALL matching fields (across all templates)
-        for (final field in matchingFields) {
-          var mappedValue = entry.value.toString();
-          if (entry.key == 'estadong_sibil_civil_status' ||
-              entry.key == 'civil_status' ||
-              entry.key == 'marital_status') {
-            mappedValue = _resolveCivilStatusForField(field, mappedValue);
-          }
-
-          final templateData = formDataByTemplate.putIfAbsent(
-            field.templateId,
-            () => <String, dynamic>{},
-          );
-          templateData[field.fieldName] = mappedValue;
-        }
-      }
-
-      for (final template in templates) {
-        final formData = formDataByTemplate[template.templateId];
-        if (formData == null || formData.isEmpty) {
-          continue;
-        }
-
-        final saved = await _fieldValueService.saveUserFieldValues(
-          userId: userId,
-          template: template,
-          formData: formData,
-        );
-
-        if (!saved) {
-          throw Exception(
-            'Failed to save profile fields for template ${template.templateId}',
-          );
-        }
-      }
-
-      return {
-        'success': true,
-        'message': 'Account created successfully',
-        'user_id': userId,
-      };
-    } catch (e) {
-      debugPrint('saveProfileAfterVerification error: $e');
-      return {
-        'success': false,
-        'message': 'Error saving profile: ${e.toString()}',
-      };
-    }
-  }
-
-  /// Login using Supabase Auth
+  // ── LOGIN — supports username, email, or phone ────────────────────
   // Track failed attempts per identifier in memory
   static final Map<String, int> _failedAttempts = {};
   static final Map<String, DateTime> _lockoutUntil = {};
@@ -657,7 +424,8 @@ class SupabaseService {
       final remaining = lockout.difference(DateTime.now()).inMinutes + 1;
       return {
         'success': false,
-        'message': 'Too many failed attempts. Try again in $remaining minute(s).',
+        'message':
+            'Too many failed attempts. Try again in $remaining minute(s).',
       };
     }
 
@@ -675,11 +443,11 @@ class SupabaseService {
 
       if (account == null) {
         _recordFailedAttempt(identifier);
-        return {'success': false, 'message': 'Account does not exist'};
+        return {'success': false, 'message': 'Account does not exist.'};
       }
 
       if (account['is_active'] == false) {
-        return {'success': false, 'message': 'Account is deactivated'};
+        return {'success': false, 'message': 'Account is deactivated.'};
       }
 
       final response = await _supabase.auth.signInWithPassword(
@@ -739,10 +507,147 @@ class SupabaseService {
     }
   }
 
-  // ================================================================
-  // USER PROFILE  (all original methods below — unchanged)
-  // ================================================================
+  // ── saveProfileAfterVerification — Step 4 of signup ──────────────
+  Future<Map<String, dynamic>> saveProfileAfterVerification({
+    required String userId,
+    required String username,
+    required String password,
+    required String email,
+    required String firstName,
+    required String middleName,
+    required String lastName,
+    required String dateOfBirth,
+    required String phoneNumber,
+    required String birthplace,
+    required String gender,
+    required String civilStatus,
+    required String addressLine,
+  }) async {
+    try {
+      // 1. Set password in Supabase Auth
+      try {
+        await _supabase.auth.updateUser(UserAttributes(password: password));
+      } catch (e) {
+        debugPrint('Password update failed: $e');
+      }
 
+      // 2. Upsert user_accounts — includes phone_number
+      await _supabase.from('user_accounts').upsert({
+        'user_id': userId,
+        'username': username,
+        'email': email,
+        'phone_number': phoneNumber,
+        'is_active': true,
+      }, onConflict: 'user_id');
+
+      // 3. Parse birthdate M/D/YYYY → YYYY-MM-DD
+      final dateParts = dateOfBirth.split('/');
+      final formattedDate = dateParts.length == 3
+          ? '${dateParts[2]}-'
+                '${dateParts[0].padLeft(2, '0')}-'
+                '${dateParts[1].padLeft(2, '0')}'
+          : dateOfBirth;
+      final birthYear =
+          dateParts.length == 3 ? int.tryParse(dateParts[2]) : null;
+      final age =
+          birthYear != null ? DateTime.now().year - birthYear : null;
+
+      // 4. Fetch ALL templates
+      final templateSvc = FormTemplateService();
+      final templates = await templateSvc.fetchActiveTemplates();
+
+      if (templates.isEmpty) {
+        return {
+          'success': false,
+          'message':
+              'System error: No form templates available. Contact administrator.',
+        };
+      }
+
+      final allFields = templates.expand((t) => t.allFields).toList();
+
+      // 5. Build canonical_field_key → value map
+      final piiData = {
+        'first_name': firstName,
+        'middle_name': middleName,
+        'last_name': lastName,
+        'date_of_birth': formattedDate,
+        if (age != null) 'age': age.toString(),
+        'kasarian_sex': gender,
+        'estadong_sibil_civil_status': civilStatus,
+        'civil_status': civilStatus,
+        'marital_status': civilStatus,
+        'place_of_birth': birthplace,
+        'lugar_ng_kapanganakan_place_of_birth': birthplace,
+        'cp_number': phoneNumber,
+        'phone_number': phoneNumber,
+        'contact_number': phoneNumber,
+        'email_address': email,
+        'house_number_street_name_phase_purok': addressLine,
+      };
+
+      // 6. Match canonical_field_key → field_id across ALL templates and save
+      final formDataByTemplate = <String, Map<String, dynamic>>{};
+
+      for (final entry in piiData.entries) {
+        if (entry.value.toString().isEmpty) continue;
+
+        final matchingFields = allFields
+            .where((f) => f.canonicalFieldKey == entry.key)
+            .toList();
+
+        if (matchingFields.isEmpty) continue;
+
+        for (final field in matchingFields) {
+          var mappedValue = entry.value.toString();
+          if (entry.key == 'estadong_sibil_civil_status' ||
+              entry.key == 'civil_status' ||
+              entry.key == 'marital_status') {
+            mappedValue = _resolveCivilStatusForField(field, mappedValue);
+          }
+
+          final templateData = formDataByTemplate.putIfAbsent(
+            field.templateId,
+            () => <String, dynamic>{},
+          );
+          templateData[field.fieldName] = mappedValue;
+        }
+      }
+
+      for (final template in templates) {
+        final formData = formDataByTemplate[template.templateId];
+        if (formData == null || formData.isEmpty) continue;
+
+        final saved = await _fieldValueService.saveUserFieldValues(
+          userId: userId,
+          template: template,
+          formData: formData,
+        );
+
+        if (!saved) {
+          throw Exception(
+            'Failed to save profile fields for template ${template.templateId}',
+          );
+        }
+      }
+
+      return {
+        'success': true,
+        'message': 'Account created successfully',
+        'user_id': userId,
+      };
+    } catch (e) {
+      debugPrint('saveProfileAfterVerification error: $e');
+      return {
+        'success': false,
+        'message': 'Error saving profile: ${e.toString()}',
+      };
+    }
+  }
+
+  // ================================================================
+  // USER PROFILE
+  // ================================================================
   Future<String?> getUsername(String userId) async {
     try {
       final response = await _supabase
@@ -757,13 +662,20 @@ class SupabaseService {
     }
   }
 
+  // ================================================================
+  // HISTORY — fetchClientSubmissionHistoryByUser
+  // Reads form_submission to get session IDs for this user,
+  // then reads client_submissions for display data.
+  // Resolves worker UUIDs to names via staff_profiles.
+  // ================================================================
   Future<List<Map<String, dynamic>>> fetchClientSubmissionHistoryByUser(
     String userId,
   ) async {
     try {
+      // Step 1: Get all form_submission IDs for this user
       final sessionRows = await _supabase
           .from('form_submission')
-          .select('id')
+          .select('id, created_at, scanned_at')
           .eq('user_id', userId);
 
       final sessionIds = (sessionRows as List)
@@ -771,13 +683,23 @@ class SupabaseService {
           .whereType<String>()
           .toList();
 
-      if (sessionIds.isEmpty) {
-        return [];
+      // Build a map of session_id -> scanned_at for scan time lookup
+      final scanTimeMap = <String, String>{};
+      for (final row in sessionRows as List) {
+        final id = row['id']?.toString() ?? '';
+        final scannedAt = row['scanned_at']?.toString() ?? '';
+        final createdAt = row['created_at']?.toString() ?? '';
+        if (id.isNotEmpty) {
+          scanTimeMap[id] = scannedAt.isNotEmpty ? scannedAt : createdAt;
+        }
       }
+
+      if (sessionIds.isEmpty) return [];
 
       const fields =
           'id, form_type, intake_reference, created_at, session_id, data, last_edited_by, last_edited_at';
 
+      // Step 2: Match client_submissions by session_id column
       final byColumn = await _supabase
           .from('client_submissions')
           .select(fields)
@@ -786,6 +708,7 @@ class SupabaseService {
 
       final submissions = List<Map<String, dynamic>>.from(byColumn as List);
 
+      // Step 3: Also try JSONB match (fallback for older records)
       try {
         final byJsonb = await _supabase
             .from('client_submissions')
@@ -801,7 +724,54 @@ class SupabaseService {
           }
         }
       } catch (_) {
-        // JSONB filter is optional across environments.
+        // JSONB filter is optional
+      }
+
+      // Step 4: Inject scan time from form_submission into each record
+      for (final s in submissions) {
+        final sid = s['session_id']?.toString() ?? '';
+        if (sid.isNotEmpty && scanTimeMap.containsKey(sid)) {
+          s['scanned_at'] = scanTimeMap[sid];
+        }
+        // If scanned_at not set, fall back to created_at
+        s['scanned_at'] ??= s['created_at'];
+      }
+
+      // Step 5: Resolve worker UUIDs to names via staff_profiles
+      // last_edited_by may store a UUID (cswd_id) or a plain name string
+      final workerIds = submissions
+          .map((s) => s['last_edited_by']?.toString().trim() ?? '')
+          .where((id) => id.isNotEmpty && _looksLikeUuid(id))
+          .toSet()
+          .toList();
+
+      if (workerIds.isNotEmpty) {
+        try {
+          final profiles = await _supabase
+              .from('staff_profiles')
+              .select('cswd_id, first_name, last_name')
+              .inFilter('cswd_id', workerIds);
+
+          final nameMap = <String, String>{};
+          for (final p in profiles as List) {
+            final id = p['cswd_id']?.toString() ?? '';
+            final name = [
+              p['first_name']?.toString() ?? '',
+              p['last_name']?.toString() ?? '',
+            ].where((s) => s.isNotEmpty).join(' ');
+            if (id.isNotEmpty && name.isNotEmpty) nameMap[id] = name;
+          }
+
+          // Replace UUID with display name in-place
+          for (final s in submissions) {
+            final editorId = s['last_edited_by']?.toString().trim() ?? '';
+            if (nameMap.containsKey(editorId)) {
+              s['last_edited_by'] = nameMap[editorId];
+            }
+          }
+        } catch (e) {
+          debugPrint('Worker name resolution error: $e');
+        }
       }
 
       return submissions;
@@ -811,19 +781,24 @@ class SupabaseService {
     }
   }
 
-  /// Load all PII for a user from user_field_values.
-  /// Returns a Map<String, dynamic> keyed by field_name.
-  /// Loads from ALL templates and uses canonical_field_key for deduplication.
+  // ── Helper: detect UUID string ──────────────────────────────────
+  bool _looksLikeUuid(String s) {
+    return RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+      caseSensitive: false,
+    ).hasMatch(s);
+  }
+
+  // ================================================================
+  // PII LOAD — loadPiiFromFieldValues
+  // ================================================================
   Future<Map<String, dynamic>> loadPiiFromFieldValues(String userId) async {
     try {
       final templateSvc = FormTemplateService();
       final templates = await templateSvc.fetchActiveTemplates();
 
-      if (templates.isEmpty) {
-        return {};
-      }
+      if (templates.isEmpty) return {};
 
-      // Collect all fields across all templates
       final allFields = templates.expand((t) => t.allFields).toList();
       final fieldIds = allFields
           .where((f) => f.parentFieldId == null)
@@ -841,8 +816,6 @@ class SupabaseService {
           .inFilter('field_id', fieldIds)
           .order('updated_at', ascending: false);
 
-      // Map field_id → canonical_field_key (for deduplication)
-      // If multiple templates have same canonical key, use first value found
       final idToCanonicalKey = {
         for (final f in allFields) f.fieldId: f.canonicalFieldKey,
       };
@@ -867,11 +840,9 @@ class SupabaseService {
         if (version == 1) {
           final iv = row['iv'] as String? ?? '';
           if (iv.trim().isEmpty) {
-            if (kDebugMode) {
-              debugPrint(
-                'loadPiiFromFieldValues warning: missing iv for encrypted field_id=$fid',
-              );
-            }
+            debugPrint(
+              'loadPiiFromFieldValues warning: missing iv for field_id=$fid',
+            );
             continue;
           }
 
@@ -882,11 +853,9 @@ class SupabaseService {
           );
 
           if (resolvedValue.isEmpty) {
-            if (kDebugMode) {
-              debugPrint(
-                'loadPiiFromFieldValues warning: decryption failed for field_id=$fid',
-              );
-            }
+            debugPrint(
+              'loadPiiFromFieldValues warning: decryption failed for field_id=$fid',
+            );
             continue;
           }
         }
@@ -897,7 +866,6 @@ class SupabaseService {
 
         final canonicalKey = idToCanonicalKey[fid];
         if (canonicalKey != null && canonicalKey.isNotEmpty) {
-          // Use canonical_field_key as the key (deduplicates across templates)
           if (!result.containsKey(canonicalKey)) {
             result[canonicalKey] = resolvedValue;
           }
@@ -911,29 +879,30 @@ class SupabaseService {
     }
   }
 
-  // Legacy PII save methods removed - all PII now saved to user_field_values via FieldValueService
-
-  @Deprecated('Legacy method - use FieldValueService.pushToSubmission instead')
-  Future<bool> pushProfileToSession({
-    required String sessionId,
-    required String userId,
-  }) async {
-    return false;
-  }
-
-  /// Sends the specific filtered data selected by the user to the web session.
-  /// This allows the user to choose exactly which fields to transmit via checkboxes.
+  // ================================================================
+  // QR TRANSMISSION — sendDataToWebSession
+  // ================================================================
   Future<bool> sendDataToWebSession(
     String sessionId,
     Map<String, dynamic> data, {
     String? userId,
   }) async {
     try {
-      final publicKey = await HybridCryptoService.fetchAndCacheRsaPublicKey(
-        forceRefresh: true,
-      );
+      // Attempt hybrid encryption
+      String publicKey = '';
+      try {
+        publicKey = await HybridCryptoService.fetchAndCacheRsaPublicKey(
+          forceRefresh: true,
+        );
+      } catch (e) {
+        debugPrint('RSA public key fetch failed: $e');
+      }
 
       if (publicKey.trim().isEmpty) {
+        // Fallback: transmit unencrypted (transmission_version = 0)
+        debugPrint(
+          'sendDataToWebSession: no RSA key, falling back to unencrypted',
+        );
         final fallbackResponse = await _supabase
             .from('form_submission')
             .update({
@@ -971,29 +940,37 @@ class SupabaseService {
           .maybeSingle();
 
       if (response == null) {
-        return false;
+        // Session may not be 'active' anymore — try without status filter
+        debugPrint(
+          'sendDataToWebSession: status=active filter returned null, retrying without filter',
+        );
+        final retryResponse = await _supabase
+            .from('form_submission')
+            .update({
+              'encrypted_payload': envelope.encryptedPayload,
+              'payload_iv': envelope.payloadIv,
+              'encrypted_aes_key': envelope.encryptedAesKey,
+              'transmission_version': 1,
+              'status': 'scanned',
+              'scanned_at': DateTime.now().toUtc().toIso8601String(),
+              if (userId != null) 'user_id': userId,
+            })
+            .eq('id', sessionId)
+            .select()
+            .maybeSingle();
+
+        if (retryResponse == null) return false;
       }
 
+      // Invoke edge function to decrypt on server side
       await _invokeDecryptQrPayloadWithRetry(sessionId);
 
-      // Intentionally do not write to client_submissions here.
-      // client_submissions must only be written during staff finalize on web.
-
-      return response != null;
+      return true;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('sendDataToWebSession error for session $sessionId: $e');
-      }
+      debugPrint('sendDataToWebSession error for session $sessionId: $e');
       return false;
     }
   }
-
-  // ================================================================
-  // SUBMISSION INTERCEPTOR - REMOVED
-  // ================================================================
-  // Legacy methods removed - all data now flows through user_field_values
-  // and submission_field_values. No more writes to family_composition or
-  // other legacy tables.
 
   Future<void> _invokeDecryptQrPayloadWithRetry(
     String sessionId, {
@@ -1002,11 +979,9 @@ class SupabaseService {
     try {
       final accessToken = _supabase.auth.currentSession?.accessToken;
       if (accessToken == null || accessToken.isEmpty) {
-        if (kDebugMode) {
-          debugPrint(
-            'sendDataToWebSession decrypt-qr-payload session=$sessionId: missing access token, skipping invoke',
-          );
-        }
+        debugPrint(
+          'decrypt-qr-payload session=$sessionId: missing access token, skipping',
+        );
         return;
       }
 
@@ -1022,11 +997,10 @@ class SupabaseService {
 
       if (!success && kDebugMode) {
         debugPrint(
-          'sendDataToWebSession decrypt-qr-payload session=$sessionId attempt=$attempt returned: $data',
+          'decrypt-qr-payload session=$sessionId attempt=$attempt returned: $data',
         );
       }
 
-      // Retry only for transient timing/readiness failures.
       if (!success &&
           attempt < 4 &&
           (reason == 'session_not_found_or_fetch_failed' ||
@@ -1040,11 +1014,87 @@ class SupabaseService {
         await _invokeDecryptQrPayloadWithRetry(sessionId, attempt: attempt + 1);
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint(
-          'sendDataToWebSession decrypt-qr-payload session=$sessionId warning attempt=$attempt: $e',
-        );
+      debugPrint(
+        'decrypt-qr-payload session=$sessionId warning attempt=$attempt: $e',
+      );
+    }
+  }
+
+  // ================================================================
+  // HELPERS
+  // ================================================================
+  String _normalizeToken(String raw) {
+    return raw
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+  }
+
+  String _civilStatusBucket(String raw) {
+    final t = _normalizeToken(raw);
+    if (t.isEmpty) return '';
+    if (t == 's' || t.contains('single')) return 'single';
+    if (t == 'm' || t.contains('married') || t.contains('kasal')) {
+      return 'married';
+    }
+    if (t == 'w' || t.contains('widow') || t.contains('balo')) {
+      return 'widowed';
+    }
+    if (t == 'sep' ||
+        t.contains('separated') ||
+        t.contains('hiwalay') ||
+        t.contains('live_in') ||
+        t.contains('livein')) {
+      return 'separated';
+    }
+    if (t == 'a' || t.contains('annul')) return 'annulled';
+    return '';
+  }
+
+  String _civilStatusDisplayValue(String raw) {
+    switch (_civilStatusBucket(raw)) {
+      case 'single':
+        return 'Single';
+      case 'married':
+        return 'Married';
+      case 'widowed':
+        return 'Widowed';
+      case 'separated':
+        return 'Separated';
+      case 'annulled':
+        return 'Annulled';
+      default:
+        return raw;
+    }
+  }
+
+  String _resolveCivilStatusForField(FormFieldModel field, String rawValue) {
+    final input = rawValue.trim();
+    if (input.isEmpty) return input;
+
+    final bucket = _civilStatusBucket(input);
+    if (bucket.isEmpty) return input;
+
+    if (field.options.isNotEmpty) {
+      for (final option in field.options) {
+        final byValue = _civilStatusBucket(option.value);
+        final byLabel = _civilStatusBucket(option.label);
+        if (byValue == bucket || byLabel == bucket) {
+          return option.value;
+        }
       }
     }
+
+    return _civilStatusDisplayValue(input);
+  }
+
+  @Deprecated('Legacy method — use FieldValueService.pushToSubmission instead')
+  Future<bool> pushProfileToSession({
+    required String sessionId,
+    required String userId,
+  }) async {
+    return false;
   }
 }

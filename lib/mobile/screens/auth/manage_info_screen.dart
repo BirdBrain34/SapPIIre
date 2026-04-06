@@ -1,7 +1,6 @@
 // Mobile Manage Info Screen
 // Loads templates + profile, renders dynamic form, saves to Supabase,
 // and transmits selected fields to the web portal via QR.
-//.
 
 import 'package:flutter/material.dart';
 
@@ -14,7 +13,7 @@ import 'package:sappiire/mobile/screens/auth/login_screen.dart';
 import 'package:sappiire/mobile/screens/auth/InfoScannerScreen.dart';
 import 'package:sappiire/mobile/screens/auth/ProfileScreen.dart';
 import 'package:sappiire/mobile/screens/auth/HistoryScreen.dart';
-
+import 'package:sappiire/models/form_template_models.dart';
 
 class ManageInfoScreen extends StatefulWidget {
   final String userId;
@@ -28,9 +27,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   final _supabaseService = SupabaseService();
   late final ManageInfoController _controller;
   int _currentNavIndex = 0;
-  String? _activeTransmitSessionId;
 
-  // ── NEW: controls whether the form intro card is shown ───
+  // Controls whether the form intro card is shown
   bool _showFormIntro = true;
 
   // ── Lifecycle ─────────────────────────────────────────────
@@ -50,7 +48,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   // ── Data Loading ──────────────────────────────────────────
   Future<void> _loadAll() async {
     await _controller.loadAll(forceRefresh: true);
-    // Always show the intro card after (re)loading
     if (mounted) {
       setState(() => _showFormIntro = true);
     }
@@ -70,6 +67,149 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     }
   }
 
+  // ── Required fields validation ────────────────────────────
+  /// Returns list of required fields that are still empty.
+  List<FormFieldModel> _getMissingRequiredFields() {
+    final template = _controller.selectedTemplate;
+    final fc = _controller.formController;
+    if (template == null || fc == null) return [];
+
+    final missing = <FormFieldModel>[];
+    for (final field in template.allFields) {
+      if (!field.isRequired) continue;
+      if (field.parentFieldId != null) continue; // skip sub-fields
+      final value = fc.getValue(field.fieldName);
+      if (value == null || value.toString().trim().isEmpty) {
+        missing.add(field);
+      }
+    }
+    return missing;
+  }
+
+  /// Shows the required-fields warning popup — same style as QR scanner dialog.
+  Future<bool> _showRequiredFieldsDialog(
+    List<FormFieldModel> missingFields,
+  ) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.warning_amber_rounded,
+                  size: 32,
+                  color: Colors.red,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Required Fields Incomplete',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1A1A2E),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'The following required fields are still empty. '
+                'Please fill them in before transmitting.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey.shade600,
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 200),
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: missingFields
+                        .map(
+                          (f) => Container(
+                            margin: const EdgeInsets.only(bottom: 6),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withOpacity(0.06),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: Colors.red.withOpacity(0.25),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.circle,
+                                  size: 6,
+                                  color: Colors.red,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    f.fieldLabel,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.red,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity, // Makes the button span the full width
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue.shade700, // Use a primary color to guide them
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    'Go Back to Form',
+                    style: TextStyle(
+                      color: Colors.white, 
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return result ?? false;
+  }
+
   // ── QR Transmit ───────────────────────────────────────────
   Future<void> _scanAndTransmit() async {
     final dataToTransmit = _controller.buildTransmitPayload();
@@ -81,7 +221,14 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       return;
     }
 
-    final sessionId = await Navigator.push<String>(
+    // Check required fields before allowing QR scan
+    final missingFields = _getMissingRequiredFields();
+    if (missingFields.isNotEmpty) {
+      final proceed = await _showRequiredFieldsDialog(missingFields);
+      if (!proceed || !mounted) return;
+    }
+
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => QrScannerScreen(
@@ -94,32 +241,11 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       ),
     );
 
-    if (sessionId != null && mounted) {
-      if (_activeTransmitSessionId != null) {
-        debugPrint('Ignoring duplicate QR session: $sessionId');
-        return;
-      }
-      _activeTransmitSessionId = sessionId;
-
-      try {
-        await Future.delayed(const Duration(milliseconds: 500));
-        final success = await _supabaseService.sendDataToWebSession(
-          sessionId,
-          dataToTransmit,
-          userId: widget.userId,
-        );
-
-        if (mounted && !success) {
-          _showFeedback('Transmission failed. Please try again.', Colors.red);
-        }
-      } catch (e) {
-        debugPrint('Transmission error: $e');
-        if (mounted) {
-          _showFeedback('Error: ${e.toString()}', Colors.red);
-        }
-      } finally {
-        _activeTransmitSessionId = null;
-      }
+    // After returning from QR scanner (back from HistoryScreen or back button),
+    // reload form data and reset to intro card
+    if (mounted) {
+      await _controller.loadAll(forceRefresh: true);
+      setState(() => _showFormIntro = true);
     }
   }
 
@@ -163,7 +289,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       case 0:
         setState(() {
           _currentNavIndex = 0;
-          // Return to intro card when tapping Manage Info again
           _showFormIntro = true;
         });
         break;
@@ -185,6 +310,11 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       context,
       MaterialPageRoute(builder: (_) => const InfoScannerScreen()),
     );
+    // Reload after returning from camera — scanned data may have updated fields
+    if (mounted) {
+      await _controller.loadAll(forceRefresh: true);
+      setState(() {});
+    }
   }
 
   void _showFeedback(String msg, Color color) {
@@ -220,9 +350,12 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                 ElevatedButton(
                   onPressed: () => Navigator.pop(ctx, true),
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.dangerRed),
-                  child: const Text('Log Out',
-                      style: TextStyle(color: Colors.white)),
+                    backgroundColor: AppColors.dangerRed,
+                  ),
+                  child: const Text(
+                    'Log Out',
+                    style: TextStyle(color: Colors.white),
+                  ),
                 ),
               ],
             ),
@@ -254,7 +387,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
               ? const Center(child: CircularProgressIndicator())
               : _controller.templates.isEmpty
               ? _buildEmptyState()
-              // ── NEW: show intro card or the actual form ──
               : _showFormIntro
               ? _buildFormIntroCard()
               : _buildFormContent(),
@@ -265,6 +397,11 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
   // ── AppBar ────────────────────────────────────────────────
   PreferredSizeWidget _buildAppBar() {
+    // FIX: use _controller.username which is loaded from DB
+    final displayName = _controller.username.isNotEmpty
+        ? _controller.username
+        : 'User';
+
     return AppBar(
       backgroundColor: AppColors.primaryBlue,
       elevation: 0,
@@ -275,12 +412,19 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         tooltip: 'Log out',
       ),
       title: GestureDetector(
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ProfileScreen(userId: widget.userId),
-          ),
-        ),
+        onTap: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ProfileScreen(userId: widget.userId),
+            ),
+          );
+          // Reload after returning from ProfileScreen — username/PII may have changed
+          if (mounted) {
+            await _controller.loadAll(forceRefresh: true);
+            setState(() => _showFormIntro = true);
+          }
+        },
         child: Row(
           children: [
             Container(
@@ -310,9 +454,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                     ),
                   ),
                   Text(
-                    _controller.username.isEmpty
-                        ? 'User'
-                        : _controller.username,
+                    displayName,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 14,
@@ -336,8 +478,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           onPressed: _openCamera,
           tooltip: 'Scan ID',
         ),
-        // Only show Save when the form is visible (not on intro card)
-        if (!_showFormIntro)
+        // Only show Save when the form is visible
+        if (!_showFormIntro && _currentNavIndex == 0)
           IconButton(
             icon: _controller.isSaving
                 ? const SizedBox(
@@ -348,7 +490,11 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                       color: Colors.white,
                     ),
                   )
-                : const Icon(Icons.save_outlined, color: Colors.white, size: 22),
+                : const Icon(
+                    Icons.save_outlined,
+                    color: Colors.white,
+                    size: 22,
+                  ),
             onPressed: _controller.isSaving ? null : _saveProfile,
             tooltip: 'Save Profile',
           ),
@@ -357,7 +503,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
   }
 
-  // ── NEW: Form Intro / Selection Card ──────────────────────
+  // ── Form Intro / Selection Card ───────────────────────────
   Widget _buildFormIntroCard() {
     return Center(
       child: SingleChildScrollView(
@@ -379,7 +525,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Icon badge
               Container(
                 width: 72,
                 height: 72,
@@ -394,7 +539,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              // Session Setup chip
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -413,7 +557,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              // Title
               const Text(
                 'Ready to manage your info?',
                 style: TextStyle(
@@ -424,9 +567,9 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              // Subtitle
               Text(
-                'Select a form type below. Your saved information will be pre-filled and ready to transmit!.',
+                'Select a form type below. Your saved information will be '
+                'pre-filled and ready to transmit!',
                 style: TextStyle(
                   fontSize: 13,
                   color: Colors.grey.shade600,
@@ -471,7 +614,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                     onChanged: (id) async {
                       if (id == null) return;
                       await _controller.switchTemplate(id);
-                      setState(() {}); // refresh dropdown display
+                      setState(() {});
                     },
                   ),
                 ),
@@ -643,8 +786,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         _controller.formController?.setSelectAll(!isSelectAll);
         setState(() {});
       },
-      backgroundColor:
-          isSelectAll ? AppColors.highlight : AppColors.primaryBlue,
+      backgroundColor: isSelectAll ? AppColors.highlight : AppColors.primaryBlue,
       elevation: 6,
       icon: Icon(
         isSelectAll ? Icons.deselect_rounded : Icons.select_all_rounded,

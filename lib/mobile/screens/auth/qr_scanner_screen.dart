@@ -28,19 +28,13 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
   final MobileScannerController controller = MobileScannerController();
   bool isPopping = false;
 
-  // Transmission state
   bool _isTransmitting = false;
   bool _transmitDone = false;
   bool _transmitSuccess = false;
   String _transmitStatus = 'Securing your data...';
-  String? _scannedSessionId;
 
-  // --- NEW METHODS START ---
-
+  // ── Popup logic ───────────────────────────────────────────
   Future<void> _handleScannedCode(String sessionId) async {
-    _scannedSessionId = sessionId;
-    
-    // Show popup if enabled for this form
     if (widget.templateId != null && widget.supabaseService != null) {
       try {
         final row = await widget.supabaseService!
@@ -58,7 +52,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
 
           if (!proceed || !mounted) {
             isPopping = false;
-            await controller.start(); // Resume scanning if they cancel
+            await controller.start();
             return;
           }
         }
@@ -66,7 +60,6 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
         debugPrint('Popup fetch error: $e');
       }
     }
-    // Start transmission if popup is disabled or user pressed "Continue"
     await _transmitData(sessionId);
   }
 
@@ -84,20 +77,22 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryBlue.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.info_outline_rounded,
-                  size: 32,
-                  color: AppColors.primaryBlue,
+              // Icon
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryBlue.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.info_outline_rounded,
+                      size: 32, color: AppColors.primaryBlue),
                 ),
               ),
               const SizedBox(height: 16),
+              // Title
               Text(
                 formTitle,
                 style: const TextStyle(
@@ -105,7 +100,6 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF1A1A2E),
                 ),
-                textAlign: TextAlign.center,
               ),
               if (subtitle != null && subtitle.isNotEmpty) ...[
                 const SizedBox(height: 6),
@@ -116,7 +110,6 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                     color: AppColors.primaryBlue,
                     fontWeight: FontWeight.w600,
                   ),
-                  textAlign: TextAlign.center,
                 ),
               ],
               if (description != null && description.isNotEmpty) ...[
@@ -131,7 +124,6 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                         color: Colors.grey.shade700,
                         height: 1.5,
                       ),
-                      textAlign: TextAlign.center,
                     ),
                   ),
                 ),
@@ -146,8 +138,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 13),
                         side: BorderSide(color: Colors.grey.shade300),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
+                            borderRadius: BorderRadius.circular(10)),
                       ),
                       child: const Text('Cancel'),
                     ),
@@ -160,14 +151,11 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                         backgroundColor: AppColors.primaryBlue,
                         padding: const EdgeInsets.symmetric(vertical: 13),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
+                            borderRadius: BorderRadius.circular(10)),
                         elevation: 0,
                       ),
-                      child: const Text(
-                        'Continue',
-                        style: TextStyle(color: Colors.white),
-                      ),
+                      child: const Text('Continue',
+                          style: TextStyle(color: Colors.white)),
                     ),
                   ),
                 ],
@@ -188,13 +176,9 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     });
 
     await Future.delayed(const Duration(milliseconds: 600));
-    if (mounted) {
-      setState(() => _transmitStatus = 'Securing encryption key with RSA...');
-    }
+    if (mounted) setState(() => _transmitStatus = 'Securing encryption key with RSA...');
     await Future.delayed(const Duration(milliseconds: 600));
-    if (mounted) {
-      setState(() => _transmitStatus = 'Transmitting securely to CSWD portal...');
-    }
+    if (mounted) setState(() => _transmitStatus = 'Transmitting securely to CSWD portal...');
 
     bool success = false;
     try {
@@ -222,90 +206,54 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     }
   }
 
-  // --- UI COMPONENTS ---
-
-
-
-Widget _buildBottomNav() {
-  return Container(
-    decoration: BoxDecoration(
-      color: AppColors.primaryBlue,
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.2),
-          blurRadius: 10,
-          offset: const Offset(0, -2),
+  // ── Bottom nav — matches manage_info and history screens ──
+  Widget _buildBottomNav() {
+    return BottomNavigationBar(
+      // QR tab (index 1) is always "active" visually on this screen
+      currentIndex: 1,
+      onTap: (index) {
+        if (index == 0 || index == 2) Navigator.pop(context);
+        // index 1 = already here, do nothing
+      },
+      backgroundColor: AppColors.primaryBlue,
+      selectedItemColor: AppColors.highlight,
+      unselectedItemColor: Colors.white60,
+      selectedLabelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+      unselectedLabelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w400),
+      type: BottomNavigationBarType.fixed,
+      elevation: 10,
+      items: [
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.edit_document, size: 24),
+          label: 'Manage Info',
+        ),
+        BottomNavigationBarItem(
+          icon: Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: const Icon(Icons.qr_code_scanner,
+                color: AppColors.highlight, size: 22),
+          ),
+          label: 'Autofill QR',
+        ),
+        const BottomNavigationBarItem(
+          icon: Icon(Icons.history, size: 24),
+          label: 'History',
         ),
       ],
-    ),
-    child: SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildNavItem(0, Icons.edit_document, 'Manage Info'),
-            _buildNavItem(1, Icons.qr_code_scanner, 'Autofill QR', isQr: true),
-            _buildNavItem(2, Icons.history, 'History'),
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
-Widget _buildNavItem(int index, IconData icon, String label,
-    {bool isQr = false}) {
-  final isActive = index == 1;
-  return InkWell(
-    onTap: () {
-      if (index == 0 || index == 2) Navigator.pop(context);
-    },
-    child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (isQr)
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Icon(
-                icon,
-                color: AppColors.highlight,
-                size: 24,
-              ),
-            )
-          else
-            Icon(
-              icon,
-              color: isActive ? AppColors.highlight : Colors.white60,
-              size: 24,
-            ),
-          const SizedBox(height: 3),
-          Text(
-            label,
-            style: TextStyle(
-              color: isActive ? AppColors.highlight : Colors.white60,
-              fontSize: 10,
-              fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final bool hasData = widget.transmitData != null && widget.transmitData!.isNotEmpty;
+    final bool hasData =
+        widget.transmitData != null && widget.transmitData!.isNotEmpty;
 
+    // ── Transmitting / done screen ────────────────────────
     if (_isTransmitting || _transmitDone) {
       return Scaffold(
         backgroundColor: AppColors.primaryBlue,
@@ -318,23 +266,39 @@ Widget _buildNavItem(int index, IconData icon, String label,
                 children: [
                   if (_transmitDone)
                     Icon(
-                      _transmitSuccess ? Icons.check_circle_outline : Icons.error_outline,
+                      _transmitSuccess
+                          ? Icons.check_circle_outline
+                          : Icons.error_outline,
                       size: 80,
                       color: _transmitSuccess ? Colors.green : Colors.red,
                     )
                   else
                     const SizedBox(
-                      width: 72, height: 72,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                      width: 72,
+                      height: 72,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 3),
                     ),
                   const SizedBox(height: 28),
                   Text(
-                    _transmitDone ? (_transmitSuccess ? 'Transmission Complete!' : 'Transmission Failed') : 'Transmitting...',
-                    style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                    _transmitDone
+                        ? (_transmitSuccess
+                            ? 'Transmission Complete!'
+                            : 'Transmission Failed')
+                        : 'Transmitting...',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 12),
-                  Text(_transmitStatus, style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.5), textAlign: TextAlign.center),
+                  Text(
+                    _transmitStatus,
+                    style: const TextStyle(
+                        color: Colors.white70, fontSize: 14, height: 1.5),
+                    textAlign: TextAlign.center,
+                  ),
                   if (_transmitDone) ...[
                     const SizedBox(height: 40),
                     SizedBox(
@@ -342,7 +306,10 @@ Widget _buildNavItem(int index, IconData icon, String label,
                       child: ElevatedButton(
                         onPressed: () {
                           Navigator.of(context).pushAndRemoveUntil(
-                            MaterialPageRoute(builder: (_) => HistoryScreen(userId: widget.userId ?? '')),
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  HistoryScreen(userId: widget.userId ?? ''),
+                            ),
                             (route) => route.isFirst,
                           );
                         },
@@ -350,15 +317,20 @@ Widget _buildNavItem(int index, IconData icon, String label,
                           backgroundColor: Colors.white,
                           foregroundColor: AppColors.primaryBlue,
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
                         ),
-                        child: const Text('View History', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        child: const Text('View History',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 16)),
                       ),
                     ),
                     const SizedBox(height: 12),
                     TextButton(
                       onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Back to Form', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                      child: const Text('Back to Form',
+                          style:
+                              TextStyle(color: Colors.white70, fontSize: 14)),
                     ),
                   ],
                 ],
@@ -369,6 +341,7 @@ Widget _buildNavItem(int index, IconData icon, String label,
       );
     }
 
+    // ── Scanner screen ────────────────────────────────────
     return Scaffold(
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
@@ -396,9 +369,7 @@ Widget _buildNavItem(int index, IconData icon, String label,
                   if (code != null) {
                     isPopping = true;
                     await controller.stop();
-                    if (mounted) {
-                      await _handleScannedCode(code);
-                    }
+                    if (mounted) await _handleScannedCode(code);
                   }
                 }
               },
@@ -417,7 +388,8 @@ Widget _buildNavItem(int index, IconData icon, String label,
           if (hasData)
             Center(
               child: Container(
-                width: 250, height: 250,
+                width: 250,
+                height: 250,
                 decoration: BoxDecoration(
                   border: Border.all(color: Colors.white, width: 3),
                   borderRadius: BorderRadius.circular(20),

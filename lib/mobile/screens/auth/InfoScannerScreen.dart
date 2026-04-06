@@ -109,7 +109,8 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
             right: 0,
             child: Center(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 decoration: BoxDecoration(
                   color: Colors.black54,
                   borderRadius: BorderRadius.circular(20),
@@ -176,16 +177,21 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
                         ? const Padding(
                             padding: EdgeInsets.all(20),
                             child: CircularProgressIndicator(
-                                color: Colors.white, strokeWidth: 2.5),
+                              color: Colors.white,
+                              strokeWidth: 2.5,
+                            ),
                           )
-                        : const Icon(Icons.camera_alt,
-                            color: Colors.white, size: 32),
+                        : const Icon(
+                            Icons.camera_alt,
+                            color: Colors.white,
+                            size: 32,
+                          ),
                   ),
                 ),
               ),
             ),
 
-          // Re-scan Front (shown after front scanned but before back scanned)
+          // Re-scan Front
           if (_frontScanned && !_backScanned)
             Positioned(
               bottom: 110,
@@ -196,14 +202,16 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
                   side: const BorderSide(color: Colors.white54),
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 icon: const Icon(Icons.refresh, color: Colors.white70),
-                label: const Text('Re-scan Front',
-                    style: TextStyle(color: Colors.white70)),
+                label: const Text(
+                  'Re-scan Front',
+                  style: TextStyle(color: Colors.white70),
+                ),
                 onPressed: () => setState(() {
                   _frontScanned = false;
-                  // Clear front data so it gets re-parsed fresh
                   _data.lastName = '';
                   _data.firstName = '';
                   _data.middleName = '';
@@ -213,7 +221,7 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
               ),
             ),
 
-          // Re-scan back
+          // Re-scan Back
           if (_backScanned)
             Positioned(
               bottom: 92,
@@ -224,12 +232,21 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
                   side: const BorderSide(color: Colors.white54),
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 icon: const Icon(Icons.refresh, color: Colors.white70),
-                label: const Text('Re-scan Back',
-                    style: TextStyle(color: Colors.white70)),
-                onPressed: () => setState(() => _backScanned = false),
+                label: const Text(
+                  'Re-scan Back',
+                  style: TextStyle(color: Colors.white70),
+                ),
+                onPressed: () => setState(() {
+                  _backScanned = false;
+                  _data.sex = '';
+                  _data.bloodType = '';
+                  _data.maritalStatus = '';
+                  _data.placeOfBirth = '';
+                }),
               ),
             ),
 
@@ -244,22 +261,22 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
                   backgroundColor: Colors.green,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 icon: const Icon(Icons.check, color: Colors.white),
                 label: const Text(
                   'Confirm & Save',
                   style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold),
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 onPressed: () {
                   if (widget.returnOnly) {
-                    // Return scanned data to caller (signup flow)
                     Navigator.pop(context, _data);
                   } else {
-                    // Save to Supabase directly (standalone mode)
                     _saveToSupabase();
                   }
                 },
@@ -323,24 +340,26 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: rows
-            .map((r) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 1.5),
-                  child: RichText(
-                    text: TextSpan(
-                      style: const TextStyle(
-                          fontSize: 11, color: Colors.white70),
-                      children: [
-                        TextSpan(
-                          text: '${r[0]}: ',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white),
+            .map(
+              (r) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 1.5),
+                child: RichText(
+                  text: TextSpan(
+                    style: const TextStyle(fontSize: 11, color: Colors.white70),
+                    children: [
+                      TextSpan(
+                        text: '${r[0]}: ',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
                         ),
-                        TextSpan(text: r[1]),
-                      ],
-                    ),
+                      ),
+                      TextSpan(text: r[1]),
+                    ],
                   ),
-                ))
+                ),
+              ),
+            )
             .toList(),
       ),
     );
@@ -384,29 +403,35 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
     }
   }
 
+  // ── FRONT parser ──────────────────────────────────────────
   void _parseFront(List<String> lines) {
     for (int i = 0; i < lines.length; i++) {
       final lower = lines[i].toLowerCase();
 
-      // Middle name FIRST — "Gitnang Apelyido" contains "apelyido" so must check before last name
-      if (lower.contains('gitnang') || lower.contains('middie name') || lower.contains('middle name')) {
+      // Middle name FIRST — "Gitnang Apelyido" contains "apelyido"
+      if (lower.contains('gitnang') ||
+          lower.contains('middie name') ||
+          lower.contains('middle name')) {
         final val = _valueAfter(lines, i);
         if (val.isNotEmpty) _data.middleName = val;
 
-      // Last name — exclude "Gitnang Apelyido" line
-      } else if ((lower.contains('apel') || lower.contains('last name')) && !lower.contains('gitnang')) {
+        // Last name — exclude "Gitnang Apelyido" line
+      } else if ((lower.contains('apel') || lower.contains('last name')) &&
+          !lower.contains('gitnang')) {
         final val = _valueAfter(lines, i);
         if (val.isNotEmpty) _data.lastName = val;
 
-      // Given names
+        // Given names
       } else if (lower.contains('pangalan') || lower.contains('given name')) {
         final val = _valueAfter(lines, i);
         if (val.isNotEmpty) _data.firstName = val;
 
-      // Date of birth — OCR reads "Retsa" instead of "Petsa" sometimes
-      } else if (lower.contains('kapanganakan') || lower.contains('date of birth') ||
-          lower.contains('petsa') || lower.contains('retsa')) {
-        // Value is on the NEXT line e.g. "ULY 22, 2004" (OCR drops the J)
+        // Date of birth — label contains "petsa ng kapanganakan" or "date of birth"
+        // Value is on the NEXT line
+      } else if (lower.contains('petsa ng kapanganakan') ||
+          lower.contains('date of birth') ||
+          (lower.contains('petsa') && !lower.contains('lugar')) ||
+          lower.contains('retsa ng kapanganakan')) {
         if (i + 1 < lines.length) {
           final next = lines[i + 1].trim();
           if (next.isNotEmpty && !_isLabel(next) && !_isJunk(next)) {
@@ -414,27 +439,27 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
           }
         }
 
-      // Address — label line is "Tirahan/Address", value starts on next line
-      // and spans multiple lines, stop before PHL or junk
-      } else if (lower.contains('tirahan') || lower == 'address') {
+        // Address — label is "Tirahan/Address", value starts on next line
+      } else if (lower.contains('tirahan') ||
+          lower == 'address' ||
+          lower == 'tirahan/address') {
         final val = _addressValue(lines, i);
         if (val.isNotEmpty) _data.address = val;
       }
     }
   }
 
+  // ── BACK parser ───────────────────────────────────────────
   void _parseBack(List<String> lines) {
-    // From OCR output, back lines look like:
-    // "Kasarian/Sex"  → next line: "MALE"
-    // "Uri ng Dugo/Blood Type"  → SOMETIMES merged with next label into one line
-    // "SING Sbil/Marital Status" → blood type value merged in, marital on next line
-    // "Lugar ng KapanganakaPiace of Birth" → next line: "CITY OF BINAN, LAGUNA"
-
     for (int i = 0; i < lines.length; i++) {
       final lower = lines[i].toLowerCase();
 
       // Sex — "Kasarian/Sex" then next line is value
-      if (lower.contains('kasarian') || (lower.contains('sex') && !lower.contains('sibil'))) {
+      if (lower.contains('kasarian/sex') ||
+          lower.contains('kasarian') ||
+          (lower.contains('sex') &&
+              !lower.contains('sibil') &&
+              !lower.contains('marital'))) {
         if (i + 1 < lines.length) {
           final next = lines[i + 1].trim();
           if (next.isNotEmpty && !_isLabel(next) && !_isJunk(next)) {
@@ -442,34 +467,30 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
           }
         }
 
-      // Blood type — "Uri ng Dugo/Blood Type" then next line is value
-      // BUT OCR sometimes merges blood type value WITH the next label line
-      // e.g. "SING Sbil/Marital Status" means blood type was "SING" (= SINGLE cut off)
-      // and next label is Sibil/Marital. So check next line: if it's a label, blood type
-      // was missed. If it's a value, grab it.
-      } else if (lower.contains('uri ng dugo') || lower.contains('blood type')) {
+        // Blood type — "Uri ng Dugo/Blood Type"
+      } else if (lower.contains('uri ng dugo') ||
+          lower.contains('blood type')) {
         if (i + 1 < lines.length) {
           final next = lines[i + 1].trim();
           if (next.isNotEmpty && !_isLabel(next) && !_isJunk(next)) {
             _data.bloodType = next;
           }
-          // else blood type was swallowed — leave blank
         }
 
-      // Marital status — "Sibil/Marital Status" or "SING Sbil/Marital Status"
-      // The "SING" prefix is actually the blood type value OCR merged in
+        // Marital status — "Sibil/Marital Status" or "SING Sbil/Marital Status"
+        // The "SING" prefix is blood type OCR merged in
       } else if (lower.contains('sibil') || lower.contains('marital')) {
-        // Extract blood type from prefix if present (e.g. "SING Sbil/Marital Status")
+        // Extract blood type from prefix if present
         if (_data.bloodType.isEmpty) {
-          // Everything before the first letter of "Sibil" or "s" that starts the label
           final beforeLabel = lower.indexOf('sbil') != -1
               ? lines[i].substring(0, lower.indexOf('sbil')).trim()
               : lower.indexOf('sibil') != -1
-                  ? lines[i].substring(0, lower.indexOf('sibil')).trim()
-                  : '';
-          if (beforeLabel.isNotEmpty) _data.bloodType = beforeLabel;
+              ? lines[i].substring(0, lower.indexOf('sibil')).trim()
+              : '';
+          if (beforeLabel.isNotEmpty && !_isJunk(beforeLabel)) {
+            _data.bloodType = beforeLabel;
+          }
         }
-        // Marital status value is on next line
         if (i + 1 < lines.length) {
           final next = lines[i + 1].trim();
           if (next.isNotEmpty && !_isLabel(next) && !_isJunk(next)) {
@@ -477,26 +498,74 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
           }
         }
 
-      // Place of birth — merged label like "Lugar ng KapanganakaPiace of Birth"
-      // value is on next line
-      } else if (lower.contains('lugar') || lower.contains('place of birth') || lower.contains('piace of birth')) {
-        if (i + 1 < lines.length) {
-          final next = lines[i + 1].trim();
-          if (next.isNotEmpty && !_isLabel(next) && !_isJunk(next)) {
-            _data.placeOfBirth = next;
+        // Place of birth — "Lugar ng Kapanganakan/Place of Birth"
+        // FIX: more specific matching so front DOB label doesn't false-match
+      } else if (lower.contains('lugar ng kapanganakan') ||
+          lower.contains('place of birth') ||
+          lower.contains('piace of birth') ||
+          lower.contains('kapanganakan/place') ||
+          (lower.contains('lugar') && lower.contains('birth'))) {
+        // Try inline value first (after slash or colon)
+        String inlineVal = '';
+        for (final sep in ['/', ':']) {
+          if (lines[i].contains(sep)) {
+            final parts = lines[i].split(sep);
+            // Take the last segment that's not the label itself
+            for (int p = parts.length - 1; p >= 0; p--) {
+              final after = parts[p].trim();
+              if (after.isNotEmpty &&
+                  !_isLabel(after) &&
+                  !_isJunk(after) &&
+                  after.length > 2 &&
+                  !after.toLowerCase().contains('lugar') &&
+                  !after.toLowerCase().contains('place') &&
+                  !after.toLowerCase().contains('kapanganakan')) {
+                inlineVal = after;
+                break;
+              }
+            }
+            if (inlineVal.isNotEmpty) break;
+          }
+        }
+
+        if (inlineVal.isNotEmpty) {
+          _data.placeOfBirth = inlineVal;
+        } else {
+          // Collect next 1–2 lines (city/province may span two lines)
+          final parts = <String>[];
+          for (int j = i + 1;
+              j < lines.length && parts.length < 2;
+              j++) {
+            final next = lines[j].trim();
+            if (next.isEmpty) continue;
+            if (_isLabel(next) || _isJunk(next)) break;
+            if (next == 'PHL') break;
+            // Stop if we hit a clearly different field value (sex/blood type)
+            final nl = next.toLowerCase();
+            if (nl == 'male' ||
+                nl == 'female' ||
+                nl == 'lalaki' ||
+                nl == 'babae') break;
+            parts.add(next);
+          }
+          if (parts.isNotEmpty) {
+            _data.placeOfBirth = parts.join(', ').trim();
           }
         }
       }
     }
   }
 
+  // ── Value helpers ─────────────────────────────────────────
   String _valueAfter(List<String> lines, int i) {
     final line = lines[i];
 
     for (final sep in ['/', ':']) {
       if (line.contains(sep)) {
         final after = line.split(sep).last.trim();
-        if (after.isNotEmpty && !_isLabel(after)) return after;
+        if (after.isNotEmpty && !_isLabel(after) && after.length > 1) {
+          return after;
+        }
       }
     }
 
@@ -508,21 +577,9 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
     return '';
   }
 
-  String _multiLineValue(List<String> lines, int i) {
-    final List<String> collected = [];
-    int start = i + 1;
-    for (int j = start; j < lines.length && j < i + 6; j++) {
-      final l = lines[j].trim();
-      if (_isLabel(l) || _isJunk(l) || l.isEmpty) break;
-      collected.add(l);
-    }
-    return collected.join(' ').trim();
-  }
-
-  /// Address collector — from the OCR, address lines come AFTER the junk header lines.
-  /// Address collector: scans ALL remaining lines after label, skipping junk anywhere.
-  /// Collects lines that look like address content (uppercase, contains digits or commas).
-  /// Stops at next label or PHL.
+  /// Address collector — scans lines after the label.
+  /// FIX: made _isLabel more specific so address lines aren't
+  /// cut short by partial label matches.
   String _addressValue(List<String> lines, int i) {
     final List<String> collected = [];
     for (int j = i + 1; j < lines.length; j++) {
@@ -530,43 +587,64 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
       if (l.isEmpty) continue;
       if (_isLabel(l)) break;
       if (l == 'PHL') break;
-      if (RegExp(r'^[0-9]{4}-[0-9]{4}').hasMatch(l)) continue; // skip ID number
-      if (_isJunk(l)) continue; // skip all junk, don't stop
-      // Skip lines that look like garbage from background text
-      if (l.toLowerCase().contains('examination') ||
-          l.toLowerCase().contains('booklet') ||
-          l.toLowerCase().contains('reserved') ||
-          l.toLowerCase().contains('mapua') ||
-          l.toLowerCase().contains('mmcl') ||
-          l.toLowerCase().contains('rights') ||
-          l.toLowerCase().contains('exclusively') ||
-          l.toLowerCase().contains('distributed')) continue;
+      // Skip ID number pattern
+      if (RegExp(r'^[0-9]{4}-[0-9]{4}').hasMatch(l)) continue;
+      if (_isJunk(l)) continue;
+      // Skip background garbage text
+      final ll = l.toLowerCase();
+      if (ll.contains('examination') ||
+          ll.contains('booklet') ||
+          ll.contains('reserved') ||
+          ll.contains('mapua') ||
+          ll.contains('mmcl') ||
+          ll.contains('rights') ||
+          ll.contains('exclusively') ||
+          ll.contains('distributed') ||
+          ll.contains('property') ||
+          ll.contains('university')) continue;
+      // Stop if we reach sex/back-of-ID values
+      if (ll == 'male' || ll == 'female' || ll == 'lalaki' || ll == 'babae') {
+        break;
+      }
       collected.add(l);
+      // Max 3 lines for address
+      if (collected.length >= 3) break;
     }
     return collected.join(' ').trim();
   }
 
+  // ── Label detection — SPECIFIC matches to avoid false positives ──
   bool _isLabel(String text) {
-    final l = text.toLowerCase();
+    final l = text.toLowerCase().trim();
+
+    // Exact or very specific label patterns only
+    // Using 'contains' only for multi-word labels that won't appear in values
     return l.contains('apelyido') ||
         l.contains('last name') ||
         l.contains('pangalan') ||
         l.contains('given name') ||
         l.contains('gitnang') ||
         l.contains('middle name') ||
-        l.contains('petsa') ||
-        l.contains('kapanganakan') ||
+        // DOB label — must contain 'petsa ng' or 'date of birth' (not just 'petsa')
+        l.contains('petsa ng kapanganakan') ||
         l.contains('date of birth') ||
+        l.contains('retsa ng kapanganakan') ||
+        // Address label — full label or exact 'address'
         l.contains('tirahan') ||
-        l.contains('address') ||
+        l == 'address' ||
+        // Back labels — specific combos
+        l.contains('kasarian/sex') ||
         l.contains('kasarian') ||
-        l.contains('sex') ||
         l.contains('uri ng dugo') ||
         l.contains('blood type') ||
+        l.contains('estadong sibil') ||
+        l.contains('civil status') ||
+        l.contains('marital status') ||
         l.contains('sibil') ||
-        l.contains('marital') ||
-        l.contains('lugar') ||
-        l.contains('place of birth');
+        // Place of birth label — must be the full label phrase
+        l.contains('lugar ng kapanganakan') ||
+        l.contains('place of birth') ||
+        l.contains('piace of birth');
   }
 
   bool _isJunk(String text) {
@@ -580,11 +658,12 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
         l.contains('pagkakakilanlan') ||
         l.contains('authority') ||
         l.contains('psa.gov') ||
-        l.contains('phl') ||
+        l == 'phl' ||
         l.contains('found, please') ||
         l.contains('nearest');
   }
 
+  // ── Save to Supabase ──────────────────────────────────────
   Future<void> _saveToSupabase() async {
     final userId = _supabaseService.currentUserId;
     if (userId == null) {
@@ -601,15 +680,24 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
           ? (_parseDateOfBirth(_data.dateOfBirth) ?? _data.dateOfBirth)
           : '';
 
+      // Build canonical map — only include non-empty values
       final piiMap = <String, String>{
-        'last_name': _data.lastName,
-        'first_name': _data.firstName,
-        'middle_name': _data.middleName,
-        'date_of_birth': dobFormatted,
-        'kasarian_sex': sexValue,
-        'estadong_sibil_civil_status': civilValue,
-        'house_number_street_name_phase_purok': _data.address,
+        if (_data.lastName.isNotEmpty) 'last_name': _data.lastName,
+        if (_data.firstName.isNotEmpty) 'first_name': _data.firstName,
+        if (_data.middleName.isNotEmpty) 'middle_name': _data.middleName,
+        if (dobFormatted.isNotEmpty) 'date_of_birth': dobFormatted,
+        if (sexValue.isNotEmpty) 'kasarian_sex': sexValue,
+        if (civilValue.isNotEmpty) 'estadong_sibil_civil_status': civilValue,
+        if (_data.address.isNotEmpty)
+          'house_number_street_name_phase_purok': _data.address,
+        // Place of birth — saved under both canonical keys for coverage
+        if (_data.placeOfBirth.isNotEmpty)
+          'lugar_ng_kapanganakan_place_of_birth': _data.placeOfBirth,
+        if (_data.placeOfBirth.isNotEmpty)
+          'place_of_birth': _data.placeOfBirth,
       };
+
+      debugPrint('InfoScanner saving piiMap: $piiMap');
 
       final result = await _supabaseService.saveScannedIdFieldValues(
         userId: userId,
@@ -617,7 +705,10 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
       );
 
       if (result['success'] != true) {
-        _showSnack(result['message']?.toString() ?? 'Save failed.', Colors.red);
+        _showSnack(
+          result['message']?.toString() ?? 'Save failed.',
+          Colors.red,
+        );
         return;
       }
 
@@ -653,6 +744,10 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
         'august': '08', 'aug': '08', 'september': '09', 'sep': '09',
         'october': '10', 'oct': '10', 'november': '11', 'nov': '11',
         'december': '12', 'dec': '12',
+        // Handle OCR misreads of month names
+        'ul': '07', 'uly': '07', 'une': '06', 'arch': '03',
+        'ebruary': '02', 'pril': '04', 'ugust': '08',
+        'eptember': '09', 'ctober': '10', 'ovember': '11', 'ecember': '12',
       };
       final clean = raw.replaceAll(',', '').trim();
       final parts = clean.split(RegExp(r'\s+'));
@@ -676,7 +771,6 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
     return null;
   }
 
-  /// Returns full display word for civil status (matches user_field_values format)
   String _civilStatusWord(String raw) {
     final l = raw.toLowerCase();
     if (l.contains('single')) return 'Single';
@@ -684,7 +778,7 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
     if (l.contains('widow') || l.contains('widower')) return 'Widowed';
     if (l.contains('separated')) return 'Separated';
     if (l.contains('annul')) return 'Annulled';
-    return raw; // return as-is if unrecognized
+    return raw;
   }
 
   void _showSnack(String msg, Color color) {
