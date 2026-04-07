@@ -671,16 +671,35 @@ class FormStateController extends ChangeNotifier {
         .where((f) => f.fieldType == FormFieldType.computed)
         .toList();
 
-    for (final field in computedFields) {
-      final formula = field.validationRules?['formula'] as String? ?? '';
-      if (formula.trim().isEmpty) continue;
-      try {
-        final result = _evalFormula(formula);
-        final shouldShowZero = RegExp(r'\bSUM_COLUMN\s*\(').hasMatch(formula);
-        _setComputed(field.fieldName, result, showZero: shouldShowZero);
-      } catch (_) {
-        // Leave field blank if formula is invalid
+    if (computedFields.isEmpty) return;
+
+    // Resolve chained computed dependencies regardless of template order.
+    // Example: D = A+B+C, F = D/E. If F appears before D in schema, a single
+    // pass can read stale D. Multiple passes converge quickly in practice.
+    final maxPasses = computedFields.length;
+    for (var pass = 0; pass < maxPasses; pass++) {
+      var anyChanged = false;
+
+      for (final field in computedFields) {
+        final formula = field.validationRules?['formula'] as String? ?? '';
+        if (formula.trim().isEmpty) continue;
+        try {
+          final result = _evalFormula(formula);
+          final shouldShowZero =
+              RegExp(r'\bSUM_COLUMN\s*\(').hasMatch(formula) ||
+              formula.contains('/');
+          final changed = _setComputed(
+            field.fieldName,
+            result,
+            showZero: shouldShowZero,
+          );
+          anyChanged = anyChanged || changed;
+        } catch (_) {
+          // Leave field blank if formula is invalid
+        }
       }
+
+      if (!anyChanged) break;
     }
   }
 
@@ -892,15 +911,21 @@ class FormStateController extends ChangeNotifier {
     return double.tryParse(raw) ?? 0.0;
   }
 
-  void _setComputed(String key, double value, {bool showZero = false}) {
+  bool _setComputed(String key, double value, {bool showZero = false}) {
     final str = value == 0 ? (showZero ? '0' : '') : value.toStringAsFixed(2);
+    var changed = false;
     if (textControllers.containsKey(key)) {
       if (textControllers[key]!.text != str) {
         textControllers[key]!.text = str;
         _fieldNotifiers[key]?.value = str; // Also update notifier
+        changed = true;
       }
     }
+    if (_values[key] != str) {
+      changed = true;
+    }
     _values[key] = str;
+    return changed;
   }
 
   // ── Select-all toggle ─────────────────────────────────────
