@@ -267,7 +267,12 @@ class FieldValueService {
           .where((f) => !_skipTypes.contains(f.fieldType))
           .where((f) => f.parentFieldId == null)
           .toList();
-      if (eligible.isEmpty) return direct;
+      if (eligible.isEmpty) {
+        return await _applySignatureFallbackIfMissing(
+          userId: userId,
+          values: direct,
+        );
+      }
 
       final missingByCanonical = <String, List<FormFieldModel>>{};
       var protectedCount = 0;
@@ -308,7 +313,12 @@ class FieldValueService {
         'crossFormFill: template=${template.formName}, direct=${direct.length}, missingKeys=${missingByCanonical.length}',
       );
 
-      if (missingByCanonical.isEmpty) return direct;
+      if (missingByCanonical.isEmpty) {
+        return await _applySignatureFallbackIfMissing(
+          userId: userId,
+          values: direct,
+        );
+      }
 
       final valueRows = await _supabase
           .from('user_field_values')
@@ -324,7 +334,12 @@ class FieldValueService {
       debugPrint(
         'crossFormFill: user_field_values rows=${valueRows.length}, distinctFieldIds=${allFieldIds.length}',
       );
-      if (allFieldIds.isEmpty) return direct;
+      if (allFieldIds.isEmpty) {
+        return await _applySignatureFallbackIfMissing(
+          userId: userId,
+          values: direct,
+        );
+      }
 
       final idToCanonical = <String, String>{};
       try {
@@ -352,7 +367,12 @@ class FieldValueService {
       debugPrint(
         'crossFormFill: resolved fieldId->canonical=${idToCanonical.length}',
       );
-      if (idToCanonical.isEmpty) return direct;
+      if (idToCanonical.isEmpty) {
+        return await _applySignatureFallbackIfMissing(
+          userId: userId,
+          values: direct,
+        );
+      }
 
       final canonicalBestValue = <String, String>{};
       for (final row in valueRows) {
@@ -418,23 +438,89 @@ class FieldValueService {
       }
       debugPrint('Cross-filled: $filledCount fields');
 
+      final withSignature = await _applySignatureFallbackIfMissing(
+        userId: userId,
+        values: merged,
+      );
+
       if (filledCount == 0 && missingByCanonical.isNotEmpty) {
         try {
           final legacy = await loadUserFieldValuesWithCanonicalFallback(
             userId: userId,
             template: template,
           );
-          if (legacy.length > merged.length) return legacy;
+          if (legacy.length > withSignature.length) return legacy;
         } catch (e) {
           debugPrint('crossFormFill legacy fallback failed: $e');
         }
       }
 
-      return merged;
+      return withSignature;
     } catch (e) {
       debugPrint('loadUserFieldValuesWithCrossFormFill error: $e');
-      return direct;
+      return await _applySignatureFallbackIfMissing(
+        userId: userId,
+        values: direct,
+      );
     }
+  }
+
+  Future<Map<String, dynamic>> _applySignatureFallbackIfMissing({
+    required String userId,
+    required Map<String, dynamic> values,
+  }) async {
+    final merged = <String, dynamic>{...values};
+    final hasSignature =
+        merged['__signature'] != null &&
+        merged['__signature'].toString().trim().isNotEmpty;
+    if (hasSignature) {
+      return merged;
+    }
+
+    try {
+      final signatureRow = await _supabase
+          .from('user_field_values')
+          .select(
+            'field_value, iv, encryption_version, updated_at, form_fields!inner(canonical_field_key)',
+          )
+          .eq('user_id', userId)
+          .eq('form_fields.canonical_field_key', 'signature')
+          .order('updated_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      if (signatureRow == null) {
+        return merged;
+      }
+
+      var signatureValue = signatureRow['field_value']?.toString().trim() ?? '';
+      final rawVersion = signatureRow['encryption_version'];
+      final version = rawVersion is int
+          ? rawVersion
+          : int.tryParse(rawVersion?.toString() ?? '') ?? 0;
+
+      if (version == 1 && signatureValue.isNotEmpty) {
+        final iv = signatureRow['iv']?.toString() ?? '';
+        if (iv.isNotEmpty) {
+          final aesKey = HybridCryptoService.deriveUserAesKey(userId);
+          signatureValue = await HybridCryptoService.decryptField(
+            signatureValue,
+            iv,
+            aesKey,
+          );
+        } else {
+          signatureValue = '';
+        }
+      }
+
+      if (signatureValue.isNotEmpty && signatureValue != _clearedSentinel) {
+        merged['__signature'] = signatureValue;
+      }
+    } catch (e) {
+      debugPrint('crossFormFill signature fallback failed: $e');
+    }
+
+    return merged;
   }
 
   // ── LOAD + CANONICAL FALLBACK: auto-fill missing fields across templates ──

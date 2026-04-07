@@ -2,6 +2,8 @@
 // Loads templates + profile, renders dynamic form, saves to Supabase,
 // and transmits selected fields to the web portal via QR.
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import 'package:sappiire/constants/app_colors.dart';
@@ -27,6 +29,11 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   final _supabaseService = SupabaseService();
   late final ManageInfoController _controller;
   int _currentNavIndex = 0;
+  bool _hasUnsavedChanges = false;
+  bool _awaitingExplicitLogoutAfterUnsavedResolution = false;
+  String _savedFormFingerprint = '';
+  ChangeNotifier? _listenedFormController;
+  VoidCallback? _formControllerListener;
 
   // Controls whether the form intro card is shown
   bool _showFormIntro = true;
@@ -43,16 +50,108 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
   @override
   void dispose() {
+    if (_listenedFormController != null && _formControllerListener != null) {
+      _listenedFormController!.removeListener(_formControllerListener!);
+    }
     _controller.dispose();
     super.dispose();
   }
 
+  void _attachFormControllerListener() {
+    final formCtrl = _controller.formController;
+    if (formCtrl == null) return;
+
+    if (identical(_listenedFormController, formCtrl)) return;
+
+    if (_listenedFormController != null && _formControllerListener != null) {
+      _listenedFormController!.removeListener(_formControllerListener!);
+    }
+
+    _formControllerListener = () {
+      if (!mounted) return;
+      final nextUnsaved = _currentFormFingerprint() != _savedFormFingerprint;
+      if (nextUnsaved != _hasUnsavedChanges) {
+        setState(() => _hasUnsavedChanges = nextUnsaved);
+      }
+      if (nextUnsaved && _awaitingExplicitLogoutAfterUnsavedResolution) {
+        setState(() => _awaitingExplicitLogoutAfterUnsavedResolution = false);
+      }
+    };
+
+    formCtrl.addListener(_formControllerListener!);
+    _listenedFormController = formCtrl;
+  }
+
+  String _currentFormFingerprint() {
+    final formCtrl = _controller.formController;
+    if (formCtrl == null) return '';
+    try {
+      final checkEntries = formCtrl.fieldChecks.entries.toList()
+        ..sort((a, b) => a.key.compareTo(b.key));
+      final checkMap = <String, bool>{
+        for (final e in checkEntries) e.key: e.value,
+      };
+      return jsonEncode({
+        'form': formCtrl.toJson(),
+        'fieldChecks': checkMap,
+        'selectAll': formCtrl.selectAll,
+      });
+    } catch (_) {
+      return '';
+    }
+  }
+
+  void _markCurrentFormAsSaved() {
+    _savedFormFingerprint = _currentFormFingerprint();
+    if (!mounted) {
+      _hasUnsavedChanges = false;
+      return;
+    }
+    if (_hasUnsavedChanges) {
+      setState(() => _hasUnsavedChanges = false);
+    }
+  }
+
+  bool _hasPendingUnsavedChanges() {
+    final hasUnsaved = _currentFormFingerprint() != _savedFormFingerprint;
+    if (mounted && hasUnsaved != _hasUnsavedChanges) {
+      setState(() => _hasUnsavedChanges = hasUnsaved);
+    }
+    if (hasUnsaved && _awaitingExplicitLogoutAfterUnsavedResolution && mounted) {
+      setState(() => _awaitingExplicitLogoutAfterUnsavedResolution = false);
+    }
+    return hasUnsaved;
+  }
+
+  Future<void> _flushPendingInput() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+  }
+
+  Future<bool> _resolveUnsavedChangesIfAny() async {
+    await _flushPendingInput();
+    if (!_hasPendingUnsavedChanges()) return true;
+
+    final result = await _showUnsavedChangesDialog();
+    if (result == null) return false;
+    if (result == false) {
+      _markCurrentFormAsSaved();
+    }
+
+    // If save failed, there may still be pending changes; do not continue.
+    return !_hasPendingUnsavedChanges();
+  }
+
   Future<void> _loadAll() async {
     await _controller.loadAll(forceRefresh: true);
+    _attachFormControllerListener();
+    _savedFormFingerprint = _currentFormFingerprint();
     if (mounted) {
       setState(() {
         _showFormIntro = true;
         _highlightedMissingFields = {};
+        _hasUnsavedChanges = false;
+        _awaitingExplicitLogoutAfterUnsavedResolution = false;
       });
     }
   }
@@ -61,10 +160,92 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     final ok = await _controller.saveProfile();
     if (!mounted) return;
     if (ok) {
+      _markCurrentFormAsSaved();
       _showFeedback('Profile saved!', Colors.green);
     } else {
       _showFeedback('Save failed: ${_controller.errorMessage ?? 'Unknown error'}', Colors.red);
     }
+  }
+
+  Future<bool?> _showUnsavedChangesDialog() async {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: double.infinity,
+                color: AppColors.primaryBlue,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                child: const Text(
+                  'Unsaved Changes',
+                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    const Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 36),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'You have unsaved changes to your profile information. Would you like to save before leaving?',
+                      style: TextStyle(fontSize: 13, height: 1.5, color: Color(0xFF1A1A2E)),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(color: Colors.grey.shade300),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            child: const Text('Discard'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () async {
+                              await _saveProfile();
+                              if (!ctx.mounted) return;
+                              if (!_hasUnsavedChanges) {
+                                Navigator.pop(ctx, true);
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primaryBlue,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              elevation: 0,
+                            ),
+                            child: const Text('Save & Continue', style: TextStyle(color: Colors.white)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, null),
+                      child: Text('Cancel', style: TextStyle(color: Colors.grey.shade600)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   // ── Required fields check ─────────────────────────────────
@@ -198,11 +379,11 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   }
 
   // ── QR Transmit ───────────────────────────────────────────
-  Future<void> _scanAndTransmit() async {
+  Future<String?> _scanAndTransmit() async {
     final dataToTransmit = _controller.buildTransmitPayload();
     if (dataToTransmit == null) {
       _showFeedback('Please select at least one field to transmit', AppColors.dangerRed);
-      return;
+      return null;
     }
 
     final missingFields = _getMissingRequiredFields();
@@ -211,11 +392,11 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       if (!proceed || !mounted) {
         // Scroll back to form so user can see highlighted fields
         setState(() => _showFormIntro = false);
-        return;
+        return null;
       }
     }
 
-    await Navigator.push(
+    final navResult = await Navigator.push<String?>(
       context,
       MaterialPageRoute(
         builder: (_) => QrScannerScreen(
@@ -230,14 +411,42 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
     if (mounted) {
       await _controller.loadAll(forceRefresh: true);
+      _attachFormControllerListener();
+      _savedFormFingerprint = _currentFormFingerprint();
       setState(() {
         _showFormIntro = true;
         _highlightedMissingFields = {};
+        _hasUnsavedChanges = false;
       });
     }
+
+    return navResult;
   }
 
   Future<void> _handleLogout() async {
+    await _flushPendingInput();
+    final hadUnsavedChanges = _hasPendingUnsavedChanges();
+    if (hadUnsavedChanges) {
+      final canProceed = await _resolveUnsavedChangesIfAny();
+      if (!canProceed) return;
+      // Unsaved changes were just resolved. Require another explicit
+      // back/logout action before showing the logout confirmation.
+      if (mounted) {
+        setState(() => _awaitingExplicitLogoutAfterUnsavedResolution = true);
+      } else {
+        _awaitingExplicitLogoutAfterUnsavedResolution = true;
+      }
+      return;
+    }
+
+    if (_awaitingExplicitLogoutAfterUnsavedResolution) {
+      if (mounted) {
+        setState(() => _awaitingExplicitLogoutAfterUnsavedResolution = false);
+      } else {
+        _awaitingExplicitLogoutAfterUnsavedResolution = false;
+      }
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -263,7 +472,12 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     }
   }
 
-  void _onNavTap(int index) {
+  Future<void> _onNavTap(int index) async {
+    if (_currentNavIndex == 0 && index != 0) {
+      final canProceed = await _resolveUnsavedChangesIfAny();
+      if (!canProceed) return;
+    }
+
     switch (index) {
       case 0:
         setState(() {
@@ -274,9 +488,10 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         break;
       case 1:
         setState(() => _currentNavIndex = 1);
-        _scanAndTransmit().then((_) {
-          if (mounted) setState(() => _currentNavIndex = 0);
-        });
+        final navResult = await _scanAndTransmit();
+        if (mounted) {
+          setState(() => _currentNavIndex = navResult == 'history' ? 2 : 0);
+        }
         break;
       case 2:
         setState(() => _currentNavIndex = 2);
@@ -288,7 +503,12 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => const InfoScannerScreen()));
     if (mounted) {
       await _controller.loadAll(forceRefresh: true);
-      setState(() {});
+      _attachFormControllerListener();
+      _savedFormFingerprint = _currentFormFingerprint();
+      setState(() {
+        _hasUnsavedChanges = false;
+        _awaitingExplicitLogoutAfterUnsavedResolution = false;
+      });
     }
   }
 
@@ -303,34 +523,10 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: _controller,
-      builder: (context, _) => PopScope(
-        canPop: false,
-        onPopInvokedWithResult: (didPop, result) async {
-          if (didPop) return;
-          final confirmed = await showDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('Log out?'),
-              content: const Text('Are you sure you want to log out?'),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.dangerRed),
-                  child: const Text('Log Out', style: TextStyle(color: Colors.white)),
-                ),
-              ],
-            ),
-          );
-          if (confirmed == true && context.mounted) {
-            await _supabaseService.signOutCurrentUser();
-            if (context.mounted) {
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-                (route) => false,
-              );
-            }
-          }
+      builder: (context, _) => WillPopScope(
+        onWillPop: () async {
+          await _handleLogout();
+          return false;
         },
         child: Scaffold(
           backgroundColor: AppColors.pageBg,
@@ -371,9 +567,13 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           await Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileScreen(userId: widget.userId)));
           if (mounted) {
             await _controller.loadAll(forceRefresh: true);
+            _attachFormControllerListener();
+            _savedFormFingerprint = _currentFormFingerprint();
             setState(() {
               _showFormIntro = true;
               _highlightedMissingFields = {};
+              _hasUnsavedChanges = false;
+              _awaitingExplicitLogoutAfterUnsavedResolution = false;
             });
           }
         },
@@ -476,8 +676,22 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                     )).toList(),
                     onChanged: (id) async {
                       if (id == null) return;
+
+                      if (_hasUnsavedChanges && !_showFormIntro) {
+                        final result = await _showUnsavedChangesDialog();
+                        if (result == null) return;
+                        if (result == false) {
+                          _markCurrentFormAsSaved();
+                        }
+                      }
+
                       await _controller.switchTemplate(id);
-                      setState(() {});
+                      _attachFormControllerListener();
+                      _savedFormFingerprint = _currentFormFingerprint();
+                      setState(() {
+                        _highlightedMissingFields = {};
+                        _hasUnsavedChanges = false;
+                      });
                     },
                   ),
                 ),
@@ -619,8 +833,22 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                   )).toList(),
                   onChanged: (id) async {
                     if (id == null) return;
+
+                    if (_hasUnsavedChanges && !_showFormIntro) {
+                      final result = await _showUnsavedChangesDialog();
+                      if (result == null) return;
+                      if (result == false) {
+                        _markCurrentFormAsSaved();
+                      }
+                    }
+
                     await _controller.switchTemplate(id);
-                    setState(() => _highlightedMissingFields = {});
+                    _attachFormControllerListener();
+                    _savedFormFingerprint = _currentFormFingerprint();
+                    setState(() {
+                      _highlightedMissingFields = {};
+                      _hasUnsavedChanges = false;
+                    });
                   },
                 ),
               ),

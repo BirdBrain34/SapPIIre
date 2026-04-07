@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/mobile/screens/auth/login_screen.dart';
 import 'package:sappiire/services/supabase_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 enum _SortField { date, formType }
 enum _SortOrder { asc, desc }
@@ -18,6 +19,7 @@ class HistoryScreen extends StatefulWidget {
 
 class _HistoryScreenState extends State<HistoryScreen> {
   final _supabaseService = SupabaseService();
+  final _supabase = Supabase.instance.client;
 
   List<Map<String, dynamic>> _submissions = [];
   List<Map<String, dynamic>> _filtered = [];
@@ -64,10 +66,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
     try {
       final username = await _supabaseService.getUsername(widget.userId);
       final submissions = await _supabaseService.fetchClientSubmissionHistoryByUser(widget.userId);
+      final resolvedSubmissions = await _resolveAssistedBy(submissions);
       setState(() {
         _username = username ?? '';
-        _submissions = submissions;
-        _filtered = List.from(submissions);
+        _submissions = resolvedSubmissions;
+        _filtered = List.from(resolvedSubmissions);
         _isLoading = false;
       });
       _applySort();
@@ -75,6 +78,98 @@ class _HistoryScreenState extends State<HistoryScreen> {
       debugPrint('_loadHistory error: $e');
       setState(() => _isLoading = false);
     }
+  }
+
+  bool _looksLikeUuid(String raw) {
+    return RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+      caseSensitive: false,
+    ).hasMatch(raw);
+  }
+
+  Future<List<Map<String, dynamic>>> _resolveAssistedBy(
+    List<Map<String, dynamic>> submissions,
+  ) async {
+    final resolved = submissions
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+
+    final workerIds = <String>{};
+    for (final item in resolved) {
+      final editedBy = item['last_edited_by']?.toString().trim() ?? '';
+      final createdBy = item['created_by']?.toString().trim() ?? '';
+      final raw = editedBy.isNotEmpty ? editedBy : createdBy;
+      if (raw.isNotEmpty && _looksLikeUuid(raw)) {
+        workerIds.add(raw);
+      }
+    }
+
+    final fullNameById = <String, String>{};
+    final usernameById = <String, String>{};
+
+    if (workerIds.isNotEmpty) {
+      try {
+        final profiles = await _supabase
+            .from('staff_profiles')
+            .select('cswd_id, first_name, last_name')
+            .inFilter('cswd_id', workerIds.toList());
+
+        for (final row in List<Map<String, dynamic>>.from(profiles)) {
+          final cswdId = row['cswd_id']?.toString().trim() ?? '';
+          final first = row['first_name']?.toString().trim() ?? '';
+          final last = row['last_name']?.toString().trim() ?? '';
+          final fullName = [first, last].where((part) => part.isNotEmpty).join(' ');
+          if (cswdId.isNotEmpty && fullName.isNotEmpty) {
+            fullNameById[cswdId] = fullName;
+          }
+        }
+      } catch (e) {
+        debugPrint('HistoryScreen profile resolution error: $e');
+      }
+
+      try {
+        final accounts = await _supabase
+            .from('staff_accounts')
+            .select('cswd_id, username')
+            .inFilter('cswd_id', workerIds.toList());
+
+        for (final row in List<Map<String, dynamic>>.from(accounts)) {
+          final cswdId = row['cswd_id']?.toString().trim() ?? '';
+          final username = row['username']?.toString().trim() ?? '';
+          if (cswdId.isNotEmpty && username.isNotEmpty) {
+            usernameById[cswdId] = username;
+          }
+        }
+      } catch (e) {
+        debugPrint('HistoryScreen account resolution error: $e');
+      }
+    }
+
+    for (final item in resolved) {
+      final editedBy = item['last_edited_by']?.toString().trim() ?? '';
+      final createdBy = item['created_by']?.toString().trim() ?? '';
+      final raw = editedBy.isNotEmpty ? editedBy : createdBy;
+      if (raw.isEmpty) {
+        continue;
+      }
+
+      if (!_looksLikeUuid(raw)) {
+        item['last_edited_by'] = raw;
+        continue;
+      }
+
+      final fullName = fullNameById[raw];
+      final username = usernameById[raw];
+      if (fullName != null && fullName.isNotEmpty) {
+        item['last_edited_by'] = fullName;
+      } else if (username != null && username.isNotEmpty) {
+        item['last_edited_by'] = username;
+      } else {
+        item['last_edited_by'] = 'CSWD Staff';
+      }
+    }
+
+    return resolved;
   }
 
   void _applySort() {
@@ -227,16 +322,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   valueStyle: TextStyle(fontSize: 13, color: Colors.grey.shade400, fontStyle: FontStyle.italic),
                 ),
 
-              _detailRow(
-                icon: Icons.edit_outlined,
-                label: 'Processed at',
-                value: processedAt != null && processedAt.isNotEmpty
-                    ? _formatDate(processedAt)
-                    : 'Pending',
-                valueStyle: processedAt != null && processedAt.isNotEmpty
-                    ? null
-                    : TextStyle(fontSize: 13, color: Colors.orange.shade600, fontStyle: FontStyle.italic),
-              ),
+              if (processedAt != null && processedAt.isNotEmpty)
+                _detailRow(
+                  icon: Icons.edit_outlined,
+                  label: 'Processed at',
+                  value: _formatDate(processedAt),
+                ),
 
               _detailRow(
                 icon: Icons.calendar_today_outlined,

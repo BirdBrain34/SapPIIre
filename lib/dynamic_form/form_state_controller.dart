@@ -437,6 +437,14 @@ class FormStateController extends ChangeNotifier {
         signatureBase64 = value?.toString();
         signaturePoints = null;
         signatureIsProcessing = false;
+      } else if (
+        key == 'signature' &&
+        value != null &&
+        value.toString().isNotEmpty
+      ) {
+        signatureBase64 = value.toString();
+        signaturePoints = null;
+        signatureIsProcessing = false;
       } else {
         final field = template.fieldByName(key) ?? _findByLabel(key);
         if (field != null) {
@@ -971,8 +979,18 @@ class FormStateController extends ChangeNotifier {
       if (normalized == 's' || normalized == 'single') ['s', 'single'],
       if (normalized == 'married') ['m', 'married'],
       if (normalized == 'w' || normalized == 'widowed') ['w', 'widowed'],
-      if (normalized == 'sep' || normalized == 'separated')
-        ['sep', 'separated'],
+      if (normalized == 'h' ||
+          normalized == 'sep' ||
+          normalized == 'separated' ||
+          normalized == 'hiwalay')
+        ['h', 'sep', 'separated', 'hiwalay'],
+      if (normalized == 'li' ||
+          normalized == 'live_in' ||
+          normalized == 'live_in_' ||
+          normalized == 'livein' ||
+          normalized == 'live-in')
+        ['li', 'live_in', 'livein', 'live-in'],
+      if (normalized == 'c' || normalized == 'minor') ['c', 'minor'],
       if (normalized == 'a' || normalized == 'annulled') ['a', 'annulled'],
     ];
 

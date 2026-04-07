@@ -88,13 +88,22 @@ class SupabaseService {
 
       var savedAny = false;
       for (final template in templates) {
-        final formData = formDataByTemplate[template.templateId];
-        if (formData == null || formData.isEmpty) continue;
+        final updates = formDataByTemplate[template.templateId];
+        if (updates == null || updates.isEmpty) continue;
+
+        // Important: preserve existing non-canonical values for this template.
+        // saveUserFieldValues clears missing fields by design, so we must merge
+        // canonical updates into the current saved snapshot first.
+        final existing = await _fieldValueService.loadUserFieldValues(
+          userId: userId,
+          template: template,
+        );
+        final merged = <String, dynamic>{...existing, ...updates};
 
         final saved = await _fieldValueService.saveUserFieldValues(
           userId: userId,
           template: template,
-          formData: formData,
+          formData: merged,
         );
         if (saved) savedAny = true;
       }
@@ -697,8 +706,8 @@ class SupabaseService {
 
       if (sessionIds.isEmpty) return [];
 
-      const fields =
-          'id, form_type, intake_reference, created_at, session_id, data, last_edited_by, last_edited_at';
+        const fields =
+          'id, form_type, intake_reference, created_at, session_id, data, created_by, last_edited_by, last_edited_at';
 
       // Step 2: Match client_submissions by session_id column
       final byColumn = await _supabase
@@ -1042,12 +1051,17 @@ class SupabaseService {
     if (t == 'w' || t.contains('widow') || t.contains('balo')) {
       return 'widowed';
     }
-    if (t == 'sep' ||
+    if (t == 'h' ||
+        t == 'sep' ||
         t.contains('separated') ||
-        t.contains('hiwalay') ||
-        t.contains('live_in') ||
-        t.contains('livein')) {
+        t.contains('hiwalay')) {
       return 'separated';
+    }
+    if (t == 'li' || t.contains('live_in') || t.contains('livein')) {
+      return 'live_in';
+    }
+    if (t == 'c' || t.contains('minor')) {
+      return 'minor';
     }
     if (t == 'a' || t.contains('annul')) return 'annulled';
     return '';
@@ -1063,6 +1077,10 @@ class SupabaseService {
         return 'Widowed';
       case 'separated':
         return 'Separated';
+      case 'live_in':
+        return 'Live-in';
+      case 'minor':
+        return 'Minor';
       case 'annulled':
         return 'Annulled';
       default:

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:sappiire/services/supabase_service.dart';
-import 'package:sappiire/mobile/screens/auth/HistoryScreen.dart';
 import 'package:sappiire/constants/app_colors.dart';
 
 class QrScannerScreen extends StatefulWidget {
@@ -304,15 +303,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(context).pushAndRemoveUntil(
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  HistoryScreen(userId: widget.userId ?? ''),
-                            ),
-                            (route) => route.isFirst,
-                          );
-                        },
+                        onPressed: () => Navigator.of(context).pop('history'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.white,
                           foregroundColor: AppColors.primaryBlue,
@@ -348,6 +339,10 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         title: const Text('Scan QR', style: TextStyle(color: Colors.white)),
         actions: [
           IconButton(
