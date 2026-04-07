@@ -9,6 +9,20 @@ class StaffAdminService {
 
   final SupabaseClient _supabase;
 
+  Future<void> _cleanupProvisionedAccount(String cswdId) async {
+    try {
+      await _supabase.from('staff_profiles').delete().eq('cswd_id', cswdId);
+    } catch (_) {
+      // Best-effort cleanup only.
+    }
+
+    try {
+      await _supabase.from('staff_accounts').delete().eq('cswd_id', cswdId);
+    } catch (_) {
+      // Best-effort cleanup only.
+    }
+  }
+
   String _hashPassword(String password) {
     final bytes = utf8.encode(password);
     return sha256.convert(bytes).toString();
@@ -106,18 +120,50 @@ class StaffAdminService {
       };
     }
 
-    await _supabase.from('staff_profiles').insert({
-      'cswd_id': cswdId,
-      'first_name': firstName.trim(),
-      'last_name': lastName.trim(),
-      'position': position?.trim().isEmpty == true ? null : position?.trim(),
-      'department': department?.trim().isEmpty == true
-          ? null
-          : department?.trim(),
-      'phone_number': phoneNumber?.trim().isEmpty == true
-          ? null
-          : phoneNumber?.trim(),
-    });
+    try {
+      await _supabase.from('staff_profiles').insert({
+        'cswd_id': cswdId,
+        'first_name': firstName.trim(),
+        'last_name': lastName.trim(),
+        'position': position?.trim().isEmpty == true ? null : position?.trim(),
+        'department': department?.trim().isEmpty == true
+            ? null
+            : department?.trim(),
+        'phone_number': phoneNumber?.trim().isEmpty == true
+            ? null
+            : phoneNumber?.trim(),
+      });
+    } on PostgrestException catch (e) {
+      await _cleanupProvisionedAccount(cswdId);
+
+      if (e.code == '42501') {
+        return {
+          'success': false,
+          'message':
+              'Database policy blocked profile creation. Apply the latest staff_profiles RLS migration, then try again.',
+        };
+      }
+
+      if (e.code == '23502') {
+        return {
+          'success': false,
+          'message':
+              'Position and department are required by the database. Please fill them in and try again.',
+        };
+      }
+
+      return {
+        'success': false,
+        'message':
+            'Failed to create staff profile: ${e.message}${e.details == null || e.details!.toString().isEmpty ? '' : ' (${e.details})'}',
+      };
+    } catch (_) {
+      await _cleanupProvisionedAccount(cswdId);
+      return {
+        'success': false,
+        'message': 'Failed to create staff profile. Please try again.',
+      };
+    }
 
     return {'success': true, 'cswd_id': cswdId};
   }

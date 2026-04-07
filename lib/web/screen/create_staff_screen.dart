@@ -89,12 +89,19 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
     final lastName = _lastNameController.text.trim();
     final email = _emailController.text.trim().toLowerCase();
     final username = _usernameController.text.trim();
+    final position = _positionController.text.trim();
+    final department = _departmentController.text.trim();
 
     if (firstName.isEmpty ||
         lastName.isEmpty ||
         email.isEmpty ||
-        username.isEmpty) {
-      _showSnackBar('Please fill in all required fields.', isError: true);
+        username.isEmpty ||
+        position.isEmpty ||
+        department.isEmpty) {
+      _showSnackBar(
+        'Please fill in all required fields, including position and department.',
+        isError: true,
+      );
       return;
     }
 
@@ -117,8 +124,8 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
         username: username,
         firstName: firstName,
         lastName: lastName,
-        position: _positionController.text,
-        department: _departmentController.text,
+        position: position,
+        department: department,
         phoneNumber: _phoneController.text,
       );
 
@@ -406,7 +413,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                               ),
                               const SizedBox(height: 4),
                               const Text(
-                                'Optional values to complete staff profile context.',
+                                'Required profile fields for staff records.',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: AppColors.textMuted,
@@ -418,7 +425,10 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                                   Expanded(
                                     child: TextField(
                                       controller: _positionController,
-                                      decoration: _inputDecoration('Position'),
+                                      decoration: _inputDecoration(
+                                        'Position',
+                                        required: true,
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(width: 12),
@@ -427,6 +437,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                                       controller: _departmentController,
                                       decoration: _inputDecoration(
                                         'Department',
+                                        required: true,
                                       ),
                                     ),
                                   ),
