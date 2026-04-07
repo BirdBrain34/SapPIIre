@@ -91,6 +91,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         (list) => list.isNotEmpty ? list.first : throw Exception('No template'),
       );
 
+      final crossFilled = await _fieldValueService
+          .loadUserFieldValuesWithCrossFormFill(
+            userId: widget.userId,
+            template: _activeTemplate!,
+          );
+      final sigFromCross = crossFilled['__signature']?.toString() ?? '';
+
       setState(() {
         _usernameCtrl.text = accountData['username'] ?? '';
         _emailCtrl.text = _firstNonEmpty(accountData, ['email']);
@@ -134,7 +141,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _addressCtrl.text = parts;
 
         // Load existing signature if any
-        final existingSig = pii['signature'] ?? pii['__signature'] ?? '';
+        final directSig = (pii['signature'] ?? pii['__signature'] ?? '')
+            .toString();
+        final existingSig = directSig.isNotEmpty ? directSig : sigFromCross;
         if (existingSig.isNotEmpty) {
           _signatureBase64 = existingSig;
           _hasExistingSignature = true;
@@ -312,6 +321,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         canonicalMap['cp_number'] = _phoneCtrl.text.trim();
         canonicalMap['phone_number'] = _phoneCtrl.text.trim();
         canonicalMap['contact_number'] = _phoneCtrl.text.trim();
+      }
+      if (_emailCtrl.text.trim().isNotEmpty) {
+        canonicalMap['email_address'] = _emailCtrl.text.trim();
+        canonicalMap['email'] = _emailCtrl.text.trim();
       }
       if (_sex.isNotEmpty) {
         canonicalMap['kasarian_sex'] = _sex;

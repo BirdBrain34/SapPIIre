@@ -107,6 +107,7 @@ const _standardProfileCanonicalKeys = <({String key, String label})>[
   ),
   (key: 'barangay', label: 'Barangay'),
   (key: 'subdivison_', label: 'Subdivision'),
+  (key: 'signature', label: 'Signature'),
 ];
 
 const _canonicalKeyEligibleTypes = <FormFieldType>{
@@ -658,7 +659,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             ),
             isRequired: (f['is_required'] as bool?) ?? false,
             placeholder: f['placeholder'] as String?,
-            canonicalFieldKey: f['canonical_field_key'] as String?,
+            canonicalFieldKey: f['field_type'] == 'signature'
+                ? 'signature'
+                : f['canonical_field_key'] as String?,
             order: (f['field_order'] as int?) ?? 0,
             columns: columns,
             formula: (vr?['formula'] as String?) ?? '',
@@ -800,6 +803,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           'field_order': fi,
           if (validationRules.isNotEmpty) 'validation_rules': validationRules,
         });
+        if (field.type == FormFieldType.signature) {
+          dbFields.last['canonical_field_key'] = 'signature';
+        }
 
         if (field.type == FormFieldType.memberTable ||
             field.type == FormFieldType.familyTable) {
@@ -1408,6 +1414,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           fieldName: generatedFieldName,
           type: type,
           isRequired: false,
+          canonicalFieldKey: type == FormFieldType.signature
+              ? 'signature'
+              : null,
           order: section.fields.length,
           options: [],
           columns: columns,
@@ -2857,7 +2866,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   }
 
   Widget _buildFieldHeaderActive(_BuilderField field) {
-    final canLinkCanonicalKey = _canonicalKeyEligibleTypes.contains(field.type);
+    final isSignatureField = field.type == FormFieldType.signature;
+    final canLinkCanonicalKey =
+      _canonicalKeyEligibleTypes.contains(field.type) || isSignatureField;
+    final selectedCanonicalKey =
+      isSignatureField ? 'signature' : field.canonicalFieldKey;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2979,6 +2992,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                             }
                             setState(() {
                               field.type = v;
+                              if (v == FormFieldType.signature) {
+                                field.canonicalFieldKey = 'signature';
+                              }
                               if (v != FormFieldType.number) {
                                 field.ageFromFieldId = null;
                               }
@@ -3011,18 +3027,24 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             ),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String?>(
-                value: field.canonicalFieldKey,
+                value: selectedCanonicalKey,
                 isExpanded: true,
                 hint: const Text(
                   'Link to known field (optional)',
                   style: TextStyle(fontSize: 13, color: AppColors.textMuted),
                 ),
                 items: [
-                  const DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('— None —'),
-                  ),
-                  ..._availableCanonicalKeys.map(
+                  if (!isSignatureField)
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('— None —'),
+                    ),
+                  ...(isSignatureField
+                          ? const [
+                              (key: 'signature', label: 'Signature'),
+                            ]
+                          : _availableCanonicalKeys)
+                      .map(
                     (entry) => DropdownMenuItem<String?>(
                       value: entry.key,
                       child: Text(
@@ -3036,7 +3058,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 ],
                 onChanged: (value) {
                   setState(() {
-                    field.canonicalFieldKey = value;
+                    field.canonicalFieldKey =
+                        isSignatureField ? 'signature' : value;
                     _hasUnsavedChanges = true;
                   });
                 },

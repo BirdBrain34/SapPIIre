@@ -116,6 +116,12 @@ class ManageInfoController extends ChangeNotifier {
       }
     }
 
+    if ((ctrl.signatureBase64 == null || ctrl.signatureBase64!.isEmpty) &&
+        loaded['__signature'] != null &&
+        loaded['__signature'].toString().isNotEmpty) {
+      ctrl.signatureBase64 = loaded['__signature'].toString();
+    }
+
     formController = ctrl;
   }
 
