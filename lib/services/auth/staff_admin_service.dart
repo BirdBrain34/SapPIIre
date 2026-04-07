@@ -28,6 +28,49 @@ class StaffAdminService {
     return sha256.convert(bytes).toString();
   }
 
+  String _sanitizeUsernamePart(String value) {
+    return value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+  }
+
+  String _buildBaseUsername(String firstName, String lastName) {
+    final first = _sanitizeUsernamePart(firstName.trim());
+    final last = _sanitizeUsernamePart(lastName.trim());
+    final parts = <String>[
+      if (first.isNotEmpty) first,
+      if (last.isNotEmpty) last,
+    ];
+
+    if (parts.isEmpty) {
+      return 'staff';
+    }
+
+    return parts.join('.');
+  }
+
+  Future<String> _generateUniqueUsername(
+    String firstName,
+    String lastName,
+  ) async {
+    final baseUsername = _buildBaseUsername(firstName, lastName);
+    var candidate = baseUsername;
+    var suffix = 1;
+
+    while (true) {
+      final existing = await _supabase
+          .from('staff_accounts')
+          .select('username')
+          .eq('username', candidate)
+          .maybeSingle();
+
+      if (existing == null) {
+        return candidate;
+      }
+
+      candidate = '$baseUsername$suffix';
+      suffix += 1;
+    }
+  }
+
   Future<Map<String, List<Map<String, dynamic>>>> fetchAccounts() async {
     final pending = await _supabase
         .from('staff_accounts')
@@ -76,22 +119,16 @@ class StaffAdminService {
 
   Future<Map<String, dynamic>> createAdminStaffAccount({
     required String email,
-    required String username,
     required String firstName,
     required String lastName,
     String? position,
     String? department,
     String? phoneNumber,
   }) async {
-    final existing = await _supabase
-        .from('staff_accounts')
-        .select('username')
-        .eq('username', username.trim())
-        .maybeSingle();
-
-    if (existing != null) {
-      return {'success': false, 'message': 'Username already exists.'};
-    }
+    final generatedUsername = await _generateUniqueUsername(
+      firstName,
+      lastName,
+    );
 
     final placeholderPassword = _hashPassword(
       'pending_setup_${DateTime.now().millisecondsSinceEpoch}',
@@ -101,7 +138,7 @@ class StaffAdminService {
         .from('staff_accounts')
         .insert({
           'email': email.trim().toLowerCase(),
-          'username': username.trim(),
+          'username': generatedUsername,
           'password_hash': placeholderPassword,
           'role': 'admin',
           'requested_role': 'admin',
@@ -165,6 +202,6 @@ class StaffAdminService {
       };
     }
 
-    return {'success': true, 'cswd_id': cswdId};
+    return {'success': true, 'cswd_id': cswdId, 'username': generatedUsername};
   }
 }
