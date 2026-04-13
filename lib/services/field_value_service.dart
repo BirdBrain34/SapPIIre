@@ -322,7 +322,7 @@ class FieldValueService {
 
       final valueRows = await _supabase
           .from('user_field_values')
-          .select('field_id, field_value, updated_at')
+          .select('field_id, field_value, iv, encryption_version, updated_at')
           .eq('user_id', userId)
           .order('updated_at', ascending: false);
 
@@ -374,23 +374,64 @@ class FieldValueService {
         );
       }
 
+      final aesKey = HybridCryptoService.deriveUserAesKey(userId);
+
       final canonicalBestValue = <String, String>{};
+
+      // Separate encrypted rows from plaintext rows for batch decryption
+      final _crossFillEncryptedRows = <Map<String, dynamic>>[];
+      final _crossFillItems = <({String ciphertext, String iv})>[];
+      final _crossFillCanonicals = <String>[];
+
       for (final row in valueRows) {
         final fid = row['field_id'] as String?;
-        final value = row['field_value'] as String?;
+        final fval = row['field_value'] as String?;
         if (fid == null ||
-            value == null ||
-            value.trim().isEmpty ||
-            value == _clearedSentinel) {
+            fval == null ||
+            fval.trim().isEmpty ||
+            fval == _clearedSentinel) {
           continue;
         }
 
         final canonical = idToCanonical[fid];
         if (canonical == null) continue;
 
-        // Rows are pre-sorted by updated_at descending, so first hit per
-        // canonical key is the most recent value.
-        canonicalBestValue.putIfAbsent(canonical, () => value);
+        // Skip if we already have a value for this canonical key
+        if (canonicalBestValue.containsKey(canonical)) continue;
+
+        final rawVersion = row['encryption_version'];
+        final version = rawVersion is int
+            ? rawVersion
+            : int.tryParse(rawVersion?.toString() ?? '') ?? 0;
+
+        if (version == 1) {
+          final iv = row['iv'] as String? ?? '';
+          if (iv.isEmpty) continue;
+          _crossFillEncryptedRows.add(row);
+          _crossFillItems.add((ciphertext: fval, iv: iv));
+          _crossFillCanonicals.add(canonical);
+        } else {
+          // Plaintext (legacy encryption_version == 0)
+          canonicalBestValue[canonical] = fval;
+        }
+      }
+
+      // Batch decrypt all encrypted cross-fill values
+      if (_crossFillItems.isNotEmpty) {
+        try {
+          final decryptedValues = await HybridCryptoService.decryptFieldBatch(
+            _crossFillItems,
+            aesKey,
+          );
+          for (var i = 0; i < _crossFillCanonicals.length; i++) {
+            final decrypted = i < decryptedValues.length ? decryptedValues[i] : '';
+            if (decrypted.isNotEmpty && decrypted != _clearedSentinel) {
+              canonicalBestValue[_crossFillCanonicals[i]] = decrypted;
+            }
+          }
+        } catch (e) {
+          debugPrint('crossFormFill batch decrypt error: $e');
+        }
       }
       debugPrint(
         'crossFormFill: canonical values=${canonicalBestValue.length}',
