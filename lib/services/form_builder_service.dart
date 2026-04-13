@@ -17,6 +17,64 @@ class FormBuilderService {
 
   /// Last error from saveTemplateStructure (for UI display).
   String? lastSaveError;
+  String? lastActionError;
+
+  bool _isLegacyArchivedFlag(Map<String, dynamic>? themeConfig) {
+    final val = themeConfig?['archived'];
+    return val == true || val == 'true';
+  }
+
+  Map<String, dynamic>? _asStringDynamicMap(dynamic value) {
+    if (value is Map<String, dynamic>) return Map<String, dynamic>.from(value);
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return null;
+  }
+
+  bool _isStatusCheckConstraintError(Object e) {
+    if (e is! PostgrestException) return false;
+    final msg = '${e.message} ${e.details ?? ''} ${e.hint ?? ''}'.toLowerCase();
+    return e.code == '23514' ||
+        msg.contains('check constraint') ||
+        msg.contains('status') && msg.contains('constraint');
+  }
+
+  Future<Map<String, dynamic>> _loadThemeConfig(String templateId) async {
+    final existing = await _supabase
+        .from('form_templates')
+        .select('theme_config')
+        .eq('template_id', templateId)
+        .maybeSingle();
+
+    final raw = existing?['theme_config'];
+    if (raw is Map<String, dynamic>) return Map<String, dynamic>.from(raw);
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return <String, dynamic>{};
+  }
+
+  Future<void> _setLegacyArchiveFlag(
+    String templateId, {
+    required bool archived,
+    bool setInactive = false,
+    String? statusOverride,
+  }) async {
+    final themeConfig = await _loadThemeConfig(templateId);
+    if (archived) {
+      themeConfig['archived'] = true;
+    } else {
+      themeConfig.remove('archived');
+    }
+
+    final payload = <String, dynamic>{
+      'theme_config': themeConfig.isEmpty ? null : themeConfig,
+      if (setInactive) 'is_active': false,
+      if (statusOverride != null) 'status': statusOverride,
+    };
+
+    await _supabase
+        .from('form_templates')
+        .update(payload)
+        .eq('template_id', templateId);
+  }
 
   /// Delete all child rows (options, conditions, values) for a template's fields,
   /// then delete the fields and sections themselves.
@@ -30,8 +88,9 @@ class FormBuilderService {
         .eq('template_id', templateId);
 
     if (existingFields.isNotEmpty) {
-      final fieldIds =
-          existingFields.map((f) => f['field_id'] as String).toList();
+      final fieldIds = existingFields
+          .map((f) => f['field_id'] as String)
+          .toList();
       await _supabase
           .from('form_field_options')
           .delete()
@@ -58,10 +117,7 @@ class FormBuilderService {
         .delete()
         .eq('template_id', templateId)
         .not('parent_field_id', 'is', null);
-    await _supabase
-        .from('form_fields')
-        .delete()
-        .eq('template_id', templateId);
+    await _supabase.from('form_fields').delete().eq('template_id', templateId);
     await _supabase
         .from('form_sections')
         .delete()
@@ -80,10 +136,18 @@ class FormBuilderService {
           .select(
             'template_id, form_name, form_desc, is_active, '
             'status, created_by, published_at, pushed_to_mobile_at, '
-            'form_code, reference_prefix, reference_format, requires_reference',
+            'form_code, reference_prefix, reference_format, requires_reference, '
+            'theme_config',
           )
           .order('form_name', ascending: true);
-      return List<Map<String, dynamic>>.from(res);
+      return List<Map<String, dynamic>>.from(res).map((row) {
+        final item = Map<String, dynamic>.from(row);
+        final themeConfig = _asStringDynamicMap(item['theme_config']);
+        if (_isLegacyArchivedFlag(themeConfig)) {
+          item['status'] = 'archived';
+        }
+        return item;
+      }).toList();
     } catch (e) {
       debugPrint('FormBuilderService.fetchAllTemplates error: $e');
       return [];
@@ -92,7 +156,8 @@ class FormBuilderService {
 
   /// Fetch a single template with full structure (sections, fields, options).
   Future<Map<String, dynamic>?> fetchTemplateWithStructure(
-      String templateId) async {
+    String templateId,
+  ) async {
     try {
       final res = await _supabase
           .from('form_templates')
@@ -121,7 +186,12 @@ class FormBuilderService {
           ''')
           .eq('template_id', templateId)
           .single();
-      return res;
+      final item = Map<String, dynamic>.from(res);
+      final themeConfig = _asStringDynamicMap(item['theme_config']);
+      if (_isLegacyArchivedFlag(themeConfig)) {
+        item['status'] = 'archived';
+      }
+      return item;
     } catch (e) {
       debugPrint('FormBuilderService.fetchTemplateWithStructure error: $e');
       return null;
@@ -287,19 +357,22 @@ class FormBuilderService {
   }) async {
     try {
       // 1. Update template metadata
-      await _supabase.from('form_templates').update({
-        'form_name': formName,
-        'form_desc': formDesc,
-        'theme_config': themeConfig,
-        if (formCode != null && formCode.trim().isNotEmpty)
-          'form_code': formCode.trim().toUpperCase(),
-        if (referencePrefix != null && referencePrefix.trim().isNotEmpty)
-          'reference_prefix': referencePrefix.trim().toUpperCase(),
-        if (referenceFormat != null && referenceFormat.trim().isNotEmpty)
-          'reference_format': referenceFormat.trim(),
-        if (requiresReference != null)
-          'requires_reference': requiresReference,
-      }).eq('template_id', templateId);
+      await _supabase
+          .from('form_templates')
+          .update({
+            'form_name': formName,
+            'form_desc': formDesc,
+            'theme_config': themeConfig,
+            if (formCode != null && formCode.trim().isNotEmpty)
+              'form_code': formCode.trim().toUpperCase(),
+            if (referencePrefix != null && referencePrefix.trim().isNotEmpty)
+              'reference_prefix': referencePrefix.trim().toUpperCase(),
+            if (referenceFormat != null && referenceFormat.trim().isNotEmpty)
+              'reference_format': referenceFormat.trim(),
+            if (requiresReference != null)
+              'requires_reference': requiresReference,
+          })
+          .eq('template_id', templateId);
 
       // 2. Delete options only (safe — no user data references options)
       final existingFields = await _supabase
@@ -308,8 +381,9 @@ class FormBuilderService {
           .eq('template_id', templateId);
 
       if (existingFields.isNotEmpty) {
-        final existingIds =
-            existingFields.map((f) => f['field_id'] as String).toList();
+        final existingIds = existingFields
+            .map((f) => f['field_id'] as String)
+            .toList();
         await _supabase
             .from('form_field_options')
             .delete()
@@ -328,20 +402,18 @@ class FormBuilderService {
       }
 
       // 4. Upsert fields (parents first, then children)
-      final parentFields =
-          fields.where((f) => f['parent_field_id'] == null).toList();
-      final childFields =
-          fields.where((f) => f['parent_field_id'] != null).toList();
+      final parentFields = fields
+          .where((f) => f['parent_field_id'] == null)
+          .toList();
+      final childFields = fields
+          .where((f) => f['parent_field_id'] != null)
+          .toList();
 
       for (final f in parentFields) {
-        await _supabase
-            .from('form_fields')
-            .upsert(f, onConflict: 'field_id');
+        await _supabase.from('form_fields').upsert(f, onConflict: 'field_id');
       }
       for (final f in childFields) {
-        await _supabase
-            .from('form_fields')
-            .upsert(f, onConflict: 'field_id');
+        await _supabase.from('form_fields').upsert(f, onConflict: 'field_id');
       }
 
       // 5. Insert fresh options
@@ -357,24 +429,26 @@ class FormBuilderService {
       // 6. Soft-delete orphaned fields — fields removed in the builder
       //    are marked as archived instead of deleted so that historical
       //    submission_field_values and user_field_values are preserved.
-      final newFieldIds =
-          fields.map((f) => f['field_id'] as String).toSet();
-      final existingFieldIds =
-          existingFields.map((f) => f['field_id'] as String).toSet();
-      final orphanFieldIds =
-          existingFieldIds.difference(newFieldIds).toList();
+      final newFieldIds = fields.map((f) => f['field_id'] as String).toSet();
+      final existingFieldIds = existingFields
+          .map((f) => f['field_id'] as String)
+          .toSet();
+      final orphanFieldIds = existingFieldIds.difference(newFieldIds).toList();
 
       if (orphanFieldIds.isNotEmpty) {
         // Mark orphan fields as archived (keeps field + value rows intact)
         await _supabase
             .from('form_fields')
-            .update({'validation_rules': {'_archived': true}})
+            .update({
+              'validation_rules': {'_archived': true},
+            })
             .inFilter('field_id', orphanFieldIds);
       }
 
       // 7. Delete orphaned sections no longer in the payload
-      final newSectionIds =
-          sections.map((s) => s['section_id'] as String).toSet();
+      final newSectionIds = sections
+          .map((s) => s['section_id'] as String)
+          .toSet();
       final existingSections = await _supabase
           .from('form_sections')
           .select('section_id')
@@ -382,8 +456,9 @@ class FormBuilderService {
       final existingSectionIds = existingSections
           .map((s) => s['section_id'] as String)
           .toSet();
-      final orphanSectionIds =
-          existingSectionIds.difference(newSectionIds).toList();
+      final orphanSectionIds = existingSectionIds
+          .difference(newSectionIds)
+          .toList();
 
       if (orphanSectionIds.isNotEmpty) {
         await _supabase
@@ -407,14 +482,20 @@ class FormBuilderService {
 
   /// Publish template → visible to admin staff in Manage Forms.
   Future<bool> publishTemplate(String templateId) async {
+    lastActionError = null;
     try {
-      await _supabase.from('form_templates').update({
-        'status': 'published',
-        'is_active': true,
-        'published_at': DateTime.now().toIso8601String(),
-      }).eq('template_id', templateId);
+      await _supabase
+          .from('form_templates')
+          .update({
+            'status': 'published',
+            'is_active': true,
+            'published_at': DateTime.now().toIso8601String(),
+          })
+          .eq('template_id', templateId);
+      await _setLegacyArchiveFlag(templateId, archived: false);
       return true;
     } catch (e) {
+      lastActionError = e.toString();
       debugPrint('FormBuilderService.publishTemplate error: $e');
       return false;
     }
@@ -422,13 +503,19 @@ class FormBuilderService {
 
   /// Push published template to mobile app.
   Future<bool> pushToMobile(String templateId) async {
+    lastActionError = null;
     try {
-      await _supabase.from('form_templates').update({
-        'status': 'pushed_to_mobile',
-        'pushed_to_mobile_at': DateTime.now().toIso8601String(),
-      }).eq('template_id', templateId);
+      await _supabase
+          .from('form_templates')
+          .update({
+            'status': 'pushed_to_mobile',
+            'pushed_to_mobile_at': DateTime.now().toIso8601String(),
+          })
+          .eq('template_id', templateId);
+      await _setLegacyArchiveFlag(templateId, archived: false);
       return true;
     } catch (e) {
+      lastActionError = e.toString();
       debugPrint('FormBuilderService.pushToMobile error: $e');
       return false;
     }
@@ -436,13 +523,16 @@ class FormBuilderService {
 
   /// Revert a published/pushed template back to draft.
   Future<bool> unpublishTemplate(String templateId) async {
+    lastActionError = null;
     try {
-      await _supabase.from('form_templates').update({
-        'status': 'draft',
-        'is_active': false,
-      }).eq('template_id', templateId);
+      await _supabase
+          .from('form_templates')
+          .update({'status': 'draft', 'is_active': false})
+          .eq('template_id', templateId);
+      await _setLegacyArchiveFlag(templateId, archived: false);
       return true;
     } catch (e) {
+      lastActionError = e.toString();
       debugPrint('FormBuilderService.unpublishTemplate error: $e');
       return false;
     }
@@ -456,13 +546,32 @@ class FormBuilderService {
   /// Sets is_active = false and status = 'archived'.
   /// Data remains intact for historical reference.
   Future<bool> archiveTemplate(String templateId) async {
+    lastActionError = null;
     try {
-      await _supabase.from('form_templates').update({
-        'status': 'archived',
-        'is_active': false,
-      }).eq('template_id', templateId);
+      await _supabase
+          .from('form_templates')
+          .update({'status': 'archived', 'is_active': false})
+          .eq('template_id', templateId);
       return true;
     } catch (e) {
+      if (_isStatusCheckConstraintError(e)) {
+        try {
+          await _setLegacyArchiveFlag(
+            templateId,
+            archived: true,
+            setInactive: true,
+            statusOverride: 'draft',
+          );
+          return true;
+        } catch (fallbackError) {
+          lastActionError = fallbackError.toString();
+          debugPrint(
+            'FormBuilderService.archiveTemplate fallback error: $fallbackError',
+          );
+          return false;
+        }
+      }
+      lastActionError = e.toString();
       debugPrint('FormBuilderService.archiveTemplate error: $e');
       return false;
     }
@@ -470,13 +579,33 @@ class FormBuilderService {
 
   /// Restore an archived template back to draft.
   Future<bool> restoreTemplate(String templateId) async {
+    lastActionError = null;
     try {
-      await _supabase.from('form_templates').update({
-        'status': 'draft',
-        'is_active': false,
-      }).eq('template_id', templateId);
+      await _supabase
+          .from('form_templates')
+          .update({'status': 'draft', 'is_active': false})
+          .eq('template_id', templateId);
+      await _setLegacyArchiveFlag(templateId, archived: false);
       return true;
     } catch (e) {
+      if (_isStatusCheckConstraintError(e)) {
+        try {
+          await _setLegacyArchiveFlag(
+            templateId,
+            archived: false,
+            setInactive: true,
+            statusOverride: 'draft',
+          );
+          return true;
+        } catch (fallbackError) {
+          lastActionError = fallbackError.toString();
+          debugPrint(
+            'FormBuilderService.restoreTemplate fallback error: $fallbackError',
+          );
+          return false;
+        }
+      }
+      lastActionError = e.toString();
       debugPrint('FormBuilderService.restoreTemplate error: $e');
       return false;
     }
