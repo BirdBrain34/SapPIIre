@@ -671,24 +671,41 @@ class FormStateController extends ChangeNotifier {
         .where((f) => f.fieldType == FormFieldType.computed)
         .toList();
 
-    for (final field in computedFields) {
-      final formula = field.validationRules?['formula'] as String? ?? '';
-      if (formula.trim().isEmpty) continue;
-      try {
-        final result = _evalFormula(formula);
-        final shouldShowZero = RegExp(r'\bSUM_COLUMN\s*\(').hasMatch(formula);
-        _setComputed(field.fieldName, result, showZero: shouldShowZero);
-      } catch (_) {
-        // Leave field blank if formula is invalid
+    if (computedFields.isEmpty) return;
+
+    // Resolve chained computed dependencies regardless of template order.
+    // Example: D = A+B+C, F = D/E. If F appears before D in schema, a single
+    // pass can read stale D. Multiple passes converge quickly in practice.
+    final maxPasses = computedFields.length;
+    for (var pass = 0; pass < maxPasses; pass++) {
+      var anyChanged = false;
+
+      for (final field in computedFields) {
+        final formula = field.validationRules?['formula'] as String? ?? '';
+        if (formula.trim().isEmpty) continue;
+        try {
+          final result = _evalFormula(formula);
+          final shouldShowZero =
+              RegExp(r'\bSUM_COLUMN\s*\(').hasMatch(formula) ||
+              formula.contains('/');
+          final changed = _setComputed(
+            field.fieldName,
+            result,
+            showZero: shouldShowZero,
+          );
+          anyChanged = anyChanged || changed;
+        } catch (_) {
+          // Leave field blank if formula is invalid
+        }
       }
+
+      if (!anyChanged) break;
     }
   }
 
   /// Preprocess formula to expand SUM_COLUMN() aggregate function calls.
   /// Converts SUM_COLUMN(table_key, "allowance") → numeric sum
   String _expandAggregates(String formula) {
-    formula = _normalizeFormulaFieldReferences(formula);
-
     // Match: SUM_COLUMN(tableKey, "columnKey") or SUM_COLUMN(tableKey, 'columnKey')
     final regex = RegExp(
       'SUM_COLUMN\\(([a-zA-Z_][a-zA-Z0-9_]*)\\s*,\\s*[\'\"]([^\'\"]+)[\'\"]\\s*\\)',
@@ -712,7 +729,15 @@ class FormStateController extends ChangeNotifier {
 
     var normalized = formula;
     for (final f in replacements) {
-      normalized = normalized.replaceAll(f.fieldLabel, f.fieldName);
+      final label = f.fieldLabel.trim();
+      final key = f.fieldName.trim();
+      if (label.isEmpty || key.isEmpty) continue;
+
+      // Replace only standalone label matches so we don't mutate substrings
+      // inside unrelated identifiers.
+      final escaped = RegExp.escape(label);
+      final pattern = RegExp('(?<![A-Za-z0-9_])$escaped(?![A-Za-z0-9_])');
+      normalized = normalized.replaceAll(pattern, key);
     }
     return normalized;
   }
@@ -827,19 +852,29 @@ class FormStateController extends ChangeNotifier {
 
   /// Tokenise and evaluate a simple arithmetic formula.
   double _evalFormula(String formula) {
-    // Step 1: Expand aggregate functions (SUM_COLUMN, etc.)
-    final expanded = _expandAggregates(formula);
+    // Step 1: Normalize label-based references to machine-safe field names.
+    final normalized = _normalizeFormulaFieldReferences(formula);
 
-    // Step 2: Replace field names with their numeric values
+    // Step 2: Expand aggregate functions (SUM_COLUMN, etc.)
+    final expanded = _expandAggregates(normalized);
+
+    final knownFieldNames = template.allFields
+        .map((f) => f.fieldName)
+        .where((name) => name.trim().isNotEmpty)
+        .toSet();
+
+    // Step 3: Replace known field names with their numeric values.
+    // Unknown tokens are replaced with 0 to keep evaluation resilient.
     final resolved = expanded.replaceAllMapped(
       RegExp(r'[a-zA-Z_][a-zA-Z0-9_]*'),
       (m) {
         final name = m.group(0)!;
+        if (!knownFieldNames.contains(name)) return '0';
         return _parseNum(name).toString();
       },
     );
 
-    // Step 3: Evaluate the arithmetic expression
+    // Step 4: Evaluate the arithmetic expression
     return _evalExpr(resolved.replaceAll(' ', ''), _Pos(0));
   }
 
@@ -886,21 +921,28 @@ class FormStateController extends ChangeNotifier {
 
   double _parseNum(String key) {
     final raw =
-        textControllers[key]?.text.replaceAll(',', '') ??
         _values[key]?.toString() ??
+        textControllers[key]?.text ??
         '0';
-    return double.tryParse(raw) ?? 0.0;
+    final normalized = raw.replaceAll(',', '').trim();
+    return double.tryParse(normalized) ?? 0.0;
   }
 
-  void _setComputed(String key, double value, {bool showZero = false}) {
+  bool _setComputed(String key, double value, {bool showZero = false}) {
     final str = value == 0 ? (showZero ? '0' : '') : value.toStringAsFixed(2);
+    var changed = false;
     if (textControllers.containsKey(key)) {
       if (textControllers[key]!.text != str) {
         textControllers[key]!.text = str;
         _fieldNotifiers[key]?.value = str; // Also update notifier
+        changed = true;
       }
     }
+    if (_values[key] != str) {
+      changed = true;
+    }
     _values[key] = str;
+    return changed;
   }
 
   // ── Select-all toggle ─────────────────────────────────────

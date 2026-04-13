@@ -38,7 +38,6 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _positionController = TextEditingController();
   final TextEditingController _departmentController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
@@ -57,7 +56,6 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
     _firstNameController.clear();
     _lastNameController.clear();
     _emailController.clear();
-    _usernameController.clear();
     _positionController.clear();
     _departmentController.clear();
     _phoneController.clear();
@@ -88,13 +86,18 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
     final firstName = _firstNameController.text.trim();
     final lastName = _lastNameController.text.trim();
     final email = _emailController.text.trim().toLowerCase();
-    final username = _usernameController.text.trim();
+    final position = _positionController.text.trim();
+    final department = _departmentController.text.trim();
 
     if (firstName.isEmpty ||
         lastName.isEmpty ||
         email.isEmpty ||
-        username.isEmpty) {
-      _showSnackBar('Please fill in all required fields.', isError: true);
+        position.isEmpty ||
+        department.isEmpty) {
+      _showSnackBar(
+        'Please fill in all required fields, including position and department.',
+        isError: true,
+      );
       return;
     }
 
@@ -114,11 +117,10 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
 
       final createResult = await _staffAdminService.createAdminStaffAccount(
         email: email,
-        username: username,
         firstName: firstName,
         lastName: lastName,
-        position: _positionController.text,
-        department: _departmentController.text,
+        position: position,
+        department: department,
         phoneNumber: _phoneController.text,
       );
 
@@ -132,10 +134,20 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
       }
 
       final String? cswdId = createResult['cswd_id']?.toString();
+      final String? generatedUsername = createResult['username']?.toString();
 
       if (cswdId == null || cswdId.isEmpty) {
         _showSnackBar(
           'Account created but failed to get ID. Contact developer.',
+          isError: true,
+        );
+        setState(() => _isCreatingAccount = false);
+        return;
+      }
+
+      if (generatedUsername == null || generatedUsername.isEmpty) {
+        _showSnackBar(
+          'Account created but failed to get username. Contact developer.',
           isError: true,
         );
         setState(() => _isCreatingAccount = false);
@@ -155,8 +167,12 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
         actorRole: widget.role,
         targetType: 'staff_account',
         targetId: cswdId,
-        targetLabel: username,
-        details: {'username': username, 'role': _fixedRole, 'email': email},
+        targetLabel: generatedUsername,
+        details: {
+          'username': generatedUsername,
+          'role': _fixedRole,
+          'email': email,
+        },
       );
 
       if (!mounted) return;
@@ -185,7 +201,6 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
     _firstNameController.dispose();
     _lastNameController.dispose();
     _emailController.dispose();
-    _usernameController.dispose();
     _positionController.dispose();
     _departmentController.dispose();
     _phoneController.dispose();
@@ -327,7 +342,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                               ),
                               const SizedBox(height: 4),
                               const Text(
-                                'Required fields used for login and account ownership.',
+                                'Username is auto-generated from first and last name. Email is used for login and OTP delivery.',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: AppColors.textMuted,
@@ -370,16 +385,6 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: TextField(
-                                      controller: _usernameController,
-                                      decoration: _inputDecoration(
-                                        'Username',
-                                        required: true,
-                                      ),
-                                    ),
-                                  ),
                                 ],
                               ),
                             ],
@@ -406,7 +411,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                               ),
                               const SizedBox(height: 4),
                               const Text(
-                                'Optional values to complete staff profile context.',
+                                'Required profile fields for staff records.',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: AppColors.textMuted,
@@ -418,7 +423,10 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                                   Expanded(
                                     child: TextField(
                                       controller: _positionController,
-                                      decoration: _inputDecoration('Position'),
+                                      decoration: _inputDecoration(
+                                        'Position',
+                                        required: true,
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(width: 12),
@@ -427,6 +435,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                                       controller: _departmentController,
                                       decoration: _inputDecoration(
                                         'Department',
+                                        required: true,
                                       ),
                                     ),
                                   ),

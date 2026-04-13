@@ -6,7 +6,6 @@ import 'package:sappiire/web/screen/forgot_password_screen.dart';
 import 'package:sappiire/web/screen/new_staff_setup_screen.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/services/auth/web_auth_service.dart';
-import 'package:sappiire/web/screen/web_signup_screen.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 
 class WorkerLoginScreen extends StatefulWidget {
@@ -224,22 +223,13 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
             style: TextStyle(color: Color(0xFF8BAEE0), fontSize: 14),
           ),
           const SizedBox(height: 40),
-          _fieldLabel('Email (Staff) or Username (Superadmin)'),
+          _fieldLabel('Email'),
           const SizedBox(height: 8),
           _styledField(
             controller: _identifierController,
-            hint: 'Staff: email | Superadmin: username',
+            hint: 'Email',
             icon: Icons.badge_outlined,
             textInputAction: TextInputAction.next,
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Staff accounts must sign in with email. Superadmin signs in with username.',
-            style: TextStyle(
-              color: Color(0xFF8BAEE0),
-              fontSize: 12,
-              height: 1.4,
-            ),
           ),
           const SizedBox(height: 20),
           _fieldLabel('Password'),
@@ -311,42 +301,6 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
                         letterSpacing: 0.3,
                       ),
                     ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              const Expanded(child: Divider(color: Color(0xFF2A3F7A))),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 12),
-                child: Text(
-                  'or',
-                  style: TextStyle(color: Color(0xFF8BAEE0), fontSize: 13),
-                ),
-              ),
-              const Expanded(child: Divider(color: Color(0xFF2A3F7A))),
-            ],
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: OutlinedButton(
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Color(0xFF2A3F7A), width: 1.5),
-                foregroundColor: const Color(0xFF8BAEE0),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: () => Navigator.push(
-                context,
-                ContentFadeRoute(page: const WebSignupScreen()),
-              ),
-              child: const Text(
-                "Don't have an account? Register",
-                style: TextStyle(fontSize: 14),
-              ),
             ),
           ),
           const SizedBox(height: 36),
