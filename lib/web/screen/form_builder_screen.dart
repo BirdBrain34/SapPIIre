@@ -292,6 +292,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   final _service = FormBuilderService();
   final _authService = WebAuthService();
   final _scrollCtrl = ScrollController();
+  final PageStorageBucket _canvasStorageBucket = PageStorageBucket();
+  double _lastCanvasOffset = 0.0;
 
   // Template list
   List<Map<String, dynamic>> _templates = [];
@@ -326,22 +328,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
 
   // Text controller cache (prevents cursor jump on rebuild)
   final Map<String, TextEditingController> _ctrls = {};
-
-  @override
-  void setState(VoidCallback fn) {
-    if (!mounted) return;
-
-    final targetOffset = _scrollCtrl.hasClients ? _scrollCtrl.offset : null;
-    super.setState(fn);
-
-    if (targetOffset == null) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollCtrl.hasClients) return;
-      final position = _scrollCtrl.position;
-      final clampedOffset = targetOffset.clamp(0.0, position.maxScrollExtent);
-      _scrollCtrl.jumpTo(clampedOffset);
-    });
-  }
 
   TextEditingController _ctrl(String key, String initial) {
     return _ctrls.putIfAbsent(key, () => TextEditingController(text: initial));
@@ -462,11 +448,41 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   @override
   void initState() {
     super.initState();
+    _scrollCtrl.addListener(() {
+      if (_scrollCtrl.hasClients) {
+        _lastCanvasOffset = _scrollCtrl.offset;
+      }
+    });
     _loadCanonicalKeys();
     _loadTemplateList().then((_) {
       if (widget.editTemplateId != null) {
         _loadTemplate(widget.editTemplateId!);
       }
+    });
+  }
+
+  void _setStatePreserveCanvasScroll(VoidCallback fn) {
+    final targetOffset = _scrollCtrl.hasClients
+        ? _scrollCtrl.offset
+        : _lastCanvasOffset;
+
+    if (!mounted) return;
+    super.setState(fn);
+
+    void restoreOffset() {
+      if (!mounted || !_scrollCtrl.hasClients) return;
+      final max = _scrollCtrl.position.maxScrollExtent;
+      final clamped = targetOffset.clamp(0.0, max).toDouble();
+      if ((_scrollCtrl.offset - clamped).abs() > 0.5) {
+        _scrollCtrl.jumpTo(clamped);
+      }
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      restoreOffset();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        restoreOffset();
+      });
     });
   }
 
@@ -1574,20 +1590,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   }
 
   void _preserveScrollPosition(VoidCallback updateSelection) {
-    final targetOffset = _scrollCtrl.hasClients ? _scrollCtrl.offset : null;
-
-    setState(updateSelection);
-
-    if (targetOffset == null) {
-      return;
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollCtrl.hasClients) return;
-      final position = _scrollCtrl.position;
-      final clampedOffset = targetOffset.clamp(0.0, position.maxScrollExtent);
-      _scrollCtrl.jumpTo(clampedOffset);
-    });
+    _setStatePreserveCanvasScroll(updateSelection);
   }
 
   // ── Navigation ──────────────────────────────────────────────
@@ -2008,35 +2011,40 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   // BUILDER CANVAS
   // ═══════════════════════════════════════════════════════════
   Widget _buildBuilderCanvas() {
-    return Container(
-      color: AppColors.pageBg,
-      child: Column(
-        children: [
-          _buildCanvasToolbar(),
-          Expanded(
-            child: SingleChildScrollView(
-              controller: _scrollCtrl,
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Center(
-                child: SizedBox(
-                  width: 680,
-                  child: Column(
-                    children: [
-                      _buildTitleCard(),
-                      const SizedBox(height: 12),
-                      ..._buildAllSections(),
-                      const SizedBox(height: 16),
-                      _buildAddSectionButton(),
-                      const SizedBox(height: 16),
-                      _buildStatusCard(),
-                      const SizedBox(height: 48),
-                    ],
+    return PageStorage(
+      bucket: _canvasStorageBucket,
+      child: Container(
+        color: AppColors.pageBg,
+        child: Column(
+          children: [
+            _buildCanvasToolbar(),
+            Expanded(
+              child: SingleChildScrollView(
+                key: const PageStorageKey<String>('form_builder_canvas_scroll'),
+                controller: _scrollCtrl,
+                primary: false,
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: SizedBox(
+                    width: 680,
+                    child: Column(
+                      children: [
+                        _buildTitleCard(),
+                        const SizedBox(height: 12),
+                        ..._buildAllSections(),
+                        const SizedBox(height: 16),
+                        _buildAddSectionButton(),
+                        const SizedBox(height: 16),
+                        _buildStatusCard(),
+                        const SizedBox(height: 48),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -2122,6 +2130,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             // ── Form name ──────────────────────────────────
             TextField(
               controller: _ctrl('formName', _formName),
+              scrollPadding: EdgeInsets.zero,
               style: const TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.w400,
@@ -2147,6 +2156,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             // ── Description ────────────────────────────────
             TextField(
               controller: _ctrl('formDesc', _formDesc),
+              scrollPadding: EdgeInsets.zero,
               style: const TextStyle(fontSize: 14, color: AppColors.textMuted),
               decoration: const InputDecoration(
                 hintText: 'Form description',
@@ -2171,6 +2181,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 Expanded(
                   child: TextField(
                     controller: _ctrl('formCode', _formCode),
+                    scrollPadding: EdgeInsets.zero,
                     decoration: InputDecoration(
                       labelText: 'Form Code',
                       hintText: 'GIS',
@@ -2197,6 +2208,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 Expanded(
                   child: TextField(
                     controller: _ctrl('referencePrefix', _referencePrefix),
+                    scrollPadding: EdgeInsets.zero,
                     decoration: InputDecoration(
                       labelText: 'Reference Prefix',
                       hintText: 'GIS',
@@ -2520,6 +2532,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               // Subtitle
               TextField(
                 controller: _ctrl('popupSubtitle', _popupSubtitle),
+                scrollPadding: EdgeInsets.zero,
                 style: const TextStyle(fontSize: 13, color: AppColors.textDark),
                 decoration: InputDecoration(
                   labelText: 'Subtitle',
@@ -2553,6 +2566,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               // Description (multiline)
               TextField(
                 controller: _ctrl('popupDesc', _popupDescription),
+                scrollPadding: EdgeInsets.zero,
                 style: const TextStyle(fontSize: 13, color: AppColors.textDark),
                 maxLines: 5,
                 decoration: InputDecoration(
@@ -2720,6 +2734,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                     if (isActive)
                       TextField(
                         controller: _ctrl('sec_${section.id}', section.name),
+                        scrollPadding: EdgeInsets.zero,
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w500,
@@ -2758,6 +2773,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                           'sec_desc_${section.id}',
                           section.description ?? '',
                         ),
+                        scrollPadding: EdgeInsets.zero,
                         style: const TextStyle(
                           fontSize: 13,
                           color: AppColors.textMuted,
@@ -2882,6 +2898,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               flex: 3,
               child: TextField(
                 controller: _ctrl('fld_${field.id}', field.label),
+                scrollPadding: EdgeInsets.zero,
                 style: const TextStyle(fontSize: 15, color: AppColors.textDark),
                 decoration: InputDecoration(
                   hintText: 'Question',
@@ -2990,7 +3007,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                                 return;
                               }
                             }
-                            setState(() {
+                            _setStatePreserveCanvasScroll(() {
                               field.type = v;
                               if (v == FormFieldType.signature) {
                                 field.canonicalFieldKey = 'signature';
@@ -3406,6 +3423,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                             'cond_val_${field.id}',
                             field.condition.triggerValue,
                           ),
+                          scrollPadding: EdgeInsets.zero,
                           style: const TextStyle(fontSize: 12),
                           decoration: InputDecoration(
                             hintText: 'Type value...',
@@ -3893,6 +3911,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                       flex: 3,
                       child: TextField(
                         controller: _ctrl('col_${col.id}', col.label),
+                        scrollPadding: EdgeInsets.zero,
                         style: const TextStyle(fontSize: 13),
                         decoration: InputDecoration(
                           hintText: 'Column name',
@@ -3939,7 +3958,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                             }).toList(),
                             onChanged: (v) {
                               if (v == null) return;
-                              setState(() {
+                              _setStatePreserveCanvasScroll(() {
                                 col.type = v;
                                 if (v != FormFieldType.number) {
                                   col.ageFromColumnId = null;
@@ -4009,6 +4028,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                           Expanded(
                             child: TextField(
                               controller: _ctrl('colopt_${opt.id}', opt.label),
+                              scrollPadding: EdgeInsets.zero,
                               style: const TextStyle(fontSize: 12),
                               decoration: const InputDecoration(
                                 hintText: 'Option',
@@ -4166,6 +4186,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                       flex: 3,
                       child: TextField(
                         controller: _ctrl('col_${col.id}', col.label),
+                        scrollPadding: EdgeInsets.zero,
                         style: const TextStyle(fontSize: 13),
                         decoration: InputDecoration(
                           hintText: 'Column name',
@@ -4212,7 +4233,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                             }).toList(),
                             onChanged: (v) {
                               if (v == null) return;
-                              setState(() {
+                              _setStatePreserveCanvasScroll(() {
                                 col.type = v;
                                 if (v != FormFieldType.number) {
                                   col.ageFromColumnId = null;
@@ -4282,6 +4303,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                           Expanded(
                             child: TextField(
                               controller: _ctrl('colopt_${opt.id}', opt.label),
+                              scrollPadding: EdgeInsets.zero,
                               style: const TextStyle(fontSize: 12),
                               decoration: const InputDecoration(
                                 hintText: 'Option',
@@ -4366,6 +4388,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                   Expanded(
                     child: TextField(
                       controller: _ctrl('opt_${opt.id}', opt.label),
+                      scrollPadding: EdgeInsets.zero,
                       style: const TextStyle(
                         fontSize: 13,
                         color: AppColors.textDark,
@@ -5003,6 +5026,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             'cond_val_${field.id}',
             field.condition.triggerValue,
           ),
+          scrollPadding: EdgeInsets.zero,
           decoration: InputDecoration(
             hintText: 'Trigger value (exact match)',
             filled: true,
