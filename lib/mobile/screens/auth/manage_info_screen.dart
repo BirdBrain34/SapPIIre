@@ -18,7 +18,9 @@ import 'package:sappiire/mobile/screens/auth/InfoScannerScreen.dart';
 import 'package:sappiire/mobile/screens/auth/ProfileScreen.dart';
 import 'package:sappiire/mobile/screens/auth/HistoryScreen.dart';
 import 'package:sappiire/mobile/widgets/unsaved_changes_dialog.dart';
+import 'package:sappiire/mobile/widgets/logout_confirmation_dialog.dart';
 import 'package:sappiire/models/form_template_models.dart';
+
 
 class ManageInfoScreen extends StatefulWidget {
   final String userId;
@@ -500,13 +502,14 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       final confirmed = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
-        builder: (ctx) => _LogoutConfirmationDialog(
+        builder: (ctx) => LogoutConfirmationDialog(
           onCancel: () => Navigator.pop(ctx, false),
           onConfirm: () {
             didTapConfirm = true;
             Navigator.pop(ctx, true);
           },
         ),
+
       );
 
       return didTapConfirm && confirmed == true;
@@ -941,37 +944,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           label: 'Autofill QR',
         ),
         const BottomNavigationBarItem(icon: Icon(Icons.history, size: 24), label: 'History'),
-      ],
-    );
-  }
-}
-
-class _LogoutConfirmationDialog extends StatelessWidget {
-  final VoidCallback onCancel;
-  final VoidCallback onConfirm;
-
-  const _LogoutConfirmationDialog({
-    required this.onCancel,
-    required this.onConfirm,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Log out?'),
-      content: const Text('Are you sure you want to log out?'),
-      actions: [
-        TextButton(
-          onPressed: onCancel,
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton(
-          onPressed: onConfirm,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.dangerRed,
-          ),
-          child: const Text('Log Out', style: TextStyle(color: Colors.white)),
-        ),
       ],
     );
   }

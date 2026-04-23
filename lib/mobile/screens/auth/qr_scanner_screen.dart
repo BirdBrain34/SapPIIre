@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:sappiire/services/supabase_service.dart';
 import 'package:sappiire/constants/app_colors.dart';
+import 'package:sappiire/mobile/controllers/qr_scanner_controller.dart';
 
 class QrScannerScreen extends StatefulWidget {
   final Map<String, dynamic>? transmitData;
@@ -24,42 +25,51 @@ class QrScannerScreen extends StatefulWidget {
 }
 
 class _QrScannerScreenState extends State<QrScannerScreen> {
-  final MobileScannerController controller = MobileScannerController();
-  bool isPopping = false;
+  final MobileScannerController _scannerController = MobileScannerController();
+  late final QrScannerController _controller;
 
-  bool _isTransmitting = false;
-  bool _transmitDone = false;
-  bool _transmitSuccess = false;
-  String _transmitStatus = 'Securing your data...';
+  @override
+  void initState() {
+    super.initState();
+    _controller = QrScannerController(
+      transmitData: widget.transmitData,
+      userId: widget.userId,
+      templateId: widget.templateId,
+      formName: widget.formName,
+      supabaseService: widget.supabaseService,
+    );
+    _controller.addListener(() => setState(() {}));
+  }
 
-  // ── Popup logic ───────────────────────────────────────────
+  @override
+  void dispose() {
+    _scannerController.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
   Future<void> _handleScannedCode(String sessionId) async {
-    if (widget.templateId != null && widget.supabaseService != null) {
-      try {
-        final row = await widget.supabaseService!
-            .fetchTemplatePopupConfig(widget.templateId!);
-        final popupEnabled = (row?['popup_enabled'] as bool?) ?? false;
+    final row = await _controller.fetchPopupConfig();
+    if (row != null) {
+      final popupEnabled = (row['popup_enabled'] as bool?) ?? false;
 
-        if (popupEnabled && mounted) {
-          final proceed = await _showFormIntroDialog(
-            formTitle: (row?['form_name'] as String?) ??
-                widget.formName ??
-                'Form',
-            subtitle: row?['popup_subtitle'] as String?,
-            description: row?['popup_description'] as String?,
-          );
+      if (popupEnabled && mounted) {
+        final proceed = await _showFormIntroDialog(
+          formTitle: (row['form_name'] as String?) ??
+              widget.formName ??
+              'Form',
+          subtitle: row['popup_subtitle'] as String?,
+          description: row['popup_description'] as String?,
+        );
 
-          if (!proceed || !mounted) {
-            isPopping = false;
-            await controller.start();
-            return;
-          }
+        if (!proceed || !mounted) {
+          _controller.isPopping = false;
+          await _scannerController.start();
+          return;
         }
-      } catch (e) {
-        debugPrint('Popup fetch error: $e');
       }
     }
-    await _transmitData(sessionId);
+    await _controller.performTransmission(sessionId);
   }
 
   Future<bool> _showFormIntroDialog({
@@ -78,7 +88,6 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Icon
               Center(
                 child: Container(
                   padding: const EdgeInsets.all(12),
@@ -91,7 +100,6 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              // Title
               Text(
                 formTitle,
                 style: const TextStyle(
@@ -167,52 +175,11 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     return result ?? false;
   }
 
-  Future<void> _transmitData(String sessionId) async {
-    if (!mounted) return;
-    setState(() {
-      _isTransmitting = true;
-      _transmitStatus = 'Encrypting your data with AES-256...';
-    });
-
-    await Future.delayed(const Duration(milliseconds: 600));
-    if (mounted) setState(() => _transmitStatus = 'Securing encryption key with RSA...');
-    await Future.delayed(const Duration(milliseconds: 600));
-    if (mounted) setState(() => _transmitStatus = 'Transmitting securely to CSWD portal...');
-
-    bool success = false;
-    try {
-      await Future.delayed(const Duration(milliseconds: 400));
-      success = await (widget.supabaseService ?? SupabaseService())
-          .sendDataToWebSession(
-        sessionId,
-        widget.transmitData ?? {},
-        userId: widget.userId,
-      );
-    } catch (e) {
-      debugPrint('Transmission error: $e');
-      success = false;
-    }
-
-    if (mounted) {
-      setState(() {
-        _isTransmitting = false;
-        _transmitDone = true;
-        _transmitSuccess = success;
-        _transmitStatus = success
-            ? 'Your information has been securely transmitted to the CSWD staff portal.'
-            : 'Something went wrong during transmission. Please try again.';
-      });
-    }
-  }
-
-  // ── Bottom nav — matches manage_info and history screens ──
   Widget _buildBottomNav() {
     return BottomNavigationBar(
-      // QR tab (index 1) is always "active" visually on this screen
       currentIndex: 1,
       onTap: (index) {
         if (index == 0 || index == 2) Navigator.pop(context);
-        // index 1 = already here, do nothing
       },
       backgroundColor: AppColors.primaryBlue,
       selectedItemColor: AppColors.highlight,
@@ -252,8 +219,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     final bool hasData =
         widget.transmitData != null && widget.transmitData!.isNotEmpty;
 
-    // ── Transmitting / done screen ────────────────────────
-    if (_isTransmitting || _transmitDone) {
+    if (_controller.isTransmitting || _controller.transmitDone) {
       return Scaffold(
         backgroundColor: AppColors.primaryBlue,
         body: SafeArea(
@@ -263,13 +229,13 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (_transmitDone)
+                  if (_controller.transmitDone)
                     Icon(
-                      _transmitSuccess
+                      _controller.transmitSuccess
                           ? Icons.check_circle_outline
                           : Icons.error_outline,
                       size: 80,
-                      color: _transmitSuccess ? Colors.green : Colors.red,
+                      color: _controller.transmitSuccess ? Colors.green : Colors.red,
                     )
                   else
                     const SizedBox(
@@ -280,8 +246,8 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                     ),
                   const SizedBox(height: 28),
                   Text(
-                    _transmitDone
-                        ? (_transmitSuccess
+                    _controller.transmitDone
+                        ? (_controller.transmitSuccess
                             ? 'Transmission Complete!'
                             : 'Transmission Failed')
                         : 'Transmitting...',
@@ -293,12 +259,12 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    _transmitStatus,
+                    _controller.transmitStatus,
                     style: const TextStyle(
                         color: Colors.white70, fontSize: 14, height: 1.5),
                     textAlign: TextAlign.center,
                   ),
-                  if (_transmitDone) ...[
+                  if (_controller.transmitDone) ...[
                     const SizedBox(height: 40),
                     SizedBox(
                       width: double.infinity,
@@ -332,7 +298,6 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       );
     }
 
-    // ── Scanner screen ────────────────────────────────────
     return Scaffold(
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
@@ -347,7 +312,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.flash_on, color: Colors.white),
-            onPressed: () => controller.toggleTorch(),
+            onPressed: () => _scannerController.toggleTorch(),
           ),
         ],
       ),
@@ -355,15 +320,15 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
         children: [
           if (hasData)
             MobileScanner(
-              controller: controller,
+              controller: _scannerController,
               onDetect: (capture) async {
-                if (isPopping) return;
+                if (_controller.isPopping) return;
                 final barcodes = capture.barcodes;
                 if (barcodes.isNotEmpty) {
                   final code = barcodes.first.rawValue;
                   if (code != null) {
-                    isPopping = true;
-                    await controller.stop();
+                    _controller.isPopping = true;
+                    await _scannerController.stop();
                     if (mounted) await _handleScannedCode(code);
                   }
                 }
@@ -395,11 +360,5 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       ),
       bottomNavigationBar: _buildBottomNav(),
     );
-  }
-
-  @override
-  void dispose() {
-    controller.dispose();
-    super.dispose();
   }
 }
