@@ -2,11 +2,13 @@
 // Loads templates + profile, renders dynamic form, saves to Supabase,
 // and transmits selected fields to the web portal via QR.
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
 import 'package:sappiire/constants/app_colors.dart';
+import 'package:sappiire/services/form_template_notification_service.dart';
 import 'package:sappiire/services/supabase_service.dart';
 import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/mobile/controllers/manage_info_controller.dart';
@@ -15,6 +17,7 @@ import 'package:sappiire/mobile/screens/auth/login_screen.dart';
 import 'package:sappiire/mobile/screens/auth/InfoScannerScreen.dart';
 import 'package:sappiire/mobile/screens/auth/ProfileScreen.dart';
 import 'package:sappiire/mobile/screens/auth/HistoryScreen.dart';
+import 'package:sappiire/mobile/widgets/unsaved_changes_dialog.dart';
 import 'package:sappiire/models/form_template_models.dart';
 
 class ManageInfoScreen extends StatefulWidget {
@@ -27,10 +30,13 @@ class ManageInfoScreen extends StatefulWidget {
 
 class _ManageInfoScreenState extends State<ManageInfoScreen> {
   final _supabaseService = SupabaseService();
+  final _notificationService = FormTemplateNotificationService();
   late final ManageInfoController _controller;
+  StreamSubscription<TemplateNotification>? _templateNotificationSubscription;
   int _currentNavIndex = 0;
+  bool _logoutFlowInProgress = false;
+  bool _logoutDialogOpen = false;
   bool _hasUnsavedChanges = false;
-  bool _awaitingExplicitLogoutAfterUnsavedResolution = false;
   String _savedFormFingerprint = '';
   ChangeNotifier? _listenedFormController;
   VoidCallback? _formControllerListener;
@@ -46,6 +52,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     super.initState();
     _controller = ManageInfoController(userId: widget.userId);
     _loadAll();
+    _startTemplateNotifications();
   }
 
   @override
@@ -53,6 +60,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     if (_listenedFormController != null && _formControllerListener != null) {
       _listenedFormController!.removeListener(_formControllerListener!);
     }
+    _templateNotificationSubscription?.cancel();
+    _notificationService.stopListening();
     _controller.dispose();
     super.dispose();
   }
@@ -71,10 +80,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       if (!mounted) return;
       final nextUnsaved = _currentFormFingerprint() != _savedFormFingerprint;
       if (nextUnsaved != _hasUnsavedChanges) {
+        debugPrint('ManageInfoScreen: unsaved state changed -> $nextUnsaved');
         setState(() => _hasUnsavedChanges = nextUnsaved);
-      }
-      if (nextUnsaved && _awaitingExplicitLogoutAfterUnsavedResolution) {
-        setState(() => _awaitingExplicitLogoutAfterUnsavedResolution = false);
       }
     };
 
@@ -103,6 +110,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
   void _markCurrentFormAsSaved() {
     _savedFormFingerprint = _currentFormFingerprint();
+    debugPrint('ManageInfoScreen: form baseline updated (saved/discarded).');
     if (!mounted) {
       _hasUnsavedChanges = false;
       return;
@@ -115,10 +123,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   bool _hasPendingUnsavedChanges() {
     final hasUnsaved = _currentFormFingerprint() != _savedFormFingerprint;
     if (mounted && hasUnsaved != _hasUnsavedChanges) {
+      debugPrint('ManageInfoScreen: hasPendingUnsavedChanges -> $hasUnsaved');
       setState(() => _hasUnsavedChanges = hasUnsaved);
-    }
-    if (hasUnsaved && _awaitingExplicitLogoutAfterUnsavedResolution && mounted) {
-      setState(() => _awaitingExplicitLogoutAfterUnsavedResolution = false);
     }
     return hasUnsaved;
   }
@@ -130,16 +136,31 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
   Future<bool> _resolveUnsavedChangesIfAny() async {
     await _flushPendingInput();
-    if (!_hasPendingUnsavedChanges()) return true;
 
-    final result = await _showUnsavedChangesDialog();
-    if (result == null) return false;
-    if (result == false) {
-      _markCurrentFormAsSaved();
+    var attempt = 0;
+    while (_hasPendingUnsavedChanges()) {
+      attempt++;
+      debugPrint('ManageInfoScreen: unsaved dialog attempt #$attempt');
+
+      final result = await _showUnsavedChangesDialog();
+      if (!mounted) return false;
+
+      if (result != true) {
+        debugPrint('ManageInfoScreen: unsaved dialog action=discard');
+        await _discardPendingChangesAndRefresh();
+      } else {
+        debugPrint('ManageInfoScreen: unsaved dialog action=save');
+      }
+
+      final stillUnsaved = _hasPendingUnsavedChanges();
+      debugPrint('ManageInfoScreen: post-action pending unsaved -> $stillUnsaved');
+      if (!stillUnsaved) return true;
+
+      debugPrint('ManageInfoScreen: pending changes still exist, re-opening unsaved dialog');
     }
 
-    // If save failed, there may still be pending changes; do not continue.
-    return !_hasPendingUnsavedChanges();
+    debugPrint('ManageInfoScreen: no pending unsaved changes, continue flow');
+    return true;
   }
 
   Future<void> _loadAll() async {
@@ -151,9 +172,77 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         _showFormIntro = true;
         _highlightedMissingFields = {};
         _hasUnsavedChanges = false;
-        _awaitingExplicitLogoutAfterUnsavedResolution = false;
       });
     }
+  }
+
+  Future<void> _discardPendingChangesAndRefresh() async {
+    final preserveShowFormIntro = _showFormIntro;
+    final preserveNavIndex = _currentNavIndex;
+    debugPrint('ManageInfoScreen: discarding changes, refreshing latest saved data');
+
+    await _controller.loadAll(forceRefresh: true);
+    _attachFormControllerListener();
+    _savedFormFingerprint = _currentFormFingerprint();
+
+    if (!mounted) {
+      _hasUnsavedChanges = false;
+      return;
+    }
+
+    setState(() {
+      _showFormIntro = preserveShowFormIntro;
+      _currentNavIndex = preserveNavIndex;
+      _highlightedMissingFields = {};
+      _hasUnsavedChanges = false;
+    });
+  }
+
+  void _startTemplateNotifications() {
+    _notificationService.startListening();
+    _templateNotificationSubscription =
+        _notificationService.notificationStream.listen((notification) {
+      if (!mounted) return;
+      // Determine the icon and message based on change type
+      final message = notification.changeSummary;
+      final isNewForm = notification.changeType == 'pushed_to_mobile' ||
+          notification.changeType == 'added';
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                isNewForm ? Icons.new_releases_outlined : Icons.update_outlined,
+                color: Colors.white,
+                size: 18,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(fontSize: 13),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: isNewForm
+              ? const Color(0xFF0D47A1)
+              : const Color(0xFF1565C0),
+          duration: const Duration(seconds: 6),
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'RELOAD',
+            textColor: Colors.white,
+            onPressed: () {
+              _loadAll();
+            },
+          ),
+        ),
+      );
+    });
   }
 
   Future<void> _saveProfile() async {
@@ -171,79 +260,19 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     return showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: double.infinity,
-                color: AppColors.primaryBlue,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                child: const Text(
-                  'Unsaved Changes',
-                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  children: [
-                    const Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 36),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'You have unsaved changes to your profile information. Would you like to save before leaving?',
-                      style: TextStyle(fontSize: 13, height: 1.5, color: Color(0xFF1A1A2E)),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.pop(ctx, false),
-                            style: OutlinedButton.styleFrom(
-                              side: BorderSide(color: Colors.grey.shade300),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                            child: const Text('Discard'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () async {
-                              await _saveProfile();
-                              if (!ctx.mounted) return;
-                              if (!_hasUnsavedChanges) {
-                                Navigator.pop(ctx, true);
-                              }
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primaryBlue,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              elevation: 0,
-                            ),
-                            child: const Text('Save & Continue', style: TextStyle(color: Colors.white)),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, null),
-                      child: Text('Cancel', style: TextStyle(color: Colors.grey.shade600)),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+      builder: (ctx) => UnsavedChangesDialog(
+        onDiscard: () {
+          debugPrint('ManageInfoScreen: unsaved dialog button tapped -> Discard');
+          Navigator.pop(ctx, false);
+        },
+        onSaveAndContinue: () async {
+          debugPrint('ManageInfoScreen: unsaved dialog button tapped -> Save & Continue');
+          await _saveProfile();
+          if (!ctx.mounted) return;
+          if (!_hasUnsavedChanges) {
+            Navigator.pop(ctx, true);
+          }
+        },
       ),
     );
   }
@@ -424,51 +453,65 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   }
 
   Future<void> _handleLogout() async {
-    await _flushPendingInput();
-    final hadUnsavedChanges = _hasPendingUnsavedChanges();
-    if (hadUnsavedChanges) {
-      final canProceed = await _resolveUnsavedChangesIfAny();
-      if (!canProceed) return;
-      // Unsaved changes were just resolved. Require another explicit
-      // back/logout action before showing the logout confirmation.
-      if (mounted) {
-        setState(() => _awaitingExplicitLogoutAfterUnsavedResolution = true);
-      } else {
-        _awaitingExplicitLogoutAfterUnsavedResolution = true;
-      }
-      return;
-    }
+    if (_logoutFlowInProgress) return;
+    _logoutFlowInProgress = true;
 
-    if (_awaitingExplicitLogoutAfterUnsavedResolution) {
-      if (mounted) {
-        setState(() => _awaitingExplicitLogoutAfterUnsavedResolution = false);
-      } else {
-        _awaitingExplicitLogoutAfterUnsavedResolution = false;
-      }
-    }
+    try {
+      await _flushPendingInput();
+      final hasPendingUnsaved = _hasPendingUnsavedChanges();
+      debugPrint('ManageInfoScreen: logout requested, hasPendingUnsaved=$hasPendingUnsaved');
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Log out?'),
-        content: const Text('Are you sure you want to log out?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.dangerRed),
-            child: const Text('Log Out', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    await _supabaseService.signOutCurrentUser();
-    if (mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-        (route) => false,
+      // Step A: If unsaved changes exist, resolve them first.
+      // The popup is ALWAYS shown for unsaved changes, no matter how many times
+      // the user has previously saved or discarded. After ANY action (save, discard,
+      // or cancel), the user is returned to manage_info_screen WITHOUT showing the
+      // logout dialog. This makes the popup infinitely repeatable per the flowchart.
+      if (hasPendingUnsaved) {
+        await _resolveUnsavedChangesIfAny();
+        // Always return here — logout popup never follows an unsaved-changes dialog
+        return;
+      }
+
+      // Step B: No unsaved changes → show the logout confirmation dialog.
+      debugPrint('ManageInfoScreen: showing logout confirmation dialog');
+      final confirmed = await _showLogoutConfirmationDialog();
+      debugPrint('ManageInfoScreen: logout confirmation result=$confirmed');
+
+      if (confirmed != true || !mounted) return;
+      await _supabaseService.signOutCurrentUser();
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+      }
+    } finally {
+      _logoutFlowInProgress = false;
+    }
+  }
+
+  Future<bool> _showLogoutConfirmationDialog() async {
+    if (!mounted || _logoutDialogOpen) return false;
+
+    _logoutDialogOpen = true;
+    var didTapConfirm = false;
+
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => _LogoutConfirmationDialog(
+          onCancel: () => Navigator.pop(ctx, false),
+          onConfirm: () {
+            didTapConfirm = true;
+            Navigator.pop(ctx, true);
+          },
+        ),
       );
+
+      return didTapConfirm && confirmed == true;
+    } finally {
+      _logoutDialogOpen = false;
     }
   }
 
@@ -500,6 +543,9 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   }
 
   Future<void> _openCamera() async {
+    final canProceed = await _resolveUnsavedChangesIfAny();
+    if (!canProceed || !mounted) return;
+
     await Navigator.push(context, MaterialPageRoute(builder: (_) => const InfoScannerScreen()));
     if (mounted) {
       await _controller.loadAll(forceRefresh: true);
@@ -507,7 +553,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       _savedFormFingerprint = _currentFormFingerprint();
       setState(() {
         _hasUnsavedChanges = false;
-        _awaitingExplicitLogoutAfterUnsavedResolution = false;
       });
     }
   }
@@ -523,10 +568,11 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: _controller,
-      builder: (context, _) => WillPopScope(
-        onWillPop: () async {
+      builder: (context, _) => PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (didPop) return;
           await _handleLogout();
-          return false;
         },
         child: Scaffold(
           backgroundColor: AppColors.pageBg,
@@ -564,6 +610,9 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       ),
       title: GestureDetector(
         onTap: () async {
+          final canProceed = await _resolveUnsavedChangesIfAny();
+          if (!canProceed || !mounted) return;
+
           await Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileScreen(userId: widget.userId)));
           if (mounted) {
             await _controller.loadAll(forceRefresh: true);
@@ -573,7 +622,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
               _showFormIntro = true;
               _highlightedMissingFields = {};
               _hasUnsavedChanges = false;
-              _awaitingExplicitLogoutAfterUnsavedResolution = false;
             });
           }
         },
@@ -678,11 +726,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                       if (id == null) return;
 
                       if (_hasUnsavedChanges && !_showFormIntro) {
-                        final result = await _showUnsavedChangesDialog();
-                        if (result == null) return;
-                        if (result == false) {
-                          _markCurrentFormAsSaved();
-                        }
+                        final resolved = await _resolveUnsavedChangesIfAny();
+                        if (!resolved) return;
                       }
 
                       await _controller.switchTemplate(id);
@@ -835,11 +880,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                     if (id == null) return;
 
                     if (_hasUnsavedChanges && !_showFormIntro) {
-                      final result = await _showUnsavedChangesDialog();
-                      if (result == null) return;
-                      if (result == false) {
-                        _markCurrentFormAsSaved();
-                      }
+                      final resolved = await _resolveUnsavedChangesIfAny();
+                      if (!resolved) return;
                     }
 
                     await _controller.switchTemplate(id);
@@ -899,6 +941,37 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           label: 'Autofill QR',
         ),
         const BottomNavigationBarItem(icon: Icon(Icons.history, size: 24), label: 'History'),
+      ],
+    );
+  }
+}
+
+class _LogoutConfirmationDialog extends StatelessWidget {
+  final VoidCallback onCancel;
+  final VoidCallback onConfirm;
+
+  const _LogoutConfirmationDialog({
+    required this.onCancel,
+    required this.onConfirm,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Log out?'),
+      content: const Text('Are you sure you want to log out?'),
+      actions: [
+        TextButton(
+          onPressed: onCancel,
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: onConfirm,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.dangerRed,
+          ),
+          child: const Text('Log Out', style: TextStyle(color: Colors.white)),
+        ),
       ],
     );
   }

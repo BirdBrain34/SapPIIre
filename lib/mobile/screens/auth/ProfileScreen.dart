@@ -11,6 +11,7 @@ import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/mobile/screens/auth/login_screen.dart';
 import 'package:sappiire/mobile/screens/auth/ChangePassword.dart';
 import 'package:sappiire/mobile/widgets/TermsAndCondition.dart';
+import 'package:sappiire/mobile/widgets/unsaved_changes_dialog.dart';
 import 'package:sappiire/mobile/screens/auth/InfoScannerScreen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -28,6 +29,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   FormTemplate? _activeTemplate;
   bool _isLoading = true;
   bool _isSaving = false;
+  bool _exitFlowInProgress = false;
+  String _savedProfileFingerprint = '';
 
   // Account info (from user_accounts table)
   final _usernameCtrl = TextEditingController();
@@ -149,11 +152,98 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _hasExistingSignature = true;
         }
       });
+      _markProfileAsSaved();
     } catch (e) {
       debugPrint('ProfileScreen._loadProfile error: $e');
       _showFeedback('Failed to load profile', Colors.red);
     }
     setState(() => _isLoading = false);
+  }
+
+  String _currentProfileFingerprint() {
+    return jsonEncode({
+      'username': _usernameCtrl.text,
+      'email': _emailCtrl.text,
+      'phone': _phoneCtrl.text,
+      'lastName': _lastNameCtrl.text,
+      'firstName': _firstNameCtrl.text,
+      'middleName': _middleNameCtrl.text,
+      'dob': _dobCtrl.text,
+      'address': _addressCtrl.text,
+      'placeOfBirth': _placeOfBirthCtrl.text,
+      'sex': _sex,
+      'maritalStatus': _maritalStatus,
+      'signatureBase64': _signatureBase64 ?? '',
+      'hasExistingSignature': _hasExistingSignature,
+    });
+  }
+
+  void _markProfileAsSaved() {
+    _savedProfileFingerprint = _currentProfileFingerprint();
+  }
+
+  bool _hasPendingUnsavedChanges() {
+    return _currentProfileFingerprint() != _savedProfileFingerprint;
+  }
+
+  Future<void> _discardPendingChangesAndRefresh() async {
+    debugPrint('ProfileScreen: discarding changes, refreshing latest saved data');
+    await _loadProfile();
+  }
+
+  Future<bool?> _showUnsavedChangesDialog() async {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => UnsavedChangesDialog(
+        onDiscard: () {
+          debugPrint('ProfileScreen: unsaved dialog button tapped -> Discard');
+          Navigator.pop(ctx, false);
+        },
+        onSaveAndContinue: () async {
+          debugPrint('ProfileScreen: unsaved dialog button tapped -> Save & Continue');
+          await _saveProfile();
+          if (!ctx.mounted) return;
+          if (!_hasPendingUnsavedChanges()) {
+            Navigator.pop(ctx, true);
+          }
+        },
+      ),
+    );
+  }
+
+  Future<bool> _resolveUnsavedChangesIfAny() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+
+    while (_hasPendingUnsavedChanges()) {
+      final result = await _showUnsavedChangesDialog();
+      if (!mounted) return false;
+
+      if (result != true) {
+        debugPrint('ProfileScreen: unsaved dialog action=discard');
+        await _discardPendingChangesAndRefresh();
+      } else {
+        debugPrint('ProfileScreen: unsaved dialog action=save');
+      }
+
+      if (!_hasPendingUnsavedChanges()) return true;
+    }
+
+    return true;
+  }
+
+  Future<void> _handleBackNavigation() async {
+    if (_exitFlowInProgress) return;
+    _exitFlowInProgress = true;
+
+    try {
+      final canProceed = await _resolveUnsavedChangesIfAny();
+      if (!canProceed || !mounted) return;
+      Navigator.pop(context);
+    } finally {
+      _exitFlowInProgress = false;
+    }
   }
 
   String _normalizeCivilStatus(String raw) {
@@ -361,6 +451,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
 
       if (savedPII) {
+        _markProfileAsSaved();
         _showFeedback('Profile updated successfully!', Colors.green);
         setState(() {});
       } else {
@@ -454,6 +545,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _handleLogout() async {
+    if (_exitFlowInProgress) return;
+    _exitFlowInProgress = true;
+
+    try {
+      final hasPendingUnsaved = _hasPendingUnsavedChanges();
+      debugPrint('ProfileScreen: logout requested, hasPendingUnsaved=$hasPendingUnsaved');
+      if (hasPendingUnsaved) {
+        await _resolveUnsavedChangesIfAny();
+        // Keep user on this screen after resolving unsaved changes.
+        return;
+      }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -477,18 +580,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
         (route) => false,
       );
     }
+    } finally {
+      _exitFlowInProgress = false;
+    }
   }
 
-  void _handleChangePassword() {
-    Navigator.push(
+  Future<void> _handleChangePassword() async {
+    final canProceed = await _resolveUnsavedChangesIfAny();
+    if (!canProceed || !mounted) return;
+
+    await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const ChangePasswordScreen(fromProfile: true)),
-    ).then((_) {
-      if (mounted) _showFeedback('Password changed successfully!', Colors.green);
-    });
+    );
+    if (mounted) _showFeedback('Password changed successfully!', Colors.green);
   }
 
   Future<void> _openCamera() async {
+    final canProceed = await _resolveUnsavedChangesIfAny();
+    if (!canProceed || !mounted) return;
+
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const InfoScannerScreen()),
@@ -506,10 +617,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.pageBg,
-      appBar: _buildAppBar(),
-      body: _isLoading ? const Center(child: CircularProgressIndicator()) : _buildBody(),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        await _handleBackNavigation();
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.pageBg,
+        appBar: _buildAppBar(),
+        body: _isLoading ? const Center(child: CircularProgressIndicator()) : _buildBody(),
+      ),
     );
   }
 
@@ -520,7 +638,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       automaticallyImplyLeading: false,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back, color: Colors.white),
-        onPressed: () => Navigator.pop(context),
+        onPressed: _handleBackNavigation,
       ),
       title: Row(
         children: [
@@ -742,7 +860,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               icon: Icons.lock_reset_outlined,
               label: 'Change Password',
               subtitle: 'Update your account password',
-              onTap: _handleChangePassword,
+              onTap: () {
+                _handleChangePassword();
+              },
             ),
             _buildDivider(),
             _buildActionRow(
