@@ -205,17 +205,59 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     _templateNotificationSubscription =
         _notificationService.notificationStream.listen((notification) {
       if (!mounted) return;
-      // Determine the icon and message based on change type
+
+      final changeType = notification.changeType;
       final message = notification.changeSummary;
-      final isNewForm = notification.changeType == 'pushed_to_mobile' ||
-          notification.changeType == 'added';
+
+      // --- Classify the change type into display properties ---
+
+      // Field-level changes: a field inside a live form was modified
+      final isFieldChange = changeType == 'field_added'
+          || changeType == 'field_updated'
+          || changeType == 'field_deleted';
+
+      // Template-level new/push: a brand-new form arrived on mobile
+      final isNewForm = changeType == 'pushed_to_mobile'
+          || changeType == 'added';
+
+      // Template-level removal
+      final isRemoval = changeType == 'archived'
+          || changeType == 'deleted';
+
+      // --- Choose icon ---
+      final IconData notifIcon;
+      if (isFieldChange) {
+        notifIcon = Icons.edit_note_rounded;        // pencil-on-lines for field edits
+      } else if (isNewForm) {
+        notifIcon = Icons.new_releases_outlined;    // star-burst for new forms
+      } else if (isRemoval) {
+        notifIcon = Icons.remove_circle_outline;    // minus-circle for removals
+      } else {
+        notifIcon = Icons.update_outlined;          // generic update
+      }
+
+      // --- Choose background colour ---
+      // Field changes  -> amber-tinted blue  (0xFF1565C0 tinted)
+      // New form       -> deep navy blue     (0xFF0D47A1)
+      // Removal        -> muted warning red  (0xFFB71C1C)
+      // Other update   -> standard blue      (0xFF1565C0)
+      final Color bgColor;
+      if (isFieldChange) {
+        bgColor = const Color(0xFF0277BD);   // lighter blue - something changed inside
+      } else if (isNewForm) {
+        bgColor = const Color(0xFF0D47A1);   // deep navy - new thing arrived
+      } else if (isRemoval) {
+        bgColor = const Color(0xFFC62828);   // dark red - something gone
+      } else {
+        bgColor = const Color(0xFF1565C0);   // standard update blue
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
             children: [
               Icon(
-                isNewForm ? Icons.new_releases_outlined : Icons.update_outlined,
+                notifIcon,
                 color: Colors.white,
                 size: 18,
               ),
@@ -230,17 +272,13 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
               ),
             ],
           ),
-          backgroundColor: isNewForm
-              ? const Color(0xFF0D47A1)
-              : const Color(0xFF1565C0),
+          backgroundColor: bgColor,
           duration: const Duration(seconds: 6),
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
             label: 'RELOAD',
             textColor: Colors.white,
-            onPressed: () {
-              _loadAll();
-            },
+            onPressed: _loadAll,
           ),
         ),
       );

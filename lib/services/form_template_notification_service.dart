@@ -44,8 +44,9 @@ class FormTemplateNotificationService {
 
   final _supabase = Supabase.instance.client;
   StreamSubscription<List<Map<String, dynamic>>>? _subscription;
-  final Set<String> _knownNotificationIds = <String>{};
-  final Map<String, String> _notificationFingerprints = <String, String>{};
+
+  /// Only rows with created_at strictly after this time are emitted.
+  DateTime _cutoffTime = DateTime(1970);
 
   final StreamController<TemplateNotification> _notificationController =
       StreamController<TemplateNotification>.broadcast();
@@ -57,23 +58,21 @@ class FormTemplateNotificationService {
   /// Call this when ManageInfoScreen is mounted.
   Future<void> startListening() async {
     await stopListening();
-    _knownNotificationIds.clear();
-    _notificationFingerprints.clear();
+
     try {
-      // Seed known IDs so only notifications created after opening the screen are shown.
-      final existingRows = List<Map<String, dynamic>>.from(
-        await _supabase
-            .from('form_template_notifications')
-            .select('id, change_type, change_summary, created_at')
-            .order('created_at', ascending: false)
-            .limit(50),
-      );
-      for (final row in existingRows) {
-        final rowId = row['id']?.toString();
-        if (rowId == null || rowId.isEmpty) continue;
-        _knownNotificationIds.add(rowId);
-        _notificationFingerprints[rowId] = _fingerprintRow(row);
-      }
+      // Query the most recent notification timestamp.
+      // Anything created before or at this moment is considered "already seen".
+      final latestRow = await _supabase
+          .from('form_template_notifications')
+          .select('created_at')
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      _cutoffTime = DateTime.tryParse(
+            latestRow?['created_at']?.toString() ?? '',
+          ) ??
+          DateTime(1970);
 
       _subscription = _supabase
           .from('form_template_notifications')
@@ -83,21 +82,36 @@ class FormTemplateNotificationService {
           .listen((List<Map<String, dynamic>> data) {
             if (data.isEmpty) return;
 
-            // Emit all unseen rows in chronological order. This catches rapid
-            // consecutive inserts, including field-level notifications.
-            final orderedRows = List<Map<String, dynamic>>.from(data.reversed);
-            for (final row in orderedRows) {
-              final rowId = row['id']?.toString();
-              if (rowId == null || rowId.isEmpty) continue;
+            // Collect rows that are strictly newer than our cutoff.
+            final newRows = <Map<String, dynamic>>[];
+            DateTime? maxEmittedTime;
+            for (final row in data) {
+              final createdAt = DateTime.tryParse(
+                row['created_at']?.toString() ?? '',
+              );
+              if (createdAt == null) continue;
+              if (createdAt.isAfter(_cutoffTime)) {
+                newRows.add(row);
+                if (maxEmittedTime == null ||
+                    createdAt.isAfter(maxEmittedTime)) {
+                  maxEmittedTime = createdAt;
+                }
+              }
+            }
 
-              final nextFingerprint = _fingerprintRow(row);
-              final isKnown = _knownNotificationIds.contains(rowId);
-              final hasChanged = _notificationFingerprints[rowId] != nextFingerprint;
-              if (isKnown && !hasChanged) continue;
+            if (newRows.isEmpty) return;
 
-              _knownNotificationIds.add(rowId);
-              _notificationFingerprints[rowId] = nextFingerprint;
+            // Emit in chronological order (oldest first) so the UI shows
+            // notifications in the order they happened.
+            newRows.sort((a, b) {
+              final aTime = DateTime.tryParse(a['created_at']?.toString() ?? '') ??
+                  DateTime(1970);
+              final bTime = DateTime.tryParse(b['created_at']?.toString() ?? '') ??
+                  DateTime(1970);
+              return aTime.compareTo(bTime);
+            });
 
+            for (final row in newRows) {
               try {
                 final notification = TemplateNotification.fromMap(row);
                 _notificationController.add(notification);
@@ -105,24 +119,10 @@ class FormTemplateNotificationService {
                 debugPrint('FormTemplateNotificationService parse error: $e');
               }
             }
-            // Keep memory bounded while still avoiding duplicate emissions.
-            if (_knownNotificationIds.length > 500) {
-              final latestIds = data
-                  .map((row) => row['id']?.toString())
-                  .whereType<String>()
-                  .toSet();
-              final latestFingerprints = <String, String>{};
-              for (final row in data) {
-                final rowId = row['id']?.toString();
-                if (rowId == null || rowId.isEmpty) continue;
-                latestFingerprints[rowId] = _fingerprintRow(row);
-              }
-              _knownNotificationIds
-                ..clear()
-                ..addAll(latestIds);
-              _notificationFingerprints
-                ..clear()
-                ..addAll(latestFingerprints);
+
+            // Advance the cutoff so these rows are never emitted again.
+            if (maxEmittedTime != null) {
+              _cutoffTime = maxEmittedTime;
             }
           }, onError: (e) {
             debugPrint('FormTemplateNotificationService.stream error: $e');
@@ -136,13 +136,6 @@ class FormTemplateNotificationService {
   Future<void> stopListening() async {
     await _subscription?.cancel();
     _subscription = null;
-  }
-
-  String _fingerprintRow(Map<String, dynamic> row) {
-    final changeType = row['change_type']?.toString() ?? '';
-    final changeSummary = row['change_summary']?.toString() ?? '';
-    final createdAt = row['created_at']?.toString() ?? '';
-    return '$changeType|$changeSummary|$createdAt';
   }
 
   void dispose() {
