@@ -95,7 +95,58 @@ The mobile interface includes:
 
 These functions improve user transparency regarding what has been submitted and what profile state remains active.
 
-## 3. Security and Privacy Control Surface
+## 3. Mobile Architecture: Separation of Concerns
+
+The mobile tier implements a layered architecture that cleanly separates business logic from UI rendering:
+
+### 3.1 Controllers Layer (Business Logic & State Management)
+
+Controllers (`lib/mobile/controllers/`) encapsulate application logic and state:
+
+- **`ManageInfoController`**: Form template orchestration, field-state coordination, profile persistence, QR transmission payload building.
+- **`LoginController`**: Authentication flow, credential validation, session initialization.
+- **`SignupController`**: Multi-step registration state, OTP verification sequences, user account provisioning.
+- **`HistoryController`**: Submission history retrieval, filtering, sorting, record access.
+- **`ChangePasswordController`**: Password update flows, validation, OTP-assisted reset.
+- **`InfoScannerController`**: OCR coordination, ID field extraction and mapping.
+- **`ProfileController`**: User profile data retrieval and editing.
+- **`QRScannerController`**: Session QR scanning and ID extraction.
+
+Controllers extend `ChangeNotifier` for reactive state management and coordinate service interactions.
+
+### 3.2 Screens Layer (UI Rendering)
+
+Screens (`lib/mobile/screens/auth/`) handle UI presentation and delegate business logic to controllers:
+
+- Receive state updates from controllers via listeners.
+- Translate user interactions into controller method calls.
+- Render dynamic forms, input fields, dialogs, and navigation flows.
+- Manage UI-specific state (scroll position, visibility flags) separately from business logic.
+
+This separation allows screens to remain thin and testable, with complex logic residing in controllers.
+
+### 3.3 Widgets Layer (Reusable UI Components)
+
+Custom widgets (`lib/mobile/widgets/`) provide composable UI building blocks:
+
+- **Input components**: `CustomTextField`, `LoginFloatingField`, `SignupTextField`, date pickers, dropdowns.
+- **Dialog components**: `UnsavedChangesDialog`, `LogoutConfirmationDialog`, `PasswordChangedDialog`.
+- **Form components**: `SignaturePadWidget`, `EditableTextField`, `EditableRadioGroup`.
+- **Display components**: `ProfileHeader`, `HistoryCard`, `BottomNavBar`.
+- **Specialized components**: `InfoScannerButton`, `SelectAllButton`, `SortChip`.
+
+Widgets are independent and reusable across multiple screens, reducing duplication.
+
+### 3.4 Utilities Layer (Shared Helpers)
+
+Utilities (`lib/mobile/utils/`) provide cross-cutting functionality:
+
+- **`AppDateUtils`**: Date parsing, formatting (e.g., "Jan 15, 2026 3:45 PM"), UUID validation.
+- **`SnackbarUtils`**: Consistent feedback messages (`showError`, `showSuccess`, `showCustom`) with branded colors.
+
+This refactoring improves code reusability, testability, and maintainability while optimizing state management and reducing widget rebuilds.
+
+## 4. Security and Privacy Control Surface
 
 The mobile tier contributes the following controls:
 
@@ -105,23 +156,24 @@ The mobile tier contributes the following controls:
 4. At-rest protected field persistence model.
 5. Timestamped session handoff boundaries through `form_submission` lifecycle states.
 
-## 4. Manuscript Alignment and Added Capabilities
+## 5. Manuscript Alignment and Added Capabilities
 
-### 4.1 Manuscript-Aligned Mobile Core
+### 5.1 Manuscript-Aligned Mobile Core
 
 1. Mobile PII management for form-ready identity data.
 2. Hybrid crypto payload generation for secure transit.
 3. QR handshake participation as the mobile transmitter endpoint.
 
-### 4.2 Added Mobile Enhancements Beyond Initial Prompt
+### 5.2 Added Mobile Enhancements Beyond Initial Prompt
 
 1. InfoScanner OCR-assisted profile capture.
 2. Extended OTP and password recovery workflows.
 3. Cross-template semantic autofill continuity through canonical field handling.
 4. Unsaved changes detection with form-fingerprint tracking and explicit discard workflow.
 5. Real-time template notifications for field and template lifecycle events, enabling mobile users to be aware of form infrastructure changes.
+6. Layered architecture with clean separation of concerns: Controllers (business logic), Screens (UI rendering), Widgets (reusable components), Utilities (shared helpers).
 
-## 5. Primary Data Touchpoints
+## 6. Primary Data Touchpoints
 
 Mobile workflows interact primarily with:
 
