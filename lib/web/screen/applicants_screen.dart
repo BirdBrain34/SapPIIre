@@ -3,6 +3,8 @@
 // No more hardcoded GIS section imports.
 
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/models/form_template_models.dart';
@@ -114,8 +116,29 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     List<Map<String, dynamic>> submissions,
   ) async {
     final needsResolution = <Map<String, dynamic>>[];
+    
+    // First, decrypt any encrypted submissions so we can read their data
     for (final sub in submissions) {
-      final data = sub['data'] as Map<String, dynamic>? ?? {};
+      final encryptionVersion = sub['data_encryption_version'] ?? 0;
+      if (encryptionVersion == 1 && sub['data'] is String) {
+        try {
+          final decrypted = await _decryptSubmissionData(
+            sub['id'].toString(),
+          );
+          // Replace encrypted string with decrypted Map in memory
+          sub['data'] = decrypted;
+        } catch (e) {
+          debugPrint('Failed to decrypt submission for name resolution: $e');
+          // Keep encrypted data, will show as "Unknown Applicant"
+        }
+      }
+    }
+    
+    // Now check which submissions need name resolution
+    for (final sub in submissions) {
+      final data = sub['data'] is Map 
+          ? Map<String, dynamic>.from(sub['data'] as Map)
+          : <String, dynamic>{};
       if (_hasUsableEmbeddedApplicantName(data)) continue;
       final sid = data['__session_id']?.toString();
       if (sid != null && sid.isNotEmpty) needsResolution.add(sub);
@@ -125,8 +148,12 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
 
     final sessionIds = needsResolution
         .map(
-          (s) =>
-              (s['data'] as Map<String, dynamic>)['__session_id']?.toString(),
+          (s) {
+            final data = s['data'] is Map
+                ? Map<String, dynamic>.from(s['data'] as Map)
+                : <String, dynamic>{};
+            return data['__session_id']?.toString();
+          },
         )
         .whereType<String>()
         .toSet()
@@ -148,7 +175,9 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
 
       // Embed resolved names into submissions (mutates in place)
       for (final sub in needsResolution) {
-        final data = sub['data'] as Map<String, dynamic>? ?? {};
+        final data = sub['data'] is Map
+            ? Map<String, dynamic>.from(sub['data'] as Map)
+            : <String, dynamic>{};
         final sessionId = data['__session_id']?.toString();
         if (sessionId == null) continue;
         final userId = sessionToUserId[sessionId];
@@ -158,6 +187,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
             ((name['last'] ?? '').isNotEmpty ||
                 (name['first'] ?? '').isNotEmpty)) {
           data['__applicant_name'] = name;
+          sub['data'] = data; // Update the submission with the name
         }
       }
     } catch (e) {
@@ -166,9 +196,33 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   }
 
   // ── Load a submission into the detail panel ───────────────
-  void _loadSubmission(Map<String, dynamic> submission) {
+  Future<void> _loadSubmission(Map<String, dynamic> submission) async {
     final formType = submission['form_type'] as String? ?? '';
-    final data = submission['data'] as Map<String, dynamic>? ?? {};
+    var data = submission['data'];
+    final encryptionVersion = submission['data_encryption_version'] ?? 0;
+
+    // Decrypt if server-encrypted
+    if (encryptionVersion == 1 && data is String) {
+      try {
+        final decrypted = await _decryptSubmissionData(
+          submission['id'].toString(),
+        );
+        data = decrypted;
+      } catch (e) {
+        debugPrint('Decryption failed: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to decrypt submission: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+    }
+
+    final dataMap = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
     final template = _templateCache[formType];
     _intakeRefCtrl.text = (submission['intake_reference'] as String?) ?? '';
 
@@ -187,8 +241,8 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       return;
     }
 
-    final view = FormStateController(template: template)..loadFromJson(data);
-    final edit = FormStateController(template: template)..loadFromJson(data);
+    final view = FormStateController(template: template)..loadFromJson(dataMap);
+    final edit = FormStateController(template: template)..loadFromJson(dataMap);
 
     setState(() {
       _selectedSubmission = submission;
@@ -197,6 +251,28 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       _editCtrl = edit;
       _isEditMode = false;
     });
+  }
+
+  Future<Map<String, dynamic>> _decryptSubmissionData(
+    String submissionId,
+  ) async {
+    final supabase = Supabase.instance.client;
+    
+    final response = await supabase.functions.invoke(
+      'decrypt-submission-data',
+      body: {
+        'submissionId': submissionId,
+        'staffId': widget.cswd_id,
+      },
+    );
+
+    if (response.status != 200) {
+      debugPrint('Decrypt error response: ${response.data}');
+      throw Exception(response.data.toString());
+    }
+
+    final result = response.data as Map<String, dynamic>;
+    return result['data'] as Map<String, dynamic>;
   }
 
   // ── Save edited submission ────────────────────────────────
@@ -384,12 +460,19 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
 
   // ── Applicant name resolution (3-tier fallback) ──────────
   String _getApplicantName(Map<String, dynamic> submission) {
-    final data = submission['data'] as Map<String, dynamic>? ?? {};
+    var data = submission['data'];
+    
+    // If data is still encrypted (shouldn't happen after _resolveUnknownNames, but safety check)
+    if (data is! Map) {
+      return 'Unknown Applicant (Encrypted)';
+    }
+    
+    final dataMap = Map<String, dynamic>.from(data as Map);
 
     // 1) Embedded name from _embedApplicantName / _resolveUnknownNames
-    if (data['__applicant_name'] is Map) {
-      final n = data['__applicant_name'] as Map<String, dynamic>;
-      final embeddedNameLooksValid = _hasUsableEmbeddedApplicantName(data);
+    if (dataMap['__applicant_name'] is Map) {
+      final n = dataMap['__applicant_name'] as Map<String, dynamic>;
+      final embeddedNameLooksValid = _hasUsableEmbeddedApplicantName(dataMap);
       if (embeddedNameLooksValid) {
         final name = _formatName(n);
         if (name != null) return name;
@@ -397,19 +480,19 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     }
 
     // 2) Common key names in JSONB (GIS and custom templates)
-    final last = _findNameValue(data, [
+    final last = _findNameValue(dataMap, [
       'last_name',
       'Last Name',
       'lastname',
       'Apelyido',
     ]);
-    final first = _findNameValue(data, [
+    final first = _findNameValue(dataMap, [
       'first_name',
       'First Name',
       'firstname',
       'Pangalan',
     ]);
-    final middle = _findNameValue(data, [
+    final middle = _findNameValue(dataMap, [
       'middle_name',
       'Middle Name',
       'middle_name',
@@ -425,7 +508,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         for (final field in template.allFields) {
           final src = field.autofillSource;
           final lbl = field.fieldLabel.toLowerCase();
-          final val = data[field.fieldName]?.toString() ?? '';
+          final val = dataMap[field.fieldName]?.toString() ?? '';
           if (val.isEmpty) continue;
           if (src == 'lastname' || lbl.contains('last') && lbl.contains('name'))
             tLast = val;
@@ -490,7 +573,9 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   }
 
   String? _findApplicantId(Map<String, dynamic> submission) {
-    final data = submission['data'] as Map<String, dynamic>? ?? {};
+    final data = submission['data'] is Map
+        ? Map<String, dynamic>.from(submission['data'] as Map)
+        : <String, dynamic>{};
     final candidates = [
       submission['applicant_id'],
       submission['user_id'],

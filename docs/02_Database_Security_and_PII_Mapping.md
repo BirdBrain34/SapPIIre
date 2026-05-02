@@ -40,11 +40,18 @@ Foreign-key linkage to `form_fields(field_id)` binds values to dynamic metadata 
 
 ### 2.4 Finalized Record Layer: `client_submissions`
 
-`client_submissions` is the final intake archive where staff-reviewed JSON (`data`) is persisted with operational metadata:
+`client_submissions` is the final intake archive where staff-reviewed JSON (`data`) is persisted with server-side encryption and operational metadata:
 
 1. `session_id` is unique, preventing duplicate finalize writes per session.
 2. `template_id` references `form_templates(template_id)`.
 3. `intake_reference`, `form_code`, `created_by`, and edit stamps provide intake and accountability metadata.
+4. **Data Encryption:** The `data` column stores AES-256-GCM encrypted JSON (Base64 encoded) of finalized applicant records.
+   - Encryption is performed server-side by the `encrypt-and-save-submission` Edge Function.
+   - A random 12-byte IV is generated per record and stored in `data_iv`.
+   - The encryption algorithm is AES-256-GCM, with symmetric key (`SERVER_AES_KEY`) stored in Supabase Edge Secrets.
+   - `data_encryption_version` is set to 1 to indicate encryption status and enable future versioning.
+5. **Decryption Access Control:** The `decrypt-submission-data` Edge Function authorizes decryption requests based on staff role (`admin`, `form_editor`, `superadmin`), preventing `viewer` role access to plaintext records.
+6. This architecture provides a defense-in-depth layer protecting finalized applicant records at rest, complementing client-side field encryption in `user_field_values` and hybrid transport encryption in `form_submission`.
 
 ### 2.5 Dynamic Metadata Layer
 
@@ -96,7 +103,13 @@ When transmission is initiated:
 
 ### 3.4 Decrypt and Finalize
 
-Edge decryption writes plaintext JSON into `form_submission.form_data`. Staff review and finalize into `client_submissions`, preserving a distinct boundary between transport-state payload and finalized applicant record.
+Edge decryption writes plaintext JSON into `form_submission.form_data`. Staff review and finalize into `client_submissions` via the `encrypt-and-save-submission` Edge Function, which performs server-side AES-256-GCM encryption before persisting. This creates three distinct encryption/security boundaries:
+
+1. **At Rest (User Level):** Client-side AES encryption of PII in `user_field_values`.
+2. **In Transit:** Hybrid AES/RSA encrypted payload in `form_submission` transport columns.
+3. **At Rest (Finalized Record):** Server-side AES encryption of finalized applicant records in `client_submissions.data`.
+
+These layered protections ensure that sensitive data remains protected across the entire intake lifecycle.
 
 ## 4. Forensic Traceability
 

@@ -67,6 +67,30 @@ The web platform hosts the institutional form lifecycle module:
 
 This allows CSWD form policy evolution without schema-per-form redesign.
 
+### 2.6.1 Form Builder Unsaved Changes Detection
+
+The form builder screen implements change tracking to prevent accidental loss of template edits:
+
+1. A `_hasUnsavedChanges` flag is set to true whenever a field, section, condition, or reference format is modified.
+2. When the user navigates away or closes the form builder, a WillPopScope dialog is presented if unsaved changes are detected.
+3. The dialog offers two options: **Save** (which executes `_saveTemplate()`) or **Leave without saving** (which discards pending edits).
+4. The title bar displays a visual indicator ("•  unsaved changes") when the template has pending modifications.
+
+This ensures form editors have explicit control over template publication without accidental overwrites.
+
+### 2.6.2 Template and Field Notification Broadcasting
+
+When staff editors modify form templates, database triggers populate the `form_template_notifications` table with events including:
+
+1. **Template lifecycle events**: `added`, `updated`, `deleted`, `published`, `pushed_to_mobile`, `archived`.
+2. **Field lifecycle events**: `field_added`, `field_updated`, `field_deleted`.
+
+The `FormTemplateNotificationService` broadcasts these events via Supabase Realtime to all connected clients (both web and mobile), ensuring:
+
+- Mobile users are notified in near-real-time when forms they are viewing or about to use are modified.
+- Web editors receive notifications confirming their publishing and push actions.
+- Clients can choose to reload the form manifest immediately via a RELOAD button on the notification.
+
 ### 2.7 Conditional Logic and Computed Runtime
 
 The web runtime supports complex form semantics including conditional visibility and computed/aggregate field behavior, providing robust intake modeling for varied social-case requirements.
@@ -79,7 +103,19 @@ The dashboard includes workload and intake analytics modules (counts, trends, di
 
 The web tier controls station-linked display synchronization through `display_sessions`, enabling customer-facing monitor updates and queue/session status projection.
 
-### 2.10 Audit and Administrative Forensics
+### 2.10 Client Submissions Encryption (Extended Feature)
+
+Finalized applicant records written to `client_submissions` are encrypted server-side using AES-256-GCM:
+
+1. When staff finalize a session by calling `_finalizeEntry()`, the form data is sent to the `encrypt-and-save-submission` Edge Function.
+2. The Edge Function generates a random 12-byte IV and encrypts the JSON payload using AES-256-GCM with a `SERVER_AES_KEY` stored in Supabase Edge Secrets.
+3. The encrypted data is stored in `client_submissions.data` (Base64 encoded), with the IV stored in `data_iv` and `data_encryption_version` set to 1.
+4. When staff need to retrieve the finalized record, the `decryptSubmissionData()` method calls the `decrypt-submission-data` Edge Function, which verifies staff authorization and returns plaintext JSON.
+5. The decryption is transparent to downstream rendering—staff view plaintext records in the Applicants screen as before.
+
+This provides a server-side encryption layer protecting finalized applicant records at rest, complementing the client-side encryption for user PII in `user_field_values` and the hybrid transport encryption in `form_submission`.
+
+### 2.11 Audit and Administrative Forensics
 
 Audit log views provide privileged inspection of high-impact events (auth, staff, template, session, submission categories), strengthening accountability and incident traceability.
 
@@ -105,8 +141,11 @@ The web tier contributes the following controls:
 
 1. Dedicated admin creation and staff lifecycle governance.
 2. Dynamic form builder with publication pipeline.
-3. Customer-display session broadcasting.
-4. Audit log observability and analytics modules.
+3. Form builder unsaved changes detection and discard workflow.
+4. Template and field lifecycle notifications via Realtime broadcasting to all connected clients.
+5. Customer-display session broadcasting.
+6. Client submissions server-side AES-256-GCM encryption for finalized applicant records.
+7. Audit log observability and analytics modules.
 
 ## 5. Primary Data Touchpoints
 

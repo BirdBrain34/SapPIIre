@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 
 class LogoutConfirmationDialog extends StatelessWidget {
+  final VoidCallback? onCancel;
   final VoidCallback onConfirm;
 
-  const LogoutConfirmationDialog({super.key, required this.onConfirm});
+  const LogoutConfirmationDialog({
+    super.key,
+    this.onCancel,
+    required this.onConfirm,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -16,17 +21,14 @@ class LogoutConfirmationDialog extends StatelessWidget {
       content: const Text("Are you sure you want to log out of your account?"),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: onCancel ?? () => Navigator.pop(context),
           child: Text(
             "Cancel",
             style: TextStyle(color: Colors.grey[600]),
           ),
         ),
         ElevatedButton(
-          onPressed: () {
-            Navigator.pop(context);
-            onConfirm();
-          },
+          onPressed: onConfirm,
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.redAccent,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),

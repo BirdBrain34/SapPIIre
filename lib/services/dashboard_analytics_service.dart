@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:sappiire/services/forms/submission_service.dart';
 
 class SlaComplianceSummary {
   final int compliant;
@@ -33,6 +34,12 @@ class DashboardAnalyticsService {
   DashboardAnalyticsService._internal();
 
   final SupabaseClient _supabase = Supabase.instance.client;
+  final SubmissionService _submissionService = SubmissionService();
+  String? _staffId;
+
+  void setStaffId(String staffId) {
+    _staffId = staffId;
+  }
 
   Future<Map<String, int>> fetchCountsByFormType() async {
     try {
@@ -277,7 +284,18 @@ class DashboardAnalyticsService {
         final data =
             (row['data'] as Map?)?.cast<String, dynamic>() ??
             <String, dynamic>{};
-        final value = _extractFieldValue(data, 'Kasarian');
+        
+        // First try canonical key lookup (works across all templates)
+        var value = await _extractFieldValueByCanonicalKey(
+          data,
+          'kasarian_sex',
+        );
+        
+        // Fallback to legacy field name search
+        if (value.isEmpty) {
+          value = _extractFieldValue(data, 'Kasarian');
+        }
+        
         if (value.isEmpty) {
           continue;
         }
@@ -357,6 +375,11 @@ class DashboardAnalyticsService {
     String formType = 'All',
     int topN = 6,
   }) async {
+    if (_staffId == null) {
+      debugPrint('fetchIssueTrends: staffId not set');
+      return [];
+    }
+
     try {
       final now = DateTime.now();
       final currentMonthStart = DateTime(now.year, now.month, 1);
@@ -365,11 +388,11 @@ class DashboardAnalyticsService {
       final rows = formType == 'All'
           ? await _supabase
                 .from('client_submissions')
-                .select('data, created_at')
+                .select('id, data, data_encryption_version, created_at')
                 .gte('created_at', previousMonthStart.toIso8601String())
           : await _supabase
                 .from('client_submissions')
-                .select('data, created_at')
+                .select('id, data, data_encryption_version, created_at')
                 .eq('form_type', formType)
                 .gte('created_at', previousMonthStart.toIso8601String());
 
@@ -380,11 +403,25 @@ class DashboardAnalyticsService {
         final createdAt = DateTime.tryParse(
           row['created_at']?.toString() ?? '',
         );
-        final data =
-            (row['data'] as Map?)?.cast<String, dynamic>() ??
-            <String, dynamic>{};
         if (createdAt == null) {
           continue;
+        }
+
+        final version = row['data_encryption_version'] ?? 0;
+        Map<String, dynamic> data;
+
+        if (version == 1) {
+          final submissionId = row['id'];
+          final decryptedData = await _submissionService.decryptSubmissionData(
+            submissionId: submissionId,
+            staffId: _staffId!,
+          );
+          
+          if (decryptedData == null) continue;
+          data = decryptedData;
+        } else {
+          data = (row['data'] as Map?)?.cast<String, dynamic>() ??
+              <String, dynamic>{};
         }
 
         final value = _extractIssueValue(data);
@@ -538,18 +575,37 @@ class DashboardAnalyticsService {
     bool isMultiSelect = false,
     int topN = 10,
   }) async {
+    if (_staffId == null) {
+      debugPrint('fetchFieldDistribution: staffId not set');
+      return {};
+    }
+
     try {
       final rows = await _supabase
           .from('client_submissions')
-          .select('data')
+          .select('id, data, data_encryption_version')
           .eq('form_type', formType);
 
       final dist = <String, int>{};
 
       for (final row in List<Map<String, dynamic>>.from(rows)) {
-        final data =
-            (row['data'] as Map?)?.cast<String, dynamic>() ??
-            <String, dynamic>{};
+        final version = row['data_encryption_version'] ?? 0;
+        Map<String, dynamic> data;
+
+        if (version == 1) {
+          final submissionId = row['id'];
+          final decryptedData = await _submissionService.decryptSubmissionData(
+            submissionId: submissionId,
+            staffId: _staffId!,
+          );
+          
+          if (decryptedData == null) continue;
+          data = decryptedData;
+        } else {
+          data = (row['data'] as Map?)?.cast<String, dynamic>() ??
+              <String, dynamic>{};
+        }
+
         final raw = data[fieldName];
 
         if (raw == null) {
@@ -649,24 +705,42 @@ class DashboardAnalyticsService {
     String formType,
     String fieldKey,
   ) async {
+    if (_staffId == null) {
+      debugPrint('getFieldDistribution: staffId not set');
+      return {};
+    }
+
     try {
       final rows = formType == 'All'
           ? await _supabase
                 .from('client_submissions')
-                .select('data')
+                .select('id, data, data_encryption_version')
                 .order('created_at', ascending: false)
           : await _supabase
                 .from('client_submissions')
-                .select('data')
+                .select('id, data, data_encryption_version')
                 .eq('form_type', formType)
                 .order('created_at', ascending: false);
 
       final distribution = <String, int>{};
 
       for (final row in List<Map<String, dynamic>>.from(rows)) {
-        final data =
-            (row['data'] as Map?)?.cast<String, dynamic>() ??
-            <String, dynamic>{};
+        final version = row['data_encryption_version'] ?? 0;
+        Map<String, dynamic> data;
+
+        if (version == 1) {
+          final submissionId = row['id'];
+          final decryptedData = await _submissionService.decryptSubmissionData(
+            submissionId: submissionId,
+            staffId: _staffId!,
+          );
+          
+          if (decryptedData == null) continue;
+          data = decryptedData;
+        } else {
+          data = (row['data'] as Map?)?.cast<String, dynamic>() ??
+              <String, dynamic>{};
+        }
 
         if (fieldKey == '__age_group') {
           final age = _extractAge(data);
@@ -767,7 +841,8 @@ class DashboardAnalyticsService {
 
     for (final candidate in keyCandidates) {
       if (data.containsKey(candidate)) {
-        return data[candidate]?.toString().trim() ?? '';
+        final value = data[candidate]?.toString().trim() ?? '';
+        return value;
       }
     }
 
@@ -789,6 +864,61 @@ class DashboardAnalyticsService {
     }
 
     return '';
+  }
+
+  // Cache for canonical field key mappings
+  Map<String, Set<String>>? _canonicalKeyCache;
+
+  Future<String> _extractFieldValueByCanonicalKey(
+    Map<String, dynamic> data,
+    String canonicalKey,
+  ) async {
+    try {
+      // Build cache on first use
+      if (_canonicalKeyCache == null) {
+        _canonicalKeyCache = {};
+        final fieldRows = await _supabase
+            .from('form_fields')
+            .select('field_id, field_name, canonical_field_key');
+
+        for (final row in List<Map<String, dynamic>>.from(fieldRows)) {
+          final canonical = row['canonical_field_key']?.toString().trim();
+          if (canonical == null || canonical.isEmpty) continue;
+
+          final fieldId = row['field_id']?.toString().trim();
+          final fieldName = row['field_name']?.toString().trim();
+
+          _canonicalKeyCache!.putIfAbsent(canonical, () => <String>{});
+          if (fieldId != null && fieldId.isNotEmpty) {
+            _canonicalKeyCache![canonical]!.add(fieldId);
+          }
+          if (fieldName != null && fieldName.isNotEmpty) {
+            _canonicalKeyCache![canonical]!.add(fieldName);
+          }
+        }
+      }
+
+      // Look up all possible field IDs/names for this canonical key
+      final possibleKeys = _canonicalKeyCache![canonicalKey];
+      if (possibleKeys == null || possibleKeys.isEmpty) {
+        return '';
+      }
+
+      // Check if data contains any of these keys
+      for (final key in possibleKeys) {
+        if (data.containsKey(key)) {
+          final value = data[key]?.toString().trim() ?? '';
+          if (value.isNotEmpty) {
+            return value;
+          }
+        }
+      }
+
+      return '';
+    } catch (e) {
+      debugPrint('_extractFieldValueByCanonicalKey error: $e');
+      return '';
+    }
   }
 
   int? _extractAge(Map<String, dynamic> data) {
@@ -893,8 +1023,18 @@ class DashboardAnalyticsService {
   }
 
   static const Map<String, List<String>> _fieldKeyAliases = {
-    'Kasarian': ['Kasarian', 'kasarian', 'kasarian_sex', 'sex', 'gender'],
-    'Age': ['Age', 'age', 'edad'],
+    'Kasarian': [
+      'Kasarian',
+      'kasarian',
+      'Kasarian / Sex',
+      'kasarian_sex',
+      'kasarian / sex',
+      'sex',
+      'gender',
+      'Sex',
+      'Gender',
+    ],
+    'Age': ['Age', 'age', 'edad', 'Edad'],
     'Barangay': ['Barangay', 'barangay', 'brgy', 'address.barangay'],
     'Issue': [
       'Issue',
@@ -1064,15 +1204,45 @@ class DashboardAnalyticsService {
   Future<List<Map<String, dynamic>>> _fetchSubmissionDataRows({
     required String formType,
   }) async {
-    if (formType == 'All') {
-      final rows = await _supabase.from('client_submissions').select('data');
-      return List<Map<String, dynamic>>.from(rows);
+    if (_staffId == null) {
+      debugPrint('_fetchSubmissionDataRows: staffId not set');
+      return [];
     }
 
-    final rows = await _supabase
-        .from('client_submissions')
-        .select('data')
-        .eq('form_type', formType);
-    return List<Map<String, dynamic>>.from(rows);
+    try {
+      final rows = formType == 'All'
+          ? await _supabase
+                .from('client_submissions')
+                .select('id, data, data_encryption_version')
+          : await _supabase
+                .from('client_submissions')
+                .select('id, data, data_encryption_version')
+                .eq('form_type', formType);
+
+      final decryptedRows = <Map<String, dynamic>>[];
+
+      for (final row in List<Map<String, dynamic>>.from(rows)) {
+        final version = row['data_encryption_version'] ?? 0;
+        final submissionId = row['id'];
+        
+        if (version == 1) {
+          final decryptedData = await _submissionService.decryptSubmissionData(
+            submissionId: submissionId,
+            staffId: _staffId!,
+          );
+          
+          if (decryptedData != null) {
+            decryptedRows.add({'data': decryptedData});
+          }
+        } else {
+          decryptedRows.add({'data': row['data']});
+        }
+      }
+
+      return decryptedRows;
+    } catch (e) {
+      debugPrint('_fetchSubmissionDataRows error: $e');
+      return [];
+    }
   }
 }

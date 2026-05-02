@@ -3,7 +3,7 @@ import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/mobile/screens/auth/manage_info_screen.dart';
 import 'package:sappiire/mobile/screens/auth/signup_screen.dart';
 import 'package:sappiire/mobile/screens/auth/ChangePassword.dart';
-import 'package:sappiire/services/supabase_service.dart';
+import 'package:sappiire/mobile/controllers/login_controller.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -13,16 +13,18 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _identifierCtrl = TextEditingController();
-  final _passwordCtrl = TextEditingController();
-  final _supabaseService = SupabaseService();
-  bool _isLoading = false;
-  bool _showPassword = false;
+  late final LoginController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = LoginController();
+    _controller.addListener(() => setState(() {}));
+  }
 
   @override
   void dispose() {
-    _identifierCtrl.dispose();
-    _passwordCtrl.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
@@ -35,38 +37,18 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _onLoginPressed() async {
-    final id = _identifierCtrl.text.trim();
-    final pw = _passwordCtrl.text;
-    if (id.isEmpty || pw.isEmpty) {
-      _snack('Please enter your username/email/phone and password', error: true);
-      return;
-    }
-
-    setState(() => _isLoading = true);
-    try {
-      final result = await _supabaseService.login(
-        username: id,
-        password: pw,
+    final result = await _controller.login();
+    if (!mounted) return;
+    if (result['success'] == true) {
+      _snack('Welcome back, ' + result['username'] + '!');
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ManageInfoScreen(userId: result['user_id']),
+        ),
       );
-
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-
-      if (result['success'] == true) {
-        _snack('Welcome back, ${result['username']}!');
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ManageInfoScreen(userId: result['user_id']),
-          ),
-        );
-      } else {
-        _snack(result['message'] ?? 'Login failed', error: true);
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-      _snack('Connection error. Please check your internet.', error: true);
+    } else {
+      _snack(result['message'] ?? 'Login failed', error: true);
     }
   }
 
@@ -132,9 +114,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 24),
 
-                      // ── Identifier field (floating label style) ──
                       _FloatingLabelField(
-                        controller: _identifierCtrl,
+                        controller: _controller.identifierCtrl,
                         label: 'Username / Email / Phone',
                         icon: Icons.badge_outlined,
                         textInputAction: TextInputAction.next,
@@ -142,25 +123,23 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // ── Password field ──
                       _FloatingLabelField(
-                        controller: _passwordCtrl,
+                        controller: _controller.passwordCtrl,
                         label: 'Password',
                         icon: Icons.lock_outline,
-                        obscureText: !_showPassword,
+                        obscureText: !_controller.showPassword,
                         textInputAction: TextInputAction.done,
                         onSubmitted: (_) =>
-                            _isLoading ? null : _onLoginPressed(),
+                            _controller.isLoading ? null : _onLoginPressed(),
                         suffixIcon: IconButton(
                           icon: Icon(
-                            _showPassword
+                            _controller.showPassword
                                 ? Icons.visibility_off_outlined
                                 : Icons.visibility_outlined,
                             color: Colors.white60,
                             size: 20,
                           ),
-                          onPressed: () =>
-                              setState(() => _showPassword = !_showPassword),
+                          onPressed: () => _controller.togglePasswordVisibility(),
                         ),
                       ),
 
@@ -190,7 +169,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         width: double.infinity,
                         height: 50,
                         child: ElevatedButton(
-                          onPressed: _isLoading ? null : _onLoginPressed,
+                          onPressed: _controller.isLoading ? null : _onLoginPressed,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.highlight,
                             foregroundColor: Colors.white,
@@ -199,7 +178,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             elevation: 0,
                           ),
-                          child: _isLoading
+                          child: _controller.isLoading
                               ? const SizedBox(
                                   height: 20,
                                   width: 20,
@@ -272,9 +251,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
-
-// ── Reusable floating-label style input ──────────────────────────────────────
-// Matches the Material "focused label moves up" style from the reference image.
 
 class _FloatingLabelField extends StatelessWidget {
   final TextEditingController controller;
