@@ -56,7 +56,36 @@ The mobile app performs session-targeted data transmission by:
 
 This is the client-side entry point of the hybrid cryptosystem handshake.
 
-### 2.6 User History and Profile Transparency
+### 2.6 Unsaved Changes Detection and Discard Workflow
+
+The mobile client implements real-time change detection through form state fingerprinting:
+
+1. On form load, a cryptographic fingerprint of the form state is captured and stored as `_savedFormFingerprint`.
+2. As users edit fields, a listener tracks mutations and recomputes the current fingerprint.
+3. If the fingerprint diverges from `_savedFormFingerprint`, the client marks the form as having unsaved changes.
+4. On navigation or logout, the unsaved changes dialog is presented with options to Save or Discard.
+5. Selecting Discard triggers `_discardPendingChangesAndRefresh()`, which reloads the last-saved form state from the server and cancels all pending mutations.
+
+This provides user transparency for data entry intent and prevents accidental loss of committed changes while allowing explicit rollback of in-flight edits.
+
+### 2.7 Real-Time Form Template Notifications
+
+Mobile clients subscribe to real-time `form_template_notifications` table broadcasts via the `FormTemplateNotificationService`. Notifications are triggered by database events when staff editors modify form templates in the web builder and include:
+
+1. **Template-level events**: `added`, `updated`, `deleted`, `published`, `pushed_to_mobile`, `archived`.
+2. **Field-level events**: `field_added`, `field_updated`, `field_deleted`.
+
+Each notification includes a `change_type`, `changeSummary`, and `templateName`. On the mobile client:
+
+- Notifications are classified by change category and rendered as floating SnackBars.
+- Field-level changes display with a pencil icon (indicating field edits).
+- New template arrivals display with a star-burst icon.
+- Template removal displays with a minus-circle icon.
+- Each notification includes a RELOAD action, allowing the user to refresh the form manifest immediately.
+
+This enables mobile users to be aware of form infrastructure changes in near-real-time without requiring app restart.
+
+### 2.8 User History and Profile Transparency
 
 The mobile interface includes:
 
@@ -89,6 +118,8 @@ The mobile tier contributes the following controls:
 1. InfoScanner OCR-assisted profile capture.
 2. Extended OTP and password recovery workflows.
 3. Cross-template semantic autofill continuity through canonical field handling.
+4. Unsaved changes detection with form-fingerprint tracking and explicit discard workflow.
+5. Real-time template notifications for field and template lifecycle events, enabling mobile users to be aware of form infrastructure changes.
 
 ## 5. Primary Data Touchpoints
 

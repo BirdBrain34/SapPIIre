@@ -67,6 +67,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _analyticsService.setStaffId(widget.cswd_id);
     _loadSummary();
   }
 

@@ -14,6 +14,8 @@ This matrix traces mobile-client capabilities to implementation surfaces and dat
 | Dynamic profile capture and edit | Maintain current personal data for form reuse | `manage_info_screen.dart`, `manage_info_controller.dart`, `DynamicFormRenderer` | `user_field_values`, `form_fields` | Structured user-owned PII persistence |
 | Encrypted field persistence semantics | Protect sensitive values at rest | `FieldValueService`, `HybridCryptoService` | `user_field_values` (`field_value`, `iv`, `encryption_version`) | Data-at-rest confidentiality model |
 | Cross-template semantic fill | Reuse prior profile values across templates | `FieldValueService.loadUserFieldValuesWithCrossFormFill` | `form_fields` (`canonical_field_key`), `user_field_values` | Reduces duplicate entry and mapping drift |
+| Unsaved changes detection and discard | Prevent accidental loss of in-flight profile edits | `manage_info_screen.dart` form-state fingerprinting, `UnsavedChangesDialog` | `user_field_values` | User intent protection with explicit discard workflow |
+| Real-time template notifications | Stay aware of form infrastructure changes on mobile | `FormTemplateNotificationService`, `manage_info_screen.dart` notification handler | `form_template_notifications` (Realtime subscription) | Reduces confusion from form changes during active use |
 | InfoScanner OCR capture | Accelerate ID-based onboarding and reduce typing | `InfoScannerScreen.dart`, `camera`, `google_mlkit_text_recognition` | `user_field_values` (persisted mapped outputs) | Improves data entry throughput with user confirmation gate |
 | QR session scanner | Pair with active staff session | `qr_scanner_screen.dart`, `mobile_scanner` | `form_submission` (session ID target) | Session-bound transmission rather than broadcast sharing |
 | Selective payload transmission | Send only chosen fields to staff dashboard | `ManageInfoController.buildTransmitPayload`, checkbox model | `submission_field_values`, `form_submission` | Data minimization during transfer |
@@ -23,6 +25,7 @@ This matrix traces mobile-client capabilities to implementation surfaces and dat
 
 ## 3. Validation Notes
 
-1. Mobile traceability should be demonstrated with one complete run: signup or login, profile save, InfoScanner-assisted fill, QR transmit, and history verification.
-2. Evidence should include encrypted envelope presence in `form_submission` and encrypted row indicators in `user_field_values`.
+1. Mobile traceability should be demonstrated with one complete run: signup or login, profile save, unsaved-changes discard test, InfoScanner-assisted fill, QR transmit, template notification receipt, and history verification.
+2. Evidence should include encrypted envelope presence in `form_submission`, encrypted row indicators in `user_field_values`, and form-state fingerprinting in unsaved changes detection.
 3. OCR output should be validated as user-confirmed rather than blind auto-commit.
+4. Template notifications should be verified as Realtime events received by mobile client with appropriate icons and colors for different change types.

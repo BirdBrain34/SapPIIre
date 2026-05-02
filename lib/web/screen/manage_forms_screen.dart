@@ -373,7 +373,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
 
       // ── Audit copy (JSONB keeps full submitted data for record) ──
       // Idempotent save keyed by session_id so repeated submits update one row.
-      final created = await _submissionService.upsertClientSubmission(
+      final created = await _submissionService.upsertClientSubmissionSecure(
         sessionId: _currentSessionId,
         templateId: _selectedTemplate!.templateId,
         formCode: _selectedTemplate!.formCode,
@@ -398,6 +398,23 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           'form_type': _selectedTemplate?.formName,
           'session_id': _currentSessionId,
           'intake_reference': intakeReference,
+        },
+      );
+
+      await AuditLogService().log(
+        actionType: 'submission_encrypted_saved',
+        category: kCategorySubmission,
+        severity: kSeverityInfo,
+        actorId: widget.cswd_id,
+        actorName: widget.displayName,
+        actorRole: widget.role,
+        targetType: 'client_submission',
+        targetId: created['id']?.toString() ?? _currentSessionId,
+        targetLabel: _selectedTemplate?.formName,
+        details: {
+          'encryption': 'server_aes_256_gcm',
+          'form_type': _selectedTemplate?.formName,
+          'session_id': _currentSessionId,
         },
       );
 

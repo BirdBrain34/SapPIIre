@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 import 'package:sappiire/services/crypto/hybrid_crypto_service.dart';
 
@@ -69,6 +71,47 @@ class SubmissionService {
         }, onConflict: 'session_id')
         .select('id, intake_reference')
         .single();
+  }
+
+  Future<Map<String, dynamic>> upsertClientSubmissionSecure({
+    required String sessionId,
+    required String templateId,
+    required String? formCode,
+    required String formType,
+    required Map<String, dynamic> data,
+    required String createdBy,
+    String? intakeReference,
+  }) async {
+    const supabaseUrl = 'https://tgbfxepldpdswxehhlkx.supabase.co';
+    const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnYmZ4ZXBsZHBkc3d4ZWhobGt4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NDYzMDcsImV4cCI6MjA4NjQyMjMwN30.DhoD6RHExKynXw34mibc3XRP-NwfmDnq1PttVM7-GL4';
+
+    final url = Uri.parse(
+      '$supabaseUrl/functions/v1/encrypt-and-save-submission',
+    );
+
+    final response = await http.post(
+      url,
+      headers: {
+        'Authorization': 'Bearer $anonKey',
+        'apikey': anonKey,
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'sessionId': sessionId,
+        'templateId': templateId,
+        'formCode': formCode,
+        'formType': formType,
+        'data': data,
+        'intakeReference': intakeReference,
+        'createdBy': createdBy,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(response.body);
+    }
+
+    return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
   Future<List<Map<String, dynamic>>> fetchRecentClientSubmissions({
@@ -249,6 +292,39 @@ class SubmissionService {
         .from('client_submissions')
         .delete()
         .inFilter('id', submissionIds);
+  }
+
+  Future<Map<String, dynamic>?> decryptSubmissionData({
+    required dynamic submissionId,
+    required String staffId,
+  }) async {
+    const supabaseUrl = 'https://tgbfxepldpdswxehhlkx.supabase.co';
+    const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnYmZ4ZXBsZHBkc3d4ZWhobGt4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NDYzMDcsImV4cCI6MjA4NjQyMjMwN30.DhoD6RHExKynXw34mibc3XRP-NwfmDnq1PttVM7-GL4';
+
+    final url = Uri.parse(
+      '$supabaseUrl/functions/v1/decrypt-submission-data',
+    );
+
+    final response = await http.post(
+      url,
+      headers: {
+        'Authorization': 'Bearer $anonKey',
+        'apikey': anonKey,
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'submissionId': submissionId,
+        'staffId': staffId,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      debugPrint('decryptSubmissionData error: ${response.body}');
+      return null;
+    }
+
+    final result = jsonDecode(response.body) as Map<String, dynamic>;
+    return result['data'] as Map<String, dynamic>?;
   }
 
   Future<void> signOut() {
