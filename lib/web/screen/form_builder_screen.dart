@@ -23,6 +23,8 @@ import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/applicants_screen.dart';
 import 'package:sappiire/web/screen/audit_logs_screen.dart';
 import 'package:sappiire/services/audit/audit_log_service.dart';
+import 'package:sappiire/web/controllers/form_builder_controller.dart';
+import 'package:sappiire/web/widgets/form_builder_widgets.dart';
 
 // ── UUID v4 generator ──────────────────────────────────────
 String _generateUuid() {
@@ -295,6 +297,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   final _authService = WebAuthService();
   final _scrollCtrl = ScrollController();
   final PageStorageBucket _canvasStorageBucket = PageStorageBucket();
+  late final FormBuilderController _controller;
   double _lastCanvasOffset = 0.0;
 
   // Template list
@@ -451,17 +454,19 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   @override
   void initState() {
     super.initState();
+    _controller = FormBuilderController(
+      cswdId: widget.cswd_id,
+      role: widget.role,
+      displayName: widget.displayName,
+      editTemplateId: widget.editTemplateId,
+    );
+    _controller.attachContext(context);
     _scrollCtrl.addListener(() {
       if (_scrollCtrl.hasClients) {
         _lastCanvasOffset = _scrollCtrl.offset;
       }
     });
-    _loadCanonicalKeys();
-    _loadTemplateList().then((_) {
-      if (widget.editTemplateId != null) {
-        _loadTemplate(widget.editTemplateId!);
-      }
-    });
+    _controller.init();
   }
 
   void _setStatePreserveCanvasScroll(VoidCallback fn) {
@@ -491,6 +496,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
 
   @override
   void dispose() {
+    _controller.dispose();
     _clearCtrls();
     _scrollCtrl.dispose();
     super.dispose();
@@ -1279,6 +1285,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         ),
       ];
 
+  // ignore: unused_element
   void _addSystemField(int si, FormFieldType type) {
     final block = _systemBlocks[type];
     if (block == null) return;
@@ -1342,7 +1349,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     });
   }
 
-  void _showSystemBlockPicker(int si) {
+  void _showSystemBlockPicker() {
+    final si = _controller.activeSectionIdx ?? (_controller.sections.isNotEmpty ? _controller.sections.length - 1 : null);
+    if (si == null) return;
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -1371,7 +1380,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               const SizedBox(height: 12),
               ..._systemBlocks.entries.map((e) {
                 final block = e.value;
-                final exists = _sections
+                final exists = _controller.sections
                     .expand((s) => s.fields)
                     .any((f) => f.type == e.key);
                 return ListTile(
@@ -1398,7 +1407,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                   enabled: !exists || e.key == FormFieldType.computed,
                   onTap: () {
                     Navigator.pop(ctx);
-                    _addSystemField(si, e.key);
+                    _controller.addSystemField(si, e.key);
                   },
                 );
               }),
@@ -1515,7 +1524,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   }
 
   Future<void> _handleLogout() async {
-    if (!await _confirmLeave()) return;
+    if (!await _controller.confirmLeave()) return;
     await _authService.signOut();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
@@ -1580,7 +1589,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       default:
         return;
     }
-    _confirmLeave().then((ok) {
+    _controller.confirmLeave().then((ok) {
       if (!ok || !mounted) return;
       Navigator.of(context).pushReplacement(ContentFadeRoute(page: next));
     });
@@ -1591,124 +1600,110 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   // ═══════════════════════════════════════════════════════════
   @override
   Widget build(BuildContext context) {
-    return WebShell(
-      activePath: 'FormBuilder',
-      pageTitle: 'Form Builder',
-      pageSubtitle: _activeTemplateId != null
-          ? '$_formName${_hasUnsavedChanges ? '  •  unsaved changes' : ''}'
-          : 'Create and manage form templates',
-      role: widget.role,
-      cswd_id: widget.cswd_id,
-      displayName: widget.displayName,
-      onLogout: _handleLogout,
-      headerActions: _buildHeaderActions(),
-      onNavigate: (path) => _navigateToScreen(context, path),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildTemplateListPanel(),
-          Expanded(
-            child: _activeTemplateId == null
-                ? _buildEmptyState()
-                : _isLoadingTemplate
-                ? const Center(
-                    child: CircularProgressIndicator(
-                      color: AppColors.highlight,
-                    ),
-                  )
-                : _buildBuilderCanvas(),
+    _controller.attachContext(context);
+    return ListenableBuilder(
+      listenable: _controller,
+      builder: (context, _) {
+        return WebShell(
+          activePath: 'FormBuilder',
+          pageTitle: 'Form Builder',
+          pageSubtitle: _controller.activeTemplateId != null
+              ? '${_controller.formName}${_controller.hasUnsavedChanges ? '  •  unsaved changes' : ''}'
+              : 'Create and manage form templates',
+          role: widget.role,
+          cswd_id: widget.cswd_id,
+          displayName: widget.displayName,
+          onLogout: _handleLogout,
+          headerActions: _buildHeaderActions(),
+          onNavigate: (path) => _navigateToScreen(context, path),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              FormBuilderTemplateListPanel(
+                templates: _controller.templates,
+                selectedTemplateId: _controller.activeTemplateId,
+                isLoading: _controller.isLoadingList,
+                filter: _controller.templateListFilter,
+                onSelectTemplate: (id) async {
+                  if (id == _controller.activeTemplateId) return;
+                  if (!await _controller.confirmLeave()) return;
+                  await _controller.loadTemplate(id);
+                },
+                onCreateNew: _controller.createNewTemplate,
+                onFilterChanged: _controller.setTemplateListFilter,
+              ),
+              Expanded(
+                child: _controller.activeTemplateId == null
+                    ? _buildEmptyState()
+                    : _controller.isLoadingTemplate
+                        ? const Center(
+                            child: CircularProgressIndicator(
+                              color: AppColors.highlight,
+                            ),
+                          )
+                        : _buildBuilderCanvas(),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   // ── Header Actions ──────────────────────────────────────────
   List<Widget> _buildHeaderActions() {
-    if (_activeTemplateId == null) return [];
+    if (_controller.activeTemplateId == null) return [];
     return [
-      if (_formStatus == 'draft') ...[
-        _headerBtn(
+      if (_controller.formStatus == 'draft') ...[
+        FormBuilderHeaderButton(
           'Save Draft',
           Icons.save_outlined,
-          onPressed: _isSaving ? null : _saveTemplate,
+          onPressed: _controller.isSaving ? null : _controller.saveTemplate,
         ),
         const SizedBox(width: 8),
-        _headerBtn(
+        FormBuilderHeaderButton(
           'Publish',
           Icons.publish,
           color: AppColors.highlight,
-          onPressed: _publishTemplate,
+          onPressed: _controller.publishTemplate,
         ),
       ],
-      if (_formStatus == 'published') ...[
-        _headerBtn(
+      if (_controller.formStatus == 'published') ...[
+        FormBuilderHeaderButton(
           'Save',
           Icons.save_outlined,
-          onPressed: _isSaving ? null : _saveTemplate,
+          onPressed: _controller.isSaving ? null : _controller.saveTemplate,
         ),
         const SizedBox(width: 8),
-        _headerBtn(
+        FormBuilderHeaderButton(
           'Push to Mobile',
           Icons.phone_android,
           color: Colors.green,
-          onPressed: _pushToMobile,
+          onPressed: _controller.pushToMobile,
         ),
       ],
-      if (_formStatus == 'pushed_to_mobile') ...[
-        _headerBtn(
+      if (_controller.formStatus == 'pushed_to_mobile') ...[
+        FormBuilderHeaderButton(
           'Save',
           Icons.save_outlined,
-          onPressed: _isSaving ? null : _saveTemplate,
+          onPressed: _controller.isSaving ? null : _controller.saveTemplate,
         ),
       ],
-      if (_formStatus == 'archived') ...[
-        _headerBtn(
+      if (_controller.formStatus == 'archived') ...[
+        FormBuilderHeaderButton(
           'Restore',
           Icons.restore,
           color: Colors.teal,
-          onPressed: _restoreTemplate,
+          onPressed: _controller.restoreTemplate,
         ),
       ],
     ];
   }
 
-  Widget _headerBtn(
-    String label,
-    IconData icon, {
-    VoidCallback? onPressed,
-    Color? color,
-  }) {
-    return ElevatedButton.icon(
-      onPressed: onPressed,
-      icon: _isSaving && icon == Icons.save_outlined
-          ? const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(
-                color: Colors.white,
-                strokeWidth: 2,
-              ),
-            )
-          : Icon(icon, color: Colors.white, size: 18),
-      label: Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color ?? AppColors.primaryBlue,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
-  }
-
   // ═══════════════════════════════════════════════════════════
   // TEMPLATE LIST PANEL
   // ═══════════════════════════════════════════════════════════
+  // ignore: unused_element
   Widget _buildTemplateListPanel() {
     final visibleTemplates = _templates.where((t) {
       final status = (t['status'] as String?) ?? 'draft';
@@ -1983,13 +1978,26 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   // BUILDER CANVAS
   // ═══════════════════════════════════════════════════════════
   Widget _buildBuilderCanvas() {
+    final activeSectionName = _controller.activeSectionIdx != null && _controller.activeSectionIdx! < _controller.sections.length
+        ? _controller.sections[_controller.activeSectionIdx!].name
+        : (_controller.sections.isNotEmpty ? _controller.sections.last.name : null);
+
     return PageStorage(
       bucket: _canvasStorageBucket,
       child: Container(
         color: AppColors.pageBg,
         child: Column(
           children: [
-            _buildCanvasToolbar(),
+            FormBuilderCanvasToolbar(
+              activeSectionName: activeSectionName,
+              onAddQuestion: () {
+                final targetSi = _controller.activeSectionIdx ?? (_controller.sections.isNotEmpty ? _controller.sections.length - 1 : null);
+                if (targetSi != null) {
+                  _controller.addField(targetSi);
+                }
+              },
+              onAddIntakeModule: () => _showSystemBlockPicker(),
+            ),
             Expanded(
               child: SingleChildScrollView(
                 key: const PageStorageKey<String>('form_builder_canvas_scroll'),
@@ -2001,13 +2009,55 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                     width: 680,
                     child: Column(
                       children: [
-                        _buildTitleCard(),
+                        FormBuilderTitleCard(controller: _controller),
                         const SizedBox(height: 12),
-                        ..._buildAllSections(),
+                        for (var si = 0; si < _controller.sections.length; si++) ...[
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Column(
+                              children: [
+                                FormBuilderSectionHeader(
+                                  section: _controller.sections[si],
+                                  sectionIndex: si,
+                                  isActive: _controller.activeSectionIdx == si,
+                                  sectionCount: _controller.sections.length,
+                                  onTap: () => _setStatePreserveCanvasScroll(() => _controller.setActiveSectionAndField(si, null)),
+                                  onMoveUp: () => _controller.moveSection(si, -1),
+                                  onMoveDown: () => _controller.moveSection(si, 1),
+                                  onDelete: () => _controller.removeSection(si),
+                                  onChanged: _controller.markDirty,
+                                  ctrl: _controller.ctrlLookup,
+                                ),
+                                for (var fi = 0; fi < _controller.sections[si].fields.length; fi++)
+                                  FormBuilderFieldCard(
+                                    field: _controller.sections[si].fields[fi],
+                                    sectionIndex: si,
+                                    fieldIndex: fi,
+                                    isActive: _controller.activeSectionIdx == si && _controller.activeFieldIdx == fi,
+                                    allSections: _controller.sections,
+                                    availableCanonicalKeys: _controller.availableCanonicalKeys,
+                                    isLoadingCanonicalKeys: _controller.isLoadingCanonicalKeys,
+                                    onTap: () => _setStatePreserveCanvasScroll(() => _controller.setActiveSectionAndField(si, fi)),
+                                    onDuplicate: () => _controller.duplicateField(si, fi),
+                                    onDelete: () => _controller.removeField(si, fi),
+                                    onMoveUp: () => _controller.moveField(si, fi, -1),
+                                    onMoveDown: () => _controller.moveField(si, fi, 1),
+                                    ctrlLookup: _controller.ctrlLookup,
+                                    onFieldChanged: _controller.markDirty,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 16),
-                        _buildAddSectionButton(),
+                        FormBuilderAddSectionButton(onPressed: _controller.addSection),
                         const SizedBox(height: 16),
-                        _buildStatusCard(),
+                        FormBuilderStatusCard(
+                          formStatus: _controller.formStatus,
+                          onUnpublish: _controller.unpublishTemplate,
+                          onArchive: _controller.archiveTemplate,
+                          onRestore: _controller.restoreTemplate,
+                        ),
                         const SizedBox(height: 48),
                       ],
                     ),
@@ -2021,6 +2071,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildCanvasToolbar() {
     final targetSi =
         _activeSectionIdx ??
@@ -2056,9 +2107,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           ),
           const SizedBox(width: 12),
           OutlinedButton.icon(
-            onPressed: targetSi != null
-                ? () => _showSystemBlockPicker(targetSi)
-                : null,
+            onPressed: targetSi != null ? () => _showSystemBlockPicker() : null,
             icon: const Icon(Icons.dashboard_customize_outlined, size: 18),
             label: const Text(
               'Add Intake Module',
@@ -2087,6 +2136,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   // ═══════════════════════════════════════════════════════════
   // TITLE CARD  (includes the popup section at the bottom)
   // ═══════════════════════════════════════════════════════════
+  // ignore: unused_element
   Widget _buildTitleCard() {
     return Container(
       decoration: BoxDecoration(
@@ -2640,6 +2690,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   }
 
   // ── Sections ────────────────────────────────────────────────
+  // ignore: unused_element
   List<Widget> _buildAllSections() {
     final items = <Widget>[];
     for (var si = 0; si < _sections.length; si++) {
@@ -5052,6 +5103,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildAddSectionButton() {
     return OutlinedButton.icon(
       onPressed: _addSection,
@@ -5066,6 +5118,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildStatusCard() {
     final (
       Color clr,
