@@ -4,7 +4,7 @@
 // Layout: Template list panel (left) + Toolbar + Builder canvas (center)
 // Supports: Multiple choice, checkboxes, dropdown, short answer, paragraph,
 //           linear scale, date, time, number, yes/no field types.
-// Workflow: Draft → Publish (to admins) → Push to Mobile
+// Workflow: Draft â†’ Publish (to admins) â†’ Push to Mobile
 
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -16,15 +16,11 @@ import 'package:sappiire/services/form_builder_service.dart';
 import 'package:sappiire/web/widget/web_shell.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/web/screen/web_login_screen.dart';
-import 'package:sappiire/web/screen/dashboard_screen.dart';
-import 'package:sappiire/web/screen/manage_forms_screen.dart';
-import 'package:sappiire/web/screen/manage_staff_screen.dart';
-import 'package:sappiire/web/screen/create_staff_screen.dart';
-import 'package:sappiire/web/screen/applicants_screen.dart';
-import 'package:sappiire/web/screen/audit_logs_screen.dart';
+import 'package:sappiire/web/utils/web_navigator.dart';
+import 'package:sappiire/web/controllers/form_builder_controller.dart';
 import 'package:sappiire/services/audit/audit_log_service.dart';
 
-// ── UUID v4 generator ──────────────────────────────────────
+// â”€â”€ UUID v4 generator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 String _generateUuid() {
   final rng = Random.secure();
   final b = List<int>.generate(16, (_) => rng.nextInt(256));
@@ -39,237 +35,8 @@ String _generateUuid() {
 String _slugify(String label) =>
     label.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
 
-// ── Field type labels and icons for the builder ─────────────
-const _typeLabels = <FormFieldType, String>{
-  FormFieldType.radio: 'Multiple Choice',
-  FormFieldType.checkbox: 'Checkboxes',
-  FormFieldType.dropdown: 'Dropdown',
-  FormFieldType.text: 'Short Answer',
-  FormFieldType.paragraph: 'Paragraph',
-  FormFieldType.linearScale: 'Linear Scale',
-  FormFieldType.date: 'Date',
-  FormFieldType.time: 'Time',
-  FormFieldType.number: 'Number',
-  FormFieldType.boolean: 'Yes / No',
-  FormFieldType.signature: 'Signature',
-  FormFieldType.memberTable: 'Member Table',
-};
-
-const _typeIcons = <FormFieldType, IconData>{
-  FormFieldType.radio: Icons.radio_button_checked,
-  FormFieldType.checkbox: Icons.check_box_outlined,
-  FormFieldType.dropdown: Icons.arrow_drop_down_circle_outlined,
-  FormFieldType.text: Icons.short_text,
-  FormFieldType.paragraph: Icons.notes,
-  FormFieldType.linearScale: Icons.linear_scale,
-  FormFieldType.date: Icons.calendar_today,
-  FormFieldType.time: Icons.access_time,
-  FormFieldType.number: Icons.pin,
-  FormFieldType.boolean: Icons.toggle_on_outlined,
-  FormFieldType.signature: Icons.draw_outlined,
-  FormFieldType.memberTable: Icons.table_chart_outlined,
-};
-
-const _systemTypeLabels = <FormFieldType, String>{
-  FormFieldType.computed: 'Computed',
-  FormFieldType.conditional: 'Conditional',
-  FormFieldType.membershipGroup: 'Membership Group',
-  FormFieldType.familyTable: 'Family Table',
-  FormFieldType.supportingFamilyTable: 'Supporting Family Table',
-  FormFieldType.signature: 'Signature',
-  FormFieldType.unknown: 'Unknown',
-};
-
-const _systemTypeIcons = <FormFieldType, IconData>{
-  FormFieldType.computed: Icons.calculate_outlined,
-  FormFieldType.conditional: Icons.device_hub_outlined,
-  FormFieldType.membershipGroup: Icons.group_outlined,
-  FormFieldType.familyTable: Icons.table_chart_outlined,
-  FormFieldType.supportingFamilyTable: Icons.table_chart_outlined,
-  FormFieldType.signature: Icons.draw_outlined,
-  FormFieldType.unknown: Icons.help_outline,
-};
-
-const _standardProfileCanonicalKeys = <({String key, String label})>[
-  (key: 'last_name', label: 'Last Name'),
-  (key: 'first_name', label: 'First Name'),
-  (key: 'middle_name', label: 'Middle Name'),
-  (key: 'date_of_birth', label: 'Date of Birth'),
-  (key: 'age', label: 'Age'),
-  (key: 'kasarian_sex', label: 'Sex / Kasarian'),
-  (key: 'estadong_sibil_civil_status', label: 'Civil Status / Estadong Sibil'),
-  (key: 'lugar_ng_kapanganakan_place_of_birth', label: 'Place of Birth'),
-  (key: 'cp_number', label: 'Phone Number / CP Number'),
-  (key: 'email_address', label: 'Email Address'),
-  (
-    key: 'house_number_street_name_phase_purok',
-    label: 'House No. / Street / Purok',
-  ),
-  (key: 'barangay', label: 'Barangay'),
-  (key: 'subdivison_', label: 'Subdivision'),
-  (key: 'signature', label: 'Signature'),
-];
-
-const _canonicalKeyEligibleTypes = <FormFieldType>{
-  FormFieldType.text,
-  FormFieldType.number,
-  FormFieldType.date,
-  FormFieldType.dropdown,
-  FormFieldType.radio,
-  FormFieldType.boolean,
-};
-
-class _ReferenceToken {
-  final String label;
-  final String token;
-  final String hint;
-  final String group;
-
-  const _ReferenceToken(this.label, this.token, this.hint, this.group);
-}
-
-const _referenceTokens = <_ReferenceToken>[
-  _ReferenceToken('Form Code', '{FORMCODE}', 'GIS', 'Form Info'),
-  _ReferenceToken('Year (2026)', '{YYYY}', '2026', 'Date'),
-  _ReferenceToken('Year Short (26)', '{YY}', '26', 'Date'),
-  _ReferenceToken('Month Number (03)', '{MM}', '03', 'Date'),
-  _ReferenceToken('Month Short (MAR)', '{MON}', 'MAR', 'Date'),
-  _ReferenceToken('Day (26)', '{DD}', '26', 'Date'),
-  _ReferenceToken('Day of Year (085)', '{DDD}', '085', 'Date'),
-  _ReferenceToken('Quarter (1)', '{Q}', '1', 'Date'),
-  _ReferenceToken('Week Number (13)', '{WW}', '13', 'Date'),
-  _ReferenceToken('ISO Week (13)', '{IW}', '13', 'Date'),
-  _ReferenceToken('Hour (14)', '{HH24}', '14', 'Time'),
-  _ReferenceToken('Minute (30)', '{MI}', '30', 'Time'),
-  _ReferenceToken('Second (00)', '{SS}', '00', 'Time'),
-  _ReferenceToken(
-    'Counter 8-digit (00000001)',
-    '{########}',
-    '00000001',
-    'Counter',
-  ),
-  _ReferenceToken('Counter 6-digit (000001)', '{######}', '000001', 'Counter'),
-  _ReferenceToken('Counter 4-digit (0001)', '{####}', '0001', 'Counter'),
-  _ReferenceToken('Counter 3-digit (001)', '{###}', '001', 'Counter'),
-  _ReferenceToken('Counter 2-digit (01)', '{##}', '01', 'Counter'),
-  _ReferenceToken('Counter (1)', '{#}', '1', 'Counter'),
-];
-
-const _referenceTokenGroups = <String>['Form Info', 'Date', 'Time', 'Counter'];
-
-// ── Mutable builder models (file-private) ───────────────────
-class _BuilderOption {
-  String id;
-  String label;
-  int order;
-
-  _BuilderOption({String? id, this.label = 'Option', this.order = 0})
-    : id = id ?? _generateUuid();
-}
-
-class _BuilderColumn {
-  String id;
-  String label;
-  String fieldName;
-  FormFieldType type;
-  int order;
-  List<_BuilderOption> options;
-  String? dbMapKey;
-  String? ageFromColumnId;
-
-  _BuilderColumn({
-    String? id,
-    this.label = 'Column',
-    String? fieldName,
-    this.type = FormFieldType.text,
-    this.order = 0,
-    List<_BuilderOption>? options,
-    this.dbMapKey,
-    this.ageFromColumnId,
-  }) : id = id ?? _generateUuid(),
-       fieldName = fieldName ?? 'col_${_generateUuid().substring(0, 8)}',
-       options = options ?? [];
-
-  bool get isCoreColumn => dbMapKey != null;
-}
-
-class _BuilderCondition {
-  String triggerFieldId;
-  String triggerValue;
-  String action;
-
-  _BuilderCondition({
-    this.triggerFieldId = '',
-    this.triggerValue = '',
-    this.action = 'show',
-  });
-}
-
-class _BuilderField {
-  String id;
-  String label;
-  String fieldName;
-  FormFieldType type;
-  bool isRequired;
-  String? placeholder;
-  String? canonicalFieldKey;
-  int order;
-  List<_BuilderOption> options;
-  List<_BuilderColumn> columns;
-  int scaleMin;
-  int scaleMax;
-  String formula;
-  String? ageFromFieldId;
-  _BuilderCondition condition;
-
-  _BuilderField({
-    String? id,
-    this.label = 'Untitled Question',
-    String? fieldName,
-    this.type = FormFieldType.radio,
-    this.isRequired = false,
-    this.placeholder,
-    this.canonicalFieldKey,
-    this.order = 0,
-    List<_BuilderOption>? options,
-    List<_BuilderColumn>? columns,
-    this.scaleMin = 1,
-    this.scaleMax = 5,
-    this.formula = '',
-    this.ageFromFieldId,
-    _BuilderCondition? condition,
-  }) : id = id ?? _generateUuid(),
-       fieldName = fieldName ?? 'field_${_generateUuid().substring(0, 8)}',
-       options = options ?? [_BuilderOption(label: 'Option 1', order: 0)],
-       columns = columns ?? [],
-       condition = condition ?? _BuilderCondition();
-
-  bool get hasOptions =>
-      type == FormFieldType.radio ||
-      type == FormFieldType.checkbox ||
-      type == FormFieldType.dropdown;
-}
-
-class _BuilderSection {
-  String id;
-  String name;
-  String? description;
-  int order;
-  List<_BuilderField> fields;
-
-  _BuilderSection({
-    String? id,
-    this.name = 'Untitled Section',
-    this.description,
-    this.order = 0,
-    List<_BuilderField>? fields,
-  }) : id = id ?? _generateUuid(),
-       fields = fields ?? [];
-}
-
-// ═══════════════════════════════════════════════════════════════
 // FORM BUILDER SCREEN
-// ═══════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 class FormBuilderScreen extends StatefulWidget {
   final String cswd_id;
   final String role;
@@ -288,8 +55,6 @@ class FormBuilderScreen extends StatefulWidget {
   State<FormBuilderScreen> createState() => _FormBuilderScreenState();
 }
 
-enum _TemplateListFilter { all, active, draft, published, archived }
-
 class _FormBuilderScreenState extends State<FormBuilderScreen> {
   final _service = FormBuilderService();
   final _authService = WebAuthService();
@@ -300,7 +65,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   // Template list
   List<Map<String, dynamic>> _templates = [];
   bool _isLoadingList = true;
-  _TemplateListFilter _templateListFilter = _TemplateListFilter.all;
+  TemplateListFilter _templateListFilter = TemplateListFilter.all;
 
   // Active builder state
   String? _activeTemplateId;
@@ -311,9 +76,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   String _referenceFormat = '{FORMCODE}-{YYYY}-{MM}-{####}';
   bool _requiresReference = true;
   String _formStatus = 'draft';
-  List<_BuilderSection> _sections = [];
+  List<BuilderSection> _sections = [];
 
-  // ── Popup intro state (new) ────────────────────────────────
+  // â”€â”€ Popup intro state (new) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   bool _popupEnabled = false;
   String _popupSubtitle = '';
   String _popupDescription = '';
@@ -344,108 +109,40 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   }
 
   String _sanitizeCode(String input) {
-    final cleaned = input.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
-    return cleaned.length > 10 ? cleaned.substring(0, 10) : cleaned;
+    return sanitizeCode(input);
   }
 
   List<String> _referenceFormatParts() {
-    if (_referenceFormat.isEmpty) return const [];
-    return RegExp(
-      r'(\{[^{}]+\}|.)',
-    ).allMatches(_referenceFormat).map((m) => m.group(0)!).toList();
+    return referenceFormatParts(_referenceFormat);
   }
 
   void _appendReferenceToken(String token) {
     setState(() {
-      _referenceFormat = '$_referenceFormat$token';
+      _referenceFormat = appendReferenceToken(_referenceFormat, token);
       _hasUnsavedChanges = true;
     });
   }
 
   void _appendReferenceSeparator(String separator) {
     setState(() {
-      _referenceFormat = '$_referenceFormat$separator';
+      _referenceFormat = appendReferenceSeparator(_referenceFormat, separator);
       _hasUnsavedChanges = true;
     });
   }
 
   void _removeReferencePartAt(int index) {
-    final parts = _referenceFormatParts();
-    if (index < 0 || index >= parts.length) return;
     setState(() {
-      parts.removeAt(index);
-      _referenceFormat = parts.join();
+      _referenceFormat = removeReferencePartAt(_referenceFormat, index);
       _hasUnsavedChanges = true;
     });
   }
 
   String _referencePreview() {
-    final now = DateTime.now();
-    var ref = _referenceFormat;
-    final prefix = _referencePrefix.trim().isNotEmpty
-        ? _referencePrefix.trim().toUpperCase()
-        : (_formCode.trim().isNotEmpty
-              ? _formCode.trim().toUpperCase()
-              : 'FORM');
-
-    String pad(int v, int n) => v.toString().padLeft(n, '0');
-    final yearStart = DateTime(now.year, 1, 1);
-    final dayOfYear = now.difference(yearStart).inDays + 1;
-    final quarter = ((now.month - 1) ~/ 3) + 1;
-
-    ref = ref.replaceAll('{FORMCODE}', prefix);
-    ref = ref.replaceAll('{YYYY}', now.year.toString());
-    ref = ref.replaceAll('{YY}', now.year.toString().substring(2));
-    ref = ref.replaceAll('{MM}', pad(now.month, 2));
-    ref = ref.replaceAll(
-      '{MON}',
-      const [
-        'JAN',
-        'FEB',
-        'MAR',
-        'APR',
-        'MAY',
-        'JUN',
-        'JUL',
-        'AUG',
-        'SEP',
-        'OCT',
-        'NOV',
-        'DEC',
-      ][now.month - 1],
+    return referencePreview(
+      referenceFormat: _referenceFormat,
+      referencePrefix: _referencePrefix,
+      formCode: _formCode,
     );
-    ref = ref.replaceAll(
-      '{MONTH}',
-      const [
-        'JANUARY',
-        'FEBRUARY',
-        'MARCH',
-        'APRIL',
-        'MAY',
-        'JUNE',
-        'JULY',
-        'AUGUST',
-        'SEPTEMBER',
-        'OCTOBER',
-        'NOVEMBER',
-        'DECEMBER',
-      ][now.month - 1],
-    );
-    ref = ref.replaceAll('{DD}', pad(now.day, 2));
-    ref = ref.replaceAll('{DDD}', pad(dayOfYear, 3));
-    ref = ref.replaceAll('{Q}', '$quarter');
-    ref = ref.replaceAll('{WW}', pad(((dayOfYear - 1) ~/ 7) + 1, 2));
-    ref = ref.replaceAll('{IW}', pad(((dayOfYear - 1) ~/ 7) + 1, 2));
-    ref = ref.replaceAll('{HH24}', pad(now.hour, 2));
-    ref = ref.replaceAll('{MI}', pad(now.minute, 2));
-    ref = ref.replaceAll('{SS}', pad(now.second, 2));
-    ref = ref.replaceAll('{########}', '????????');
-    ref = ref.replaceAll('{######}', '??????');
-    ref = ref.replaceAll('{####}', '????');
-    ref = ref.replaceAll('{###}', '???');
-    ref = ref.replaceAll('{##}', '??');
-    ref = ref.replaceAll('{#}', '?');
-    return ref;
   }
 
   @override
@@ -496,7 +193,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     super.dispose();
   }
 
-  // ── Data Loading ────────────────────────────────────────────
+  // â”€â”€ Data Loading â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Future<void> _loadTemplateList() async {
     setState(() => _isLoadingList = true);
     final templates = await _service.fetchAllTemplates();
@@ -512,12 +209,12 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     try {
       final dbKeys = (await _service.fetchCanonicalFieldKeys()).toSet();
 
-      for (final s in _standardProfileCanonicalKeys) {
+      for (final s in standardProfileCanonicalKeys) {
         dbKeys.add(s.key);
       }
 
       final labelMap = {
-        for (final s in _standardProfileCanonicalKeys) s.key: s.label,
+        for (final s in standardProfileCanonicalKeys) s.key: s.label,
       };
       final merged = dbKeys.map((k) {
         return (key: k, label: labelMap[k] ?? k);
@@ -533,7 +230,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       debugPrint('_loadCanonicalKeys error: $e');
       if (mounted) {
         setState(() {
-          _availableCanonicalKeys = List.of(_standardProfileCanonicalKeys);
+          _availableCanonicalKeys = List.of(standardProfileCanonicalKeys);
           _isLoadingCanonicalKeys = false;
         });
       }
@@ -591,7 +288,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               ),
             );
 
-      return _BuilderSection(
+      return BuilderSection(
         id: s['section_id'] as String,
         name: s['section_name'] as String? ?? 'Untitled Section',
         description: s['section_desc'] as String?,
@@ -606,7 +303,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                   ),
                 );
 
-          List<_BuilderColumn> columns = [];
+          List<BuilderColumn> columns = [];
           final fid = f['field_id'] as String;
           final ftype = f['field_type'] as String? ?? '';
           if ((ftype == 'member_table' || ftype == 'family_table') &&
@@ -628,7 +325,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                     );
               final vr = cf['validation_rules'] as Map<String, dynamic>?;
               final ageFromCol = (vr?['age_from_column'] as String?)?.trim();
-              return _BuilderColumn(
+              return BuilderColumn(
                 id: cf['field_id'] as String,
                 label: cf['field_label'] as String? ?? '',
                 fieldName: cf['field_name'] as String? ?? '',
@@ -642,7 +339,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                     : null,
                 options: colOpts
                     .map(
-                      (o) => _BuilderOption(
+                      (o) => BuilderOption(
                         id: o['option_id'] as String,
                         label: o['option_label'] as String? ?? '',
                         order: (o['option_order'] as int?) ?? 0,
@@ -669,7 +366,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               ? rawConditions.first
               : null;
 
-          return _BuilderField(
+          return BuilderField(
             id: f['field_id'] as String,
             label: f['field_label'] as String? ?? '',
             fieldName: f['field_name'] as String? ?? '',
@@ -687,7 +384,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             ageFromFieldId: (ageFromField != null && ageFromField.isNotEmpty)
                 ? ageFromField
                 : null,
-            condition: _BuilderCondition(
+            condition: BuilderCondition(
               triggerFieldId:
                   (showCondition?['trigger_field_id'] as String?) ?? '',
               triggerValue: (showCondition?['trigger_value'] as String?) ?? '',
@@ -695,7 +392,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             ),
             options: rawOpts
                 .map(
-                  (o) => _BuilderOption(
+                  (o) => BuilderOption(
                     id: o['option_id'] as String,
                     label: o['option_label'] as String? ?? '',
                     order: (o['option_order'] as int?) ?? 0,
@@ -724,7 +421,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       _requiresReference = (data['requires_reference'] as bool?) ?? true;
       _formStatus = data['status'] as String? ?? 'draft';
       _sections = sections;
-      // ── Load popup fields ──
+      // â”€â”€ Load popup fields â”€â”€
       _popupEnabled = (data['popup_enabled'] as bool?) ?? false;
       _popupSubtitle = data['popup_subtitle'] as String? ?? '';
       _popupDescription = data['popup_description'] as String? ?? '';
@@ -735,7 +432,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     });
   }
 
-  // ── CRUD Operations ─────────────────────────────────────────
+  // â”€â”€ CRUD Operations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Future<void> _createNewTemplate() async {
     const defaultFormat = '{FORMCODE}-{YYYY}-{MM}-{####}';
     final id = await _service.createTemplate(
@@ -760,15 +457,15 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       _referenceFormat = defaultFormat;
       _requiresReference = true;
       _formStatus = 'draft';
-      // ── Reset popup fields ──
+      // â”€â”€ Reset popup fields â”€â”€
       _popupEnabled = false;
       _popupSubtitle = '';
       _popupDescription = '';
       _sections = [
-        _BuilderSection(
+        BuilderSection(
           name: 'Section 1',
           order: 0,
-          fields: [_BuilderField(label: 'Question 1', order: 0)],
+          fields: [BuilderField(label: 'Question 1', order: 0)],
         ),
       ];
       _activeSectionIdx = 0;
@@ -921,7 +618,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       conditions: dbConditions,
     );
 
-    // ── Save popup fields to form_templates directly ──────────
+    // â”€â”€ Save popup fields to form_templates directly â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Popup data is template metadata, not a field row, so it is
     // written separately to form_templates after the main save.
     if (success) {
@@ -1006,7 +703,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(success ? 'Form published ✓' : 'Error publishing'),
+        content: Text(success ? 'Form published âœ“' : 'Error publishing'),
         backgroundColor: success ? Colors.green : Colors.red,
         behavior: SnackBarBehavior.floating,
       ),
@@ -1046,7 +743,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(success ? 'Pushed to mobile ✓' : 'Error pushing'),
+        content: Text(success ? 'Pushed to mobile âœ“' : 'Error pushing'),
         backgroundColor: success ? Colors.green : Colors.red,
         behavior: SnackBarBehavior.floating,
       ),
@@ -1087,7 +784,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       SnackBar(
         content: Text(
           success
-              ? 'Form archived ✓'
+              ? 'Form archived âœ“'
               : 'Error archiving: ${_service.lastActionError ?? "unknown error"}',
         ),
         backgroundColor: success ? Colors.orange : Colors.red,
@@ -1108,7 +805,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       SnackBar(
         content: Text(
           success
-              ? 'Form restored to draft ✓'
+              ? 'Form restored to draft âœ“'
               : 'Error restoring: ${_service.lastActionError ?? "unknown error"}',
         ),
         backgroundColor: success ? Colors.green : Colors.red,
@@ -1167,11 +864,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  // ── Builder Actions ─────────────────────────────────────────
+  // â”€â”€ Builder Actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   void _addSection() {
     setState(() {
       _sections.add(
-        _BuilderSection(
+        BuilderSection(
           name: 'Section ${_sections.length + 1}',
           order: _sections.length,
         ),
@@ -1184,7 +881,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     final section = _sections[si];
     setState(() {
       section.fields.add(
-        _BuilderField(
+        BuilderField(
           label: 'Question ${section.fields.length + 1}',
           order: section.fields.length,
         ),
@@ -1272,7 +969,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           type: FormFieldType.text,
         ),
         (
-          label: 'Allowance (₱)',
+          label: 'Allowance (â‚±)',
           fieldName: 'allowance',
           dbMapKey: 'allowance',
           type: FormFieldType.number,
@@ -1301,13 +998,13 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       return;
     }
 
-    List<_BuilderColumn> columns = [];
+    List<BuilderColumn> columns = [];
     if (type == FormFieldType.familyTable) {
       columns = _familyTableCoreColumns
           .asMap()
           .entries
           .map(
-            (e) => _BuilderColumn(
+            (e) => BuilderColumn(
               label: e.value.label,
               fieldName: e.value.fieldName,
               type: e.value.type,
@@ -1323,7 +1020,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           ? 'computed_${_generateUuid().substring(0, 8)}'
           : block.fieldName;
       section.fields.add(
-        _BuilderField(
+        BuilderField(
           label: block.label,
           fieldName: generatedFieldName,
           type: type,
@@ -1432,7 +1129,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     setState(() {
       _sections[si].fields.insert(
         fi + 1,
-        _BuilderField(
+        BuilderField(
           label: '${src.label} (copy)',
           type: src.type,
           isRequired: src.isRequired,
@@ -1441,9 +1138,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           ageFromFieldId: src.ageFromFieldId,
           order: fi + 1,
           options: src.options
-              .map((o) => _BuilderOption(label: o.label))
+              .map((o) => BuilderOption(label: o.label))
               .toList(),
-          condition: _BuilderCondition(
+          condition: BuilderCondition(
             triggerFieldId: src.condition.triggerFieldId,
             triggerValue: src.condition.triggerValue,
             action: src.condition.action,
@@ -1477,7 +1174,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     });
   }
 
-  void _moveColumn(_BuilderField field, int ci, int dir) {
+  void _moveColumn(BuilderField field, int ci, int dir) {
     final ni = ci + dir;
     if (ni < 0 || ni >= field.columns.length) return;
     setState(() {
@@ -1491,7 +1188,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     _setStatePreserveCanvasScroll(updateSelection);
   }
 
-  // ── Navigation ──────────────────────────────────────────────
+  // â”€â”€ Navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Future<bool> _confirmLeave() async {
     if (!_hasUnsavedChanges) return true;
     final confirmed = await showDialog<bool>(
@@ -1524,85 +1221,30 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  void _navigateToScreen(BuildContext context, String screenPath) {
-    if ((screenPath == 'Staff' ||
-            screenPath == 'CreateStaff' ||
-            screenPath == 'FormBuilder') &&
-        widget.role != 'superadmin') {
-      return;
-    }
-    Widget next;
-    switch (screenPath) {
-      case 'Dashboard':
-        next = DashboardScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-          onLogout: _handleLogout,
-        );
-        break;
-      case 'Forms':
-        next = ManageFormsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'Staff':
-        next = ManageStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'CreateStaff':
-        next = CreateStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'Applicants':
-        next = ApplicantsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'AuditLogs':
-        if (widget.role != 'superadmin') return;
-        next = AuditLogsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      default:
-        return;
-    }
-    _confirmLeave().then((ok) {
-      if (!ok || !mounted) return;
-      Navigator.of(context).pushReplacement(ContentFadeRoute(page: next));
-    });
-  }
-
-  // ═══════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // BUILD
-  // ═══════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   @override
   Widget build(BuildContext context) {
     return WebShell(
       activePath: 'FormBuilder',
       pageTitle: 'Form Builder',
       pageSubtitle: _activeTemplateId != null
-          ? '$_formName${_hasUnsavedChanges ? '  •  unsaved changes' : ''}'
+          ? '$_formName${_hasUnsavedChanges ? '  â€¢  unsaved changes' : ''}'
           : 'Create and manage form templates',
       role: widget.role,
       cswd_id: widget.cswd_id,
       displayName: widget.displayName,
       onLogout: _handleLogout,
       headerActions: _buildHeaderActions(),
-      onNavigate: (path) => _navigateToScreen(context, path),
+      onNavigate: (path) => WebNavigator.go(
+        context,
+        path,
+        cswdId: widget.cswd_id,
+        role: widget.role,
+        displayName: widget.displayName,
+        onLogout: _handleLogout,
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1623,7 +1265,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  // ── Header Actions ──────────────────────────────────────────
+  // â”€â”€ Header Actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   List<Widget> _buildHeaderActions() {
     if (_activeTemplateId == null) return [];
     return [
@@ -1706,9 +1348,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  // ═══════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // TEMPLATE LIST PANEL
-  // ═══════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   Widget _buildTemplateListPanel() {
     final visibleTemplates = _templates.where((t) {
       final status = (t['status'] as String?) ?? 'draft';
@@ -1716,11 +1358,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       final isActive = (t['is_active'] as bool?) == true;
 
       return switch (_templateListFilter) {
-        _TemplateListFilter.archived => isArchived,
-        _TemplateListFilter.draft => status == 'draft',
-        _TemplateListFilter.published => status == 'published',
-        _TemplateListFilter.active => isActive && !isArchived,
-        _TemplateListFilter.all => true,
+        TemplateListFilter.archived => isArchived,
+        TemplateListFilter.draft => status == 'draft',
+        TemplateListFilter.published => status == 'published',
+        TemplateListFilter.active => isActive && !isArchived,
+        TemplateListFilter.all => true,
       };
     }).toList();
 
@@ -1772,47 +1414,47 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               children: [
                 ChoiceChip(
                   label: const Text('All'),
-                  selected: _templateListFilter == _TemplateListFilter.all,
+                  selected: _templateListFilter == TemplateListFilter.all,
                   onSelected: (_) {
                     setState(() {
-                      _templateListFilter = _TemplateListFilter.all;
+                      _templateListFilter = TemplateListFilter.all;
                     });
                   },
                 ),
                 ChoiceChip(
                   label: const Text('Active'),
-                  selected: _templateListFilter == _TemplateListFilter.active,
+                  selected: _templateListFilter == TemplateListFilter.active,
                   onSelected: (_) {
                     setState(() {
-                      _templateListFilter = _TemplateListFilter.active;
+                      _templateListFilter = TemplateListFilter.active;
                     });
                   },
                 ),
                 ChoiceChip(
                   label: const Text('Draft'),
-                  selected: _templateListFilter == _TemplateListFilter.draft,
+                  selected: _templateListFilter == TemplateListFilter.draft,
                   onSelected: (_) {
                     setState(() {
-                      _templateListFilter = _TemplateListFilter.draft;
+                      _templateListFilter = TemplateListFilter.draft;
                     });
                   },
                 ),
                 ChoiceChip(
                   label: const Text('Published'),
                   selected:
-                      _templateListFilter == _TemplateListFilter.published,
+                      _templateListFilter == TemplateListFilter.published,
                   onSelected: (_) {
                     setState(() {
-                      _templateListFilter = _TemplateListFilter.published;
+                      _templateListFilter = TemplateListFilter.published;
                     });
                   },
                 ),
                 ChoiceChip(
                   label: const Text('Archived'),
-                  selected: _templateListFilter == _TemplateListFilter.archived,
+                  selected: _templateListFilter == TemplateListFilter.archived,
                   onSelected: (_) {
                     setState(() {
-                      _templateListFilter = _TemplateListFilter.archived;
+                      _templateListFilter = TemplateListFilter.archived;
                     });
                   },
                 ),
@@ -1840,13 +1482,13 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  Widget _buildNoTemplates({required _TemplateListFilter filter}) {
+  Widget _buildNoTemplates({required TemplateListFilter filter}) {
     final emptyLabel = switch (filter) {
-      _TemplateListFilter.archived => 'No archived templates',
-      _TemplateListFilter.active => 'No active templates',
-      _TemplateListFilter.draft => 'No draft templates',
-      _TemplateListFilter.published => 'No published templates',
-      _TemplateListFilter.all => 'No templates yet',
+      TemplateListFilter.archived => 'No archived templates',
+      TemplateListFilter.active => 'No active templates',
+      TemplateListFilter.draft => 'No draft templates',
+      TemplateListFilter.published => 'No published templates',
+      TemplateListFilter.all => 'No templates yet',
     };
 
     return Center(
@@ -1856,7 +1498,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           Icon(
             Icons.note_add_outlined,
             size: 48,
-            color: AppColors.textMuted.withOpacity(0.5),
+            color: AppColors.textMuted.withValues(alpha: 0.5),
           ),
           const SizedBox(height: 12),
           Text(emptyLabel, style: const TextStyle(color: AppColors.textMuted)),
@@ -1888,11 +1530,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         color: isActive
-            ? AppColors.highlight.withOpacity(0.08)
+            ? AppColors.highlight.withValues(alpha: 0.08)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
         border: isActive
-            ? Border.all(color: AppColors.highlight.withOpacity(0.3))
+            ? Border.all(color: AppColors.highlight.withValues(alpha: 0.3))
             : null,
       ),
       child: ListTile(
@@ -1936,9 +1578,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  // ═══════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // EMPTY STATE
-  // ═══════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -1947,7 +1589,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           Icon(
             Icons.edit_note,
             size: 80,
-            color: AppColors.highlight.withOpacity(0.3),
+            color: AppColors.highlight.withValues(alpha: 0.3),
           ),
           const SizedBox(height: 24),
           const Text(
@@ -1979,9 +1621,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  // ═══════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // BUILDER CANVAS
-  // ═══════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   Widget _buildBuilderCanvas() {
     return PageStorage(
       bucket: _canvasStorageBucket,
@@ -2084,9 +1726,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  // ═══════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // TITLE CARD  (includes the popup section at the bottom)
-  // ═══════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   Widget _buildTitleCard() {
     return Container(
       decoration: BoxDecoration(
@@ -2099,7 +1741,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Form name ──────────────────────────────────
+            // â”€â”€ Form name â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             TextField(
               controller: _ctrl('formName', _formName),
               scrollPadding: EdgeInsets.zero,
@@ -2125,7 +1767,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               },
             ),
             const SizedBox(height: 8),
-            // ── Description ────────────────────────────────
+            // â”€â”€ Description â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             TextField(
               controller: _ctrl('formDesc', _formDesc),
               scrollPadding: EdgeInsets.zero,
@@ -2224,7 +1866,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               ],
             ),
             const SizedBox(height: 10),
-            // ── Reference Format ───────────────────────────
+            // â”€â”€ Reference Format â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -2304,8 +1946,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            ..._referenceTokenGroups.map((group) {
-              final groupTokens = _referenceTokens
+            ...referenceTokenGroups.map((group) {
+              final groupTokens = referenceTokens
                   .where((t) => t.group == group)
                   .toList();
               return Padding(
@@ -2391,7 +2033,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               ],
             ),
             const SizedBox(height: 8),
-            // ── Reference preview ──────────────────────────
+            // â”€â”€ Reference preview â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -2428,24 +2070,24 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               ),
             ),
 
-            // ══════════════════════════════════════════════
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             // FORM INTRODUCTION POPUP SECTION
             // Sits at the bottom of the title card so it
             // feels like part of the form's metadata, not
             // a field. Saved to form_templates, not form_fields.
-            // ══════════════════════════════════════════════
+            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
             const SizedBox(height: 16),
             const Divider(color: AppColors.cardBorder),
             const SizedBox(height: 4),
 
-            // ── Toggle row ────────────────────────────────
+            // â”€â”€ Toggle row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             Row(
               children: [
                 Container(
                   padding: const EdgeInsets.all(7),
                   decoration: BoxDecoration(
                     color: _popupEnabled
-                        ? AppColors.primaryBlue.withOpacity(0.1)
+                        ? AppColors.primaryBlue.withValues(alpha: 0.1)
                         : AppColors.pageBg,
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -2475,11 +2117,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                       Text(
                         _popupEnabled
                             ? 'Shown on mobile before the user scans the QR'
-                            : 'Disabled — mobile goes straight to QR scan',
+                            : 'Disabled â€” mobile goes straight to QR scan',
                         style: TextStyle(
                           fontSize: 11,
                           color: _popupEnabled
-                              ? AppColors.primaryBlue.withOpacity(0.75)
+                              ? AppColors.primaryBlue.withValues(alpha: 0.75)
                               : AppColors.textMuted,
                         ),
                       ),
@@ -2497,7 +2139,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               ],
             ),
 
-            // ── Editable fields (shown only when enabled) ─
+            // â”€â”€ Editable fields (shown only when enabled) â”€
             if (_popupEnabled) ...[
               const SizedBox(height: 14),
 
@@ -2508,7 +2150,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 style: const TextStyle(fontSize: 13, color: AppColors.textDark),
                 decoration: InputDecoration(
                   labelText: 'Subtitle',
-                  hintText: 'e.g. Before you proceed…',
+                  hintText: 'e.g. Before you proceedâ€¦',
                   hintStyle: const TextStyle(
                     fontSize: 12,
                     color: AppColors.textMuted,
@@ -2545,7 +2187,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                   labelText: 'Description',
                   hintText:
                       'Explain what this form is for, what data is '
-                      'being collected, and how it will be used…',
+                      'being collected, and how it will be usedâ€¦',
                   hintStyle: const TextStyle(
                     fontSize: 12,
                     color: AppColors.textMuted,
@@ -2573,7 +2215,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               ),
               const SizedBox(height: 10),
 
-              // ── Live preview badge ─────────────────────
+              // â”€â”€ Live preview badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(
@@ -2581,10 +2223,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                   vertical: 10,
                 ),
                 decoration: BoxDecoration(
-                  color: AppColors.primaryBlue.withOpacity(0.04),
+                  color: AppColors.primaryBlue.withValues(alpha: 0.04),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: AppColors.primaryBlue.withOpacity(0.15),
+                    color: AppColors.primaryBlue.withValues(alpha: 0.15),
                   ),
                 ),
                 child: Row(
@@ -2618,11 +2260,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                               ),
                             ),
                             if (_popupSubtitle.trim().isNotEmpty)
-                              TextSpan(text: '  ·  ${_popupSubtitle.trim()}'),
+                              TextSpan(text: '  Â·  ${_popupSubtitle.trim()}'),
                             if (_popupDescription.trim().isNotEmpty)
                               TextSpan(
                                 text:
-                                    '\n${_popupDescription.trim().length > 100 ? '${_popupDescription.trim().substring(0, 100)}…' : _popupDescription.trim()}',
+                                    '\n${_popupDescription.trim().length > 100 ? '${_popupDescription.trim().substring(0, 100)}â€¦' : _popupDescription.trim()}',
                               ),
                           ],
                         ),
@@ -2632,14 +2274,14 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 ),
               ),
             ],
-            // ── END POPUP SECTION ─────────────────────────
+            // â”€â”€ END POPUP SECTION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           ],
         ),
       ),
     );
   }
 
-  // ── Sections ────────────────────────────────────────────────
+  // â”€â”€ Sections â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   List<Widget> _buildAllSections() {
     final items = <Widget>[];
     for (var si = 0; si < _sections.length; si++) {
@@ -2669,7 +2311,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     return items;
   }
 
-  Widget _buildSectionHeader(_BuilderSection section, int si, bool isActive) {
+  Widget _buildSectionHeader(BuilderSection section, int si, bool isActive) {
     return GestureDetector(
       onTap: () => _preserveScrollPosition(() {
         _activeSectionIdx = si;
@@ -2793,10 +2435,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  // ═══════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // FIELD CARD
-  // ═══════════════════════════════════════════════════════════
-  Widget _buildFieldCard(_BuilderField field, int si, int fi, bool isActive) {
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  Widget _buildFieldCard(BuilderField field, int si, int fi, bool isActive) {
     return GestureDetector(
       onTap: () => _preserveScrollPosition(() {
         _activeSectionIdx = si;
@@ -2853,10 +2495,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  Widget _buildFieldHeaderActive(_BuilderField field) {
+  Widget _buildFieldHeaderActive(BuilderField field) {
     final isSignatureField = field.type == FormFieldType.signature;
     final canLinkCanonicalKey =
-        _canonicalKeyEligibleTypes.contains(field.type) || isSignatureField;
+        canonicalKeyEligibleTypes.contains(field.type) || isSignatureField;
     final selectedCanonicalKey = isSignatureField
         ? 'signature'
         : field.canonicalFieldKey;
@@ -2911,14 +2553,14 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                     ? Row(
                         children: [
                           Icon(
-                            _systemTypeIcons[field.type] ?? Icons.help_outline,
+                            systemTypeIcons[field.type] ?? Icons.help_outline,
                             size: 18,
                             color: AppColors.textMuted,
                           ),
                           const SizedBox(width: 8),
                           Flexible(
                             child: Text(
-                              'System: ${_systemTypeLabels[field.type] ?? field.type.toDbString()}',
+                              'System: ${systemTypeLabels[field.type] ?? field.type.toDbString()}',
                               style: const TextStyle(
                                 fontSize: 13,
                                 color: AppColors.textMuted,
@@ -2937,13 +2579,13 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                             fontSize: 13,
                             color: AppColors.textDark,
                           ),
-                          items: _typeLabels.entries.map((e) {
+                          items: typeLabels.entries.map((e) {
                             return DropdownMenuItem(
                               value: e.key,
                               child: Row(
                                 children: [
                                   Icon(
-                                    _typeIcons[e.key],
+                                    typeIcons[e.key],
                                     size: 18,
                                     color: AppColors.textMuted,
                                   ),
@@ -2990,7 +2632,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                               }
                               if (field.hasOptions && field.options.isEmpty) {
                                 field.options.add(
-                                  _BuilderOption(label: 'Option 1'),
+                                  BuilderOption(label: 'Option 1'),
                                 );
                               }
                               _hasUnsavedChanges = true;
@@ -3027,7 +2669,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                   if (!isSignatureField)
                     const DropdownMenuItem<String?>(
                       value: null,
-                      child: Text('— None —'),
+                      child: Text('â€” None â€”'),
                     ),
                   ...(isSignatureField
                           ? const [(key: 'signature', label: 'Signature')]
@@ -3060,13 +2702,13 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  Widget _buildFieldHeaderInactive(_BuilderField field) {
+  Widget _buildFieldHeaderInactive(BuilderField field) {
     return Row(
       children: [
         Icon(
           (field.type.isSystemType
-                  ? _systemTypeIcons[field.type]
-                  : _typeIcons[field.type]) ??
+                  ? systemTypeIcons[field.type]
+                  : typeIcons[field.type]) ??
               Icons.help_outline,
           size: 16,
           color: AppColors.textMuted,
@@ -3093,14 +2735,14 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                     vertical: 2,
                   ),
                   decoration: BoxDecoration(
-                    color: AppColors.highlight.withOpacity(0.1),
+                    color: AppColors.highlight.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(
-                      color: AppColors.highlight.withOpacity(0.4),
+                      color: AppColors.highlight.withValues(alpha: 0.4),
                     ),
                   ),
                   child: Text(
-                    '⟷ ${field.canonicalFieldKey}',
+                    'âŸ· ${field.canonicalFieldKey}',
                     style: const TextStyle(
                       fontSize: 10,
                       color: AppColors.highlight,
@@ -3120,7 +2762,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  Widget _buildFieldToolbar(_BuilderField field, int si, int fi) {
+  Widget _buildFieldToolbar(BuilderField field, int si, int fi) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -3182,7 +2824,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  Widget _buildVisibilityConditionRow(_BuilderField field) {
+  Widget _buildVisibilityConditionRow(BuilderField field) {
     final triggerCandidates = _sections
         .expand((s) => s.fields)
         .where(
@@ -3198,7 +2840,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
 
     final hasCondition = field.condition.triggerFieldId.isNotEmpty;
 
-    _BuilderField? triggerField;
+    BuilderField? triggerField;
     for (final f in triggerCandidates) {
       if (f.id == field.condition.triggerFieldId) {
         triggerField = f;
@@ -3210,12 +2852,12 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: hasCondition
-            ? Colors.orange.withOpacity(0.06)
+            ? Colors.orange.withValues(alpha: 0.06)
             : AppColors.pageBg,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: hasCondition
-              ? Colors.orange.withOpacity(0.4)
+              ? Colors.orange.withValues(alpha: 0.4)
               : AppColors.cardBorder,
         ),
       ),
@@ -3231,7 +2873,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
               ),
               const SizedBox(width: 6),
               const Text(
-                'Show only if…',
+                'Show only ifâ€¦',
                 style: TextStyle(fontSize: 12, color: AppColors.textMuted),
               ),
               const Spacer(),
@@ -3446,10 +3088,10 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  // ═══════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // FIELD TYPE CONTENT
-  // ═══════════════════════════════════════════════════════════
-  Widget _buildFieldContent(_BuilderField field, bool isActive) {
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  Widget _buildFieldContent(BuilderField field, bool isActive) {
     switch (field.type) {
       case FormFieldType.text:
         return _textPreview('Short answer text');
@@ -3487,7 +3129,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     }
   }
 
-  Widget _buildNumberEditor(_BuilderField field, bool isActive) {
+  Widget _buildNumberEditor(BuilderField field, bool isActive) {
     if (!isActive) return _textPreview('Number');
 
     final dateCandidates = _sections
@@ -3592,8 +3234,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   }
 
   Widget _buildColumnAutoComputeEditor(
-    _BuilderField tableField,
-    _BuilderColumn col,
+    BuilderField tableField,
+    BuilderColumn col,
   ) {
     final dateColumns = tableField.columns
         .where((c) => c.id != col.id && c.type == FormFieldType.date)
@@ -3607,9 +3249,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: AppColors.highlight.withOpacity(0.05),
+        color: AppColors.highlight.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: AppColors.highlight.withOpacity(0.2)),
+        border: Border.all(color: AppColors.highlight.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3753,7 +3395,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  Widget _buildLinearScaleEditor(_BuilderField field, bool isActive) {
+  Widget _buildLinearScaleEditor(BuilderField field, bool isActive) {
     if (!isActive) {
       return Row(
         children: [
@@ -3814,7 +3456,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  Widget _buildColumnEditor(_BuilderField field, bool isActive) {
+  Widget _buildColumnEditor(BuilderField field, bool isActive) {
     const columnTypes = <FormFieldType, String>{
       FormFieldType.text: 'Text',
       FormFieldType.number: 'Number',
@@ -3961,7 +3603,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                                 if (v == FormFieldType.dropdown &&
                                     col.options.isEmpty) {
                                   col.options.add(
-                                    _BuilderOption(label: 'Option 1'),
+                                    BuilderOption(label: 'Option 1'),
                                   );
                                 }
                                 _hasUnsavedChanges = true;
@@ -4052,7 +3694,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                     TextButton.icon(
                       onPressed: () => setState(() {
                         col.options.add(
-                          _BuilderOption(
+                          BuilderOption(
                             label: 'Option ${col.options.length + 1}',
                           ),
                         );
@@ -4071,7 +3713,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         TextButton.icon(
           onPressed: () => setState(() {
             field.columns.add(
-              _BuilderColumn(
+              BuilderColumn(
                 label: 'Column ${field.columns.length + 1}',
                 order: field.columns.length,
               ),
@@ -4085,7 +3727,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  Widget _buildSystemTableColumnEditor(_BuilderField field, bool isActive) {
+  Widget _buildSystemTableColumnEditor(BuilderField field, bool isActive) {
     const columnTypes = <FormFieldType, String>{
       FormFieldType.text: 'Text',
       FormFieldType.number: 'Number',
@@ -4238,7 +3880,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                                 if (v == FormFieldType.dropdown &&
                                     col.options.isEmpty) {
                                   col.options.add(
-                                    _BuilderOption(label: 'Option 1'),
+                                    BuilderOption(label: 'Option 1'),
                                   );
                                 }
                                 _hasUnsavedChanges = true;
@@ -4329,7 +3971,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                     TextButton.icon(
                       onPressed: () => setState(() {
                         col.options.add(
-                          _BuilderOption(
+                          BuilderOption(
                             label: 'Option ${col.options.length + 1}',
                           ),
                         );
@@ -4348,7 +3990,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         TextButton.icon(
           onPressed: () => setState(() {
             field.columns.add(
-              _BuilderColumn(
+              BuilderColumn(
                 label: 'Column ${field.columns.length + 1}',
                 order: field.columns.length,
               ),
@@ -4362,7 +4004,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  Widget _buildOptionsEditor(_BuilderField field, bool isActive) {
+  Widget _buildOptionsEditor(BuilderField field, bool isActive) {
     final isRadio = field.type == FormFieldType.radio;
     final isCheckbox = field.type == FormFieldType.checkbox;
     final optIcon = isRadio
@@ -4441,13 +4083,13 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 Icon(
                   optIcon,
                   size: 20,
-                  color: AppColors.textMuted.withOpacity(0.4),
+                  color: AppColors.textMuted.withValues(alpha: 0.4),
                 ),
                 const SizedBox(width: 10),
                 TextButton(
                   onPressed: () => setState(() {
                     field.options.add(
-                      _BuilderOption(
+                      BuilderOption(
                         label: 'Option ${field.options.length + 1}',
                         order: field.options.length,
                       ),
@@ -4463,12 +4105,12 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  List<String> _formulaTokens(_BuilderField field) =>
+  List<String> _formulaTokens(BuilderField field) =>
       field.formula.trim().isEmpty
       ? []
       : field.formula.trim().split(RegExp(r'\s+'));
 
-  void _appendFormulaToken(_BuilderField field, String token) {
+  void _appendFormulaToken(BuilderField field, String token) {
     final tokens = _formulaTokens(field);
     tokens.add(token);
     setState(() {
@@ -4477,7 +4119,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     });
   }
 
-  void _removeFormulaToken(_BuilderField field, int index) {
+  void _removeFormulaToken(BuilderField field, int index) {
     final tokens = _formulaTokens(field);
     tokens.removeAt(index);
     setState(() {
@@ -4486,7 +4128,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     });
   }
 
-  void _showSumColumnPicker(_BuilderField field) {
+  void _showSumColumnPicker(BuilderField field) {
     // Find all member-table fields in the form
     final tableFields = _sections
         .expand((s) => s.fields)
@@ -4560,11 +4202,11 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   }
 
   void _showColumnPicker(
-    _BuilderField field,
+    BuilderField field,
     String tableKey,
-    List<_BuilderColumn> columns,
+    List<BuilderColumn> columns,
   ) {
-    final List<_BuilderColumn> cols = columns;
+    final List<BuilderColumn> cols = columns;
 
     if (cols.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -4650,7 +4292,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  Widget _buildFormulaEditor(_BuilderField field, bool isActive) {
+  Widget _buildFormulaEditor(BuilderField field, bool isActive) {
     final tokens = _formulaTokens(field);
     final numericFields = _sections
         .expand((s) => s.fields)
@@ -4675,7 +4317,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           color: const Color(0xFFF0F4FF),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: AppColors.buttonOutlineBlue.withOpacity(0.3),
+            color: AppColors.buttonOutlineBlue.withValues(alpha: 0.3),
           ),
         ),
         child: Row(
@@ -4719,7 +4361,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         ),
         const SizedBox(height: 4),
         const Text(
-          'Tap field names and operators below to build the formula. Tap × on a token to remove it.',
+          'Tap field names and operators below to build the formula. Tap Ã— on a token to remove it.',
           style: TextStyle(fontSize: 11, color: AppColors.textMuted),
         ),
         const SizedBox(height: 8),
@@ -4731,12 +4373,12 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             color: const Color(0xFFF0F4FF),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: AppColors.buttonOutlineBlue.withOpacity(0.4),
+              color: AppColors.buttonOutlineBlue.withValues(alpha: 0.4),
             ),
           ),
           child: tokens.isEmpty
               ? const Text(
-                  'Empty — add fields and operators below',
+                  'Empty â€” add fields and operators below',
                   style: TextStyle(
                     fontSize: 12,
                     color: AppColors.textMuted,
@@ -4767,7 +4409,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(
                           color: isOp
-                              ? AppColors.primaryBlue.withOpacity(0.3)
+                              ? AppColors.primaryBlue.withValues(alpha: 0.3)
                               : AppColors.buttonOutlineBlue,
                         ),
                       ),
@@ -4859,7 +4501,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(6),
               side: BorderSide(
-                color: AppColors.primaryBlue.withOpacity(0.3),
+                color: AppColors.primaryBlue.withValues(alpha: 0.3),
                 width: 1,
               ),
             ),
@@ -4914,13 +4556,13 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  Widget _buildConditionEditor(_BuilderField field, bool isActive) {
+  Widget _buildConditionEditor(BuilderField field, bool isActive) {
     final allFields = _sections
         .expand((s) => s.fields)
         .where((f) => f.id != field.id)
         .toList();
 
-    _BuilderField? triggerField;
+    BuilderField? triggerField;
     for (final f in allFields) {
       if (f.id == field.condition.triggerFieldId) {
         triggerField = f;
@@ -4934,7 +4576,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         decoration: BoxDecoration(
           color: const Color(0xFFFFF8E1),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.orange.withOpacity(0.3)),
+          border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
         ),
         child: Row(
           children: [
@@ -5060,7 +4702,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       style: OutlinedButton.styleFrom(
         foregroundColor: AppColors.highlight,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-        side: BorderSide(color: AppColors.highlight.withOpacity(0.5)),
+        side: BorderSide(color: AppColors.highlight.withValues(alpha: 0.5)),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
@@ -5102,9 +4744,9 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: clr.withOpacity(0.05),
+        color: clr.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: clr.withOpacity(0.3)),
+        border: Border.all(color: clr.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
@@ -5124,7 +4766,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
                 ),
                 Text(
                   desc,
-                  style: TextStyle(color: clr.withOpacity(0.8), fontSize: 12),
+                  style: TextStyle(color: clr.withValues(alpha: 0.8), fontSize: 12),
                 ),
               ],
             ),

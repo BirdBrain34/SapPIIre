@@ -11,7 +11,6 @@
 // Uses Supabase Realtime to listen for incoming data from mobile.
 
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -27,6 +26,7 @@ import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/web/widget/web_shell.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
+import 'package:sappiire/web/utils/web_navigator.dart';
 import 'package:sappiire/web/screen/web_login_screen.dart';
 import 'package:sappiire/web/screen/dashboard_screen.dart';
 import 'package:sappiire/web/screen/manage_staff_screen.dart';
@@ -35,6 +35,7 @@ import 'package:sappiire/web/screen/applicants_screen.dart';
 import 'package:sappiire/web/screen/form_builder_screen.dart';
 import 'package:sappiire/web/screen/audit_logs_screen.dart';
 import 'package:sappiire/services/audit/audit_log_service.dart';
+import 'package:sappiire/web/controllers/manage_forms_controller.dart';
 
 class ManageFormsScreen extends StatefulWidget {
   final String cswd_id;
@@ -57,6 +58,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   final _displayService = DisplaySessionService();
   final _fieldValueService = FieldValueService();
   final _submissionService = SubmissionService();
+  final _manageFormsController = ManageFormsController();
   final ScrollController _formScrollController = ScrollController();
   final ScrollController _qrSidebarScrollController = ScrollController();
   final PageStorageBucket _pageStorageBucket = PageStorageBucket();
@@ -67,6 +69,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
 
   String _currentSessionId = 'WAITING-FOR-SESSION';
   StreamSubscription? _formSubscription;
+  Timer? _pollTimer;
 
   bool _sessionStarted = false;
   bool _isStartingSession = false;
@@ -133,7 +136,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     }
   }
 
-  // ── Start a new QR session ────────────────────────────────
+  // â”€â”€ Start a new QR session â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Future<void> _createNewSession() async {
     if (_selectedTemplate == null) return;
     _setStatePreserveScroll(() => _isStartingSession = true);
@@ -194,6 +197,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   // Listen for mobile QR data via Supabase Realtime
   void _listenForMobileUpdates(String sessionId) {
     debugPrint('Web: Starting realtime listener for session $sessionId');
+    _pollTimer?.cancel();
     _formSubscription?.cancel();
     _formSubscription = _submissionService
         .streamSession(sessionId)
@@ -229,7 +233,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
 
     // Set up periodic polling as backup (every 2 seconds for first 30 seconds)
     int pollCount = 0;
-    Timer.periodic(const Duration(seconds: 2), (timer) {
+    _pollTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       pollCount++;
       if (pollCount > 15 || !mounted || _currentSessionId != sessionId) {
         timer.cancel();
@@ -247,7 +251,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     debugPrint('Web: Incoming data size: ${incoming.length} fields');
     if (incoming.isEmpty) {
       debugPrint(
-        'Web: ⚠️ Incoming data is EMPTY - mobile may not have transmitted yet',
+        'Web: âš ï¸ Incoming data is EMPTY - mobile may not have transmitted yet',
       );
       debugPrint('===================================================\n');
       return;
@@ -255,7 +259,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
 
     final fingerprint = _fingerprintPayload(incoming);
     if (fingerprint != null && fingerprint == _lastAppliedPayloadFingerprint) {
-      debugPrint('Web: ♻️ Duplicate payload detected, skipping re-apply');
+      debugPrint('Web: â™»ï¸ Duplicate payload detected, skipping re-apply');
       debugPrint('===================================================\n');
       return;
     }
@@ -265,7 +269,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     final currentFormOffset = _formScrollController.hasClients
         ? _formScrollController.offset
         : 0.0;
-    debugPrint('Web: ✅ Loading data into form controller...');
+    debugPrint('Web: âœ… Loading data into form controller...');
     _formCtrl?.loadFromJson(incoming);
     _setStatePreserveScroll(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -275,33 +279,13 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       _formScrollController.jumpTo(target);
     });
     debugPrint(
-      'Web: ✅ Form updated successfully with ${incoming.length} fields',
+      'Web: âœ… Form updated successfully with ${incoming.length} fields',
     );
     debugPrint('===================================================\n');
   }
 
   String? _fingerprintPayload(Map<String, dynamic> payload) {
-    try {
-      final normalized = _normalizeForFingerprint(payload);
-      return jsonEncode(normalized);
-    } catch (_) {
-      return payload.toString();
-    }
-  }
-
-  dynamic _normalizeForFingerprint(dynamic value) {
-    if (value is Map) {
-      final keys = value.keys.map((k) => k.toString()).toList()..sort();
-      final normalized = <String, dynamic>{};
-      for (final key in keys) {
-        normalized[key] = _normalizeForFingerprint(value[key]);
-      }
-      return normalized;
-    }
-    if (value is List) {
-      return value.map(_normalizeForFingerprint).toList();
-    }
-    return value;
+    return _manageFormsController.fingerprintPayload(payload);
   }
 
   Future<void> _hydrateFromSessionSnapshot(String sessionId) async {
@@ -317,7 +301,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       final formData = row['form_data'] as Map<String, dynamic>? ?? {};
       if (formData.isNotEmpty) {
         debugPrint(
-          'Web: ✅ Found data via polling! Keys: ${formData.keys.toList()}',
+          'Web: âœ… Found data via polling! Keys: ${formData.keys.toList()}',
         );
       }
 
@@ -327,7 +311,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     }
   }
 
-  // ── Finalize: save form data to client_submissions ───────
+  // â”€â”€ Finalize: save form data to client_submissions â”€â”€â”€â”€â”€â”€â”€
   Future<void> _finalizeEntry() async {
     if (_formCtrl == null || _selectedTemplate == null) return;
     // Guard: prevent double finalize taps from creating duplicate submissions.
@@ -349,16 +333,11 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           ? Map<String, dynamic>.from(snapshotRaw)
           : <String, dynamic>{};
 
-      for (final field in _selectedTemplate!.allFields) {
-        if (field.fieldType != FormFieldType.computed) continue;
-        if (formData.containsKey(field.fieldName)) continue;
-
-        final scannedValue = scannedData[field.fieldName];
-        if (scannedValue == null) continue;
-        if (scannedValue.toString().trim().isEmpty) continue;
-
-        formData[field.fieldName] = scannedValue;
-      }
+      await _manageFormsController.preserveComputedValues(
+        template: _selectedTemplate!,
+        targetData: formData,
+        sourceData: scannedData,
+      );
 
       // Embed applicant name + session ID for traceability
       await _embedApplicantName(formData);
@@ -371,7 +350,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         formData: formData,
       );
 
-      // ── Audit copy (JSONB keeps full submitted data for record) ──
+      // â”€â”€ Audit copy (JSONB keeps full submitted data for record) â”€â”€
       // Idempotent save keyed by session_id so repeated submits update one row.
       final created = await _submissionService.upsertClientSubmissionSecure(
         sessionId: _currentSessionId,
@@ -429,8 +408,8 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           SnackBar(
             content: Text(
               intakeReference.isNotEmpty
-                  ? 'Entry saved ✓ Reference: $intakeReference'
-                  : 'Entry saved to Applicants ✓',
+                  ? 'Entry saved âœ“ Reference: $intakeReference'
+                  : 'Entry saved to Applicants âœ“',
             ),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
@@ -469,169 +448,24 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   }
 
   String _buildTempReferencePreview() {
-    final template = _selectedTemplate;
-    if (template == null) return 'N/A';
-    if (!template.requiresReference) return 'Reference disabled for this form';
-
-    final now = DateTime.now();
-    var preview = template.referenceFormat;
-    final prefix =
-        (template.referencePrefix?.trim().isNotEmpty == true
-                ? template.referencePrefix!
-                : (template.formCode?.trim().isNotEmpty == true
-                      ? template.formCode!
-                      : 'FORM'))
-            .toUpperCase();
-
-    String pad(int v, int len) => v.toString().padLeft(len, '0');
-    final yearStart = DateTime(now.year, 1, 1);
-    final dayOfYear = now.difference(yearStart).inDays + 1;
-    final quarter = ((now.month - 1) ~/ 3) + 1;
-    final weekOfYear = ((dayOfYear - 1) ~/ 7) + 1;
-
-    preview = preview.replaceAll('{FORMCODE}', prefix);
-    preview = preview.replaceAll('{YYYY}', now.year.toString());
-    preview = preview.replaceAll('{YY}', now.year.toString().substring(2));
-    preview = preview.replaceAll('{MM}', pad(now.month, 2));
-    preview = preview.replaceAll(
-      '{MON}',
-      const [
-        'JAN',
-        'FEB',
-        'MAR',
-        'APR',
-        'MAY',
-        'JUN',
-        'JUL',
-        'AUG',
-        'SEP',
-        'OCT',
-        'NOV',
-        'DEC',
-      ][now.month - 1],
-    );
-    preview = preview.replaceAll(
-      '{MONTH}',
-      const [
-        'JANUARY',
-        'FEBRUARY',
-        'MARCH',
-        'APRIL',
-        'MAY',
-        'JUNE',
-        'JULY',
-        'AUGUST',
-        'SEPTEMBER',
-        'OCTOBER',
-        'NOVEMBER',
-        'DECEMBER',
-      ][now.month - 1],
-    );
-    preview = preview.replaceAll('{DD}', pad(now.day, 2));
-    preview = preview.replaceAll('{DDD}', pad(dayOfYear, 3));
-    preview = preview.replaceAll('{Q}', '$quarter');
-    preview = preview.replaceAll('{WW}', pad(weekOfYear, 2));
-    preview = preview.replaceAll('{IW}', pad(weekOfYear, 2));
-    preview = preview.replaceAll('{HH24}', pad(now.hour, 2));
-    preview = preview.replaceAll('{MI}', pad(now.minute, 2));
-    preview = preview.replaceAll('{SS}', pad(now.second, 2));
-
-    preview = preview.replaceAll('{########}', '????????');
-    preview = preview.replaceAll('{######}', '??????');
-    preview = preview.replaceAll('{####}', '????');
-    preview = preview.replaceAll('{###}', '???');
-    preview = preview.replaceAll('{##}', '??');
-    preview = preview.replaceAll('{#}', '?');
-    return preview;
+    return _manageFormsController.buildTempReferencePreview(_selectedTemplate);
   }
 
   /// Resolves a user's name via canonical_field_key values in form_fields.
   /// Works even when template autofill_source is not configured.
   Future<Map<String, String>?> _resolveNameViaCanonicalRpc(
     String userId,
-  ) async {
-    try {
-      final row = await _submissionService.fetchCanonicalNameByUserId(userId);
-      if (row == null) return null;
-
-      final last = (row['last'] ?? '').trim();
-      final first = (row['first'] ?? '').trim();
-      final mid = (row['middle'] ?? '').trim();
-
-      if (last.isEmpty && first.isEmpty) return null;
-      return {'last': last, 'first': first, 'middle': mid};
-    } catch (e) {
-      debugPrint('_resolveNameViaCanonicalRpc error: $e');
-      return null;
-    }
-  }
+  ) => _manageFormsController.resolveNameViaCanonicalRpc(userId);
 
   /// Embeds __applicant_name into the JSONB data.
-  /// Tries: 1) session user_id → canonical key RPC, 2) autofill_source fields,
+  /// Tries: 1) session user_id â†’ canonical key RPC, 2) autofill_source fields,
   /// 3) brute-force key name matching.
-  Future<void> _embedApplicantName(Map<String, dynamic> formData) async {
-    // Strategy 1: session → user_id → canonical key lookup.
-    if (_currentSessionId != 'WAITING-FOR-SESSION') {
-      try {
-        final userId = await _submissionService.fetchSessionUserId(
-          _currentSessionId,
-        );
-
-        if (userId != null && userId.isNotEmpty) {
-          final name = await _resolveNameViaCanonicalRpc(userId);
-          if (name != null) {
-            formData['__applicant_name'] = name;
-            return;
-          }
-        }
-      } catch (e) {
-        debugPrint('_embedApplicantName error: $e');
-      }
-    }
-
-    // Strategy 2: template fields with autofill_source
-    if (_selectedTemplate != null) {
-      String last = '', first = '', mid = '';
-      for (final field in _selectedTemplate!.allFields) {
-        final src = field.autofillSource;
-        if (src == 'lastname')
-          last = formData[field.fieldName]?.toString() ?? '';
-        if (src == 'firstname')
-          first = formData[field.fieldName]?.toString() ?? '';
-        if (src == 'middle_name')
-          mid = formData[field.fieldName]?.toString() ?? '';
-      }
-      if (last.isNotEmpty || first.isNotEmpty) {
-        formData['__applicant_name'] = {
-          'last': last,
-          'first': first,
-          'middle': mid,
-        };
-        return;
-      }
-    }
-
-    // Strategy 3: match common name patterns in JSONB keys
-    String last = '', first = '', mid = '';
-    for (final key in formData.keys) {
-      final lk = key.toLowerCase();
-      final val = formData[key]?.toString() ?? '';
-      if (val.isEmpty) continue;
-      if (lk.contains('last') && lk.contains('name') && last.isEmpty)
-        last = val;
-      if (lk.contains('first') && lk.contains('name') && first.isEmpty)
-        first = val;
-      if (lk.contains('middle') && lk.contains('name') && mid.isEmpty)
-        mid = val;
-    }
-    if (last.isNotEmpty || first.isNotEmpty) {
-      formData['__applicant_name'] = {
-        'last': last,
-        'first': first,
-        'middle': mid,
-      };
-    }
-  }
+  Future<void> _embedApplicantName(Map<String, dynamic> formData) =>
+      _manageFormsController.embedApplicantName(
+        currentSessionId: _currentSessionId,
+        selectedTemplate: _selectedTemplate,
+        formData: formData,
+      );
 
   /// Open the customer-facing display in a new browser window.
   void _openCustomerDisplay() {
@@ -683,68 +517,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     }
   }
 
-  void _navigateToScreen(BuildContext context, String screenPath) {
-    if ((screenPath == 'Staff' || screenPath == 'CreateStaff') &&
-        widget.role != 'superadmin') {
-      return;
-    }
-    Widget next;
-    switch (screenPath) {
-      case 'Dashboard':
-        next = DashboardScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-          onLogout: _handleLogout,
-        );
-        break;
-      case 'Staff':
-        next = ManageStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'CreateStaff':
-        next = CreateStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'Applicants':
-        next = ApplicantsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'FormBuilder':
-        if (widget.role != 'superadmin') return;
-        next = FormBuilderScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'AuditLogs':
-        if (widget.role != 'superadmin') return;
-        next = AuditLogsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      default:
-        return;
-    }
-    _confirmLeave().then((ok) {
-      if (!ok || !mounted) return;
-      Navigator.of(context).pushReplacement(ContentFadeRoute(page: next));
-    });
-  }
-
-  // ── Build ─────────────────────────────────────────────────
+  // â”€â”€ Build â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   @override
   Widget build(BuildContext context) {
     return PageStorage(
@@ -753,14 +526,14 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         activePath: 'Forms',
         pageTitle: 'Forms Management',
         pageSubtitle: _sessionStarted
-            ? 'Session active — client can scan the QR code'
+            ? 'Session active â€” client can scan the QR code'
             : 'Start a session to generate a QR code',
         role: widget.role,
         cswd_id: widget.cswd_id,
         displayName: widget.displayName,
         onLogout: _handleLogout,
         headerActions: [
-          // "Open Customer Display" button — always visible
+          // "Open Customer Display" button â€” always visible
           _buildHeaderButton(
             'Open Customer Display',
             Icons.desktop_windows,
@@ -806,7 +579,14 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
             ),
           ],
         ],
-        onNavigate: (path) => _navigateToScreen(context, path),
+        onNavigate: (path) => WebNavigator.go(
+          context,
+          path,
+          cswdId: widget.cswd_id,
+          role: widget.role,
+          displayName: widget.displayName,
+          onLogout: _handleLogout,
+        ),
         child: _isLoading
             ? const Center(
                 child: CircularProgressIndicator(color: AppColors.primaryBlue),
@@ -818,7 +598,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     );
   }
 
-  // ── Gate: before session starts ───────────────────────────
+  // â”€â”€ Gate: before session starts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Widget _buildStartSessionGate() {
     return Center(
       child: Container(
@@ -831,7 +611,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           border: Border.all(color: const Color(0xFFE6EBF8)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.07),
+              color: Colors.black.withValues(alpha: 0.07),
               blurRadius: 34,
               offset: const Offset(0, 10),
             ),
@@ -903,7 +683,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                 color: const Color(0xFFF4F7FE),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: AppColors.buttonOutlineBlue.withOpacity(0.35),
+                  color: AppColors.buttonOutlineBlue.withValues(alpha: 0.35),
                 ),
               ),
               child: DropdownButtonHideUnderline(
@@ -974,7 +754,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     );
   }
 
-  // ── Active session: QR sidebar + dynamic form ─────────────
+  // â”€â”€ Active session: QR sidebar + dynamic form â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Widget _buildActiveFormView() {
     if (_formCtrl == null || _selectedTemplate == null) {
       return const SizedBox();
@@ -1035,7 +815,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                       color: const Color(0xFFF8FAFF),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: AppColors.buttonOutlineBlue.withOpacity(0.38),
+                        color: AppColors.buttonOutlineBlue.withValues(alpha: 0.38),
                       ),
                     ),
                     child: DropdownButtonHideUnderline(
@@ -1082,17 +862,17 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 20,
                   ),
                 ],
               ),
               child: Row(
                 children: [
-                  // ── QR sidebar ──────────────────────────────
+                  // â”€â”€ QR sidebar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                   _buildQrSidebar(),
 
-                  // ── Dynamic form (scrollable) ───────────────
+                  // â”€â”€ Dynamic form (scrollable) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                   Expanded(
                     child: Container(
                       margin: const EdgeInsets.all(20),
@@ -1144,9 +924,9 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.12),
+                      color: Colors.white.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: Colors.white.withOpacity(0.2)),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
                     ),
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
@@ -1196,9 +976,9 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Colors.amber.withOpacity(0.12),
+                      color: Colors.amber.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.amber.withOpacity(0.4)),
+                      border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1237,10 +1017,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.12),
+                        color: Colors.green.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: Colors.green.withOpacity(0.45),
+                          color: Colors.green.withValues(alpha: 0.45),
                         ),
                       ),
                       child: Column(
@@ -1276,7 +1056,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
+                      color: Colors.white.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Column(
@@ -1345,6 +1125,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   @override
   void dispose() {
     _formSubscription?.cancel();
+    _pollTimer?.cancel();
     _formCtrl?.dispose();
     _formScrollController.dispose();
     _qrSidebarScrollController.dispose();
