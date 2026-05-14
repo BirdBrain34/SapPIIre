@@ -93,7 +93,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   }
 
   /// Resolves names for legacy submissions missing __applicant_name.
-  /// Traces __session_id â†’ form_submission.user_id â†’ canonical key RPC in batch.
+  /// Traces __session_id form_submission.user_id canonical key RPC in batch.
   Future<void> _resolveUnknownNames(
     List<Map<String, dynamic>> submissions,
   ) async {
@@ -143,7 +143,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     if (sessionIds.isEmpty) return;
 
     try {
-      // session IDs â†’ user_ids
+      // session IDs user_ids
       final sessionToUserId = await _submissionService.fetchSessionUserMap(
         sessionIds,
       );
@@ -151,7 +151,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
 
       if (userIds.isEmpty) return;
 
-      // user_ids â†’ names via canonical_field_key
+      // user_ids names via canonical_field_key
       final userIdToName = await _submissionService
           .fetchCanonicalNamesByUserIds(userIds.toList());
 
@@ -177,7 +177,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     }
   }
 
-  // â”€â”€ Load a submission into the detail panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Load a submission into the detail panel
   Future<void> _loadSubmission(Map<String, dynamic> submission) async {
     final formType = submission['form_type'] as String? ?? '';
     var data = submission['data'];
@@ -212,7 +212,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     _editCtrl?.dispose();
 
     if (template == null) {
-      // Unknown/deleted template â€” raw JSON fallback
+      // Unknown/deleted template raw JSON fallback
       setState(() {
         _selectedSubmission = submission;
         _activeTemplate = null;
@@ -257,7 +257,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     return result['data'] as Map<String, dynamic>;
   }
 
-  // â”€â”€ Save edited submission â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Save edited submission
   Future<void> _saveEdit() async {
     if (_editCtrl == null || _selectedSubmission == null) return;
     setState(() => _isSaving = true);
@@ -481,7 +481,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   Color _formTypeBadgeColor(String formType) =>
       _applicantsController.formTypeBadgeColor(formType);
 
-  // â”€â”€ Logout / navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Logout / navigation
   Future<void> _handleLogout() async {
     await _submissionService.signOut();
     if (mounted) {
@@ -492,7 +492,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     }
   }
 
-  // â”€â”€ Build â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Build
   @override
   Widget build(BuildContext context) {
     return WebShell(
@@ -608,7 +608,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     );
   }
 
-  // â”€â”€ Left panel: applicant list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Left panel: applicant list
   Widget _buildListPanel() {
     final groups = _groupedApplicants;
 
@@ -774,7 +774,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     );
   }
 
-  // â”€â”€ Right panel: empty â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Right panel: empty
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -1231,7 +1231,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     );
   }
 
-  // â”€â”€ Right panel: dynamic form detail â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Right panel: dynamic form detail
   Widget _buildDetailPanel() {
     // Fallback: no template found for this form_type
     if (_activeTemplate == null) {

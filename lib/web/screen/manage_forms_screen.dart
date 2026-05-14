@@ -136,7 +136,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     }
   }
 
-  // â”€â”€ Start a new QR session â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Start a new QR session
   Future<void> _createNewSession() async {
     if (_selectedTemplate == null) return;
     _setStatePreserveScroll(() => _isStartingSession = true);
@@ -251,7 +251,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     debugPrint('Web: Incoming data size: ${incoming.length} fields');
     if (incoming.isEmpty) {
       debugPrint(
-        'Web: âš ï¸ Incoming data is EMPTY - mobile may not have transmitted yet',
+        'Web: Incoming data is EMPTY - mobile may not have transmitted yet',
       );
       debugPrint('===================================================\n');
       return;
@@ -259,7 +259,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
 
     final fingerprint = _fingerprintPayload(incoming);
     if (fingerprint != null && fingerprint == _lastAppliedPayloadFingerprint) {
-      debugPrint('Web: â™»ï¸ Duplicate payload detected, skipping re-apply');
+      debugPrint('Web: Duplicate payload detected, skipping re-apply');
       debugPrint('===================================================\n');
       return;
     }
@@ -269,7 +269,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     final currentFormOffset = _formScrollController.hasClients
         ? _formScrollController.offset
         : 0.0;
-    debugPrint('Web: âœ… Loading data into form controller...');
+    debugPrint('Web: Loading data into form controller...');
     _formCtrl?.loadFromJson(incoming);
     _setStatePreserveScroll(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -279,7 +279,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       _formScrollController.jumpTo(target);
     });
     debugPrint(
-      'Web: âœ… Form updated successfully with ${incoming.length} fields',
+      'Web: Form updated successfully with ${incoming.length} fields',
     );
     debugPrint('===================================================\n');
   }
@@ -301,7 +301,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       final formData = row['form_data'] as Map<String, dynamic>? ?? {};
       if (formData.isNotEmpty) {
         debugPrint(
-          'Web: âœ… Found data via polling! Keys: ${formData.keys.toList()}',
+          'Web: Found data via polling! Keys: ${formData.keys.toList()}',
         );
       }
 
@@ -311,7 +311,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     }
   }
 
-  // â”€â”€ Finalize: save form data to client_submissions â”€â”€â”€â”€â”€â”€â”€
+  // Finalize: save form data to client_submissions
   Future<void> _finalizeEntry() async {
     if (_formCtrl == null || _selectedTemplate == null) return;
     // Guard: prevent double finalize taps from creating duplicate submissions.
@@ -350,7 +350,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         formData: formData,
       );
 
-      // â”€â”€ Audit copy (JSONB keeps full submitted data for record) â”€â”€
+      // Audit copy (JSONB keeps full submitted data for record)
       // Idempotent save keyed by session_id so repeated submits update one row.
       final created = await _submissionService.upsertClientSubmissionSecure(
         sessionId: _currentSessionId,
@@ -408,8 +408,8 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           SnackBar(
             content: Text(
               intakeReference.isNotEmpty
-                  ? 'Entry saved âœ“ Reference: $intakeReference'
-                  : 'Entry saved to Applicants âœ“',
+                  ? 'Entry saved Reference: $intakeReference'
+                  : 'Entry saved to Applicants',
             ),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
@@ -458,7 +458,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   ) => _manageFormsController.resolveNameViaCanonicalRpc(userId);
 
   /// Embeds __applicant_name into the JSONB data.
-  /// Tries: 1) session user_id â†’ canonical key RPC, 2) autofill_source fields,
+  /// Tries: 1) session user_id canonical key RPC, 2) autofill_source fields,
   /// 3) brute-force key name matching.
   Future<void> _embedApplicantName(Map<String, dynamic> formData) =>
       _manageFormsController.embedApplicantName(
@@ -517,7 +517,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     }
   }
 
-  // â”€â”€ Build â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Build
   @override
   Widget build(BuildContext context) {
     return PageStorage(
@@ -526,14 +526,14 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         activePath: 'Forms',
         pageTitle: 'Forms Management',
         pageSubtitle: _sessionStarted
-            ? 'Session active â€” client can scan the QR code'
+            ? 'Session active client can scan the QR code'
             : 'Start a session to generate a QR code',
         role: widget.role,
         cswd_id: widget.cswd_id,
         displayName: widget.displayName,
         onLogout: _handleLogout,
         headerActions: [
-          // "Open Customer Display" button â€” always visible
+          // "Open Customer Display" button always visible
           _buildHeaderButton(
             'Open Customer Display',
             Icons.desktop_windows,
@@ -598,7 +598,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     );
   }
 
-  // â”€â”€ Gate: before session starts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Gate: before session starts
   Widget _buildStartSessionGate() {
     return Center(
       child: Container(
@@ -754,7 +754,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     );
   }
 
-  // â”€â”€ Active session: QR sidebar + dynamic form â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Active session: QR sidebar + dynamic form
   Widget _buildActiveFormView() {
     if (_formCtrl == null || _selectedTemplate == null) {
       return const SizedBox();
@@ -869,10 +869,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
               ),
               child: Row(
                 children: [
-                  // â”€â”€ QR sidebar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+                  // QR sidebar
                   _buildQrSidebar(),
 
-                  // â”€â”€ Dynamic form (scrollable) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+                  // Dynamic form (scrollable)
                   Expanded(
                     child: Container(
                       margin: const EdgeInsets.all(20),

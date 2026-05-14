@@ -148,7 +148,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // â”€â”€ Pending Approvals â”€â”€
+                    // Pending Approvals
                     if (_controller.pendingAccounts.isNotEmpty) ...[
                       const Text(
                         "â³ Pending Approval",
@@ -183,7 +183,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      '${acc['email']}  â€¢  Requested: ${acc['requested_role']}',
+                                      '${acc['email']} Requested: ${acc['requested_role']}',
                                       style: const TextStyle(
                                         fontSize: 12,
                                         color: AppColors.textMuted,
@@ -223,7 +223,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                       const SizedBox(height: 32),
                     ],
 
-                    // â”€â”€ Active Accounts â”€â”€
+                    // Active Accounts
                     const Text(
                       "ðŸ‘¥ All Staff",
                       style: TextStyle(

@@ -2,8 +2,8 @@
 //
 // Accessed via the /display?station=<station_id> route.
 // Shows a full-screen, high-contrast UI with:
-//   â€¢ A large QR code when the worker has an active session
-//   â€¢ A "Welcome / Standby" state otherwise
+//  A large QR code when the worker has an active session
+//  A "Welcome / Standby" state otherwise
 //
 // Uses Supabase Realtime via DisplaySessionService to stay in sync
 // with the Worker Dashboard.
@@ -79,7 +79,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
     super.dispose();
   }
 
-  // â”€â”€ Build â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Build
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -100,7 +100,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
     );
   }
 
-  // â”€â”€ Standby / Welcome â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Standby / Welcome
   Widget _buildStandbyView() {
     return Center(
       child: Column(
@@ -169,7 +169,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
     );
   }
 
-  // â”€â”€ Active session â€” show QR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Active session show QR
   Widget _buildActiveView() {
     return Center(
       child: Column(
@@ -228,7 +228,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
           ),
           const SizedBox(height: 40),
 
-          // â”€â”€ QR code card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // QR code card
           Container(
             padding: const EdgeInsets.all(28),
             decoration: BoxDecoration(

@@ -1,5 +1,5 @@
 // lib/web/screen/web_signup_screen.dart
-// Web staff signup screen â€” inserts into staff_accounts and staff_profiles
+// Web staff signup screen inserts into staff_accounts and staff_profiles
 
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
@@ -137,7 +137,7 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
 
     return Row(
       children: [
-        // â”€â”€ Left Panel: Branding â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Left Panel: Branding
         Expanded(
           child: Container(
             decoration: const BoxDecoration(
@@ -186,7 +186,7 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
           ),
         ),
 
-        // â”€â”€ Right Panel: Registration Form â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Right Panel: Registration Form
         Expanded(
           child: Container(
             color: Color(0xFF152257),
