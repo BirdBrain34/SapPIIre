@@ -10,7 +10,7 @@ import 'package:sappiire/web/screen/audit_logs_screen.dart';
 import 'package:sappiire/services/auth/web_auth_service.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
-import 'package:sappiire/web/widget/web_shell.dart';
+import 'package:sappiire/web/widgets/web_shell.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   final String cswd_id;
