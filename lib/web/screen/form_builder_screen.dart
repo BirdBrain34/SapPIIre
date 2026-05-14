@@ -435,12 +435,13 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   // â”€â”€ CRUD Operations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Future<void> _createNewTemplate() async {
     const defaultFormat = '{FORMCODE}-{YYYY}-{MM}-{####}';
+    final uniqueCode = 'FORM${_generateUuid().substring(0, 6).toUpperCase()}';
     final id = await _service.createTemplate(
       formName: 'Untitled Form',
       formDesc: '',
       createdBy: widget.cswd_id,
-      formCode: 'UNTITLEDFORM',
-      referencePrefix: 'UNTITLEDFORM',
+      formCode: uniqueCode,
+      referencePrefix: uniqueCode,
       referenceFormat: defaultFormat,
       requiresReference: true,
     );
