@@ -3,7 +3,6 @@
 // No more hardcoded GIS section imports.
 
 import 'package:flutter/material.dart';
-import 'dart:convert';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:sappiire/constants/app_colors.dart';
@@ -12,30 +11,12 @@ import 'package:sappiire/services/form_template_service.dart';
 import 'package:sappiire/services/forms/submission_service.dart';
 import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
-import 'package:sappiire/web/widget/web_shell.dart';
+import 'package:sappiire/web/widgets/web_shell.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
+import 'package:sappiire/web/utils/web_navigator.dart';
 import 'package:sappiire/web/screen/web_login_screen.dart';
-import 'package:sappiire/web/screen/dashboard_screen.dart';
-import 'package:sappiire/web/screen/manage_staff_screen.dart';
-import 'package:sappiire/web/screen/create_staff_screen.dart';
-import 'package:sappiire/web/screen/manage_forms_screen.dart';
-import 'package:sappiire/web/screen/form_builder_screen.dart';
-import 'package:sappiire/web/screen/audit_logs_screen.dart';
 import 'package:sappiire/services/audit/audit_log_service.dart';
-
-class _ApplicantGroup {
-  final String key;
-  final String displayName;
-  final List<Map<String, dynamic>> submissions;
-
-  const _ApplicantGroup({
-    required this.key,
-    required this.displayName,
-    required this.submissions,
-  });
-}
-
-enum _RecordSortOrder { latestFirst, oldestFirst }
+import 'package:sappiire/web/controllers/applicants_controller.dart';
 
 enum _RightPanelView { records, form }
 
@@ -58,6 +39,7 @@ class ApplicantsScreen extends StatefulWidget {
 class _ApplicantsScreenState extends State<ApplicantsScreen> {
   final _submissionService = SubmissionService();
   final _templateService = FormTemplateService();
+  final _applicantsController = const ApplicantsController();
 
   List<Map<String, dynamic>> _submissions = [];
   Map<String, dynamic>? _selectedSubmission;
@@ -72,7 +54,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _intakeRefCtrl = TextEditingController();
   String? _selectedApplicantKey;
-  _RecordSortOrder _recordSortOrder = _RecordSortOrder.latestFirst;
+  RecordSortOrder _recordSortOrder = RecordSortOrder.latestFirst;
   _RightPanelView _rightPanelView = _RightPanelView.records;
   String _formTypeFilter = 'All';
 
@@ -111,7 +93,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   }
 
   /// Resolves names for legacy submissions missing __applicant_name.
-  /// Traces __session_id → form_submission.user_id → canonical key RPC in batch.
+  /// Traces __session_id form_submission.user_id canonical key RPC in batch.
   Future<void> _resolveUnknownNames(
     List<Map<String, dynamic>> submissions,
   ) async {
@@ -139,7 +121,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       final data = sub['data'] is Map 
           ? Map<String, dynamic>.from(sub['data'] as Map)
           : <String, dynamic>{};
-      if (_hasUsableEmbeddedApplicantName(data)) continue;
+      if (_applicantsController.hasUsableEmbeddedApplicantName(data)) continue;
       final sid = data['__session_id']?.toString();
       if (sid != null && sid.isNotEmpty) needsResolution.add(sub);
     }
@@ -161,7 +143,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     if (sessionIds.isEmpty) return;
 
     try {
-      // session IDs → user_ids
+      // session IDs user_ids
       final sessionToUserId = await _submissionService.fetchSessionUserMap(
         sessionIds,
       );
@@ -169,7 +151,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
 
       if (userIds.isEmpty) return;
 
-      // user_ids → names via canonical_field_key
+      // user_ids names via canonical_field_key
       final userIdToName = await _submissionService
           .fetchCanonicalNamesByUserIds(userIds.toList());
 
@@ -195,7 +177,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     }
   }
 
-  // ── Load a submission into the detail panel ───────────────
+  // Load a submission into the detail panel
   Future<void> _loadSubmission(Map<String, dynamic> submission) async {
     final formType = submission['form_type'] as String? ?? '';
     var data = submission['data'];
@@ -230,7 +212,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     _editCtrl?.dispose();
 
     if (template == null) {
-      // Unknown/deleted template — raw JSON fallback
+      // Unknown/deleted template raw JSON fallback
       setState(() {
         _selectedSubmission = submission;
         _activeTemplate = null;
@@ -275,7 +257,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     return result['data'] as Map<String, dynamic>;
   }
 
-  // ── Save edited submission ────────────────────────────────
+  // Save edited submission
   Future<void> _saveEdit() async {
     if (_editCtrl == null || _selectedSubmission == null) return;
     setState(() => _isSaving = true);
@@ -458,200 +440,17 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     await _loadData();
   }
 
-  // ── Applicant name resolution (3-tier fallback) ──────────
-  String _getApplicantName(Map<String, dynamic> submission) {
-    var data = submission['data'];
-    
-    // If data is still encrypted (shouldn't happen after _resolveUnknownNames, but safety check)
-    if (data is! Map) {
-      return 'Unknown Applicant (Encrypted)';
-    }
-    
-    final dataMap = Map<String, dynamic>.from(data as Map);
+  String _getApplicantName(Map<String, dynamic> submission) =>
+      _applicantsController.getApplicantName(submission, _templateCache);
 
-    // 1) Embedded name from _embedApplicantName / _resolveUnknownNames
-    if (dataMap['__applicant_name'] is Map) {
-      final n = dataMap['__applicant_name'] as Map<String, dynamic>;
-      final embeddedNameLooksValid = _hasUsableEmbeddedApplicantName(dataMap);
-      if (embeddedNameLooksValid) {
-        final name = _formatName(n);
-        if (name != null) return name;
-      }
-    }
-
-    // 2) Common key names in JSONB (GIS and custom templates)
-    final last = _findNameValue(dataMap, [
-      'last_name',
-      'Last Name',
-      'lastname',
-      'Apelyido',
-    ]);
-    final first = _findNameValue(dataMap, [
-      'first_name',
-      'First Name',
-      'firstname',
-      'Pangalan',
-    ]);
-    final middle = _findNameValue(dataMap, [
-      'middle_name',
-      'Middle Name',
-      'middle_name',
-      'Gitnang Pangalan',
-    ]);
-
-    // 3) Template-aware: match by autofill_source or field label
-    if (last.isEmpty && first.isEmpty) {
-      final formType = submission['form_type'] as String? ?? '';
-      final template = _templateCache[formType];
-      if (template != null) {
-        String tLast = '', tFirst = '', tMid = '';
-        for (final field in template.allFields) {
-          final src = field.autofillSource;
-          final lbl = field.fieldLabel.toLowerCase();
-          final val = dataMap[field.fieldName]?.toString() ?? '';
-          if (val.isEmpty) continue;
-          if (src == 'lastname' || lbl.contains('last') && lbl.contains('name'))
-            tLast = val;
-          if (src == 'firstname' ||
-              lbl.contains('first') && lbl.contains('name'))
-            tFirst = val;
-          if (src == 'middle_name' ||
-              lbl.contains('middle') && lbl.contains('name'))
-            tMid = val;
-        }
-        final tName = _formatName({
-          'last': tLast,
-          'first': tFirst,
-          'middle': tMid,
-        });
-        if (tName != null) return tName;
-      }
-    }
-
-    if (first.isEmpty && last.isEmpty) return 'Unknown Applicant';
-    return _formatName({'last': last, 'first': first, 'middle': middle}) ??
-        'Unknown Applicant';
-  }
-
-  /// Formats {last, first, middle} into "Last, First M." or null if empty.
-  String? _formatName(Map<dynamic, dynamic> n) {
-    final last = (n['last'] ?? '').toString().trim();
-    final first = (n['first'] ?? '').toString().trim();
-    final mid = (n['middle'] ?? '').toString().trim();
-    if (last.isEmpty && first.isEmpty) return null;
-    return '$last, $first${mid.isNotEmpty ? ' ${mid[0]}.' : ''}'.trim();
-  }
-
-  String _findNameValue(Map<String, dynamic> data, List<String> keys) {
-    for (final key in keys) {
-      final val = data[key]?.toString().trim() ?? '';
-      if (val.isNotEmpty) return val;
-    }
-    return '';
-  }
-
-  bool _hasUsableEmbeddedApplicantName(Map<String, dynamic> data) {
-    final raw = data['__applicant_name'];
-    if (raw is! Map) return false;
-
-    final last = (raw['last'] ?? '').toString().trim();
-    final first = (raw['first'] ?? '').toString().trim();
-
-    if (last.isEmpty && first.isEmpty) return false;
-    if (_looksEncryptedToken(last) || _looksEncryptedToken(first)) {
-      return false;
-    }
-    return true;
-  }
-
-  bool _looksEncryptedToken(String value) {
-    final v = value.trim();
-    if (v.length < 24) return false;
-    if (v.contains(' ') || v.contains(',')) return false;
-    if (!RegExp(r'^[A-Za-z0-9+/=]+$').hasMatch(v)) return false;
-    return RegExp(r'[0-9+/=]').hasMatch(v);
-  }
-
-  String? _findApplicantId(Map<String, dynamic> submission) {
-    final data = submission['data'] is Map
-        ? Map<String, dynamic>.from(submission['data'] as Map)
-        : <String, dynamic>{};
-    final candidates = [
-      submission['applicant_id'],
-      submission['user_id'],
-      data['__applicant_id'],
-      data['applicant_id'],
-      data['client_id'],
-      data['user_id'],
-      data['__user_id'],
-    ];
-    for (final c in candidates) {
-      final v = (c ?? '').toString().trim();
-      if (v.isNotEmpty) return v;
-    }
-    return null;
-  }
-
-  DateTime _parseCreatedAt(Map<String, dynamic> submission) {
-    final created = submission['created_at']?.toString();
-    if (created == null || created.isEmpty) {
-      return DateTime.fromMillisecondsSinceEpoch(0);
-    }
-    return DateTime.tryParse(created) ?? DateTime.fromMillisecondsSinceEpoch(0);
-  }
-
-  List<_ApplicantGroup> get _groupedApplicants {
-    final grouped = <String, List<Map<String, dynamic>>>{};
-    final groupName = <String, String>{};
-
-    for (final s in _submissions) {
-      final applicantId = _findApplicantId(s);
-      final displayName = _getApplicantName(s);
-      final key = applicantId != null && applicantId.isNotEmpty
-          ? 'id:$applicantId'
-          : 'name:${displayName.toLowerCase()}';
-      grouped.putIfAbsent(key, () => []).add(s);
-      groupName[key] = displayName;
-    }
-
-    final q = _searchQuery.trim().toLowerCase();
-    final groups = <_ApplicantGroup>[];
-
-    for (final entry in grouped.entries) {
-      final submissions = List<Map<String, dynamic>>.from(entry.value)
-        ..sort((a, b) => _parseCreatedAt(b).compareTo(_parseCreatedAt(a)));
-
-      final name = groupName[entry.key] ?? 'Unknown Applicant';
-      if (q.isNotEmpty) {
-        final matchesGroup =
-            name.toLowerCase().contains(q) ||
-            entry.key.toLowerCase().contains(q);
-        if (!matchesGroup) continue;
-      }
-
-      groups.add(
-        _ApplicantGroup(
-          key: entry.key,
-          displayName: name,
-          submissions: submissions,
-        ),
+  List<ApplicantGroup> get _groupedApplicants =>
+      _applicantsController.groupedApplicants(
+        submissions: _submissions,
+        searchQuery: _searchQuery,
+        templateCache: _templateCache,
       );
-    }
 
-    groups.sort((a, b) {
-      final ad = a.submissions.isNotEmpty
-          ? _parseCreatedAt(a.submissions.first)
-          : DateTime.fromMillisecondsSinceEpoch(0);
-      final bd = b.submissions.isNotEmpty
-          ? _parseCreatedAt(b.submissions.first)
-          : DateTime.fromMillisecondsSinceEpoch(0);
-      return bd.compareTo(ad);
-    });
-
-    return groups;
-  }
-
-  _ApplicantGroup? get _selectedApplicantGroup {
+  ApplicantGroup? get _selectedApplicantGroup {
     final key = _selectedApplicantKey;
     if (key == null) return null;
     for (final group in _groupedApplicants) {
@@ -660,78 +459,29 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     return null;
   }
 
-  List<Map<String, dynamic>> _sortedSubmissionsForGroup(_ApplicantGroup group) {
-    final sorted = List<Map<String, dynamic>>.from(group.submissions);
-
-    if (_formTypeFilter != 'All') {
-      sorted.removeWhere(
-        (s) => (s['form_type']?.toString() ?? '') != _formTypeFilter,
+  List<Map<String, dynamic>> _sortedSubmissionsForGroup(ApplicantGroup group) =>
+      _applicantsController.sortedSubmissionsForGroup(
+        group: group,
+        formTypeFilter: _formTypeFilter,
+        sortOrder: _recordSortOrder,
       );
-    }
 
-    sorted.sort((a, b) {
-      final compare = _parseCreatedAt(a).compareTo(_parseCreatedAt(b));
-      return _recordSortOrder == _RecordSortOrder.latestFirst
-          ? -compare
-          : compare;
-    });
-    return sorted;
-  }
+  List<String> _formTypeOptionsForGroup(ApplicantGroup group) =>
+      _applicantsController.formTypeOptionsForGroup(group);
 
-  List<String> _formTypeOptionsForGroup(_ApplicantGroup group) {
-    final options = <String>{'All'};
-    for (final submission in group.submissions) {
-      final formType = submission['form_type']?.toString().trim() ?? '';
-      if (formType.isNotEmpty) options.add(formType);
-    }
-    final types = options.where((o) => o != 'All').toList()..sort();
-    return ['All', ...types];
-  }
+  String _getFormattedDate(String? iso) =>
+      _applicantsController.getFormattedDate(iso);
 
-  String _getFormattedDate(String? iso) {
-    if (iso == null) return '—';
-    try {
-      final dt = DateTime.parse(iso).toLocal();
-      return '${dt.day.toString().padLeft(2, '0')}/'
-          '${dt.month.toString().padLeft(2, '0')}/'
-          '${dt.year}';
-    } catch (_) {
-      return iso;
-    }
-  }
+  String _getIntakeRefLabel(Map<String, dynamic> submission) =>
+      _applicantsController.getIntakeRefLabel(submission);
 
-  String _getIntakeRefLabel(Map<String, dynamic> submission) {
-    final ref = (submission['intake_reference'] as String?)?.trim();
-    if (ref == null || ref.isEmpty) return 'No reference';
-    return ref;
-  }
+  String _formTypeBadgeText(String formType) =>
+      _applicantsController.formTypeBadgeText(formType);
 
-  String _formTypeBadgeText(String formType) {
-    final trimmed = formType.trim();
-    if (trimmed.isEmpty) return 'FORM';
-    if (!trimmed.contains(' ') && trimmed.length <= 8) {
-      return trimmed.toUpperCase();
-    }
-    final parts = trimmed.split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
-    final initials = parts.map((p) => p[0].toUpperCase()).join();
-    return initials.isEmpty ? 'FORM' : initials;
-  }
+  Color _formTypeBadgeColor(String formType) =>
+      _applicantsController.formTypeBadgeColor(formType);
 
-  Color _formTypeBadgeColor(String formType) {
-    final key = formType.toLowerCase();
-    if (key.contains('gis') || key.contains('general intake')) {
-      return const Color(0xFF1FA663);
-    }
-    if (key.contains('eafic')) {
-      return const Color(0xFF2B74E4);
-    }
-    if (key.contains('case')) {
-      return const Color(0xFF8A6BDB);
-    }
-    return const Color(0xFF4F8A8B);
-  }
-
-  // ── Logout / navigation ───────────────────────────────────
+  // Logout / navigation
   Future<void> _handleLogout() async {
     await _submissionService.signOut();
     if (mounted) {
@@ -742,65 +492,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     }
   }
 
-  void _navigateToScreen(BuildContext context, String path) {
-    if ((path == 'Staff' || path == 'CreateStaff') &&
-        widget.role != 'superadmin') {
-      return;
-    }
-    Widget next;
-    switch (path) {
-      case 'Dashboard':
-        next = DashboardScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-          onLogout: _handleLogout,
-        );
-        break;
-      case 'Staff':
-        next = ManageStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'CreateStaff':
-        next = CreateStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'Forms':
-        next = ManageFormsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'FormBuilder':
-        if (widget.role != 'superadmin') return;
-        next = FormBuilderScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'AuditLogs':
-        if (widget.role != 'superadmin') return;
-        next = AuditLogsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      default:
-        return;
-    }
-    Navigator.of(context).pushReplacement(ContentFadeRoute(page: next));
-  }
-
-  // ── Build ─────────────────────────────────────────────────
+  // Build
   @override
   Widget build(BuildContext context) {
     return WebShell(
@@ -874,7 +566,14 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
           ],
         ],
       ],
-      onNavigate: (p) => _navigateToScreen(context, p),
+      onNavigate: (p) => WebNavigator.go(
+        context,
+        p,
+        cswdId: widget.cswd_id,
+        role: widget.role,
+        displayName: widget.displayName,
+        onLogout: _handleLogout,
+      ),
       child: Padding(
         padding: const EdgeInsets.all(28),
         child: Column(
@@ -886,7 +585,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Colors.black.withValues(alpha: 0.1),
                       blurRadius: 20,
                     ),
                   ],
@@ -909,14 +608,14 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     );
   }
 
-  // ── Left panel: applicant list ────────────────────────────
+  // Left panel: applicant list
   Widget _buildListPanel() {
     final groups = _groupedApplicants;
 
     return Container(
       width: 280,
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
+        color: Colors.white.withValues(alpha: 0.08),
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(24),
           bottomLeft: Radius.circular(24),
@@ -935,7 +634,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                 hintStyle: const TextStyle(color: Colors.white54),
                 prefixIcon: const Icon(Icons.search, color: Colors.white54),
                 filled: true,
-                fillColor: Colors.white.withOpacity(0.1),
+                fillColor: Colors.white.withValues(alpha: 0.1),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -962,7 +661,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                       itemCount: groups.length,
                       separatorBuilder: (_, __) => Divider(
                         height: 1,
-                        color: Colors.white.withOpacity(0.10),
+                        color: Colors.white.withValues(alpha: 0.10),
                         indent: 14,
                         endIndent: 14,
                       ),
@@ -979,14 +678,14 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                         return Material(
                           color: Colors.transparent,
                           child: InkWell(
-                            hoverColor: Colors.white.withOpacity(0.05),
-                            splashColor: Colors.white.withOpacity(0.08),
+                            hoverColor: Colors.white.withValues(alpha: 0.05),
+                            splashColor: Colors.white.withValues(alpha: 0.08),
                             onTap: () {
                               setState(() {
                                 _selectedApplicantKey = group.key;
                                 _rightPanelView = _RightPanelView.records;
                                 _formTypeFilter = 'All';
-                                _recordSortOrder = _RecordSortOrder.latestFirst;
+                                _recordSortOrder = RecordSortOrder.latestFirst;
                                 _selectedSubmission = null;
                                 _activeTemplate = null;
                                 _isEditMode = false;
@@ -995,7 +694,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                             child: Container(
                               decoration: BoxDecoration(
                                 color: isSelected
-                                    ? Colors.white.withOpacity(0.16)
+                                    ? Colors.white.withValues(alpha: 0.16)
                                     : Colors.transparent,
                                 border: Border(
                                   left: BorderSide(
@@ -1020,8 +719,8 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                                       color: isSelected
                                           ? const Color(
                                               0xFF7CC3FF,
-                                            ).withOpacity(0.25)
-                                          : Colors.white.withOpacity(0.12),
+                                            ).withValues(alpha: 0.25)
+                                          : Colors.white.withValues(alpha: 0.12),
                                       shape: BoxShape.circle,
                                       border: Border.all(
                                         color: isSelected
@@ -1075,7 +774,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     );
   }
 
-  // ── Right panel: empty ────────────────────────────────────
+  // Right panel: empty
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -1084,13 +783,13 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
           Icon(
             Icons.person_search_outlined,
             size: 64,
-            color: Colors.white.withOpacity(0.4),
+            color: Colors.white.withValues(alpha: 0.4),
           ),
           const SizedBox(height: 16),
           Text(
             'Select an applicant to view records',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.white.withValues(alpha: 0.7),
               fontSize: 15,
             ),
           ),
@@ -1142,7 +841,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                       ),
                     ),
                     style: TextButton.styleFrom(
-                      backgroundColor: Colors.white.withOpacity(0.10),
+                      backgroundColor: Colors.white.withValues(alpha: 0.10),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 14,
                         vertical: 10,
@@ -1212,7 +911,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.06),
+                color: Colors.white.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: Colors.white24),
               ),
@@ -1245,7 +944,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                             const Padding(
                               padding: EdgeInsets.only(left: 6, bottom: 4),
                               child: Text(
-                                '↕ Date',
+                                'â†• Date',
                                 style: TextStyle(
                                   color: Colors.white70,
                                   fontSize: 10,
@@ -1253,7 +952,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                                 ),
                               ),
                             ),
-                            DropdownButtonFormField<_RecordSortOrder>(
+                            DropdownButtonFormField<RecordSortOrder>(
                               isExpanded: true,
                               value: _recordSortOrder,
                               onChanged: (value) {
@@ -1278,7 +977,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(999),
                                   borderSide: BorderSide(
-                                    color: Colors.white.withOpacity(0.22),
+                                    color: Colors.white.withValues(alpha: 0.22),
                                   ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
@@ -1290,11 +989,11 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                               ),
                               items: const [
                                 DropdownMenuItem(
-                                  value: _RecordSortOrder.latestFirst,
+                                  value: RecordSortOrder.latestFirst,
                                   child: Text('Latest First'),
                                 ),
                                 DropdownMenuItem(
-                                  value: _RecordSortOrder.oldestFirst,
+                                  value: RecordSortOrder.oldestFirst,
                                   child: Text('Oldest First'),
                                 ),
                               ],
@@ -1311,7 +1010,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                             const Padding(
                               padding: EdgeInsets.only(left: 6, bottom: 4),
                               child: Text(
-                                '⊞ Type',
+                                'âŠž Type',
                                 style: TextStyle(
                                   color: Colors.white70,
                                   fontSize: 10,
@@ -1344,7 +1043,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(999),
                                   borderSide: BorderSide(
-                                    color: Colors.white.withOpacity(0.22),
+                                    color: Colors.white.withValues(alpha: 0.22),
                                   ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
@@ -1379,7 +1078,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.red.shade300,
                       side: BorderSide(
-                        color: Colors.red.withOpacity(0.5),
+                        color: Colors.red.withValues(alpha: 0.5),
                         width: 1.5,
                       ),
                       padding: const EdgeInsets.symmetric(
@@ -1408,7 +1107,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.08),
+                    color: Colors.white.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: Colors.white24),
                   ),
@@ -1419,7 +1118,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                       itemCount: records.length,
                       separatorBuilder: (_, __) => Divider(
                         height: 1,
-                        color: Colors.white.withOpacity(0.10),
+                        color: Colors.white.withValues(alpha: 0.10),
                       ),
                       itemBuilder: (_, idx) {
                         final record = records[idx];
@@ -1431,8 +1130,8 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                         return Material(
                           color: Colors.transparent,
                           child: InkWell(
-                            hoverColor: Colors.white.withOpacity(0.06),
-                            splashColor: Colors.white.withOpacity(0.08),
+                            hoverColor: Colors.white.withValues(alpha: 0.06),
+                            splashColor: Colors.white.withValues(alpha: 0.08),
                             onTap: () {
                               _loadSubmission(record);
                               setState(() {
@@ -1454,12 +1153,12 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                                         vertical: 4,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: badgeColor.withOpacity(0.18),
+                                        color: badgeColor.withValues(alpha: 0.18),
                                         borderRadius: BorderRadius.circular(
                                           999,
                                         ),
                                         border: Border.all(
-                                          color: badgeColor.withOpacity(0.6),
+                                          color: badgeColor.withValues(alpha: 0.6),
                                         ),
                                       ),
                                       child: Text(
@@ -1532,7 +1231,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     );
   }
 
-  // ── Right panel: dynamic form detail ─────────────────────
+  // Right panel: dynamic form detail
   Widget _buildDetailPanel() {
     // Fallback: no template found for this form_type
     if (_activeTemplate == null) {

@@ -37,7 +37,7 @@ class SideMenu extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Logo ────────────────────────────────────────────────
+          // Logo
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 36, 20, 24),
             child: Column(
@@ -69,7 +69,7 @@ class SideMenu extends StatelessWidget {
           Container(height: 1, color: const Color(0xFF1E2E60)),
           const SizedBox(height: 12),
 
-          // ── Nav section label ────────────────────────────────────
+          // Nav section label
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 6),
             child: Text(
@@ -77,7 +77,7 @@ class SideMenu extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: AppColors.mutedBlue.withOpacity(0.6),
+                color: AppColors.mutedBlue.withValues(alpha: 0.6),
                 fontSize: 10,
                 letterSpacing: 1.5,
                 fontWeight: FontWeight.w600,
@@ -122,7 +122,7 @@ class SideMenu extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: AppColors.mutedBlue.withOpacity(0.6),
+                          color: AppColors.mutedBlue.withValues(alpha: 0.6),
                           fontSize: 10,
                           letterSpacing: 1.5,
                           fontWeight: FontWeight.w600,
@@ -164,7 +164,7 @@ class SideMenu extends StatelessWidget {
           ),
           Container(height: 1, color: const Color(0xFF1E2E60)),
 
-          // ── Logout ───────────────────────────────────────────────
+          // Logout
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             child: Material(
@@ -221,12 +221,12 @@ class SideMenu extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       child: Material(
         color: isActive
-            ? AppColors.highlight.withOpacity(0.18)
+            ? AppColors.highlight.withValues(alpha: 0.18)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
-          hoverColor: Colors.white.withOpacity(0.06),
+          hoverColor: Colors.white.withValues(alpha: 0.06),
           onTap: () {
             if (!isActive) {
               _handleNavigation(context, path);

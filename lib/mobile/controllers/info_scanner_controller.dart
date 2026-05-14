@@ -44,7 +44,9 @@ class InfoScannerController extends ChangeNotifier {
       isInitialized = true;
       notifyListeners();
     } catch (e) {
-      debugPrint('Camera init error: $e');
+      debugPrint(
+        '[InfoScannerController/setupCamera] Action: Camera init failed Error: $e',
+      );
     }
   }
 
@@ -64,9 +66,9 @@ class InfoScannerController extends ChangeNotifier {
           .where((l) => l.isNotEmpty)
           .toList();
 
-      debugPrint('=== OCR LINES ===');
-      for (final l in lines) debugPrint(l);
-      debugPrint('=================');
+      debugPrint(
+        '[InfoScannerController/scanImage] Action: OCR extracted Count: ${lines.length}',
+      );
 
       if (!frontScanned) {
         _parseFront(lines);
@@ -78,7 +80,9 @@ class InfoScannerController extends ChangeNotifier {
 
       HapticFeedback.mediumImpact();
     } catch (e) {
-      debugPrint('Scan error: $e');
+      debugPrint(
+        '[InfoScannerController/scanImage] Action: Scan failed Error: $e',
+      );
       rethrow;
     } finally {
       isProcessing = false;
@@ -335,7 +339,9 @@ class InfoScannerController extends ChangeNotifier {
           'place_of_birth': data.placeOfBirth,
       };
 
-      debugPrint('InfoScanner saving piiMap: $piiMap');
+      debugPrint(
+        '[InfoScannerController/saveToSupabase] Action: Saving extracted fields Count: ${piiMap.length}',
+      );
 
       final result = await _supabaseService.saveScannedIdFieldValues(
         userId: userId,
@@ -346,7 +352,9 @@ class InfoScannerController extends ChangeNotifier {
         throw Exception(result['message']?.toString() ?? 'Save failed.');
       }
     } catch (e) {
-      debugPrint('Supabase save error: $e');
+      debugPrint(
+        '[InfoScannerController/saveToSupabase] Action: Supabase save failed Error: $e',
+      );
       rethrow;
     }
   }

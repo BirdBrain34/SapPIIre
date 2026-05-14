@@ -1,7 +1,7 @@
 // lib/web/screen/manage_staff_screen.dart
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
-import 'package:sappiire/web/widget/web_shell.dart';
+import 'package:sappiire/web/widgets/web_shell.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/screen/dashboard_screen.dart';
 import 'package:sappiire/web/screen/create_staff_screen.dart';
@@ -9,9 +9,8 @@ import 'package:sappiire/web/screen/applicants_screen.dart';
 import 'package:sappiire/web/screen/form_builder_screen.dart';
 import 'package:sappiire/web/screen/audit_logs_screen.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
-import 'package:sappiire/services/audit/audit_log_service.dart';
-import 'package:sappiire/services/auth/web_auth_service.dart';
-import 'package:sappiire/services/auth/staff_admin_service.dart';
+import 'package:sappiire/web/utils/web_navigator.dart';
+import 'package:sappiire/web/controllers/manage_staff_controller.dart';
 
 class ManageStaffScreen extends StatefulWidget {
   final String role;
@@ -30,95 +29,41 @@ class ManageStaffScreen extends StatefulWidget {
 }
 
 class _ManageStaffScreenState extends State<ManageStaffScreen> {
-  final _staffAdminService = StaffAdminService();
-  List<Map<String, dynamic>> _pendingAccounts = [];
-  List<Map<String, dynamic>> _activeAccounts = [];
-  bool _isLoading = true;
+  final _controller = ManageStaffController();
 
   @override
   void initState() {
     super.initState();
-    _loadAccounts();
-  }
-
-  Future<void> _loadAccounts() async {
-    setState(() => _isLoading = true);
-    try {
-      final data = await _staffAdminService.fetchAccounts();
-
-      setState(() {
-        _pendingAccounts = data['pending'] ?? [];
-        _activeAccounts = data['active'] ?? [];
-        _isLoading = false;
-      });
-    } catch (e) {
-      debugPrint('Load error: $e');
-      setState(() => _isLoading = false);
-    }
+    _controller.loadAccounts();
   }
 
   Future<void> _approveAccount(String cswd_id, String requestedRole) async {
-    await _staffAdminService.approveAccount(cswd_id, requestedRole);
-
-    await AuditLogService().log(
-      actionType: kAuditStaffApproved,
-      category: kCategoryStaff,
-      severity: kSeverityInfo,
+    await _controller.approveAccount(
+      cswdId: cswd_id,
+      requestedRole: requestedRole,
       actorId: widget.cswd_id,
       actorName: widget.displayName,
       actorRole: widget.role,
-      targetType: 'staff_account',
-      targetId: cswd_id,
-      details: {'approved_role': requestedRole},
     );
-
-    _loadAccounts();
   }
 
   Future<void> _rejectAccount(String cswd_id) async {
-    await _staffAdminService.rejectAccount(cswd_id);
-
-    await AuditLogService().log(
-      actionType: kAuditStaffRejected,
-      category: kCategoryStaff,
-      severity: kSeverityWarning,
+    await _controller.rejectAccount(
+      cswdId: cswd_id,
       actorId: widget.cswd_id,
       actorName: widget.displayName,
       actorRole: widget.role,
-      targetType: 'staff_account',
-      targetId: cswd_id,
     );
-
-    _loadAccounts();
   }
 
   Future<void> _updateRole(String cswd_id, String newRole) async {
-    // Prevent role escalation to superadmin from this UI.
-    if (newRole == 'superadmin') return;
-
-    // Prevent editing the protected superadmin account.
-    final targetAccount = _activeAccounts.firstWhere(
-      (a) => a['cswd_id'] == cswd_id,
-      orElse: () => <String, dynamic>{},
-    );
-    if (targetAccount['role'] == 'superadmin') return;
-
-    final oldRole = targetAccount['role'];
-    await _staffAdminService.updateRole(cswd_id, newRole);
-
-    await AuditLogService().log(
-      actionType: kAuditRoleChanged,
-      category: kCategoryStaff,
-      severity: kSeverityWarning,
+    await _controller.updateRole(
+      cswdId: cswd_id,
+      newRole: newRole,
       actorId: widget.cswd_id,
       actorName: widget.displayName,
       actorRole: widget.role,
-      targetType: 'staff_account',
-      targetId: cswd_id,
-      details: {'old_role': oldRole, 'new_role': newRole},
     );
-
-    _loadAccounts();
   }
 
   Future<void> _deactivateAccount(String cswd_id, String username) async {
@@ -149,45 +94,28 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
 
     if (confirmed != true) return;
 
-    final authService = WebAuthService();
-    await authService.deactivateStaffAccount(cswd_id);
-
-    await AuditLogService().log(
-      actionType: 'staff_deactivated',
-      category: kCategoryStaff,
-      severity: kSeverityWarning,
+    await _controller.deactivateAccount(
+      cswdId: cswd_id,
+      username: username,
       actorId: widget.cswd_id,
       actorName: widget.displayName,
       actorRole: widget.role,
-      targetType: 'staff_account',
-      targetId: cswd_id,
-      targetLabel: username,
     );
-
-    _loadAccounts();
   }
 
   Future<void> _reactivateAccount(String cswd_id, String username) async {
-    final authService = WebAuthService();
-    await authService.reactivateStaffAccount(cswd_id);
-
-    await AuditLogService().log(
-      actionType: 'staff_reactivated',
-      category: kCategoryStaff,
-      severity: kSeverityInfo,
+    await _controller.reactivateAccount(
+      cswdId: cswd_id,
+      username: username,
       actorId: widget.cswd_id,
       actorName: widget.displayName,
       actorRole: widget.role,
-      targetType: 'staff_account',
-      targetId: cswd_id,
-      targetLabel: username,
     );
-
-    _loadAccounts();
   }
 
   @override
   void dispose() {
+    _controller.dispose();
     super.dispose();
   }
 
@@ -201,19 +129,29 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
       cswd_id: widget.cswd_id,
       displayName: widget.displayName,
       onLogout: () => Navigator.pop(context),
-      onNavigate: (screenPath) => _navigateToScreen(context, screenPath),
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
+      onNavigate: (screenPath) => WebNavigator.go(
+        context,
+        screenPath,
+        cswdId: widget.cswd_id,
+        role: widget.role,
+        displayName: widget.displayName,
+        onLogout: () => Navigator.pop(context),
+      ),
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          return Padding(
+            padding: const EdgeInsets.all(28),
+            child: _controller.isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── Pending Approvals ──
-                    if (_pendingAccounts.isNotEmpty) ...[
+                    // Pending Approvals
+                    if (_controller.pendingAccounts.isNotEmpty) ...[
                       const Text(
-                        "⏳ Pending Approval",
+                        "â³ Pending Approval",
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -221,7 +159,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      ..._pendingAccounts.map(
+                      ..._controller.pendingAccounts.map(
                         (acc) => Container(
                           margin: const EdgeInsets.only(bottom: 12),
                           padding: const EdgeInsets.all(16),
@@ -245,7 +183,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      '${acc['email']}  •  Requested: ${acc['requested_role']}',
+                                      '${acc['email']} Requested: ${acc['requested_role']}',
                                       style: const TextStyle(
                                         fontSize: 12,
                                         color: AppColors.textMuted,
@@ -285,9 +223,9 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                       const SizedBox(height: 32),
                     ],
 
-                    // ── Active Accounts ──
+                    // Active Accounts
                     const Text(
-                      "👥 All Staff",
+                      "ðŸ‘¥ All Staff",
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -304,11 +242,11 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                       child: ListView.separated(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _activeAccounts.length,
+                        itemCount: _controller.activeAccounts.length,
                         separatorBuilder: (_, __) =>
                             Divider(height: 1, color: AppColors.cardBorder),
                         itemBuilder: (_, i) {
-                          final acc = _activeAccounts[i];
+                          final acc = _controller.activeAccounts[i];
                           return Padding(
                             padding: const EdgeInsets.all(16),
                             child: Row(
@@ -317,8 +255,8 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                                   width: 40,
                                   height: 40,
                                   decoration: BoxDecoration(
-                                    color: AppColors.highlight.withOpacity(
-                                      0.15,
+                                    color: AppColors.highlight.withValues(
+                                      alpha: 0.15,
                                     ),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
@@ -378,12 +316,12 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                                                   ),
                                               decoration: BoxDecoration(
                                                 color: Colors.orange
-                                                    .withOpacity(0.15),
+                                                    .withValues(alpha: 0.15),
                                                 borderRadius:
                                                     BorderRadius.circular(4),
                                                 border: Border.all(
                                                   color: Colors.orange
-                                                      .withOpacity(0.4),
+                                                      .withValues(alpha: 0.4),
                                                 ),
                                               ),
                                               child: const Text(
@@ -415,7 +353,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                                         ),
                                         decoration: BoxDecoration(
                                           color: AppColors.highlight
-                                              .withOpacity(0.1),
+                                              .withValues(alpha: 0.1),
                                           borderRadius: BorderRadius.circular(
                                             8,
                                           ),
@@ -499,66 +437,10 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                   ],
                 ),
               ),
+          );
+        },
       ),
     );
   }
 
-  void _navigateToScreen(BuildContext context, String screenPath) {
-    if ((screenPath == 'Staff' || screenPath == 'CreateStaff') &&
-        widget.role != 'superadmin') {
-      return;
-    }
-    Widget nextScreen;
-    switch (screenPath) {
-      case 'Dashboard':
-        nextScreen = DashboardScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-          onLogout: () => Navigator.pop(context),
-        );
-        break;
-      case 'Forms':
-        nextScreen = ManageFormsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'CreateStaff':
-        nextScreen = CreateStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'Applicants':
-        nextScreen = ApplicantsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'FormBuilder':
-        if (widget.role != 'superadmin') return;
-        nextScreen = FormBuilderScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'AuditLogs':
-        if (widget.role != 'superadmin') return;
-        nextScreen = AuditLogsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      default:
-        return;
-    }
-
-    Navigator.of(context).pushReplacement(ContentFadeRoute(page: nextScreen));
-  }
 }

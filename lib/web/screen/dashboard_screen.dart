@@ -11,7 +11,9 @@ import 'package:sappiire/web/screen/form_builder_screen.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
-import 'package:sappiire/web/widget/web_shell.dart';
+import 'package:sappiire/web/utils/web_navigator.dart';
+import 'package:sappiire/web/widgets/web_shell.dart';
+import 'package:sappiire/web/controllers/dashboard_controller.dart';
 
 class DashboardScreen extends StatefulWidget {
   final String cswd_id;
@@ -32,257 +34,59 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  Map<String, int> _countsByFormType = {};
-  int _totalCount = 0;
-  List<String> _availableFormTypes = [];
-  bool _isLoadingCounts = true;
+  final _controller = DashboardController();
 
-  String _selectedFormType = 'All';
-  String _formSearchQuery = '';
-  bool _showFormListView = false;
-
-  List<ChartConfig> _charts = [];
-  bool _isLoadingCharts = false;
-
-  bool _isLoadingInsights = true;
-  Map<String, int> _staffWorkload = {};
-  Map<String, int> _genderRatio = {};
-  Map<String, int> _ageBrackets = {};
-  Map<String, int> _barangayVolume = {};
-  String _planningScopeFormType = 'All';
-
-  final TextEditingController _clientSearchController = TextEditingController();
-  bool _isSearchingClients = false;
-  bool _isLoadingClientHistory = false;
-  List<Map<String, String>> _clientSearchResults = [];
-  String? _selectedClientId;
-  String _selectedClientName = '';
-  List<Map<String, dynamic>> _selectedClientHistory = [];
-  Map<String, String> _selectedClientFlags = {};
-
-  final _analyticsService = DashboardAnalyticsService();
-  final _templateService = FormTemplateService();
-  final _chartBuilder = AutoChartBuilder();
+  Map<String, int> get _countsByFormType => _controller.countsByFormType;
+  int get _totalCount => _controller.totalCount;
+  List<String> get _availableFormTypes => _controller.availableFormTypes;
+  bool get _isLoadingCounts => _controller.isLoadingCounts;
+  String get _selectedFormType => _controller.selectedFormType;
+  List<ChartConfig> get _charts => _controller.charts;
+  bool get _isLoadingCharts => _controller.isLoadingCharts;
+  bool get _isLoadingInsights => _controller.isLoadingInsights;
+  Map<String, int> get _staffWorkload => _controller.staffWorkload;
+  Map<String, int> get _genderRatio => _controller.genderRatio;
+  Map<String, int> get _ageBrackets => _controller.ageBrackets;
+  Map<String, int> get _barangayVolume => _controller.barangayVolume;
+  String get _planningScopeFormType => _controller.planningScopeFormType;
+  TextEditingController get _clientSearchController =>
+      _controller.clientSearchController;
+  bool get _isSearchingClients => _controller.isSearchingClients;
+  bool get _isLoadingClientHistory => _controller.isLoadingClientHistory;
+  List<Map<String, String>> get _clientSearchResults =>
+      _controller.clientSearchResults;
+  String? get _selectedClientId => _controller.selectedClientId;
+  String get _selectedClientName => _controller.selectedClientName;
+  List<Map<String, dynamic>> get _selectedClientHistory =>
+      _controller.selectedClientHistory;
+  Map<String, String> get _selectedClientFlags => _controller.selectedClientFlags;
 
   @override
   void initState() {
     super.initState();
-    _analyticsService.setStaffId(widget.cswd_id);
+    _controller.setStaffId(widget.cswd_id);
     _loadSummary();
   }
 
   @override
   void dispose() {
-    _clientSearchController.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
-  Future<void> _loadSummary() async {
-    setState(() => _isLoadingCounts = true);
-    try {
-      final counts = await _analyticsService.fetchCountsByFormType();
-      final types = counts.keys.toList()..sort();
+  Future<void> _loadSummary() => _controller.loadSummary();
 
-      if (!mounted) {
-        return;
-      }
+  Future<void> _loadOperationalInsights() => _controller.loadOperationalInsights();
 
-      setState(() {
-        _countsByFormType = counts;
-        _totalCount = counts.values.fold(0, (a, b) => a + b);
-        _availableFormTypes = types;
-        _isLoadingCounts = false;
-      });
+  Future<void> _loadPlanningInsights(String formType) =>
+      _controller.loadPlanningInsights(formType);
 
-      await Future.wait([
-        _loadOperationalInsights(),
-        _loadPlanningInsights('All'),
-        _loadChartsFor('All'),
-      ]);
-    } catch (e) {
-      debugPrint('_loadSummary error: $e');
-      if (!mounted) {
-        return;
-      }
-      setState(() => _isLoadingCounts = false);
-    }
-  }
+  Future<void> _loadChartsFor(String formType) => _controller.loadChartsFor(formType);
 
-  Future<void> _loadOperationalInsights() async {
-    try {
-      final workload = await _analyticsService.fetchStaffWorkloadDistribution();
+  Future<void> _searchClients() => _controller.searchClients();
 
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _staffWorkload = workload;
-      });
-    } catch (e) {
-      debugPrint('_loadOperationalInsights error: $e');
-    }
-  }
-
-  Future<void> _loadPlanningInsights(String formType) async {
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      _isLoadingInsights = true;
-      _planningScopeFormType = formType;
-    });
-
-    try {
-      final scopedForm = formType == 'All' ? 'All' : formType;
-      final results = await Future.wait([
-        _analyticsService.fetchGenderRatio(formType: scopedForm),
-        _analyticsService.fetchAgeBracketDistribution(formType: scopedForm),
-        _analyticsService.fetchBarangayVolume(formType: scopedForm),
-      ]);
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _genderRatio = results[0] as Map<String, int>;
-        _ageBrackets = results[1] as Map<String, int>;
-        _barangayVolume = results[2] as Map<String, int>;
-        _isLoadingInsights = false;
-      });
-    } catch (e) {
-      debugPrint('_loadPlanningInsights error: $e');
-      if (!mounted) {
-        return;
-      }
-      setState(() => _isLoadingInsights = false);
-    }
-  }
-
-  Future<void> _loadChartsFor(String formType) async {
-    final planningFuture = _loadPlanningInsights(formType);
-
-    setState(() {
-      _selectedFormType = formType;
-      _isLoadingCharts = true;
-      _charts = [];
-    });
-
-    if (formType == 'All') {
-      if (!mounted) {
-        return;
-      }
-      setState(() => _isLoadingCharts = false);
-      await planningFuture;
-      return;
-    }
-
-    try {
-      final templates = await _templateService.fetchActiveTemplates();
-      final matched = templates.where((t) => t.formName == formType);
-      final template = matched.isEmpty ? null : matched.first;
-
-      if (template == null) {
-        if (!mounted) {
-          return;
-        }
-        setState(() => _isLoadingCharts = false);
-        return;
-      }
-
-      final charts = await _chartBuilder.buildCharts(
-        template: template,
-        formType: formType,
-      );
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _charts = charts;
-        _isLoadingCharts = false;
-      });
-
-      await planningFuture;
-    } catch (e) {
-      debugPrint('_loadChartsFor error: $e');
-      if (!mounted) {
-        return;
-      }
-      setState(() => _isLoadingCharts = false);
-      await planningFuture;
-    }
-  }
-
-  Future<void> _searchClients() async {
-    final query = _clientSearchController.text.trim();
-    if (query.isEmpty) {
-      setState(() {
-        _clientSearchResults = [];
-      });
-      return;
-    }
-
-    setState(() => _isSearchingClients = true);
-    try {
-      final results = await _analyticsService.searchClientsByName(query);
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _clientSearchResults = results;
-        _isSearchingClients = false;
-      });
-    } catch (e) {
-      debugPrint('_searchClients error: $e');
-      if (!mounted) {
-        return;
-      }
-      setState(() => _isSearchingClients = false);
-    }
-  }
-
-  Future<void> _selectClient(Map<String, String> client) async {
-    final clientId = client['user_id'] ?? '';
-    if (clientId.isEmpty) {
-      return;
-    }
-
-    setState(() {
-      _selectedClientId = clientId;
-      _selectedClientName = client['name'] ?? '';
-      _selectedClientHistory = [];
-      _selectedClientFlags = {};
-      _isLoadingClientHistory = true;
-    });
-
-    try {
-      final results = await Future.wait([
-        _analyticsService.fetchClientHistory(clientId),
-        _analyticsService.fetchEligibilityFrequencyFlags(clientId),
-      ]);
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _selectedClientHistory = results[0] as List<Map<String, dynamic>>;
-        _selectedClientFlags = results[1] as Map<String, String>;
-        _isLoadingClientHistory = false;
-      });
-    } catch (e) {
-      debugPrint('_selectClient error: $e');
-      if (!mounted) {
-        return;
-      }
-      setState(() => _isLoadingClientHistory = false);
-    }
-  }
+  Future<void> _selectClient(Map<String, String> client) =>
+      _controller.selectClient(client);
 
   @override
   Widget build(BuildContext context) {
@@ -294,10 +98,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
       cswd_id: widget.cswd_id,
       displayName: widget.displayName,
       onLogout: widget.onLogout,
-      onNavigate: (path) => _navigateToScreen(context, path),
-      child: _isLoadingCounts
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
+      onNavigate: (path) => WebNavigator.go(
+        context,
+        path,
+        cswdId: widget.cswd_id,
+        role: widget.role,
+        displayName: widget.displayName,
+        onLogout: widget.onLogout,
+      ),
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          return _isLoadingCounts
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
               padding: const EdgeInsets.all(28),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -307,7 +121,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _buildChartsSection(),
                 ],
               ),
-            ),
+            );
+        },
+      ),
     );
   }
 
@@ -691,14 +507,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Map<String, int> _groupHistoryByFormType(List<Map<String, dynamic>> history) {
-    final grouped = <String, int>{};
-    for (final item in history) {
-      final key = item['form_type']?.toString().trim() ?? 'Unknown';
-      grouped[key] = (grouped[key] ?? 0) + 1;
-    }
-    return grouped;
-  }
+  Map<String, int> _groupHistoryByFormType(List<Map<String, dynamic>> history) =>
+      _controller.groupHistoryByFormType(history);
 
   Widget _buildNoChartsPlaceholder() {
     return Container(
@@ -794,63 +604,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  void _navigateToScreen(BuildContext context, String screenPath) {
-    if ((screenPath == 'Staff' || screenPath == 'CreateStaff') &&
-        widget.role != 'superadmin') {
-      return;
-    }
-    Widget nextScreen;
-    switch (screenPath) {
-      case 'Forms':
-        nextScreen = ManageFormsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'Staff':
-        nextScreen = ManageStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'CreateStaff':
-        nextScreen = CreateStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'Applicants':
-        nextScreen = ApplicantsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'FormBuilder':
-        if (widget.role != 'superadmin') return;
-        nextScreen = FormBuilderScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'AuditLogs':
-        if (widget.role != 'superadmin') return;
-        nextScreen = AuditLogsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      default:
-        return;
-    }
-
-    Navigator.of(context).pushReplacement(ContentFadeRoute(page: nextScreen));
-  }
 }
 
 class _SummaryCard extends StatelessWidget {

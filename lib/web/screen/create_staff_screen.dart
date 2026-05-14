@@ -3,7 +3,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
-import 'package:sappiire/web/widget/web_shell.dart';
+import 'package:sappiire/web/widgets/web_shell.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/screen/dashboard_screen.dart';
 import 'package:sappiire/web/screen/manage_staff_screen.dart';
@@ -13,6 +13,7 @@ import 'package:sappiire/services/audit/audit_log_service.dart';
 import 'package:sappiire/services/auth/staff_admin_service.dart';
 import 'package:sappiire/services/email/staff_email_service.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
+import 'package:sappiire/web/utils/web_navigator.dart';
 
 class CreateStaffScreen extends StatefulWidget {
   final String role;
@@ -217,7 +218,14 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
       cswd_id: widget.cswd_id,
       displayName: widget.displayName,
       onLogout: () => Navigator.pop(context),
-      onNavigate: (screenPath) => _navigateToScreen(context, screenPath),
+      onNavigate: (screenPath) => WebNavigator.go(
+        context,
+        screenPath,
+        cswdId: widget.cswd_id,
+        role: widget.role,
+        displayName: widget.displayName,
+        onLogout: () => Navigator.pop(context),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(28),
         child: SingleChildScrollView(
@@ -238,7 +246,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                       border: Border.all(color: AppColors.cardBorder),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.04),
+                          color: Colors.black.withValues(alpha: 0.04),
                           blurRadius: 16,
                           offset: const Offset(0, 4),
                         ),
@@ -253,7 +261,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                               width: 44,
                               height: 44,
                               decoration: BoxDecoration(
-                                color: AppColors.highlight.withOpacity(0.12),
+                                color: AppColors.highlight.withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: const Icon(
@@ -294,10 +302,10 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                             vertical: 12,
                           ),
                           decoration: BoxDecoration(
-                            color: AppColors.highlight.withOpacity(0.08),
+                            color: AppColors.highlight.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: AppColors.highlight.withOpacity(0.25),
+                              color: AppColors.highlight.withValues(alpha: 0.25),
                             ),
                           ),
                           child: const Row(
@@ -547,55 +555,4 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
     );
   }
 
-  void _navigateToScreen(BuildContext context, String screenPath) {
-    if ((screenPath == 'Staff' || screenPath == 'CreateStaff') &&
-        widget.role != 'superadmin') {
-      return;
-    }
-    Widget nextScreen;
-    switch (screenPath) {
-      case 'Dashboard':
-        nextScreen = DashboardScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-          onLogout: () => Navigator.pop(context),
-        );
-        break;
-      case 'Forms':
-        nextScreen = ManageFormsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'Staff':
-        nextScreen = ManageStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'FormBuilder':
-        if (widget.role != 'superadmin') return;
-        nextScreen = FormBuilderScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'AuditLogs':
-        if (widget.role != 'superadmin') return;
-        nextScreen = AuditLogsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      default:
-        return;
-    }
-
-    Navigator.of(context).pushReplacement(ContentFadeRoute(page: nextScreen));
-  }
 }

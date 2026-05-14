@@ -1,4 +1,4 @@
-// lib/web/widget/web_shell.dart
+// lib/web/widgets/web_shell.dart
 // Wrap every post-login screen with this to get consistent layout + topbar
 
 import 'package:flutter/material.dart';
@@ -6,7 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/web/screen/change_password_screen.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
-import 'package:sappiire/web/widget/side_menu.dart';
+import 'package:sappiire/web/widgets/side_menu.dart';
 
 class WebShell extends StatelessWidget {
   final String activePath;

@@ -3,8 +3,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/services/audit/audit_log_service.dart';
-import 'package:sappiire/web/widget/web_shell.dart';
+import 'package:sappiire/web/widgets/web_shell.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
+import 'package:sappiire/web/utils/web_navigator.dart';
 import 'package:sappiire/web/screen/web_login_screen.dart';
 import 'package:sappiire/web/screen/dashboard_screen.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
@@ -300,7 +301,14 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
       cswd_id: widget.cswd_id,
       displayName: widget.displayName,
       onLogout: _handleLogout,
-      onNavigate: (path) => _navigateToScreen(context, path),
+      onNavigate: (path) => WebNavigator.go(
+        context,
+        path,
+        cswdId: widget.cswd_id,
+        role: widget.role,
+        displayName: widget.displayName,
+        onLogout: _handleLogout,
+      ),
       child: Padding(
         padding: const EdgeInsets.all(28),
         child: Column(
@@ -970,57 +978,6 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     );
   }
 
-  void _navigateToScreen(BuildContext context, String path) {
-    Widget next;
-    switch (path) {
-      case 'Dashboard':
-        next = DashboardScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-          onLogout: _handleLogout,
-        );
-        break;
-      case 'Forms':
-        next = ManageFormsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'Staff':
-        next = ManageStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'CreateStaff':
-        next = CreateStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'Applicants':
-        next = ApplicantsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'FormBuilder':
-        next = FormBuilderScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      default:
-        return;
-    }
-    Navigator.of(context).pushReplacement(ContentFadeRoute(page: next));
-  }
 }
 
 class _TableHeader extends StatelessWidget {

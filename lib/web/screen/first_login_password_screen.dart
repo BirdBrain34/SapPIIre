@@ -128,7 +128,7 @@ class _FirstLoginPasswordScreenState extends State<FirstLoginPasswordScreen> {
               color: const Color(0xFF152257),
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 40),
+                BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 40),
               ],
             ),
             child: Column(
@@ -140,7 +140,7 @@ class _FirstLoginPasswordScreenState extends State<FirstLoginPasswordScreen> {
                   height: 64,
                   margin: const EdgeInsets.only(bottom: 24),
                   decoration: BoxDecoration(
-                    color: AppColors.highlight.withOpacity(0.15),
+                    color: AppColors.highlight.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: const Icon(
@@ -162,7 +162,7 @@ class _FirstLoginPasswordScreenState extends State<FirstLoginPasswordScreen> {
                   'Welcome, ${widget.displayName.isNotEmpty ? widget.displayName : widget.username}. '
                   'You must set a new password before accessing the portal.',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.65),
+                    color: Colors.white.withValues(alpha: 0.65),
                     fontSize: 13,
                     height: 1.5,
                   ),
@@ -171,9 +171,9 @@ class _FirstLoginPasswordScreenState extends State<FirstLoginPasswordScreen> {
                   margin: const EdgeInsets.symmetric(vertical: 20),
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: Colors.amber.withOpacity(0.08),
+                    color: Colors.amber.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                    border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -204,10 +204,10 @@ class _FirstLoginPasswordScreenState extends State<FirstLoginPasswordScreen> {
                     padding: const EdgeInsets.all(12),
                     margin: const EdgeInsets.only(bottom: 16),
                     decoration: BoxDecoration(
-                      color: AppColors.dangerRed.withOpacity(0.1),
+                      color: AppColors.dangerRed.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color: AppColors.dangerRed.withOpacity(0.4),
+                        color: AppColors.dangerRed.withValues(alpha: 0.4),
                       ),
                     ),
                     child: Text(

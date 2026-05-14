@@ -9,7 +9,8 @@ import 'package:sappiire/web/screen/manage_staff_screen.dart';
 import 'package:sappiire/web/screen/audit_logs_screen.dart';
 import 'package:sappiire/services/auth/web_auth_service.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
-import 'package:sappiire/web/widget/web_shell.dart';
+import 'package:sappiire/web/utils/web_navigator.dart';
+import 'package:sappiire/web/widgets/web_shell.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   final String cswd_id;
@@ -113,7 +114,14 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       cswd_id: widget.cswd_id,
       displayName: widget.displayName,
       onLogout: () => Navigator.pop(context),
-      onNavigate: (path) => _handleNavigation(context, path),
+      onNavigate: (path) => WebNavigator.go(
+        context,
+        path,
+        cswdId: widget.cswd_id,
+        role: widget.role,
+        displayName: widget.displayName,
+        onLogout: () => Navigator.pop(context),
+      ),
       child: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(32),
@@ -130,7 +138,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                     border: Border.all(color: AppColors.cardBorder),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.06),
+                        color: Colors.black.withValues(alpha: 0.06),
                         blurRadius: 16,
                         offset: const Offset(0, 4),
                       ),
@@ -144,7 +152,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: AppColors.highlight.withOpacity(0.1),
+                              color: AppColors.highlight.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Icon(
@@ -182,10 +190,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                         Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: AppColors.successGreen.withOpacity(0.1),
+                            color: AppColors.successGreen.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: AppColors.successGreen.withOpacity(0.4),
+                              color: AppColors.successGreen.withValues(alpha: 0.4),
                             ),
                           ),
                           child: const Row(
@@ -212,10 +220,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                         Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: AppColors.dangerRed.withOpacity(0.08),
+                            color: AppColors.dangerRed.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: AppColors.dangerRed.withOpacity(0.3),
+                              color: AppColors.dangerRed.withValues(alpha: 0.3),
                             ),
                           ),
                           child: Row(
@@ -323,10 +331,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: AppColors.warningAmber.withOpacity(0.08),
+                    color: AppColors.warningAmber.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: AppColors.warningAmber.withOpacity(0.3),
+                      color: AppColors.warningAmber.withValues(alpha: 0.3),
                     ),
                   ),
                   child: const Row(
@@ -433,70 +441,4 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     );
   }
 
-  void _handleNavigation(BuildContext context, String path) {
-    if ((path == 'Staff' || path == 'CreateStaff') &&
-        widget.role != 'superadmin') {
-      return;
-    }
-
-    Widget next;
-    switch (path) {
-      case 'Dashboard':
-        next = DashboardScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-          onLogout: () => Navigator.pop(context),
-        );
-        break;
-      case 'Forms':
-        next = ManageFormsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'Staff':
-        next = ManageStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'CreateStaff':
-        next = CreateStaffScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'Applicants':
-        next = ApplicantsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'FormBuilder':
-        if (widget.role != 'superadmin') return;
-        next = FormBuilderScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      case 'AuditLogs':
-        if (widget.role != 'superadmin') return;
-        next = AuditLogsScreen(
-          cswd_id: widget.cswd_id,
-          role: widget.role,
-          displayName: widget.displayName,
-        );
-        break;
-      default:
-        return;
-    }
-
-    Navigator.of(context).pushReplacement(ContentFadeRoute(page: next));
-  }
 }
