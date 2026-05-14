@@ -2,8 +2,8 @@
 //
 // Accessed via the /display?station=<station_id> route.
 // Shows a full-screen, high-contrast UI with:
-//   • A large QR code when the worker has an active session
-//   • A "Welcome / Standby" state otherwise
+//   â€¢ A large QR code when the worker has an active session
+//   â€¢ A "Welcome / Standby" state otherwise
 //
 // Uses Supabase Realtime via DisplaySessionService to stay in sync
 // with the Worker Dashboard.
@@ -79,7 +79,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
     super.dispose();
   }
 
-  // ── Build ─────────────────────────────────────────────────────────
+  // â”€â”€ Build â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -100,7 +100,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
     );
   }
 
-  // ── Standby / Welcome ─────────────────────────────────────────────
+  // â”€â”€ Standby / Welcome â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Widget _buildStandbyView() {
     return Center(
       child: Column(
@@ -117,7 +117,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
               width: 120,
               height: 120,
               decoration: BoxDecoration(
-                color: AppColors.highlight.withOpacity(0.15),
+                color: AppColors.highlight.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(30),
               ),
               child: const Icon(
@@ -141,7 +141,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
           Text(
             'Please wait for the staff to start your session.',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.6),
+              color: Colors.white.withValues(alpha: 0.6),
               fontSize: 20,
               fontWeight: FontWeight.w300,
             ),
@@ -151,14 +151,14 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.08),
+              color: Colors.white.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(30),
-              border: Border.all(color: Colors.white.withOpacity(0.12)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
             ),
             child: Text(
               'Station: ${widget.stationId}',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.5),
+                color: Colors.white.withValues(alpha: 0.5),
                 fontSize: 14,
                 letterSpacing: 1.0,
               ),
@@ -169,7 +169,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
     );
   }
 
-  // ── Active session — show QR ──────────────────────────────────────
+  // â”€â”€ Active session â€” show QR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Widget _buildActiveView() {
     return Center(
       child: Column(
@@ -179,7 +179,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             decoration: BoxDecoration(
-              color: AppColors.successGreen.withOpacity(0.2),
+              color: AppColors.successGreen.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Row(
@@ -222,13 +222,13 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
           Text(
             'Scan the QR code below with the SapPIIre app',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.6),
+              color: Colors.white.withValues(alpha: 0.6),
               fontSize: 16,
             ),
           ),
           const SizedBox(height: 40),
 
-          // ── QR code card ──────────────────────────────────────────
+          // â”€â”€ QR code card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           Container(
             padding: const EdgeInsets.all(28),
             decoration: BoxDecoration(
@@ -236,7 +236,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
               borderRadius: BorderRadius.circular(28),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.highlight.withOpacity(0.25),
+                  color: AppColors.highlight.withValues(alpha: 0.25),
                   blurRadius: 60,
                   spreadRadius: 5,
                 ),
@@ -262,7 +262,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
           Text(
             'Session: ${_sessionId!.split('-').first}...',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.35),
+              color: Colors.white.withValues(alpha: 0.35),
               fontSize: 13,
             ),
           ),
@@ -292,7 +292,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
           width: 28,
           height: 28,
           decoration: BoxDecoration(
-            color: AppColors.highlight.withOpacity(0.2),
+            color: AppColors.highlight.withValues(alpha: 0.2),
             shape: BoxShape.circle,
           ),
           alignment: Alignment.center,
@@ -309,7 +309,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
         Text(
           text,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.5),
+            color: Colors.white.withValues(alpha: 0.5),
             fontSize: 14,
           ),
         ),

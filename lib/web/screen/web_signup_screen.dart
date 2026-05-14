@@ -1,5 +1,5 @@
 // lib/web/screen/web_signup_screen.dart
-// Web staff signup screen — inserts into staff_accounts and staff_profiles
+// Web staff signup screen â€” inserts into staff_accounts and staff_profiles
 
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
@@ -137,7 +137,7 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
 
     return Row(
       children: [
-        // ── Left Panel: Branding ──────────────────────────────────
+        // â”€â”€ Left Panel: Branding â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         Expanded(
           child: Container(
             decoration: const BoxDecoration(
@@ -186,7 +186,7 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
           ),
         ),
 
-        // ── Right Panel: Registration Form ────────────────────────
+        // â”€â”€ Right Panel: Registration Form â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         Expanded(
           child: Container(
             color: Color(0xFF152257),
@@ -580,9 +580,9 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.lightBlue.withOpacity(0.3)),
+        border: Border.all(color: AppColors.lightBlue.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,

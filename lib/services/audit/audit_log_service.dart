@@ -114,11 +114,11 @@ class AuditLogService {
         query = query.lte('created_at', end.toIso8601String());
       }
 
-      final response = await query
+        final response = await query
           .order('created_at', ascending: false)
           .range(offset, offset + limit - 1);
 
-      return List<Map<String, dynamic>>.from(response);
+        return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       if (kDebugMode) {
         debugPrint('AuditLogService.fetchLogs failed: $e');
@@ -165,8 +165,8 @@ class AuditLogService {
         query = query.lte('created_at', end.toIso8601String());
       }
 
-      final response = await query;
-      return (response as List).length;
+      final response = await query.count(CountOption.exact);
+      return response.count ?? 0;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('AuditLogService.fetchCount failed: $e');
