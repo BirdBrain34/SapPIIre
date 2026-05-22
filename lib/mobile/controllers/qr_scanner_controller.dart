@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sappiire/services/supabase_service.dart';
 
+/// Coordinates QR transmission status updates and popup metadata lookup.
 class QrScannerController extends ChangeNotifier {
   final Map<String, dynamic>? transmitData;
   final String? userId;
@@ -28,7 +29,7 @@ class QrScannerController extends ChangeNotifier {
       final row = await supabaseService!.fetchTemplatePopupConfig(templateId!);
       return row;
     } catch (e) {
-      debugPrint('Popup fetch error: $e');
+      debugPrint('[QrScannerController/fetchPopupConfig] Error: $e');
       return null;
     }
   }
@@ -58,7 +59,7 @@ class QrScannerController extends ChangeNotifier {
         userId: userId,
       );
     } catch (e) {
-      debugPrint('Transmission error: $e');
+      debugPrint('[QrScannerController/performTransmission] Error: $e');
       success = false;
     }
 

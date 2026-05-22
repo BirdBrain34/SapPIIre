@@ -3,10 +3,9 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
-// Reusable signature helper for converting signature points to/from base64
-// Usage: Call SignatureHelper.convertToBase64() before saving to database
+/// Converts captured signature strokes into a PNG data URL for storage.
 class SignatureHelper {
-  // Convert signature points to base64 PNG string for database storage
+  // Convert the drawn points into a base64 PNG payload.
   static Future<String?> convertToBase64(List<Offset?> points) async {
     if (points.isEmpty) return null;
     
@@ -14,11 +13,11 @@ class SignatureHelper {
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
       
-      // Draw white background (300x200 matches SignatureDialog size)
+      // Render on a white background so the saved image is self-contained.
       final paint = Paint()..color = Colors.white;
       canvas.drawRect(const Rect.fromLTWH(0, 0, 300, 200), paint);
       
-      // Draw signature strokes
+      // Draw the signature strokes onto the canvas.
       final signaturePaint = Paint()
         ..color = Colors.black
         ..strokeWidth = 3.0
@@ -42,7 +41,7 @@ class SignatureHelper {
       
       return 'data:image/png;base64,$base64String';
     } catch (e) {
-      debugPrint('Signature conversion error: $e');
+      debugPrint('[SignatureHelper/convertToBase64] Error: $e');
       return null;
     }
   }

@@ -237,7 +237,7 @@ class ApplicantsController {
   }
 
   String getFormattedDate(String? iso) {
-    if (iso == null) return '—';
+    if (iso == null) return '-';
     try {
       final dt = DateTime.parse(iso).toLocal();
       return '${dt.day.toString().padLeft(2, '0')}/'

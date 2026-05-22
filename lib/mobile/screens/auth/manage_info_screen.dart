@@ -1,6 +1,5 @@
-// Mobile Manage Info Screen
-// Loads templates + profile, renders dynamic form, saves to Supabase,
-// and transmits selected fields to the web portal via QR.
+/// Mobile manage-info screen for loading profiles, editing dynamic forms,
+/// and transmitting selected fields to the web portal through QR.
 
 import 'dart:async';
 import 'dart:convert';
@@ -43,10 +42,10 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   ChangeNotifier? _listenedFormController;
   VoidCallback? _formControllerListener;
 
-  // Controls whether the form intro card is shown
+  // Track whether the intro card is still visible.
   bool _showFormIntro = true;
 
-  // Tracks which required fields are still empty — used for red highlight
+  // Track which required fields are still empty so they can be highlighted.
   Set<String> _highlightedMissingFields = {};
 
   @override
@@ -82,7 +81,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       if (!mounted) return;
       final nextUnsaved = _currentFormFingerprint() != _savedFormFingerprint;
       if (nextUnsaved != _hasUnsavedChanges) {
-        debugPrint('ManageInfoScreen: unsaved state changed -> $nextUnsaved');
+        debugPrint('[ManageInfoScreen/_attachFormControllerListener] Action: Unsaved state changed Value: $nextUnsaved');
         setState(() => _hasUnsavedChanges = nextUnsaved);
       }
     };
@@ -112,7 +111,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
   void _markCurrentFormAsSaved() {
     _savedFormFingerprint = _currentFormFingerprint();
-    debugPrint('ManageInfoScreen: form baseline updated (saved/discarded).');
+    debugPrint('[ManageInfoScreen/_markCurrentFormAsSaved] Action: Form baseline updated');
     if (!mounted) {
       _hasUnsavedChanges = false;
       return;
@@ -125,7 +124,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   bool _hasPendingUnsavedChanges() {
     final hasUnsaved = _currentFormFingerprint() != _savedFormFingerprint;
     if (mounted && hasUnsaved != _hasUnsavedChanges) {
-      debugPrint('ManageInfoScreen: hasPendingUnsavedChanges -> $hasUnsaved');
+      debugPrint('[ManageInfoScreen/_hasPendingUnsavedChanges] Action: Pending unsaved Value: $hasUnsaved');
       setState(() => _hasUnsavedChanges = hasUnsaved);
     }
     return hasUnsaved;
@@ -142,26 +141,26 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     var attempt = 0;
     while (_hasPendingUnsavedChanges()) {
       attempt++;
-      debugPrint('ManageInfoScreen: unsaved dialog attempt #$attempt');
+      debugPrint('[ManageInfoScreen/_resolveUnsavedChangesIfAny] Action: Unsaved dialog attempt Count: $attempt');
 
       final result = await _showUnsavedChangesDialog();
       if (!mounted) return false;
 
       if (result != true) {
-        debugPrint('ManageInfoScreen: unsaved dialog action=discard');
+        debugPrint('[ManageInfoScreen/_resolveUnsavedChangesIfAny] Action: Unsaved dialog result Discard');
         await _discardPendingChangesAndRefresh();
       } else {
-        debugPrint('ManageInfoScreen: unsaved dialog action=save');
+        debugPrint('[ManageInfoScreen/_resolveUnsavedChangesIfAny] Action: Unsaved dialog result Save');
       }
 
       final stillUnsaved = _hasPendingUnsavedChanges();
-      debugPrint('ManageInfoScreen: post-action pending unsaved -> $stillUnsaved');
+      debugPrint('[ManageInfoScreen/_resolveUnsavedChangesIfAny] Action: Pending unsaved after dialog Value: $stillUnsaved');
       if (!stillUnsaved) return true;
 
-      debugPrint('ManageInfoScreen: pending changes still exist, re-opening unsaved dialog');
+      debugPrint('[ManageInfoScreen/_resolveUnsavedChangesIfAny] Action: Reopen unsaved dialog');
     }
 
-    debugPrint('ManageInfoScreen: no pending unsaved changes, continue flow');
+    debugPrint('[ManageInfoScreen/_resolveUnsavedChangesIfAny] Action: No pending unsaved changes');
     return true;
   }
 
@@ -181,7 +180,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   Future<void> _discardPendingChangesAndRefresh() async {
     final preserveShowFormIntro = _showFormIntro;
     final preserveNavIndex = _currentNavIndex;
-    debugPrint('ManageInfoScreen: discarding changes, refreshing latest saved data');
+    debugPrint('[ManageInfoScreen/_discardPendingChangesAndRefresh] Action: Refresh latest saved data');
 
     await _controller.loadAll(forceRefresh: true);
     _attachFormControllerListener();
@@ -209,47 +208,39 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       final changeType = notification.changeType;
       final message = notification.changeSummary;
 
-      // --- Classify the change type into display properties ---
-
-      // Field-level changes: a field inside a live form was modified
+      // Classify the notification so the UI can choose the right icon and color.
       final isFieldChange = changeType == 'field_added'
           || changeType == 'field_updated'
           || changeType == 'field_deleted';
 
-      // Template-level new/push: a brand-new form arrived on mobile
+      // Treat pushed or added templates as new form notifications.
       final isNewForm = changeType == 'pushed_to_mobile'
           || changeType == 'added';
 
-      // Template-level removal
+      // Treat archived or deleted templates as removal notifications.
       final isRemoval = changeType == 'archived'
           || changeType == 'deleted';
 
-      // --- Choose icon ---
       final IconData notifIcon;
       if (isFieldChange) {
-        notifIcon = Icons.edit_note_rounded;        // pencil-on-lines for field edits
+        notifIcon = Icons.edit_note_rounded;
       } else if (isNewForm) {
-        notifIcon = Icons.new_releases_outlined;    // star-burst for new forms
+        notifIcon = Icons.new_releases_outlined;
       } else if (isRemoval) {
-        notifIcon = Icons.remove_circle_outline;    // minus-circle for removals
+        notifIcon = Icons.remove_circle_outline;
       } else {
-        notifIcon = Icons.update_outlined;          // generic update
+        notifIcon = Icons.update_outlined;
       }
 
-      // --- Choose background colour ---
-      // Field changes  -> amber-tinted blue  (0xFF1565C0 tinted)
-      // New form       -> deep navy blue     (0xFF0D47A1)
-      // Removal        -> muted warning red  (0xFFB71C1C)
-      // Other update   -> standard blue      (0xFF1565C0)
       final Color bgColor;
       if (isFieldChange) {
-        bgColor = const Color(0xFF0277BD);   // lighter blue - something changed inside
+        bgColor = const Color(0xFF0277BD);
       } else if (isNewForm) {
-        bgColor = const Color(0xFF0D47A1);   // deep navy - new thing arrived
+        bgColor = const Color(0xFF0D47A1);
       } else if (isRemoval) {
-        bgColor = const Color(0xFFC62828);   // dark red - something gone
+        bgColor = const Color(0xFFC62828);
       } else {
-        bgColor = const Color(0xFF1565C0);   // standard update blue
+        bgColor = const Color(0xFF1565C0);
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -302,11 +293,11 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       barrierDismissible: false,
       builder: (ctx) => UnsavedChangesDialog(
         onDiscard: () {
-          debugPrint('ManageInfoScreen: unsaved dialog button tapped -> Discard');
+            debugPrint('[ManageInfoScreen/_showUnsavedChangesDialog] Action: Unsaved dialog button Discard');
           Navigator.pop(ctx, false);
         },
         onSaveAndContinue: () async {
-          debugPrint('ManageInfoScreen: unsaved dialog button tapped -> Save & Continue');
+            debugPrint('[ManageInfoScreen/_showUnsavedChangesDialog] Action: Unsaved dialog button SaveAndContinue');
           await _saveProfile();
           if (!ctx.mounted) return;
           if (!_hasUnsavedChanges) {
@@ -317,7 +308,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     );
   }
 
-  // ── Required fields check ─────────────────────────────────
+  // Required fields check.
   List<FormFieldModel> _getMissingRequiredFields() {
     final template = _controller.selectedTemplate;
     final fc = _controller.formController;
@@ -499,7 +490,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     try {
       await _flushPendingInput();
       final hasPendingUnsaved = _hasPendingUnsavedChanges();
-      debugPrint('ManageInfoScreen: logout requested, hasPendingUnsaved=$hasPendingUnsaved');
+      debugPrint('[ManageInfoScreen/_handleLogout] Action: Logout requested HasPendingUnsaved=$hasPendingUnsaved');
 
       // Step A: If unsaved changes exist, resolve them first.
       // The popup is ALWAYS shown for unsaved changes, no matter how many times
@@ -513,9 +504,9 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       }
 
       // Step B: No unsaved changes → show the logout confirmation dialog.
-      debugPrint('ManageInfoScreen: showing logout confirmation dialog');
+      debugPrint('[ManageInfoScreen/_handleLogout] Action: Show logout confirmation dialog');
       final confirmed = await _showLogoutConfirmationDialog();
-      debugPrint('ManageInfoScreen: logout confirmation result=$confirmed');
+      debugPrint('[ManageInfoScreen/_handleLogout] Action: Logout confirmation result=$confirmed');
 
       if (confirmed != true || !mounted) return;
       await _supabaseService.signOutCurrentUser();

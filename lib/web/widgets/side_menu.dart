@@ -287,7 +287,7 @@ class SideMenu extends StatelessWidget {
           break;
       }
     } catch (e) {
-      debugPrint("Navigation error: $e");
+      debugPrint('[SideMenu/navigateTo] Error: $e');
     }
   }
 }

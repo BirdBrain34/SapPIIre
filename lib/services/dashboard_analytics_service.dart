@@ -58,7 +58,7 @@ class DashboardAnalyticsService {
 
       return counts;
     } catch (e) {
-      debugPrint('fetchCountsByFormType error: $e');
+      debugPrint('[DashboardAnalyticsService/fetchCountsByFormType] Error: $e');
       return {};
     }
   }
@@ -114,7 +114,7 @@ class DashboardAnalyticsService {
 
       return SlaComplianceSummary(compliant: compliant, breached: breached);
     } catch (e) {
-      debugPrint('fetchCitizenCharterCompliance error: $e');
+      debugPrint('[DashboardAnalyticsService/fetchCitizenCharterCompliance] Error: $e');
       return const SlaComplianceSummary(compliant: 0, breached: 0);
     }
   }
@@ -135,7 +135,7 @@ class DashboardAnalyticsService {
 
       return output;
     } catch (e) {
-      debugPrint('fetchPendingVsCompletedLoad error: $e');
+      debugPrint('[DashboardAnalyticsService/fetchPendingVsCompletedLoad] Error: $e');
       return {'Pending': 0, 'Completed': 0};
     }
   }
@@ -182,7 +182,7 @@ class DashboardAnalyticsService {
 
       return {for (final entry in sorted.take(topN)) entry.key: entry.value};
     } catch (e) {
-      debugPrint('fetchStaffWorkloadDistribution error: $e');
+      debugPrint('[DashboardAnalyticsService/fetchStaffWorkloadDistribution] Error: $e');
       return {};
     }
   }
@@ -245,7 +245,7 @@ class DashboardAnalyticsService {
 
       return displayNames;
     } catch (e) {
-      debugPrint('_fetchStaffDisplayNames error: $e');
+      debugPrint('[DashboardAnalyticsService/_fetchStaffDisplayNames] Error: $e');
       return {};
     }
   }
@@ -310,7 +310,7 @@ class DashboardAnalyticsService {
 
       return dist;
     } catch (e) {
-      debugPrint('fetchGenderRatio error: $e');
+      debugPrint('[DashboardAnalyticsService/fetchGenderRatio] Error: $e');
       return {};
     }
   }
@@ -337,7 +337,7 @@ class DashboardAnalyticsService {
 
       return dist;
     } catch (e) {
-      debugPrint('fetchAgeBracketDistribution error: $e');
+      debugPrint('[DashboardAnalyticsService/fetchAgeBracketDistribution] Error: $e');
       return {};
     }
   }
@@ -366,7 +366,7 @@ class DashboardAnalyticsService {
 
       return {for (final entry in sorted.take(topN)) entry.key: entry.value};
     } catch (e) {
-      debugPrint('fetchBarangayVolume error: $e');
+      debugPrint('[DashboardAnalyticsService/fetchBarangayVolume] Error: $e');
       return {};
     }
   }
@@ -376,7 +376,7 @@ class DashboardAnalyticsService {
     int topN = 6,
   }) async {
     if (_staffId == null) {
-      debugPrint('fetchIssueTrends: staffId not set');
+      debugPrint('[DashboardAnalyticsService/fetchIssueTrends] Action: staffId not set');
       return [];
     }
 
@@ -455,7 +455,7 @@ class DashboardAnalyticsService {
 
       return items.take(topN).toList();
     } catch (e) {
-      debugPrint('fetchIssueTrends error: $e');
+      debugPrint('[DashboardAnalyticsService/fetchIssueTrends] Error: $e');
       return [];
     }
   }
@@ -493,7 +493,7 @@ class DashboardAnalyticsService {
           .where((row) => (row['user_id'] ?? '').isNotEmpty)
           .toList();
     } catch (e) {
-      debugPrint('searchClientsByName error: $e');
+      debugPrint('[DashboardAnalyticsService/searchClientsByName] Error: $e');
       return [];
     }
   }
@@ -523,7 +523,7 @@ class DashboardAnalyticsService {
 
       return List<Map<String, dynamic>>.from(history);
     } catch (e) {
-      debugPrint('fetchClientHistory error: $e');
+      debugPrint('[DashboardAnalyticsService/fetchClientHistory] Error: $e');
       return [];
     }
   }
@@ -563,7 +563,7 @@ class DashboardAnalyticsService {
 
       return flags;
     } catch (e) {
-      debugPrint('fetchEligibilityFrequencyFlags error: $e');
+      debugPrint('[DashboardAnalyticsService/fetchEligibilityFrequencyFlags] Error: $e');
       return {};
     }
   }
@@ -576,7 +576,7 @@ class DashboardAnalyticsService {
     int topN = 10,
   }) async {
     if (_staffId == null) {
-      debugPrint('fetchFieldDistribution: staffId not set');
+      debugPrint('[DashboardAnalyticsService/fetchFieldDistribution] Action: staffId not set');
       return {};
     }
 
@@ -663,7 +663,7 @@ class DashboardAnalyticsService {
 
       return dist;
     } catch (e) {
-      debugPrint('fetchFieldDistribution error: $e');
+      debugPrint('[DashboardAnalyticsService/fetchFieldDistribution] Error: $e');
       return {};
     }
   }
@@ -706,7 +706,7 @@ class DashboardAnalyticsService {
     String fieldKey,
   ) async {
     if (_staffId == null) {
-      debugPrint('getFieldDistribution: staffId not set');
+      debugPrint('[DashboardAnalyticsService/getFieldDistribution] Action: staffId not set');
       return {};
     }
 
@@ -770,7 +770,7 @@ class DashboardAnalyticsService {
 
       return distribution;
     } catch (e) {
-      debugPrint('DashboardAnalyticsService.getFieldDistribution error: $e');
+      debugPrint('[DashboardAnalyticsService/getFieldDistribution] Error: $e');
       return {};
     }
   }
@@ -831,7 +831,7 @@ class DashboardAnalyticsService {
         ..sort((a, b) => a.key.compareTo(b.key));
       return {for (final entry in sortedEntries) entry.key: entry.value};
     } catch (e) {
-      debugPrint('DashboardAnalyticsService.fetchMonthlyTrend error: $e');
+      debugPrint('[DashboardAnalyticsService/fetchMonthlyTrend] Error: $e');
       return {};
     }
   }
@@ -916,7 +916,7 @@ class DashboardAnalyticsService {
 
       return '';
     } catch (e) {
-      debugPrint('_extractFieldValueByCanonicalKey error: $e');
+      debugPrint('[DashboardAnalyticsService/_extractFieldValueByCanonicalKey] Error: $e');
       return '';
     }
   }
@@ -1205,7 +1205,7 @@ class DashboardAnalyticsService {
     required String formType,
   }) async {
     if (_staffId == null) {
-      debugPrint('_fetchSubmissionDataRows: staffId not set');
+      debugPrint('[DashboardAnalyticsService/_fetchSubmissionDataRows] Action: staffId not set');
       return [];
     }
 
@@ -1241,7 +1241,7 @@ class DashboardAnalyticsService {
 
       return decryptedRows;
     } catch (e) {
-      debugPrint('_fetchSubmissionDataRows error: $e');
+      debugPrint('[DashboardAnalyticsService/_fetchSubmissionDataRows] Error: $e');
       return [];
     }
   }

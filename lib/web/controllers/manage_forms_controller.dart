@@ -138,7 +138,7 @@ class ManageFormsController {
       if (last.isEmpty && first.isEmpty) return null;
       return {'last': last, 'first': first, 'middle': mid};
     } catch (e) {
-      debugPrint('resolveNameViaCanonicalRpc error: $e');
+      debugPrint('[ManageFormsController/resolveNameViaCanonicalRpc] Error: $e');
       return null;
     }
   }
@@ -160,7 +160,7 @@ class ManageFormsController {
           }
         }
       } catch (e) {
-        debugPrint('embedApplicantName error: $e');
+        debugPrint('[ManageFormsController/embedApplicantName] Error: $e');
       }
     }
 

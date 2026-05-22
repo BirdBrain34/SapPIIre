@@ -1,18 +1,9 @@
-// Form Template Models
-// Data models for the dynamic form system.
-// These mirror the Supabase database schema for form_templates, form_sections, form_fields.
-//
-// Structure:
-// - FormTemplate: Top-level form definition
-// - FormSection: Groups related fields together
-// - FormFieldModel: Individual field definition with type, validation, options
-// - FieldOption: Dropdown/radio options
-// - FieldCondition: Conditional visibility rules
-//
-// Used by FormTemplateService to parse database responses and by
-// DynamicFormRenderer to build the UI.
+/// Data models for the dynamic form system.
+///
+/// These classes mirror the Supabase schema for form templates, sections,
+/// fields, options, and conditional rules.
 
-// Field type enum
+/// Field types supported by the dynamic form system.
 enum FormFieldType {
   text,
   paragraph,
@@ -74,8 +65,7 @@ enum FormFieldType {
     }
   }
 
-  /// Whether this type is a system/custom type that should not be changed
-  /// by the user in the form builder (e.g. familyTable, computed, signature).
+  /// Returns true for field types that the form builder should not edit.
   bool get isSystemType => const {
     FormFieldType.conditional,
     FormFieldType.membershipGroup,
@@ -85,7 +75,7 @@ enum FormFieldType {
     FormFieldType.unknown,
   }.contains(this);
 
-  /// Convert enum value back to the database string representation.
+  /// Convert the enum value back to the database string representation.
   String toDbString() {
     switch (this) {
       case FormFieldType.text:
@@ -128,7 +118,7 @@ enum FormFieldType {
   }
 }
 
-// Field option for dropdown/radio fields
+/// Option row for dropdown and radio fields.
 class FieldOption {
   final String optionId;
   final String value;
@@ -153,13 +143,13 @@ class FieldOption {
   );
 }
 
-// Field condition for conditional visibility
+/// Conditional visibility rule for a field.
 class FieldCondition {
   final String conditionId;
   final String fieldId;
   final String triggerFieldId;
   final String? triggerValue;
-  final String action; // 'show' | 'hide' | 'require'
+  final String action; // show | hide | require
 
   const FieldCondition({
     required this.conditionId,
@@ -178,27 +168,27 @@ class FieldCondition {
   );
 }
 
-// Form field definition
+/// Form field definition.
 class FormFieldModel {
   final String fieldId;
   final String templateId;
   final String? sectionId;
-  final String fieldName; // internal key, used as map key in form_data
-  final String fieldLabel; // display label
+  final String fieldName; // Internal key used as the form data map key.
+  final String fieldLabel; // Label shown to the user.
   final FormFieldType fieldType;
   final bool isRequired;
   final Map<String, dynamic>? validationRules;
   final String? defaultValue;
   final int fieldOrder;
   final String?
-  autofillSource; // e.g. 'lastname', 'address.barangay', 'socio.house_rent'
+  autofillSource; // Optional autofill source such as lastname or address.barangay.
   final String? canonicalFieldKey;
   final String? placeholder;
   final List<FieldOption> options;
   final List<FieldCondition> conditions;
   final String? parentFieldId;
   final List<FormFieldModel>
-  columns; // child column definitions for memberTable
+  columns; // Child column definitions for table-style fields.
 
   const FormFieldModel({
     required this.fieldId,
@@ -245,7 +235,7 @@ class FormFieldModel {
     parentFieldId: m['parent_field_id'] as String?,
   );
 
-  /// Display key for checkbox/sharing UI (avoids duplicating this across files).
+  /// Display key used by sharing checkboxes and field selection state.
   String get checkKey {
     if (fieldType == FormFieldType.familyTable) return 'Family Composition';
     if (fieldType == FormFieldType.signature) return 'Signature';
@@ -254,7 +244,7 @@ class FormFieldModel {
     return fieldName;
   }
 
-  /// Create a copy with selected fields overridden.
+  /// Return a copy of this field with selected values overridden.
   FormFieldModel copyWith({
     String? fieldId,
     String? templateId,
@@ -293,10 +283,10 @@ class FormFieldModel {
     );
   }
 
-  // Returns true if this field should be visible given current form values
+  // Return true when the current form values satisfy the visibility rules.
   bool isVisible(Map<String, dynamic> formValues) {
     if (conditions.isEmpty) return true;
-    // If ANY condition says "show", evaluate it
+    // Evaluate show conditions against the current form values.
     final showConditions = conditions.where((c) => c.action == 'show').toList();
     if (showConditions.isEmpty) return true;
 
@@ -318,7 +308,7 @@ class FormFieldModel {
   }
 }
 
-// Form section definition
+/// Form section definition.
 class FormSection {
   final String sectionId;
   final String templateId;
@@ -352,7 +342,7 @@ class FormSection {
   );
 }
 
-// Form template definition
+/// Form template definition.
 class FormTemplate {
   final String templateId;
   final String formName;
@@ -376,11 +366,11 @@ class FormTemplate {
     this.sections = const [],
   });
 
-  // Flat list of all fields across all sections, ordered by section then field
+  // Flatten the template sections into a single ordered field list.
   List<FormFieldModel> get allFields =>
       sections.expand((s) => s.fields).toList();
 
-  // Look up a field by its field_name key
+  // Return the first field that matches the provided field_name.
   FormFieldModel? fieldByName(String name) {
     try {
       return allFields.firstWhere((f) => f.fieldName == name);
@@ -402,7 +392,7 @@ class FormTemplate {
 
     final allParsed = rawFields.map((f) => FormFieldModel.fromMap(f)).toList();
 
-    // Separate child column-definition fields from top-level fields
+    // Separate child table columns from top-level fields.
     final childFields = allParsed
         .where((f) => f.parentFieldId != null)
         .toList();
@@ -410,13 +400,13 @@ class FormTemplate {
         .where((f) => f.parentFieldId == null)
         .toList();
 
-    // Group children by parent ID
+    // Group child fields under their parent table field.
     final childrenByParent = <String, List<FormFieldModel>>{};
     for (final child in childFields) {
       childrenByParent.putIfAbsent(child.parentFieldId!, () => []).add(child);
     }
 
-    // Attach columns to memberTable and familyTable fields
+    // Attach grouped columns to table-style parent fields.
     final assembledWithColumns = topLevelFields.map((f) {
       if ((f.fieldType == FormFieldType.memberTable ||
               f.fieldType == FormFieldType.familyTable) &&
@@ -428,8 +418,7 @@ class FormTemplate {
       return f;
     }).toList();
 
-    // Defensive dedupe: duplicate field_name keys cause shared controller state
-    // and can let computed outputs overwrite unrelated inputs.
+    // Rename duplicate field names so controllers stay isolated.
     final seenFieldNames = <String>{};
     final assembledFields = assembledWithColumns.map((f) {
       final key = f.fieldName.trim();

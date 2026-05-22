@@ -153,7 +153,7 @@ class SubmissionService {
       return await _fetchCanonicalNamesFromFieldValues(userIds);
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('fetchCanonicalNamesByUserIds error: $e');
+        debugPrint('[SubmissionService/fetchCanonicalNamesByUserIds] Error: $e');
       }
       return {};
     }
@@ -319,7 +319,7 @@ class SubmissionService {
     );
 
     if (response.statusCode != 200) {
-      debugPrint('decryptSubmissionData error: ${response.body}');
+      debugPrint('[SubmissionService/decryptSubmissionData] Error response: ${response.body}');
       return null;
     }
 

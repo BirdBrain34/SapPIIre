@@ -1,5 +1,4 @@
-// Renders any FormTemplate dynamically.
-// mobile: paginated sections | web: single scrollable column
+/// Renders a form template in mobile or web layout mode.
 
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
@@ -10,10 +9,10 @@ import 'package:sappiire/dynamic_form/dynamic_field_widgets.dart';
 class DynamicFormRenderer extends StatefulWidget {
   final FormTemplate template;
   final FormStateController controller;
-  final String mode; // 'mobile' | 'web'
+  final String mode; // mobile or web layout mode
   final bool isReadOnly;
   final bool showCheckboxes;
-  // Set of field names that should be highlighted red (missing required)
+  // Field names that should be highlighted as missing required values.
   final Set<String> highlightedFields;
 
   const DynamicFormRenderer({
@@ -113,7 +112,7 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
   }
 
   Widget _buildSectionCard(FormSection section) {
-    // Check if any field in this section is highlighted (missing required)
+    // Flag sections that contain at least one missing required field.
     final sectionHasError = section.fields.any(
       (f) => widget.highlightedFields.contains(f.fieldName),
     );
@@ -170,7 +169,7 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
     );
   }
 
-  /// Wraps a field in a red-bordered container to visually flag it as missing
+  /// Wrap a missing field in a highlighted container so it stands out.
   Widget _buildHighlightedField(FormFieldModel field) {
     return Container(
       decoration: BoxDecoration(
@@ -182,7 +181,7 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Red asterisk label above the field
+          // Show a warning label above the highlighted field.
           Padding(
             padding: const EdgeInsets.only(bottom: 4, left: 4),
             child: Row(
@@ -228,7 +227,7 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
   }
 }
 
-// ── Section header with optional checkbox ─────────────────────
+// Section header with an optional sharing checkbox.
 class _SectionHeader extends StatelessWidget {
   final String title;
   final bool showCheckbox;

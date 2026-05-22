@@ -35,6 +35,7 @@ const kSeverityInfo = 'info';
 const kSeverityWarning = 'warning';
 const kSeverityCritical = 'critical';
 
+/// Records audit events and queries the audit log table.
 class AuditLogService {
   static final AuditLogService _instance = AuditLogService._internal();
   factory AuditLogService() => _instance;
@@ -69,7 +70,7 @@ class AuditLogService {
       });
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('AuditLogService.log failed: $e');
+        debugPrint('[AuditLogService/log] Error: $e');
       }
     }
   }
@@ -114,14 +115,14 @@ class AuditLogService {
         query = query.lte('created_at', end.toIso8601String());
       }
 
-        final response = await query
+      final response = await query
           .order('created_at', ascending: false)
           .range(offset, offset + limit - 1);
 
-        return List<Map<String, dynamic>>.from(response);
+      return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('AuditLogService.fetchLogs failed: $e');
+        debugPrint('[AuditLogService/fetchLogs] Error: $e');
       }
       return [];
     }
@@ -169,7 +170,7 @@ class AuditLogService {
       return response.count ?? 0;
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('AuditLogService.fetchCount failed: $e');
+        debugPrint('[AuditLogService/fetchCount] Error: $e');
       }
       return 0;
     }

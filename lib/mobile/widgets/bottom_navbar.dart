@@ -1,5 +1,5 @@
 // lib/mobile/widgets/bottom_navbar.dart
-// UPDATED: 4-item nav → Manage Info | AutoFill QR (elevated) | Camera | Fill History
+// Updated 4-item nav: Manage Info, AutoFill QR, Camera, and Fill History.
 
 import 'package:flutter/material.dart';
 import 'package:hugeicons/hugeicons.dart';

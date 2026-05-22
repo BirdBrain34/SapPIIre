@@ -3,6 +3,7 @@ import 'package:sappiire/services/audit/audit_log_service.dart';
 import 'package:sappiire/services/auth/staff_admin_service.dart';
 import 'package:sappiire/services/auth/web_auth_service.dart';
 
+/// Loads and mutates staff account state for the management screen.
 class ManageStaffController extends ChangeNotifier {
   ManageStaffController({
     StaffAdminService? staffAdminService,
@@ -29,7 +30,7 @@ class ManageStaffController extends ChangeNotifier {
       pendingAccounts = List<Map<String, dynamic>>.from(data['pending'] ?? []);
       activeAccounts = List<Map<String, dynamic>>.from(data['active'] ?? []);
     } catch (e) {
-      debugPrint('Load error: $e');
+      debugPrint('[ManageStaffController/loadAccounts] Error: $e');
     } finally {
       isLoading = false;
       notifyListeners();

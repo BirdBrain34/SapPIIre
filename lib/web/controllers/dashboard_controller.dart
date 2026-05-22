@@ -4,6 +4,7 @@ import 'package:sappiire/services/dashboard_analytics_service.dart';
 import 'package:sappiire/services/form_template_service.dart';
 import 'package:sappiire/web/components/auto_chart_builder.dart';
 
+/// Coordinates dashboard data loading, chart generation, and client search state.
 class DashboardController extends ChangeNotifier {
   DashboardController({
     DashboardAnalyticsService? analyticsService,
@@ -67,7 +68,7 @@ class DashboardController extends ChangeNotifier {
         loadChartsFor('All'),
       ]);
     } catch (e) {
-      debugPrint('loadSummary error: $e');
+      debugPrint('[DashboardController/loadSummary] Error: $e');
       isLoadingCounts = false;
       notifyListeners();
     }
@@ -79,7 +80,7 @@ class DashboardController extends ChangeNotifier {
       staffWorkload = workload;
       notifyListeners();
     } catch (e) {
-      debugPrint('loadOperationalInsights error: $e');
+      debugPrint('[DashboardController/loadOperationalInsights] Error: $e');
     }
   }
 
@@ -100,7 +101,7 @@ class DashboardController extends ChangeNotifier {
       ageBrackets = results[1] as Map<String, int>;
       barangayVolume = results[2] as Map<String, int>;
     } catch (e) {
-      debugPrint('loadPlanningInsights error: $e');
+      debugPrint('[DashboardController/loadPlanningInsights] Error: $e');
     } finally {
       isLoadingInsights = false;
       notifyListeners();
@@ -135,7 +136,7 @@ class DashboardController extends ChangeNotifier {
 
       charts = await _chartBuilder.buildCharts(template: template, formType: formType);
     } catch (e) {
-      debugPrint('loadChartsFor error: $e');
+      debugPrint('[DashboardController/loadChartsFor] Error: $e');
     } finally {
       isLoadingCharts = false;
       notifyListeners();
@@ -157,7 +158,7 @@ class DashboardController extends ChangeNotifier {
     try {
       clientSearchResults = await _analyticsService.searchClientsByName(query);
     } catch (e) {
-      debugPrint('searchClients error: $e');
+      debugPrint('[DashboardController/searchClients] Error: $e');
     } finally {
       isSearchingClients = false;
       notifyListeners();
@@ -184,7 +185,7 @@ class DashboardController extends ChangeNotifier {
       selectedClientHistory = results[0] as List<Map<String, dynamic>>;
       selectedClientFlags = results[1] as Map<String, String>;
     } catch (e) {
-      debugPrint('selectClient error: $e');
+      debugPrint('[DashboardController/selectClient] Error: $e');
     } finally {
       isLoadingClientHistory = false;
       notifyListeners();

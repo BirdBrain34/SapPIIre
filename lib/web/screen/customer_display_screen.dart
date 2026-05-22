@@ -1,12 +1,7 @@
-// Customer-facing "Second Monitor" display screen.
-//
-// Accessed via the /display?station=<station_id> route.
-// Shows a full-screen, high-contrast UI with:
-//  A large QR code when the worker has an active session
-//  A "Welcome / Standby" state otherwise
-//
-// Uses Supabase Realtime via DisplaySessionService to stay in sync
-// with the Worker Dashboard.
+/// Customer-facing second monitor display that shows the active session QR.
+///
+/// The screen listens to Supabase Realtime for station updates and switches
+/// between a standby view and a QR view for the current form session.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -55,14 +50,9 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
       widget.stationId,
       (row) {
         if (!mounted) return;
-        debugPrint('\n=== CUSTOMER DISPLAY SCREEN: Realtime Update ===');
-        debugPrint('Customer Display: This screen only shows QR code status');
-        debugPrint('Customer Display: Form data goes to WORKER screen, not here');
-        debugPrint('Customer Display: Row status: ${row?['status']}');
-        debugPrint('Customer Display: Session ID: ${row?['session_id']}');
-        debugPrint('Customer Display: Form name: ${row?['form_name']}');
-        debugPrint('==============================================\n');
-        
+        debugPrint('[CustomerDisplayScreen/_startListening] Action: Realtime update received');
+        debugPrint("[CustomerDisplayScreen/_startListening] Action: Status=${row?['status']} SessionId=${row?['session_id']} FormName=${row?['form_name']}");
+
         setState(() {
           _status = row?['status'] ?? 'standby';
           _sessionId = row?['session_id'];
@@ -79,9 +69,9 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
     super.dispose();
   }
 
-  // Build
   @override
   Widget build(BuildContext context) {
+    // Render the standby or active session view based on the latest status.
     return Scaffold(
       body: Container(
         width: double.infinity,
@@ -100,13 +90,13 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
     );
   }
 
-  // Standby / Welcome
   Widget _buildStandbyView() {
+    // Show the waiting screen while the station is idle.
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Pulsing logo icon
+          // Show a subtle pulse while the station is waiting.
           AnimatedBuilder(
             animation: _pulseAnim,
             builder: (context, child) => Opacity(
@@ -147,7 +137,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
             ),
           ),
           const SizedBox(height: 48),
-          // Station badge
+          // Show the station identifier so staff can confirm the active monitor.
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
             decoration: BoxDecoration(
@@ -169,13 +159,13 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
     );
   }
 
-  // Active session show QR
   Widget _buildActiveView() {
+    // Show the QR code and session details when a session is active.
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Status chip
+          // Show the active session state above the QR code.
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             decoration: BoxDecoration(
@@ -207,7 +197,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
           ),
           const SizedBox(height: 32),
 
-          // Form name
+          // Show the form name so the customer knows which intake is active.
           if (_formName != null)
             Text(
               _formName!,

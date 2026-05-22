@@ -1,6 +1,5 @@
-// lib/web/screen/applicants_screen.dart
-// REFACTORED: Uses DynamicFormRenderer to display any saved form template.
-// No more hardcoded GIS section imports.
+/// Web screen for browsing, resolving, and editing applicant submissions.
+/// Uses DynamicFormRenderer so any saved form template can be displayed.
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -58,7 +57,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   _RightPanelView _rightPanelView = _RightPanelView.records;
   String _formTypeFilter = 'All';
 
-  // Template cache by form_type name
+  // Cache templates by form type.
   final Map<String, FormTemplate> _templateCache = {};
 
   @override
@@ -87,19 +86,18 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      debugPrint('_loadData error: $e');
+      debugPrint('[ApplicantsScreen/_loadData] Error: $e');
       setState(() => _isLoading = false);
     }
   }
 
-  /// Resolves names for legacy submissions missing __applicant_name.
-  /// Traces __session_id form_submission.user_id canonical key RPC in batch.
+  /// Resolve names for legacy submissions that do not store __applicant_name.
   Future<void> _resolveUnknownNames(
     List<Map<String, dynamic>> submissions,
   ) async {
     final needsResolution = <Map<String, dynamic>>[];
     
-    // First, decrypt any encrypted submissions so we can read their data
+    // Decrypt encrypted submissions before trying to resolve names.
     for (final sub in submissions) {
       final encryptionVersion = sub['data_encryption_version'] ?? 0;
       if (encryptionVersion == 1 && sub['data'] is String) {
@@ -107,16 +105,16 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
           final decrypted = await _decryptSubmissionData(
             sub['id'].toString(),
           );
-          // Replace encrypted string with decrypted Map in memory
+          // Replace the encrypted string with the decrypted map in memory.
           sub['data'] = decrypted;
         } catch (e) {
-          debugPrint('Failed to decrypt submission for name resolution: $e');
-          // Keep encrypted data, will show as "Unknown Applicant"
+          debugPrint('[ApplicantsScreen/_resolveUnknownNames] Warning: Failed to decrypt submission for name resolution: $e');
+          // Keep the encrypted data so the submission can still be listed.
         }
       }
     }
     
-    // Now check which submissions need name resolution
+    // Identify submissions that still need a resolved applicant name.
     for (final sub in submissions) {
       final data = sub['data'] is Map 
           ? Map<String, dynamic>.from(sub['data'] as Map)
@@ -143,7 +141,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     if (sessionIds.isEmpty) return;
 
     try {
-      // session IDs user_ids
+      // Map session IDs to user IDs.
       final sessionToUserId = await _submissionService.fetchSessionUserMap(
         sessionIds,
       );
@@ -151,11 +149,11 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
 
       if (userIds.isEmpty) return;
 
-      // user_ids names via canonical_field_key
+        // Resolve user IDs to canonical names.
       final userIdToName = await _submissionService
           .fetchCanonicalNamesByUserIds(userIds.toList());
 
-      // Embed resolved names into submissions (mutates in place)
+        // Embed resolved names back into the submissions.
       for (final sub in needsResolution) {
         final data = sub['data'] is Map
             ? Map<String, dynamic>.from(sub['data'] as Map)
@@ -173,17 +171,17 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         }
       }
     } catch (e) {
-      debugPrint('_resolveUnknownNames error: $e');
+      debugPrint('[ApplicantsScreen/_resolveUnknownNames] Error: $e');
     }
   }
 
-  // Load a submission into the detail panel
+  // Load a submission into the detail panel.
   Future<void> _loadSubmission(Map<String, dynamic> submission) async {
     final formType = submission['form_type'] as String? ?? '';
     var data = submission['data'];
     final encryptionVersion = submission['data_encryption_version'] ?? 0;
 
-    // Decrypt if server-encrypted
+    // Decrypt server-encrypted submissions before showing them.
     if (encryptionVersion == 1 && data is String) {
       try {
         final decrypted = await _decryptSubmissionData(
@@ -191,7 +189,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         );
         data = decrypted;
       } catch (e) {
-        debugPrint('Decryption failed: $e');
+        debugPrint('[ApplicantsScreen/_loadSubmission] Error: $e');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -212,7 +210,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     _editCtrl?.dispose();
 
     if (template == null) {
-      // Unknown/deleted template raw JSON fallback
+      // Fall back to the raw JSON when the template no longer exists.
       setState(() {
         _selectedSubmission = submission;
         _activeTemplate = null;
@@ -249,7 +247,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     );
 
     if (response.status != 200) {
-      debugPrint('Decrypt error response: ${response.data}');
+      debugPrint('[ApplicantsScreen/_decryptSubmissionData] Error response: ${response.data}');
       throw Exception(response.data.toString());
     }
 
@@ -257,7 +255,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     return result['data'] as Map<String, dynamic>;
   }
 
-  // Save edited submission
+  // Save the edited submission.
   Future<void> _saveEdit() async {
     if (_editCtrl == null || _selectedSubmission == null) return;
     setState(() => _isSaving = true);
@@ -268,13 +266,13 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
           ? Map<String, dynamic>.from(existingRaw)
           : <String, dynamic>{};
 
-      // Keep metadata keys (like __applicant_name / __session_id) if present.
+      // Preserve metadata keys such as __applicant_name and __session_id.
       for (final entry in existingData.entries) {
         if (!entry.key.startsWith('__')) continue;
         updatedData.putIfAbsent(entry.key, () => entry.value);
       }
 
-      // Preserve computed values if they were in storage and serializer omitted them.
+      // Preserve computed values if they already exist in storage.
       final template = _activeTemplate;
       if (template != null) {
         for (final field in template.allFields) {
@@ -316,14 +314,14 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         _isEditMode = false;
         _isSaving = false;
       });
-      // Reload the same submission with fresh data
+      // Reload the same submission with fresh data.
       final updated = _submissions.firstWhere(
         (s) => s['id'] == _selectedSubmission!['id'],
         orElse: () => {},
       );
       if (updated.isNotEmpty) _loadSubmission(updated);
     } catch (e) {
-      debugPrint('_saveEdit error: $e');
+      debugPrint('[ApplicantsScreen/_saveEdit] Error: $e');
       setState(() => _isSaving = false);
     }
   }
@@ -407,7 +405,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     );
     if (confirmed != true) return;
 
-    // Delete all submissions for this applicant
+    // Delete all submissions for this applicant.
     final idsToDelete = <dynamic>[];
     for (final submission in group.submissions) {
       await AuditLogService().log(

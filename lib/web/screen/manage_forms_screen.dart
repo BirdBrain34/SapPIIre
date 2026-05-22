@@ -115,11 +115,11 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   }
 
   Future<void> _loadTemplates() async {
-    debugPrint('Web: Loading templates...');
+    debugPrint('[ManageFormsScreen/_loadTemplates] Action: Loading templates');
     final templates = await _templateService.fetchActiveTemplates(
       forceRefresh: true,
     );
-    debugPrint('Web: Received ${templates.length} templates');
+    debugPrint('[ManageFormsScreen/_loadTemplates] Action: Received templates Count: ${templates.length}');
     _setStatePreserveScroll(() {
       _templates = templates;
       _selectedTemplate = templates.isNotEmpty
@@ -131,7 +131,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       _isLoading = false;
     });
     if (_selectedTemplate != null) {
-      debugPrint('Web: Selected ${_selectedTemplate!.formName}');
+      debugPrint('[ManageFormsScreen/_loadTemplates] Action: Selected template ${_selectedTemplate!.formName}');
       _formCtrl = FormStateController(template: _selectedTemplate!);
     }
   }
@@ -189,29 +189,29 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         formName: _selectedTemplate!.formName,
       );
     } catch (e) {
-      debugPrint('_createNewSession error: $e');
+      debugPrint('[ManageFormsScreen/_createNewSession] Error: $e');
       _setStatePreserveScroll(() => _isStartingSession = false);
     }
   }
 
   // Listen for mobile QR data via Supabase Realtime
   void _listenForMobileUpdates(String sessionId) {
-    debugPrint('Web: Starting realtime listener for session $sessionId');
+    debugPrint('[ManageFormsScreen/_listenForMobileUpdates] Action: Starting realtime listener SessionId=$sessionId');
     _pollTimer?.cancel();
     _formSubscription?.cancel();
     _formSubscription = _submissionService
         .streamSession(sessionId)
         .listen(
           (List<Map<String, dynamic>> data) {
-            debugPrint('Web: Realtime update received');
+            debugPrint('[ManageFormsScreen/_listenForMobileUpdates] Action: Realtime update received');
             if (data.isEmpty) {
-              debugPrint('Web: Data is empty');
+              debugPrint('[ManageFormsScreen/_listenForMobileUpdates] Action: Data is empty');
               return;
             }
             _applySessionRow(data.first);
           },
           onError: (e) {
-            debugPrint('Session stream error: $e');
+            debugPrint('[ManageFormsScreen/_listenForMobileUpdates] Error: $e');
             // On error, try to fetch data directly
             _hydrateFromSessionSnapshot(sessionId);
           },
@@ -244,23 +244,19 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   }
 
   void _applySessionRow(Map<String, dynamic> row) {
-    debugPrint('\n=== WEB WORKER SCREEN: Received Realtime Update ===');
-    debugPrint('Web: Row status: ${row['status']}');
+    debugPrint('[ManageFormsScreen/_applySessionRow] Action: Realtime update received');
+    debugPrint('[ManageFormsScreen/_applySessionRow] Action: Row status ${row['status']}');
     final incoming = row['form_data'] as Map<String, dynamic>? ?? {};
-    debugPrint('Web: Incoming data keys: ${incoming.keys.toList()}');
-    debugPrint('Web: Incoming data size: ${incoming.length} fields');
+    debugPrint('[ManageFormsScreen/_applySessionRow] Action: Incoming keys ${incoming.keys.toList()}');
+    debugPrint('[ManageFormsScreen/_applySessionRow] Action: Incoming fields Count: ${incoming.length}');
     if (incoming.isEmpty) {
-      debugPrint(
-        'Web: Incoming data is EMPTY - mobile may not have transmitted yet',
-      );
-      debugPrint('===================================================\n');
+      debugPrint('[ManageFormsScreen/_applySessionRow] Action: Incoming data is empty');
       return;
     }
 
     final fingerprint = _fingerprintPayload(incoming);
     if (fingerprint != null && fingerprint == _lastAppliedPayloadFingerprint) {
-      debugPrint('Web: Duplicate payload detected, skipping re-apply');
-      debugPrint('===================================================\n');
+      debugPrint('[ManageFormsScreen/_applySessionRow] Action: Duplicate payload detected, skipping reapply');
       return;
     }
     _lastAppliedPayloadFingerprint = fingerprint;
@@ -269,7 +265,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     final currentFormOffset = _formScrollController.hasClients
         ? _formScrollController.offset
         : 0.0;
-    debugPrint('Web: Loading data into form controller...');
+    debugPrint('[ManageFormsScreen/_applySessionRow] Action: Loading data into form controller');
     _formCtrl?.loadFromJson(incoming);
     _setStatePreserveScroll(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -278,10 +274,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       final target = currentFormOffset.clamp(0.0, max);
       _formScrollController.jumpTo(target);
     });
-    debugPrint(
-      'Web: Form updated successfully with ${incoming.length} fields',
-    );
-    debugPrint('===================================================\n');
+    debugPrint('[ManageFormsScreen/_applySessionRow] Action: Form updated successfully Count: ${incoming.length}');
   }
 
   String? _fingerprintPayload(Map<String, dynamic> payload) {
@@ -290,31 +283,29 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
 
   Future<void> _hydrateFromSessionSnapshot(String sessionId) async {
     try {
-      debugPrint('Web: Polling session $sessionId for data...');
+      debugPrint('[ManageFormsScreen/_hydrateFromSessionSnapshot] Action: Polling session $sessionId for data');
       final row = await _submissionService.fetchSessionSnapshot(sessionId);
 
       if (row == null) {
-        debugPrint('Web: Session not found in database');
+        debugPrint('[ManageFormsScreen/_hydrateFromSessionSnapshot] Action: Session not found in database');
         return;
       }
 
       final formData = row['form_data'] as Map<String, dynamic>? ?? {};
       if (formData.isNotEmpty) {
-        debugPrint(
-          'Web: Found data via polling! Keys: ${formData.keys.toList()}',
-        );
+        debugPrint('[ManageFormsScreen/_hydrateFromSessionSnapshot] Action: Found data via polling Keys: ${formData.keys.toList()}');
       }
 
       _applySessionRow(Map<String, dynamic>.from(row));
     } catch (e) {
-      debugPrint('Session snapshot hydrate error: $e');
+      debugPrint('[ManageFormsScreen/_hydrateFromSessionSnapshot] Error: $e');
     }
   }
 
-  // Finalize: save form data to client_submissions
+  // Finalize the active session by saving form data to client_submissions.
   Future<void> _finalizeEntry() async {
     if (_formCtrl == null || _selectedTemplate == null) return;
-    // Guard: prevent double finalize taps from creating duplicate submissions.
+    // Prevent duplicate finalize taps from creating duplicate submissions.
     if (_isSubmitting) return;
     _setStatePreserveScroll(() {
       _isSubmitting = true;
@@ -427,10 +418,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       });
       _formSubscription?.cancel();
 
-      // Revert customer display to standby
+      // Return the customer display to standby after finalizing.
       await _displayService.resetStation(_stationId);
     } catch (e) {
-      debugPrint('_finalizeEntry error: $e');
+      debugPrint('[ManageFormsScreen/_finalizeEntry] Error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

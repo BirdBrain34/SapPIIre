@@ -1,9 +1,4 @@
-// Dynamic Field Widgets
-// Renders individual form fields based on field type.
-// Supports text, number, date, dropdown, radio, boolean, computed fields,
-// family composition table, supporting family table, membership group, and signature.
-//
-// Used by DynamicFormRenderer to build the complete form UI.
+/// Renders the individual widgets used by the dynamic form renderer.
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'dart:ui' as ui;
@@ -12,7 +7,7 @@ import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/mobile/widgets/date_picker_helper.dart';
 
-// ── Top-level dispatcher ──────────────────────────────────────
+// Choose the widget implementation for the current field type.
 class DynamicFieldWidget extends StatelessWidget {
   final FormFieldModel field;
   final FormStateController controller;
@@ -154,7 +149,7 @@ class DynamicFieldWidget extends StatelessWidget {
   }
 }
 
-// ── Shared helpers ────────────────────────────────────────────
+// Shared helpers for field layout and styling.
 
 InputDecoration _inputDeco({
   String? hint,
@@ -180,7 +175,7 @@ InputDecoration _inputDeco({
   suffixIcon: suffix,
 );
 
-// ── Field label ───────────────────────────────────────────────
+// Label widget used by every field type.
 class _FieldLabel extends StatelessWidget {
   final String label;
   final bool isRequired;
@@ -211,7 +206,7 @@ class _FieldLabel extends StatelessWidget {
   }
 }
 
-// ── Text field ────────────────────────────────────────────────
+// Text field implementation.
 class _TextField extends StatelessWidget {
   final FormFieldModel field;
   final FormStateController controller;
@@ -243,7 +238,7 @@ class _TextField extends StatelessWidget {
   }
 }
 
-// ── Number field ──────────────────────────────────────────────
+// Number field implementation.
 class _NumberField extends StatelessWidget {
   final FormFieldModel field;
   final FormStateController controller;
@@ -281,7 +276,7 @@ class _NumberField extends StatelessWidget {
   }
 }
 
-// ── Computed (read-only) field ────────────────────────────────
+// Read-only computed field implementation.
 class _ComputedField extends StatelessWidget {
   final FormFieldModel field;
   final FormStateController controller;
@@ -309,7 +304,7 @@ class _ComputedField extends StatelessWidget {
   }
 }
 
-// ── Date field ────────────────────────────────────────────────
+// Date field implementation.
 class _DateField extends StatelessWidget {
   final FormFieldModel field;
   final FormStateController controller;
@@ -400,7 +395,7 @@ class _DateField extends StatelessWidget {
   }
 }
 
-// ── Dropdown field ────────────────────────────────────────────
+// Dropdown field implementation.
 class _DropdownField extends StatelessWidget {
   final FormFieldModel field;
   final FormStateController controller;
@@ -458,7 +453,7 @@ class _DropdownField extends StatelessWidget {
   }
 }
 
-// ── Radio field ───────────────────────────────────────────────
+// Radio field implementation.
 class _RadioField extends StatelessWidget {
   final FormFieldModel field;
   final FormStateController controller;
@@ -528,7 +523,7 @@ class _RadioField extends StatelessWidget {
   }
 }
 
-// ── Checkbox field (multi-select) ───────────────────────────
+// Checkbox field implementation for multi-select inputs.
 class _CheckboxField extends StatelessWidget {
   final FormFieldModel field;
   final FormStateController controller;
@@ -624,7 +619,7 @@ class _CheckboxField extends StatelessWidget {
   }
 }
 
-// ── Boolean field — Switch widget ─────────────────────────────
+// Boolean switch field implementation.
 class _BooleanField extends StatelessWidget {
   final FormFieldModel field;
   final FormStateController controller;
@@ -643,10 +638,10 @@ class _BooleanField extends StatelessWidget {
     } else {
       final raw = controller.getValue(
         field.fieldName,
-      ); // FIX: Safely handle boolean or string values.
+      ); // Handle boolean or string values safely.
       current =
           raw == true ||
-          raw == 'true'; // FIX: Coerce string "true" to boolean true.
+          raw == 'true'; // Coerce string "true" to boolean true.
     }
     return Row(
       children: [
@@ -674,7 +669,7 @@ class _BooleanField extends StatelessWidget {
   }
 }
 
-// ── Membership group ──────────────────────────────────────────
+// Membership group field implementation.
 class _MembershipGroupField extends StatelessWidget {
   final FormStateController controller;
   final bool isReadOnly;
@@ -755,7 +750,7 @@ class _MembershipGroupField extends StatelessWidget {
   }
 }
 
-// ── Family Composition table ──────────────────────────────────
+// Family composition table implementation.
 class _FamilyTableField extends StatefulWidget {
   final FormFieldModel field;
   final FormStateController controller;
@@ -771,8 +766,8 @@ class _FamilyTableField extends StatefulWidget {
 }
 
 class _FamilyTableFieldState extends State<_FamilyTableField> {
-  // Fallback columns used when the template has no column definitions
-  // (backwards compatibility with templates saved before this feature).
+  // Use fallback columns when the template has no explicit column definitions.
+  // Keep older templates working until they are migrated.
   static const _fallbackCols = [
     'name',
     'relationship',
@@ -796,7 +791,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
     'Allowance (₱)',
   ];
 
-  /// Returns the list of column keys (fieldName) to iterate.
+  /// Return the list of column field names to iterate.
   List<String> get _cols {
     if (widget.field.columns.isNotEmpty) {
       return widget.field.columns.map((c) => c.fieldName).toList();
@@ -804,7 +799,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
     return _fallbackCols;
   }
 
-  /// Returns the display header for column at [index].
+  /// Return the display header for the column at [index].
   String _headerAt(int index) {
     if (widget.field.columns.isNotEmpty) {
       return widget.field.columns[index].fieldLabel;
@@ -812,8 +807,8 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
     return _fallbackHeaders[index];
   }
 
-  /// Returns the db_map_key for a given column fieldName, if any.
-  /// Used by _buildEditCell to select specialised editors.
+  /// Return the db_map_key for a given column fieldName, if any.
+  /// Used by _buildEditCell to select specialized editors.
   String? _dbMapKeyFor(String colFieldName) {
     if (widget.field.columns.isEmpty) return colFieldName; // legacy
     try {
@@ -826,9 +821,9 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
     }
   }
 
-  // ── Look up options from the template by field_name ───────
+  // Look up field options from the template by field_name.
   List<FieldOption> _optionsFor(String fieldName) {
-    // First: check if this familyTable column itself has options
+    // First check whether the table column defines its own options.
     if (widget.field.columns.isNotEmpty) {
       try {
         final col = widget.field.columns.firstWhere(
@@ -838,7 +833,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
       } catch (_) {}
     }
 
-    // Fall back to top-level template fields
+    // Fall back to top-level template fields when needed.
     final lookupNames = fieldName == 'gender' ? ['gender', 'sex'] : [fieldName];
 
     for (final name in lookupNames) {
@@ -910,7 +905,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Column(
-                        // FIX: always vertical — eliminates overflow regardless of screen width
+                        // Keep the layout vertical to avoid narrow-screen overflow.
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
@@ -918,7 +913,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
                             style: const TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight
-                                  .w600, // FIX: slightly bolder so label reads well above field
+                                  .w600, // Make the label slightly bolder so it reads well above the field.
                               color: Colors.black54,
                             ),
                             overflow: TextOverflow.ellipsis,
@@ -926,10 +921,10 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
                           ),
                           const SizedBox(
                             height: 4,
-                          ), // FIX: gap between label and field
+                          ), // Add spacing between the label and the field.
                           widget.isReadOnly
                               ? Text(
-                                  m[col.value]?.toString() ?? '—',
+                                  m[col.value]?.toString() ?? '-',
                                   style: const TextStyle(fontSize: 13),
                                   overflow: TextOverflow.ellipsis,
                                   maxLines: 1,
@@ -981,7 +976,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
     final dbKey = _dbMapKeyFor(col);
 
     switch (dbKey) {
-      // ── Birthdate → auto-calculates age ─────────────────
+      // Birthdate field auto-calculates age.
       case 'birthdate':
         final raw = m[col]?.toString() ?? '';
         return GestureDetector(
@@ -1055,7 +1050,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
           ),
         );
 
-      // ── Age — key-bound so it rebuilds when birthdate sets it ─
+      // Age field rebuilds when birthdate updates it.
       case 'age':
         return TextFormField(
           key: ValueKey('age_${i}_${m[col]}'),
@@ -1070,7 +1065,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
           },
         );
 
-      // ── Gender: radio chips — options from column or 'sex' field ───
+      // Gender field uses radio chips from the column or sex field.
       case 'gender':
         final opts = _optionsFor(col);
         final current = m[col]?.toString() ?? '';
@@ -1134,7 +1129,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
                         color: isSelected ? Colors.white : Colors.black87,
                       ),
                       overflow:
-                          TextOverflow.ellipsis, // FIX: clip long option labels
+                          TextOverflow.ellipsis, // Clip long option labels.
                       maxLines: 1,
                     ),
                   ],
@@ -1144,7 +1139,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
           }).toList(),
         );
 
-      // ── Civil Status: dropdown ─
+      // Civil status field uses a dropdown.
       case 'civil_status':
         return _inlineDropdown(
           opts: _optionsFor(col),
@@ -1163,7 +1158,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
           },
         );
 
-      // ── Education: dropdown ─
+      // Education field uses a dropdown.
       case 'education':
         return _inlineDropdown(
           opts: _optionsFor(col),
@@ -1182,7 +1177,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
           },
         );
 
-      // ── Allowance — triggers B recompute on every keystroke ─
+      // Allowance field triggers B recomputation on every keystroke.
       case 'allowance':
         return TextFormField(
           initialValue: m[col]?.toString() ?? '',
@@ -1196,7 +1191,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
           },
         );
 
-      // ── Default: plain text (covers 'name', 'occupation', and custom cols) ──
+      // Default: plain text for name, occupation, and custom columns.
       default:
         return TextFormField(
           initialValue: m[col]?.toString() ?? '',
@@ -1224,7 +1219,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
     }
   }
 
-  // ── Inline dropdown with text fallback when no options ────
+  // Inline dropdown with text fallback when no options exist.
   Widget _inlineDropdown({
     required List<FieldOption> opts,
     required String current,
@@ -1253,10 +1248,10 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
           hint: const Text(
             'Select...',
             style: TextStyle(fontSize: 12, color: Colors.black38),
-            overflow: TextOverflow.ellipsis, // FIX: prevent hint overflow
+            overflow: TextOverflow.ellipsis, // Prevent hint overflow.
           ),
           isExpanded: true,
-          // FIX: selected value display must also be clipped
+          // Clip the selected value display as well.
           selectedItemBuilder: (context) => opts
               .map(
                 (o) => Align(
@@ -1278,7 +1273,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
                     o.label,
                     style: const TextStyle(fontSize: 12),
                     overflow: TextOverflow
-                        .ellipsis, // FIX: prevent item text overflow
+                        .ellipsis, // Prevent item text overflow.
                     maxLines: 1,
                   ),
                 ),
@@ -1293,7 +1288,7 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
   }
 }
 
-// ── Supporting Family table ───────────────────────────────────
+// Supporting family table implementation.
 class _SupportingFamilyField extends StatefulWidget {
   final FormStateController controller;
   final bool isReadOnly;
@@ -1350,7 +1345,7 @@ class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
                   Expanded(
                     child: widget.isReadOnly
                         ? Text(
-                            '${m['name']} (${m['relationship']}) — ₱${m['regular_sustento']}',
+                            '${m['name']} (${m['relationship']}) - PHP ${m['regular_sustento']}',
                             style: const TextStyle(fontSize: 13),
                           )
                         : Column(
@@ -1370,7 +1365,7 @@ class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
                                 },
                               ),
                               const SizedBox(height: 4),
-                              // FIX: always vertical — eliminates overflow regardless of screen width
+                              // Keep the layout vertical to avoid narrow-screen overflow.
                               Column(
                                 children: [
                                   TextFormField(
@@ -1388,7 +1383,7 @@ class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
                                   ),
                                   const SizedBox(
                                     height: 4,
-                                  ), // FIX: gap between fields
+                                  ), // Add spacing between the fields.
                                   TextFormField(
                                     initialValue:
                                         m['regular_sustento']?.toString() ?? '',
@@ -1437,9 +1432,9 @@ class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
   }
 }
 
-// ── Signature field ───────────────────────────────────────────
-// PERFORMANCE FIX: Completely isolated from parent rebuilds.
-// Drawing happens in local state only. Controller is updated only on Save.
+// Signature field implementation.
+// Keep signature drawing isolated from parent rebuilds.
+// Keep drawing state local and update the controller only on save.
 class _SignatureField extends StatefulWidget {
   final FormStateController controller;
   final bool isReadOnly;
@@ -1666,7 +1661,7 @@ class _SignaturePainter extends CustomPainter {
   bool shouldRepaint(_SignaturePainter old) => true;
 }
 
-// ── Member Table (generic, column-driven) ─────────────────────
+// Generic member table implementation driven by template columns.
 class _MemberTableWidget extends StatefulWidget {
   final FormFieldModel field;
   final FormStateController controller;
@@ -1684,7 +1679,7 @@ class _MemberTableWidget extends StatefulWidget {
 class _MemberTableWidgetState extends State<_MemberTableWidget> {
   List<FormFieldModel> get _columns => widget.field.columns;
   
-  // Cache of text controllers per row/column to prevent keyboard dismissal
+  // Cache controllers per row and column so editing does not dismiss the keyboard.
   final Map<String, TextEditingController> _controllers = {};
 
   @override
@@ -1701,7 +1696,7 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
     if (!_controllers.containsKey(key)) {
       _controllers[key] = TextEditingController(text: currentValue);
     } else if (_controllers[key]!.text != currentValue) {
-      // Update controller text if value changed externally (e.g., auto-calculation)
+      // Keep the controller text in sync when values change externally.
       _controllers[key]!.text = currentValue;
     }
     return _controllers[key]!;
@@ -1714,7 +1709,7 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header row: label + Add Row button
+        // Render the table header and add-row action.
         Row(
           children: [
             Expanded(
@@ -1738,7 +1733,7 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
           ],
         ),
 
-        // Empty state
+        // Render an empty state when no rows exist.
         if (rows.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
@@ -1748,7 +1743,7 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
             ),
           ),
 
-        // Rows as cards
+        // Render each row as a card for easier editing.
         ...rows.asMap().entries.map((entry) {
           final rowIdx = entry.key;
           final rowData = entry.value;
@@ -1767,7 +1762,7 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Column(
-                        // FIX: always vertical to prevent overflow on narrow screens
+                        // Keep the layout vertical to avoid narrow-screen overflow.
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
@@ -1775,7 +1770,7 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
                             style: const TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight
-                                  .w600, // FIX: bolder label for vertical layout
+                                  .w600, // Make the label bolder for the vertical layout.
                               color: Colors.black54,
                             ),
                             overflow: TextOverflow.ellipsis,
@@ -1783,7 +1778,7 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
                           ),
                           const SizedBox(
                             height: 4,
-                          ), // FIX: spacing between label and field
+                          ), // Add spacing between the label and the field.
                           widget.isReadOnly
                               ? Text(
                                   rowData[col.fieldName]?.toString() ?? '',
