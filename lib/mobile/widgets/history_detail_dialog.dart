@@ -8,7 +8,6 @@ class HistoryDetailDialog {
     final intakeRef = item['intake_reference'] as String?;
     final scannedAt = item['scanned_at'] as String?;
     final processedAt = item['last_edited_at'] as String?;
-    final createdAt = item['created_at'] as String?;
     final workerName = item['last_edited_by']?.toString().trim() ?? '';
 
     return showDialog(
@@ -110,12 +109,6 @@ class HistoryDetailDialog {
                   label: 'Processed at',
                   value: AppDateUtils.formatDisplay(processedAt),
                 ),
-
-              _detailRow(
-                icon: Icons.calendar_today_outlined,
-                label: 'Record created',
-                value: AppDateUtils.formatDisplay(createdAt),
-              ),
 
               const SizedBox(height: 20),
               SizedBox(

@@ -117,6 +117,23 @@ class SupabaseService {
     }
   }
 
+  Future<bool> isSessionFinalized(String sessionId) async {
+    try {
+      final result = await _supabase
+          .from('form_submission')
+          .select('status')
+          .eq('id', sessionId)
+          .maybeSingle();
+
+      if (result == null) return false;
+
+      final status = result['status'] as String? ?? '';
+      return status == 'completed';
+    } catch (_) {
+      return false;
+    }
+  }
+
   // Fetch account information for a user.
   Future<Map<String, dynamic>> getAccountInfo(String userId) async {
     try {

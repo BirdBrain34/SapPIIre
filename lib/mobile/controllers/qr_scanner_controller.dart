@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:sappiire/services/supabase_service.dart';
 
@@ -22,6 +24,10 @@ class QrScannerController extends ChangeNotifier {
   bool transmitSuccess = false;
   String transmitStatus = 'Securing your data...';
   bool isPopping = false;
+  bool isFinalized = false;
+  bool isPolling = false;
+  Timer? _pollingTimer;
+  String? _pendingSessionId;
 
   Future<Map<String, dynamic>?> fetchPopupConfig() async {
     if (templateId == null || supabaseService == null) return null;
@@ -69,6 +75,48 @@ class QrScannerController extends ChangeNotifier {
     transmitStatus = success
         ? 'Your information has been securely transmitted to the CSWD staff portal.'
         : 'Something went wrong during transmission. Please try again.';
+
+    if (success) {
+      startFinalizationPolling(sessionId);
+    } else {
+      notifyListeners();
+    }
+  }
+
+  void startFinalizationPolling(String sessionId) {
+    _pendingSessionId = sessionId;
+    isFinalized = false;
+    isPolling = true;
     notifyListeners();
+
+    _pollingTimer?.cancel();
+
+    _pollingTimer = Timer.periodic(
+      const Duration(seconds: 4),
+      (timer) async {
+        if (_pendingSessionId == null) {
+          timer.cancel();
+          isPolling = false;
+          notifyListeners();
+          return;
+        }
+
+        final finalized = await (supabaseService ?? SupabaseService())
+            .isSessionFinalized(_pendingSessionId!);
+
+        if (finalized) {
+          timer.cancel();
+          isPolling = false;
+          isFinalized = true;
+          notifyListeners();
+        }
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _pollingTimer?.cancel();
+    super.dispose();
   }
 }
