@@ -91,9 +91,6 @@ class SupabaseService {
         final updates = formDataByTemplate[template.templateId];
         if (updates == null || updates.isEmpty) continue;
 
-        // Important: preserve existing non-canonical values for this template.
-        // saveUserFieldValues clears missing fields by design, so we must merge
-        // canonical updates into the current saved snapshot first.
         final existing = await _fieldValueService.loadUserFieldValues(
           userId: userId,
           template: template,
@@ -145,7 +142,7 @@ class SupabaseService {
     }
   }
 
-  // ── updateAccountInfo — only updates username, email/phone not editable ──
+  // ── updateAccountInfo — only updates username ─────────────────────
   Future<void> updateAccountInfo(
     String userId,
     Map<String, dynamic> updates,
@@ -168,10 +165,12 @@ class SupabaseService {
   }) async {
     try {
       if (email != null && email.isNotEmpty) {
+        final normalizedEmail = email.trim().toLowerCase();
+        // Use ilike for case-insensitive match
         final existing = await _supabase
             .from('user_accounts')
-            .select('user_id')
-            .eq('email', email.trim().toLowerCase())
+            .select('user_id, email')
+            .ilike('email', normalizedEmail)
             .maybeSingle();
         if (existing != null) {
           return {
@@ -184,10 +183,11 @@ class SupabaseService {
       }
 
       if (phone != null && phone.isNotEmpty) {
+        final rawPhone = phone.trim();
         final existing = await _supabase
             .from('user_accounts')
             .select('user_id')
-            .eq('phone_number', phone.trim())
+            .eq('phone_number', rawPhone)
             .maybeSingle();
         if (existing != null) {
           return {
@@ -202,7 +202,7 @@ class SupabaseService {
         final existing = await _supabase
             .from('user_accounts')
             .select('user_id')
-            .eq('username', username.trim())
+            .ilike('username', username.trim())
             .maybeSingle();
         if (existing != null) {
           return {
@@ -228,10 +228,13 @@ class SupabaseService {
     String? password,
   }) async {
     try {
+      final normalizedEmail = email.trim().toLowerCase();
+
+      // Check user_accounts with case-insensitive match
       final existing = await _supabase
           .from('user_accounts')
           .select('email, user_id')
-          .eq('email', email)
+          .ilike('email', normalizedEmail)
           .maybeSingle();
 
       if (existing != null) {
@@ -252,7 +255,7 @@ class SupabaseService {
             };
           } else {
             await _supabase.auth.signInWithOtp(
-              email: email,
+              email: normalizedEmail,
               shouldCreateUser: false,
             );
             return {
@@ -267,7 +270,7 @@ class SupabaseService {
       final signupPassword =
           password ?? DateTime.now().millisecondsSinceEpoch.toString();
       final res = await _supabase.auth.signUp(
-        email: email,
+        email: normalizedEmail,
         password: signupPassword,
         emailRedirectTo: null,
       );
@@ -276,13 +279,16 @@ class SupabaseService {
         return {'success': false, 'message': 'Sign-up failed. Try again.'};
       }
 
-      try {
-        await _supabase.auth.signInWithOtp(
-          email: email,
-          shouldCreateUser: false,
-        );
-      } catch (e) {
-        debugPrint('OTP send failed: $e');
+      // For real email accounts, send OTP. For synthetic phone emails, skip.
+      if (!normalizedEmail.endsWith('@sappiire.phone')) {
+        try {
+          await _supabase.auth.signInWithOtp(
+            email: normalizedEmail,
+            shouldCreateUser: false,
+          );
+        } catch (e) {
+          debugPrint('OTP send failed: $e');
+        }
       }
 
       return {
@@ -415,7 +421,6 @@ class SupabaseService {
   }
 
   // ── LOGIN — supports username, email, or phone ────────────────────
-  // Track failed attempts per identifier in memory
   static final Map<String, int> _failedAttempts = {};
   static final Map<String, DateTime> _lockoutUntil = {};
   static const int _maxAttempts = 5;
@@ -439,14 +444,14 @@ class SupabaseService {
     }
 
     try {
-      // Resolve account by username, email, or phone
+      // Resolve account by username or email only.
+      // Phone number is not unique across accounts so it cannot be used as a login identifier.
       final account = await _supabase
           .from('user_accounts')
           .select('user_id, username, email, phone_number, is_active')
           .or(
             'username.ilike.$identifier,'
-            'email.ilike.$identifier,'
-            'phone_number.eq.$identifier',
+            'email.ilike.$identifier',
           )
           .maybeSingle();
 
@@ -459,8 +464,31 @@ class SupabaseService {
         return {'success': false, 'message': 'Account is deactivated.'};
       }
 
+      // Determine the email to use for Supabase Auth sign-in.
+      // - Email/both accounts: use the real email stored in user_accounts.
+      // - Phone-only accounts (email is null): reconstruct the synthetic auth
+      //   email from the phone number. This matches what was created during signup.
+      final String? storedEmail = account['email'] as String?;
+      final String? storedPhone = account['phone_number'] as String?;
+
+      final String authEmail;
+      if (storedEmail != null && storedEmail.isNotEmpty) {
+        authEmail = storedEmail;
+      } else if (storedPhone != null && storedPhone.isNotEmpty) {
+        // Phone-only account: synthetic email used in Supabase Auth
+        final digits = storedPhone.replaceAll(RegExp(r'[^0-9]'), '');
+        authEmail = '$digits@sappiire.phone';
+      } else {
+        // Should never happen due to DB constraint, but guard anyway
+        _recordFailedAttempt(identifier);
+        return {
+          'success': false,
+          'message': 'Account has no valid login method. Contact support.',
+        };
+      }
+
       final response = await _supabase.auth.signInWithPassword(
-        email: account['email'],
+        email: authEmail,
         password: password,
       );
 
@@ -495,7 +523,7 @@ class SupabaseService {
         'message': 'Login successful',
         'user_id': account['user_id'],
         'username': account['username'],
-        'email': account['email'],
+        'email': storedEmail, // null for phone-only, that's fine
       };
     } on AuthException catch (e) {
       _recordFailedAttempt(identifier);
@@ -516,38 +544,58 @@ class SupabaseService {
     }
   }
 
-  // ── saveProfileAfterVerification — Step 4 of signup ──────────────
+  // ── saveProfileAfterVerification — final step of signup ───────────
+  // email and phoneNumber are nullable:
+  //   - email-only:  email = real email,   phoneNumber = null
+  //   - phone-only:  email = null,          phoneNumber = real phone
+  //   - both:        email = real email,   phoneNumber = real phone
   Future<Map<String, dynamic>> saveProfileAfterVerification({
     required String userId,
     required String username,
     required String password,
-    required String email,
+    required String? email,       // null for phone-only accounts
+    required String? phoneNumber, // null for email-only accounts
     required String firstName,
     required String middleName,
     required String lastName,
     required String dateOfBirth,
-    required String phoneNumber,
     required String birthplace,
     required String gender,
     required String civilStatus,
     required String addressLine,
   }) async {
     try {
-      // 1. Set password in Supabase Auth
+      // 1. Set the real password in Supabase Auth.
+      //    For email accounts the auth session is already active from OTP verify.
+      //    For phone-only, signUpWithEmail already set the password correctly.
       try {
         await _supabase.auth.updateUser(UserAttributes(password: password));
       } catch (e) {
-        debugPrint('Password update failed: $e');
+        debugPrint('Password update failed (non-fatal): $e');
       }
 
-      // 2. Upsert user_accounts — includes phone_number
-      await _supabase.from('user_accounts').upsert({
+      // 2. Upsert user_accounts.
+      //    Store null for email on phone-only accounts — the unique partial index
+      //    on phone_number (WHERE phone_number IS NOT NULL) handles uniqueness.
+      //    The check constraint ensures at least one of email/phone is present.
+      final upsertData = <String, dynamic>{
         'user_id': userId,
         'username': username,
-        'email': email,
-        'phone_number': phoneNumber,
         'is_active': true,
-      }, onConflict: 'user_id');
+      };
+
+      // Only include email/phone if non-null and non-empty
+      if (email != null && email.isNotEmpty) {
+        upsertData['email'] = email.toLowerCase().trim();
+      }
+      if (phoneNumber != null && phoneNumber.isNotEmpty) {
+        upsertData['phone_number'] = phoneNumber.trim();
+      }
+
+      await _supabase.from('user_accounts').upsert(
+        upsertData,
+        onConflict: 'user_id',
+      );
 
       // 3. Parse birthdate M/D/YYYY → YYYY-MM-DD
       final dateParts = dateOfBirth.split('/');
@@ -575,8 +623,8 @@ class SupabaseService {
 
       final allFields = templates.expand((t) => t.allFields).toList();
 
-      // 5. Build canonical_field_key → value map
-      final piiData = {
+      // 5. Build canonical_field_key → value map (only include non-null values)
+      final piiData = <String, String>{
         'first_name': firstName,
         'middle_name': middleName,
         'last_name': lastName,
@@ -586,21 +634,26 @@ class SupabaseService {
         'estadong_sibil_civil_status': civilStatus,
         'civil_status': civilStatus,
         'marital_status': civilStatus,
-        // Keep both canonical aliases for compatibility.
         'place_of_birth': birthplace,
         'lugar_ng_kapanganakan_place_of_birth': birthplace,
-        'cp_number': phoneNumber,
-        'phone_number': phoneNumber,
-        'contact_number': phoneNumber,
-        'email_address': email,
         'house_number_street_name_phase_purok': addressLine,
       };
+
+      // Only add contact fields that were actually provided
+      if (phoneNumber != null && phoneNumber.isNotEmpty) {
+        piiData['cp_number'] = phoneNumber;
+        piiData['phone_number'] = phoneNumber;
+        piiData['contact_number'] = phoneNumber;
+      }
+      if (email != null && email.isNotEmpty) {
+        piiData['email_address'] = email;
+      }
 
       // 6. Match canonical_field_key → field_id across ALL templates and save
       final formDataByTemplate = <String, Map<String, dynamic>>{};
 
       for (final entry in piiData.entries) {
-        if (entry.value.toString().isEmpty) continue;
+        if (entry.value.isEmpty) continue;
 
         final matchingFields = allFields
             .where((f) => f.canonicalFieldKey == entry.key)
@@ -609,7 +662,7 @@ class SupabaseService {
         if (matchingFields.isEmpty) continue;
 
         for (final field in matchingFields) {
-          var mappedValue = entry.value.toString();
+          var mappedValue = entry.value;
           if (entry.key == 'estadong_sibil_civil_status' ||
               entry.key == 'civil_status' ||
               entry.key == 'marital_status') {
@@ -674,15 +727,11 @@ class SupabaseService {
 
   // ================================================================
   // HISTORY — fetchClientSubmissionHistoryByUser
-  // Reads form_submission to get session IDs for this user,
-  // then reads client_submissions for display data.
-  // Resolves worker UUIDs to names via staff_profiles.
   // ================================================================
   Future<List<Map<String, dynamic>>> fetchClientSubmissionHistoryByUser(
     String userId,
   ) async {
     try {
-      // Step 1: Get all form_submission IDs for this user
       final sessionRows = await _supabase
           .from('form_submission')
           .select('id, created_at, scanned_at')
@@ -693,7 +742,6 @@ class SupabaseService {
           .whereType<String>()
           .toList();
 
-      // Build a map of session_id -> scanned_at for scan time lookup
       final scanTimeMap = <String, String>{};
       for (final row in sessionRows as List) {
         final id = row['id']?.toString() ?? '';
@@ -706,10 +754,9 @@ class SupabaseService {
 
       if (sessionIds.isEmpty) return [];
 
-        const fields =
+      const fields =
           'id, form_type, intake_reference, created_at, session_id, data, created_by, last_edited_by, last_edited_at';
 
-      // Step 2: Match client_submissions by session_id column
       final byColumn = await _supabase
           .from('client_submissions')
           .select(fields)
@@ -718,7 +765,6 @@ class SupabaseService {
 
       final submissions = List<Map<String, dynamic>>.from(byColumn as List);
 
-      // Step 3: Also try JSONB match (fallback for older records)
       try {
         final byJsonb = await _supabase
             .from('client_submissions')
@@ -733,22 +779,16 @@ class SupabaseService {
             seenIds.add(row['id']);
           }
         }
-      } catch (_) {
-        // JSONB filter is optional
-      }
+      } catch (_) {}
 
-      // Step 4: Inject scan time from form_submission into each record
       for (final s in submissions) {
         final sid = s['session_id']?.toString() ?? '';
         if (sid.isNotEmpty && scanTimeMap.containsKey(sid)) {
           s['scanned_at'] = scanTimeMap[sid];
         }
-        // If scanned_at not set, fall back to created_at
         s['scanned_at'] ??= s['created_at'];
       }
 
-      // Step 5: Resolve worker UUIDs to names via staff_profiles
-      // last_edited_by may store a UUID (cswd_id) or a plain name string
       final workerIds = submissions
           .map((s) => s['last_edited_by']?.toString().trim() ?? '')
           .where((id) => id.isNotEmpty && _looksLikeUuid(id))
@@ -772,7 +812,6 @@ class SupabaseService {
             if (id.isNotEmpty && name.isNotEmpty) nameMap[id] = name;
           }
 
-          // Replace UUID with display name in-place
           for (final s in submissions) {
             final editorId = s['last_edited_by']?.toString().trim() ?? '';
             if (nameMap.containsKey(editorId)) {
@@ -791,7 +830,6 @@ class SupabaseService {
     }
   }
 
-  // ── Helper: detect UUID string ──────────────────────────────────
   bool _looksLikeUuid(String s) {
     return RegExp(
       r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
@@ -889,15 +927,15 @@ class SupabaseService {
     }
   }
 
-  /// Sends the specific filtered data selected by the user to the web session.
-  /// This allows the user to choose exactly which fields to transmit via checkboxes.
+  // ================================================================
+  // QR TRANSMISSION
+  // ================================================================
   Future<bool> sendDataToWebSession(
     String sessionId,
     Map<String, dynamic> data, {
     String? userId,
   }) async {
     try {
-      // Attempt hybrid encryption
       String publicKey = '';
       try {
         publicKey = await HybridCryptoService.fetchAndCacheRsaPublicKey(
@@ -908,7 +946,6 @@ class SupabaseService {
       }
 
       if (publicKey.trim().isEmpty) {
-        // Fallback: transmit unencrypted (transmission_version = 0)
         debugPrint(
           'sendDataToWebSession: no RSA key, falling back to unencrypted',
         );
@@ -949,7 +986,6 @@ class SupabaseService {
           .maybeSingle();
 
       if (response == null) {
-        // Session may not be 'active' anymore — try without status filter
         debugPrint(
           'sendDataToWebSession: status=active filter returned null, retrying without filter',
         );
@@ -971,7 +1007,6 @@ class SupabaseService {
         if (retryResponse == null) return false;
       }
 
-      // Invoke edge function to decrypt on server side
       await _invokeDecryptQrPayloadWithRetry(sessionId);
 
       return true;
@@ -1107,5 +1142,4 @@ class SupabaseService {
 
     return _civilStatusDisplayValue(input);
   }
-
 }
