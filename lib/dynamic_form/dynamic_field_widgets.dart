@@ -1,4 +1,5 @@
 /// Renders the individual widgets used by the dynamic form renderer.
+library;
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'dart:ui' as ui;
@@ -655,7 +656,7 @@ class _BooleanField extends StatelessWidget {
                   }
                   controller.setValue(field.fieldName, v, notify: true);
                 },
-          activeColor: AppColors.primaryBlue,
+          activeThumbColor: AppColors.primaryBlue,
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -1939,7 +1940,7 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
 
       case FormFieldType.dropdown:
         return DropdownButtonFormField<String>(
-          value: currentValue.isEmpty ? null : currentValue,
+          initialValue: currentValue.isEmpty ? null : currentValue,
           items: col.options.map((opt) {
             return DropdownMenuItem(
               value: opt.value,

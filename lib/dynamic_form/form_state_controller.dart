@@ -706,7 +706,7 @@ class FormStateController extends ChangeNotifier {
   String _expandAggregates(String formula) {
     // Match SUM_COLUMN(tableKey, "columnKey") or SUM_COLUMN(tableKey, 'columnKey').
     final regex = RegExp(
-      'SUM_COLUMN\\(([a-zA-Z_][a-zA-Z0-9_]*)\\s*,\\s*[\'\"]([^\'\"]+)[\'\"]\\s*\\)',
+      'SUM_COLUMN\\(([a-zA-Z_][a-zA-Z0-9_]*)\\s*,\\s*[\'"]([^\'"]+)[\'"]\\s*\\)',
     );
     return formula.replaceAllMapped(regex, (m) {
       final tableKey = m.group(1)!;
@@ -942,14 +942,16 @@ class FormStateController extends ChangeNotifier {
   // Toggle sharing for every field.
   void setSelectAll(bool val) {
     selectAll = val;
-    fieldChecks.updateAll((_, __) => val);
+    fieldChecks.updateAll((_, _) => val);
     notifyListeners();
   }
 
   // Clear all form state.
   void clearAll({bool notify = true}) {
     _values.clear();
-    for (final ctrl in textControllers.values) ctrl.clear();
+    for (final ctrl in textControllers.values) {
+      ctrl.clear();
+    }
     for (final notifier in _fieldNotifiers.values) {
       notifier.value = null;
     }
@@ -967,7 +969,7 @@ class FormStateController extends ChangeNotifier {
     signaturePoints = null;
     signatureIsProcessing = false;
     memberTableData.clear();
-    fieldChecks.updateAll((_, __) => false);
+    fieldChecks.updateAll((_, _) => false);
     selectAll = false;
     if (notify) notifyListeners();
   }
@@ -1051,7 +1053,9 @@ class FormStateController extends ChangeNotifier {
   @override
   void dispose() {
     _recomputeDebounce?.cancel();
-    for (final ctrl in textControllers.values) ctrl.dispose();
+    for (final ctrl in textControllers.values) {
+      ctrl.dispose();
+    }
     for (final notifier in _fieldNotifiers.values) {
       notifier.dispose();
     }

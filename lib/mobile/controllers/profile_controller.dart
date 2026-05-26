@@ -237,14 +237,18 @@ class ProfileController extends ChangeNotifier {
 
       final canonicalMap = <String, String>{};
 
-      if (lastNameCtrl.text.trim().isNotEmpty)
+      if (lastNameCtrl.text.trim().isNotEmpty) {
         canonicalMap['last_name'] = lastNameCtrl.text.trim();
-      if (firstNameCtrl.text.trim().isNotEmpty)
+      }
+      if (firstNameCtrl.text.trim().isNotEmpty) {
         canonicalMap['first_name'] = firstNameCtrl.text.trim();
-      if (middleNameCtrl.text.trim().isNotEmpty)
+      }
+      if (middleNameCtrl.text.trim().isNotEmpty) {
         canonicalMap['middle_name'] = middleNameCtrl.text.trim();
-      if (dobCtrl.text.trim().isNotEmpty)
+      }
+      if (dobCtrl.text.trim().isNotEmpty) {
         canonicalMap['date_of_birth'] = dobCtrl.text.trim();
+      }
       if (placeOfBirthCtrl.text.trim().isNotEmpty) {
         canonicalMap['lugar_ng_kapanganakan_place_of_birth'] =
             placeOfBirthCtrl.text.trim();

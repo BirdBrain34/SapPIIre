@@ -184,12 +184,12 @@ class WebAuthService {
     }
   }
 
-  Future<void> clearFirstLoginFlag(String cswd_id) async {
+  Future<void> clearFirstLoginFlag(String cswdId) async {
     try {
       await _supabase
           .from('staff_accounts')
           .update({'is_first_login': false})
-          .eq('cswd_id', cswd_id);
+          .eq('cswd_id', cswdId);
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[WebAuthService/clearFirstLoginFlag] Error: $e');
@@ -224,24 +224,24 @@ class WebAuthService {
     }
   }
 
-  Future<Map<String, dynamic>> deactivateStaffAccount(String cswd_id) async {
+  Future<Map<String, dynamic>> deactivateStaffAccount(String cswdId) async {
     try {
       await _supabase
           .from('staff_accounts')
           .update({'is_active': false, 'account_status': 'deactivated'})
-          .eq('cswd_id', cswd_id);
+          .eq('cswd_id', cswdId);
       return {'success': true, 'message': 'Account deactivated.'};
     } catch (e) {
       return {'success': false, 'message': 'Error: ${e.toString()}'};
     }
   }
 
-  Future<Map<String, dynamic>> reactivateStaffAccount(String cswd_id) async {
+  Future<Map<String, dynamic>> reactivateStaffAccount(String cswdId) async {
     try {
       await _supabase
           .from('staff_accounts')
           .update({'is_active': true, 'account_status': 'active'})
-          .eq('cswd_id', cswd_id);
+          .eq('cswd_id', cswdId);
       return {'success': true, 'message': 'Account reactivated.'};
     } catch (e) {
       return {'success': false, 'message': 'Error: ${e.toString()}'};

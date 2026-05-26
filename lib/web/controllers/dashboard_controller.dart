@@ -1,22 +1,14 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:sappiire/services/dashboard_analytics_service.dart';
-import 'package:sappiire/services/form_template_service.dart';
-import 'package:sappiire/web/components/auto_chart_builder.dart';
 
-/// Coordinates dashboard data loading, chart generation, and client search state.
+/// Coordinates dashboard data loading, planning insights, and client search state.
 class DashboardController extends ChangeNotifier {
   DashboardController({
     DashboardAnalyticsService? analyticsService,
-    FormTemplateService? templateService,
-    AutoChartBuilder? chartBuilder,
-  }) : _analyticsService = analyticsService ?? DashboardAnalyticsService(),
-       _templateService = templateService ?? FormTemplateService(),
-       _chartBuilder = chartBuilder ?? AutoChartBuilder();
+  }) : _analyticsService = analyticsService ?? DashboardAnalyticsService();
 
   final DashboardAnalyticsService _analyticsService;
-  final FormTemplateService _templateService;
-  final AutoChartBuilder _chartBuilder;
 
   final TextEditingController clientSearchController = TextEditingController();
 
@@ -24,10 +16,6 @@ class DashboardController extends ChangeNotifier {
   int totalCount = 0;
   List<String> availableFormTypes = [];
   bool isLoadingCounts = true;
-
-  String selectedFormType = 'All';
-  List<ChartConfig> charts = [];
-  bool isLoadingCharts = false;
 
   bool isLoadingInsights = true;
   Map<String, int> staffWorkload = {};
@@ -65,7 +53,6 @@ class DashboardController extends ChangeNotifier {
       await Future.wait([
         loadOperationalInsights(),
         loadPlanningInsights('All'),
-        loadChartsFor('All'),
       ]);
     } catch (e) {
       debugPrint('[DashboardController/loadSummary] Error: $e');
@@ -97,50 +84,14 @@ class DashboardController extends ChangeNotifier {
         _analyticsService.fetchBarangayVolume(formType: scopedForm),
       ]);
 
-      genderRatio = results[0] as Map<String, int>;
-      ageBrackets = results[1] as Map<String, int>;
-      barangayVolume = results[2] as Map<String, int>;
+      genderRatio = results[0];
+      ageBrackets = results[1];
+      barangayVolume = results[2];
     } catch (e) {
       debugPrint('[DashboardController/loadPlanningInsights] Error: $e');
     } finally {
       isLoadingInsights = false;
       notifyListeners();
-    }
-  }
-
-  Future<void> loadChartsFor(String formType) async {
-    final planningFuture = loadPlanningInsights(formType);
-
-    selectedFormType = formType;
-    isLoadingCharts = true;
-    charts = [];
-    notifyListeners();
-
-    if (formType == 'All') {
-      isLoadingCharts = false;
-      notifyListeners();
-      await planningFuture;
-      return;
-    }
-
-    try {
-      final templates = await _templateService.fetchActiveTemplates();
-      final matched = templates.where((t) => t.formName == formType);
-      final template = matched.isEmpty ? null : matched.first;
-
-      if (template == null) {
-        isLoadingCharts = false;
-        notifyListeners();
-        return;
-      }
-
-      charts = await _chartBuilder.buildCharts(template: template, formType: formType);
-    } catch (e) {
-      debugPrint('[DashboardController/loadChartsFor] Error: $e');
-    } finally {
-      isLoadingCharts = false;
-      notifyListeners();
-      await planningFuture;
     }
   }
 

@@ -2,6 +2,7 @@
 ///
 /// These classes mirror the Supabase schema for form templates, sections,
 /// fields, options, and conditional rules.
+library;
 
 /// Field types supported by the dynamic form system.
 enum FormFieldType {

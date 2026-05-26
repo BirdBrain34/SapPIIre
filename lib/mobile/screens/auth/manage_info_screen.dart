@@ -1,5 +1,6 @@
 /// Mobile manage-info screen for loading profiles, editing dynamic forms,
 /// and transmitting selected fields to the web portal through QR.
+library;
 
 import 'dart:async';
 import 'dart:convert';

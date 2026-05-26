@@ -641,13 +641,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
     String label;
     switch (_currentActualPage) {
       case 2:
-        if (!_controller.emailOtpSent) label = 'Send Code';
-        else if (!_controller.emailVerified) label = 'Verify Email';
+        if (!_controller.emailOtpSent) {
+          label = 'Send Code';
+        } else if (!_controller.emailVerified) label = 'Verify Email';
         else label = 'Continue';
         break;
       case 3:
-        if (!_controller.phoneOtpSent) label = 'Send Code';
-        else if (!_controller.phoneVerified) label = 'Verify Phone';
+        if (!_controller.phoneOtpSent) {
+          label = 'Send Code';
+        } else if (!_controller.phoneVerified) label = 'Verify Phone';
         else label = 'Continue';
         break;
       case 4:
@@ -660,13 +662,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
     bool canProceed;
     switch (_currentActualPage) {
       case 2:
-        if (!_controller.emailOtpSent) canProceed = _controller.emailCtrl.text.contains('@');
-        else if (!_controller.emailVerified) canProceed = _controller.emailOtpCtrl.text.length == 8;
+        if (!_controller.emailOtpSent) {
+          canProceed = _controller.emailCtrl.text.contains('@');
+        } else if (!_controller.emailVerified) canProceed = _controller.emailOtpCtrl.text.length == 8;
         else canProceed = true;
         break;
       case 3:
-        if (!_controller.phoneOtpSent) canProceed = _controller.phoneCtrl.text.length >= 10;
-        else if (!_controller.phoneVerified) canProceed = _controller.phoneOtpCtrl.text.length == 6;
+        if (!_controller.phoneOtpSent) {
+          canProceed = _controller.phoneCtrl.text.length >= 10;
+        } else if (!_controller.phoneVerified) canProceed = _controller.phoneOtpCtrl.text.length == 6;
         else canProceed = true;
         break;
       default:

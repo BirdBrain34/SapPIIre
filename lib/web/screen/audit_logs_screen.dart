@@ -662,7 +662,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
           Expanded(
             child: ListView.separated(
               itemCount: _logs.length,
-              separatorBuilder: (_, __) =>
+              separatorBuilder: (_, _) =>
                   const Divider(height: 1, color: AppColors.cardBorder),
               itemBuilder: (_, i) => _buildLogRow(_logs[i]),
             ),

@@ -371,9 +371,9 @@ class FieldValueService {
       final canonicalBestValue = <String, String>{};
 
       // Separate encrypted rows from plaintext rows for batch decryption
-      final _crossFillEncryptedRows = <Map<String, dynamic>>[];
-      final _crossFillItems = <({String ciphertext, String iv})>[];
-      final _crossFillCanonicals = <String>[];
+      final crossFillEncryptedRows = <Map<String, dynamic>>[];
+      final crossFillItems = <({String ciphertext, String iv})>[];
+      final crossFillCanonicals = <String>[];
 
       for (final row in valueRows) {
         final fid = row['field_id'] as String?;
@@ -399,9 +399,9 @@ class FieldValueService {
         if (version == 1) {
           final iv = row['iv'] as String? ?? '';
           if (iv.isEmpty) continue;
-          _crossFillEncryptedRows.add(row);
-          _crossFillItems.add((ciphertext: fval, iv: iv));
-          _crossFillCanonicals.add(canonical);
+          crossFillEncryptedRows.add(row);
+          crossFillItems.add((ciphertext: fval, iv: iv));
+          crossFillCanonicals.add(canonical);
         } else {
           // Plaintext (legacy encryption_version == 0)
           canonicalBestValue[canonical] = fval;
@@ -409,16 +409,16 @@ class FieldValueService {
       }
 
       // Batch decrypt all encrypted cross-fill values
-      if (_crossFillItems.isNotEmpty) {
+      if (crossFillItems.isNotEmpty) {
         try {
           final decryptedValues = await HybridCryptoService.decryptFieldBatch(
-            _crossFillItems,
+            crossFillItems,
             aesKey,
           );
-          for (var i = 0; i < _crossFillCanonicals.length; i++) {
+          for (var i = 0; i < crossFillCanonicals.length; i++) {
             final decrypted = i < decryptedValues.length ? decryptedValues[i] : '';
             if (decrypted.isNotEmpty && decrypted != _clearedSentinel) {
-              canonicalBestValue[_crossFillCanonicals[i]] = decrypted;
+              canonicalBestValue[crossFillCanonicals[i]] = decrypted;
             }
           }
         } catch (e) {
@@ -619,8 +619,9 @@ class FieldValueService {
         if (fid == null || value == null || value.trim().isEmpty) continue;
 
         final canonical = idToCanonical[fid];
-        if (canonical == null || canonicalResolved.contains(canonical))
+        if (canonical == null || canonicalResolved.contains(canonical)) {
           continue;
+        }
 
         final targets = missingByCanonical[canonical];
         if (targets == null || targets.isEmpty) continue;
@@ -672,7 +673,7 @@ class FieldValueService {
         'form_data': formData,
         'status': 'scanned',
         'scanned_at': DateTime.now().toUtc().toIso8601String(),
-        if (uid != null) 'user_id': uid,
+        'user_id': ?uid,
       };
 
       final res = await _supabase
@@ -706,8 +707,9 @@ class FieldValueService {
     final rows = <Map<String, dynamic>>[];
     for (final field in template.allFields) {
       if (_skipTypes.contains(field.fieldType)) continue;
-      if (field.parentFieldId != null)
+      if (field.parentFieldId != null) {
         continue; // skip child column-definitions
+      }
 
       if (field.fieldType == FormFieldType.signature) {
         final sigVal =

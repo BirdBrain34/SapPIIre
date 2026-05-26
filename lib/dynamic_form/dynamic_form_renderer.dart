@@ -1,4 +1,5 @@
 /// Renders a form template in mobile or web layout mode.
+library;
 
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';

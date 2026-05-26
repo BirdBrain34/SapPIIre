@@ -1,6 +1,7 @@
 /// Loads form templates from Supabase and keeps them cached in memory.
 ///
 /// Used by both mobile and web to load form definitions.
+library;
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';

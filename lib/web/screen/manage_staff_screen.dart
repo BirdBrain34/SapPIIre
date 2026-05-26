@@ -37,9 +37,9 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
     _controller.loadAccounts();
   }
 
-  Future<void> _approveAccount(String cswd_id, String requestedRole) async {
+  Future<void> _approveAccount(String cswdId, String requestedRole) async {
     await _controller.approveAccount(
-      cswdId: cswd_id,
+      cswdId: cswdId,
       requestedRole: requestedRole,
       actorId: widget.cswd_id,
       actorName: widget.displayName,
@@ -47,18 +47,18 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
     );
   }
 
-  Future<void> _rejectAccount(String cswd_id) async {
+  Future<void> _rejectAccount(String cswdId) async {
     await _controller.rejectAccount(
-      cswdId: cswd_id,
+      cswdId: cswdId,
       actorId: widget.cswd_id,
       actorName: widget.displayName,
       actorRole: widget.role,
     );
   }
 
-  Future<void> _updateRole(String cswd_id, String newRole) async {
+  Future<void> _updateRole(String cswdId, String newRole) async {
     await _controller.updateRole(
-      cswdId: cswd_id,
+      cswdId: cswdId,
       newRole: newRole,
       actorId: widget.cswd_id,
       actorName: widget.displayName,
@@ -66,7 +66,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
     );
   }
 
-  Future<void> _deactivateAccount(String cswd_id, String username) async {
+  Future<void> _deactivateAccount(String cswdId, String username) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -95,7 +95,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
     if (confirmed != true) return;
 
     await _controller.deactivateAccount(
-      cswdId: cswd_id,
+      cswdId: cswdId,
       username: username,
       actorId: widget.cswd_id,
       actorName: widget.displayName,
@@ -103,9 +103,9 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
     );
   }
 
-  Future<void> _reactivateAccount(String cswd_id, String username) async {
+  Future<void> _reactivateAccount(String cswdId, String username) async {
     await _controller.reactivateAccount(
-      cswdId: cswd_id,
+      cswdId: cswdId,
       username: username,
       actorId: widget.cswd_id,
       actorName: widget.displayName,
@@ -243,7 +243,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
                         itemCount: _controller.activeAccounts.length,
-                        separatorBuilder: (_, __) =>
+                        separatorBuilder: (_, _) =>
                             Divider(height: 1, color: AppColors.cardBorder),
                         itemBuilder: (_, i) {
                           final acc = _controller.activeAccounts[i];

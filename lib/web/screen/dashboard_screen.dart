@@ -1,16 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
+import 'package:sappiire/models/form_template_models.dart';
+import 'package:sappiire/services/dashboard_config_service.dart';
 import 'package:sappiire/services/dashboard_analytics_service.dart';
 import 'package:sappiire/services/form_template_service.dart';
-import 'package:sappiire/web/components/auto_chart_builder.dart';
 import 'package:sappiire/web/components/intake_chart_widgets.dart';
-import 'package:sappiire/web/screen/applicants_screen.dart';
-import 'package:sappiire/web/screen/audit_logs_screen.dart';
-import 'package:sappiire/web/screen/create_staff_screen.dart';
-import 'package:sappiire/web/screen/form_builder_screen.dart';
-import 'package:sappiire/web/screen/manage_forms_screen.dart';
-import 'package:sappiire/web/screen/manage_staff_screen.dart';
-import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
 import 'package:sappiire/web/controllers/dashboard_controller.dart';
@@ -35,14 +29,22 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final _controller = DashboardController();
+  final _analyticsService = DashboardAnalyticsService();
+  final _templateService = FormTemplateService();
+  final _configService = DashboardConfigService();
+
+  List<FormTemplate> _templates = [];
+  String _selectedFormType = 'All';
+  String? _selectedTemplateId;
+  List<DashboardWidgetConfig> _widgetConfigs = [];
+  final Map<String, Future<Map<String, int>>> _distributionFutures = {};
+  bool _isLoadingWidgetConfigs = false;
+  int _selectionToken = 0;
 
   Map<String, int> get _countsByFormType => _controller.countsByFormType;
   int get _totalCount => _controller.totalCount;
   List<String> get _availableFormTypes => _controller.availableFormTypes;
   bool get _isLoadingCounts => _controller.isLoadingCounts;
-  String get _selectedFormType => _controller.selectedFormType;
-  List<ChartConfig> get _charts => _controller.charts;
-  bool get _isLoadingCharts => _controller.isLoadingCharts;
   bool get _isLoadingInsights => _controller.isLoadingInsights;
   Map<String, int> get _staffWorkload => _controller.staffWorkload;
   Map<String, int> get _genderRatio => _controller.genderRatio;
@@ -65,7 +67,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _controller.setStaffId(widget.cswd_id);
-    _loadSummary();
+    _analyticsService.setStaffId(widget.cswd_id);
+    _loadDashboardData();
   }
 
   @override
@@ -74,14 +77,69 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
-  Future<void> _loadSummary() => _controller.loadSummary();
+  Future<void> _loadDashboardData() async {
+    await Future.wait([
+      _controller.loadSummary(),
+      _loadTemplates(),
+    ]);
+  }
 
-  Future<void> _loadOperationalInsights() => _controller.loadOperationalInsights();
+  Future<void> _loadTemplates() async {
+    final templates = await _templateService.fetchActiveTemplates(
+      forceRefresh: true,
+    );
 
-  Future<void> _loadPlanningInsights(String formType) =>
-      _controller.loadPlanningInsights(formType);
+    if (!mounted) return;
+    setState(() {
+      _templates = templates;
+      if (_selectedFormType != 'All') {
+        _selectedTemplateId = _resolveTemplateId(_selectedFormType);
+      }
+    });
+  }
 
-  Future<void> _loadChartsFor(String formType) => _controller.loadChartsFor(formType);
+  String? _resolveTemplateId(String formType) {
+    for (final template in _templates) {
+      if (template.formName == formType) {
+        return template.templateId;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _selectFormType(String formType) async {
+    final token = ++_selectionToken;
+    final templateId = formType == 'All' ? null : _resolveTemplateId(formType);
+
+    setState(() {
+      _selectedFormType = formType;
+      _selectedTemplateId = templateId;
+      _widgetConfigs = [];
+      _distributionFutures.clear();
+      _isLoadingWidgetConfigs = formType != 'All';
+    });
+
+    await _controller.loadPlanningInsights(formType);
+    if (!mounted || token != _selectionToken) return;
+
+    if (formType == 'All') {
+      setState(() => _isLoadingWidgetConfigs = false);
+      return;
+    }
+
+    if (_selectedTemplateId == null) {
+      setState(() => _isLoadingWidgetConfigs = false);
+      return;
+    }
+
+    final configs = await _configService.fetchConfig(_selectedTemplateId!);
+    if (!mounted || token != _selectionToken) return;
+
+    setState(() {
+      _widgetConfigs = configs;
+      _isLoadingWidgetConfigs = false;
+    });
+  }
 
   Future<void> _searchClients() => _controller.searchClients();
 
@@ -98,6 +156,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
       cswd_id: widget.cswd_id,
       displayName: widget.displayName,
       onLogout: widget.onLogout,
+      headerActions: [
+        if (widget.role == 'superadmin' || widget.role == 'admin')
+          OutlinedButton.icon(
+            onPressed: () => WebNavigator.go(
+              context,
+              'DashboardConfig',
+              cswdId: widget.cswd_id,
+              role: widget.role,
+              displayName: widget.displayName,
+              onLogout: widget.onLogout,
+            ),
+            icon: const Icon(Icons.settings),
+            label: const Text('Configure Dashboard'),
+          ),
+      ],
       onNavigate: (path) => WebNavigator.go(
         context,
         path,
@@ -110,7 +183,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         animation: _controller,
         builder: (context, _) {
           return _isLoadingCounts
-              ? const Center(child: CircularProgressIndicator())
+              ? const Center(
+                  child: CircularProgressIndicator(
+                    color: AppColors.highlight,
+                  ),
+                )
               : SingleChildScrollView(
               padding: const EdgeInsets.all(28),
               child: Column(
@@ -133,7 +210,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       totalCount: _totalCount,
       availableFormTypes: _availableFormTypes,
       selectedFormType: _selectedFormType,
-      onSelectForm: _loadChartsFor,
+      onSelectForm: _selectFormType,
     );
   }
 
@@ -153,43 +230,175 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     }
 
-    if (_isLoadingCharts) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(60),
-          child: CircularProgressIndicator(),
+    if (_isLoadingWidgetConfigs) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 60),
+        child: Center(
+          child: CircularProgressIndicator(color: AppColors.highlight),
         ),
       );
     }
 
-    if (_charts.isEmpty) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildNoChartsPlaceholder(),
-          const SizedBox(height: 24),
-          _buildPlanningSection(),
-        ],
-      );
+    if (_widgetConfigs.isEmpty) {
+      return _buildNoDashboardConfigurationState();
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ..._charts.map((chart) {
+        ..._widgetConfigs.map((config) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 24),
-            child: chart.style == ChartStyle.pie
-                ? SimpleDistributionPie(title: chart.title, data: chart.data)
-                : SimpleBarChart(
-                    title: chart.title,
-                    data: chart.data,
-                    primaryColor: AppColors.highlight,
-                  ),
+            child: _buildConfiguredWidget(config),
           );
         }),
         _buildPlanningSection(),
       ],
+    );
+  }
+
+  Widget _buildConfiguredWidget(DashboardWidgetConfig config) {
+    final cacheKey = '${config.fieldName}:${config.chartType}';
+    final future = _distributionFutures.putIfAbsent(
+      cacheKey,
+      () => _analyticsService.fetchFieldDistribution(
+        formType: _selectedFormType,
+        fieldName: config.fieldName,
+        isNumeric: false,
+        isMultiSelect: false,
+        topN: 20,
+      ),
+    );
+
+    return FutureBuilder<Map<String, int>>(
+      future: future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Padding(
+            padding: EdgeInsets.all(20),
+            child: Center(
+              child: CircularProgressIndicator(color: AppColors.highlight),
+            ),
+          );
+        }
+
+        final data = snapshot.data ?? {};
+        if (data.isEmpty) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: AppColors.cardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.cardBorder),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Text(
+              "No data yet for '${config.fieldLabel}'",
+              style: const TextStyle(color: AppColors.textMuted),
+            ),
+          );
+        }
+
+        switch (config.chartType) {
+          case 'pie':
+            return SimpleDistributionPie(title: config.fieldLabel, data: data);
+          case 'counter':
+            final entries = data.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+            final topEntry = entries.first;
+            return MetricCard(
+              label: config.fieldLabel,
+              value: topEntry.value.toString(),
+              icon: Icons.tag,
+              color: AppColors.highlight,
+              subtitle: topEntry.key,
+              expand: false,
+            );
+          case 'hbar':
+            return SimpleHorizontalBarChart(
+              title: config.fieldLabel,
+              data: data,
+              primaryColor: AppColors.highlight,
+            );
+          case 'table':
+            return SimpleDataTable(title: config.fieldLabel, data: data);
+          default:
+            return SimpleBarChart(
+              title: config.fieldLabel,
+              data: data,
+              primaryColor: AppColors.highlight,
+            );
+        }
+      },
+    );
+  }
+
+  Widget _buildNoDashboardConfigurationState() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(36),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cardBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.dashboard_customize_outlined,
+            size: 64,
+            color: AppColors.textMuted.withValues(alpha: 0.45),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'No dashboard configured for this form',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Go to Dashboard Configuration to define which fields to visualize.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, color: AppColors.textMuted),
+          ),
+          if (widget.role == 'superadmin' || widget.role == 'admin') ...[
+            const SizedBox(height: 20),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.highlight,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => WebNavigator.go(
+                context,
+                'DashboardConfig',
+                cswdId: widget.cswd_id,
+                role: widget.role,
+                displayName: widget.displayName,
+                onLogout: widget.onLogout,
+              ),
+              child: const Text('Configure Now'),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -509,42 +718,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Map<String, int> _groupHistoryByFormType(List<Map<String, dynamic>> history) =>
       _controller.groupHistoryByFormType(history);
-
-  Widget _buildNoChartsPlaceholder() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(48),
-      decoration: BoxDecoration(
-        color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.cardBorder),
-      ),
-      child: Column(
-        children: [
-          Icon(
-            Icons.bar_chart_outlined,
-            size: 64,
-            color: AppColors.textMuted.withValues(alpha: 0.4),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'No charts available for this form',
-            style: TextStyle(fontSize: 16, color: AppColors.textMuted),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Charts appear automatically when this form has dropdown, radio,\n'
-            'checkbox, or number fields with enough collected data.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              color: AppColors.textMuted.withValues(alpha: 0.7),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildLoadingCard(String message) {
     return Container(

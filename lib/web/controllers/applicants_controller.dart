@@ -28,7 +28,7 @@ class ApplicantsController {
       return 'Unknown Applicant (Encrypted)';
     }
 
-    final dataMap = Map<String, dynamic>.from(data as Map);
+    final dataMap = Map<String, dynamic>.from(data);
 
     if (dataMap['__applicant_name'] is Map) {
       final n = dataMap['__applicant_name'] as Map<String, dynamic>;

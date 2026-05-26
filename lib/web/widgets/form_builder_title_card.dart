@@ -415,7 +415,7 @@ class FormBuilderTitleCard extends StatelessWidget {
                 ),
                 Switch(
                   value: controller.popupEnabled,
-                  activeColor: AppColors.primaryBlue,
+                  activeThumbColor: AppColors.primaryBlue,
                   onChanged: (value) {
                     controller.popupEnabled = value;
                     controller.markChanged(preserveScroll: true);

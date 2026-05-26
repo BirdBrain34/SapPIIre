@@ -1,5 +1,6 @@
 /// Web screen for browsing, resolving, and editing applicant submissions.
 /// Uses DynamicFormRenderer so any saved form template can be displayed.
+library;
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -657,7 +658,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                     thumbVisibility: true,
                     child: ListView.separated(
                       itemCount: groups.length,
-                      separatorBuilder: (_, __) => Divider(
+                      separatorBuilder: (_, _) => Divider(
                         height: 1,
                         color: Colors.white.withValues(alpha: 0.10),
                         indent: 14,
@@ -952,7 +953,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                             ),
                             DropdownButtonFormField<RecordSortOrder>(
                               isExpanded: true,
-                              value: _recordSortOrder,
+                              initialValue: _recordSortOrder,
                               onChanged: (value) {
                                 if (value == null) return;
                                 setState(() {
@@ -1018,7 +1019,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                             ),
                             DropdownButtonFormField<String>(
                               isExpanded: true,
-                              value: _formTypeFilter,
+                              initialValue: _formTypeFilter,
                               onChanged: (value) {
                                 if (value == null) return;
                                 setState(() {
@@ -1114,7 +1115,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                     child: ListView.separated(
                       padding: const EdgeInsets.symmetric(vertical: 6),
                       itemCount: records.length,
-                      separatorBuilder: (_, __) => Divider(
+                      separatorBuilder: (_, _) => Divider(
                         height: 1,
                         color: Colors.white.withValues(alpha: 0.10),
                       ),

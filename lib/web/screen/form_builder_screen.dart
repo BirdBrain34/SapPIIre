@@ -3,8 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/services/auth/web_auth_service.dart';
-import 'package:sappiire/web/controllers/form_builder_screen_controller.dart'
-    hide FormFieldType;
+import 'package:sappiire/web/controllers/form_builder_screen_controller.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
 import 'package:sappiire/web/widgets/form_builder_field_card.dart';

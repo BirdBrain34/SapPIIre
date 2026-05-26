@@ -917,7 +917,7 @@ class SupabaseService {
               'transmission_version': 0,
               'status': 'scanned',
               'scanned_at': DateTime.now().toUtc().toIso8601String(),
-              if (userId != null) 'user_id': userId,
+              'user_id': ?userId,
             })
             .eq('id', sessionId)
             .select()
@@ -939,7 +939,7 @@ class SupabaseService {
             'transmission_version': 1,
             'status': 'scanned',
             'scanned_at': DateTime.now().toUtc().toIso8601String(),
-            if (userId != null) 'user_id': userId,
+            'user_id': ?userId,
           })
           .eq('id', sessionId)
           .eq('status', 'active')
@@ -958,7 +958,7 @@ class SupabaseService {
               'transmission_version': 1,
               'status': 'scanned',
               'scanned_at': DateTime.now().toUtc().toIso8601String(),
-              if (userId != null) 'user_id': userId,
+              'user_id': ?userId,
             })
             .eq('id', sessionId)
             .select()

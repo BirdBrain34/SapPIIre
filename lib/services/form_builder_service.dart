@@ -67,7 +67,7 @@ class FormBuilderService {
     final payload = <String, dynamic>{
       'theme_config': themeConfig.isEmpty ? null : themeConfig,
       if (setInactive) 'is_active': false,
-      if (statusOverride != null) 'status': statusOverride,
+      'status': ?statusOverride,
     };
 
     await _supabase
@@ -367,8 +367,7 @@ class FormBuilderService {
               'reference_prefix': referencePrefix.trim().toUpperCase(),
             if (referenceFormat != null && referenceFormat.trim().isNotEmpty)
               'reference_format': referenceFormat.trim(),
-            if (requiresReference != null)
-              'requires_reference': requiresReference,
+            'requires_reference': ?requiresReference,
           })
           .eq('template_id', templateId);
 

@@ -147,9 +147,9 @@ class InfoScannerController extends ChangeNotifier {
         }
       } else if (lower.contains('sibil') || lower.contains('marital')) {
         if (data.bloodType.isEmpty) {
-          final beforeLabel = lower.indexOf('sbil') != -1
+          final beforeLabel = lower.contains('sbil')
               ? lines[i].substring(0, lower.indexOf('sbil')).trim()
-              : lower.indexOf('sibil') != -1
+              : lower.contains('sibil')
               ? lines[i].substring(0, lower.indexOf('sibil')).trim()
               : '';
           if (beforeLabel.isNotEmpty && !_isJunk(beforeLabel)) {
@@ -203,7 +203,9 @@ class InfoScannerController extends ChangeNotifier {
             if (nl == 'male' ||
                 nl == 'female' ||
                 nl == 'lalaki' ||
-                nl == 'babae') break;
+                nl == 'babae') {
+              break;
+            }
             parts.add(next);
           }
           if (parts.isNotEmpty) {
@@ -253,7 +255,9 @@ class InfoScannerController extends ChangeNotifier {
           ll.contains('exclusively') ||
           ll.contains('distributed') ||
           ll.contains('property') ||
-          ll.contains('university')) continue;
+          ll.contains('university')) {
+        continue;
+      }
       if (ll == 'male' || ll == 'female' || ll == 'lalaki' || ll == 'babae') {
         break;
       }

@@ -122,7 +122,9 @@ class SignupController extends ChangeNotifier {
   void dispose() {
     emailOtpTimer?.cancel();
     phoneOtpTimer?.cancel();
-    for (final c in allControllers) c.dispose();
+    for (final c in allControllers) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -426,8 +428,9 @@ class SignupController extends ChangeNotifier {
     }
     if (result.maritalStatus.isNotEmpty) {
       final l = result.maritalStatus.toLowerCase();
-      if (l.contains('single')) maritalStatus = 'Single';
-      else if (l.contains('married')) maritalStatus = 'Married';
+      if (l.contains('single')) {
+        maritalStatus = 'Single';
+      } else if (l.contains('married')) maritalStatus = 'Married';
       else if (l.contains('widow')) maritalStatus = 'Widowed';
       else if (l.contains('separated')) maritalStatus = 'Separated';
       else if (l.contains('annul')) maritalStatus = 'Annulled';
