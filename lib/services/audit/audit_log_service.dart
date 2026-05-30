@@ -13,6 +13,7 @@ const kAuditSessionClosed = 'session_closed';
 const kAuditSubmissionCreated = 'submission_created';
 const kAuditSubmissionEdited = 'submission_edited';
 const kAuditSubmissionDeleted = 'submission_deleted';
+const kAuditSubmissionDecrypted = 'submission_decrypted';
 
 const kAuditStaffCreated = 'staff_created';
 const kAuditStaffApproved = 'staff_approved';

@@ -102,8 +102,11 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       final encryptionVersion = sub['data_encryption_version'] ?? 0;
       if (encryptionVersion == 1 && sub['data'] is String) {
         try {
+          // Background decryption for list rendering only — do not audit-log,
+          // otherwise every list load floods the audit trail.
           final decrypted = await _decryptSubmissionData(
             sub['id'].toString(),
+            logAccess: false,
           );
           // Replace the encrypted string with the decrypted map in memory.
           sub['data'] = decrypted;
@@ -176,29 +179,41 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   }
 
   // Load a submission into the detail panel.
-  Future<void> _loadSubmission(Map<String, dynamic> submission) async {
+  // [logAccess] records a deliberate PII-access audit entry; set false for
+  // programmatic reloads (e.g. after saving an edit) to avoid double-logging.
+  Future<void> _loadSubmission(
+    Map<String, dynamic> submission, {
+    bool logAccess = true,
+  }) async {
     final formType = submission['form_type'] as String? ?? '';
     var data = submission['data'];
     final encryptionVersion = submission['data_encryption_version'] ?? 0;
 
-    // Decrypt server-encrypted submissions before showing them.
-    if (encryptionVersion == 1 && data is String) {
+    // Always route encrypted submissions through the edge function on a
+    // deliberate open so exactly one server-side access audit row is written,
+    // even when the list's background pass already cached a decrypted Map.
+    if (encryptionVersion == 1) {
       try {
         final decrypted = await _decryptSubmissionData(
           submission['id'].toString(),
+          logAccess: logAccess,
         );
         data = decrypted;
       } catch (e) {
         debugPrint('[ApplicantsScreen/_loadSubmission] Error: $e');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to decrypt submission: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
+        // Fall back to the cached decrypted Map (from the list pass) so the
+        // record still opens; only hard-fail when nothing usable is cached.
+        if (data is! Map) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to decrypt submission: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
         }
-        return;
       }
     }
 
@@ -234,15 +249,17 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   }
 
   Future<Map<String, dynamic>> _decryptSubmissionData(
-    String submissionId,
-  ) async {
+    String submissionId, {
+    bool logAccess = true,
+  }) async {
     final supabase = Supabase.instance.client;
-    
+
     final response = await supabase.functions.invoke(
       'decrypt-submission-data',
       body: {
         'submissionId': submissionId,
         'staffId': widget.cswd_id,
+        'logAccess': logAccess,
       },
     );
 
@@ -319,7 +336,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         (s) => s['id'] == _selectedSubmission!['id'],
         orElse: () => {},
       );
-      if (updated.isNotEmpty) _loadSubmission(updated);
+      if (updated.isNotEmpty) _loadSubmission(updated, logAccess: false);
     } catch (e) {
       debugPrint('[ApplicantsScreen/_saveEdit] Error: $e');
       setState(() => _isSaving = false);
