@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sappiire/services/forms/submission_service.dart';
 
@@ -39,6 +40,153 @@ class DashboardAnalyticsService {
 
   void setStaffId(String staffId) {
     _staffId = staffId;
+  }
+
+  dynamic _applyTimeRange(dynamic query, DateTimeRange? timeRange) {
+    if (timeRange == null) {
+      return query;
+    }
+
+    return query
+        .gte('created_at', timeRange.start.toIso8601String())
+        .lte('created_at', timeRange.end.toIso8601String());
+  }
+
+  dynamic _clientSubmissionsQuery({
+    required String select,
+    String? formType,
+    DateTimeRange? timeRange,
+  }) {
+    dynamic query = _supabase.from('client_submissions').select(select);
+
+    if (formType != null && formType.trim().isNotEmpty && formType != 'All') {
+      query = query.eq('form_type', formType);
+    }
+
+    return _applyTimeRange(query, timeRange);
+  }
+
+  dynamic _formSubmissionQuery({DateTimeRange? timeRange}) {
+    dynamic query = _supabase.from('form_submission').select('*');
+    return _applyTimeRange(query, timeRange);
+  }
+
+  dynamic _auditLogQuery({DateTimeRange? timeRange}) {
+    dynamic query = _supabase.from('audit_logs').select('actor_id, actor_name');
+    return _applyTimeRange(query, timeRange);
+  }
+
+  Future<int> fetchSubmissionCount({
+    String? formType,
+    DateTimeRange? timeRange,
+  }) async {
+    try {
+      final rows = await _clientSubmissionsQuery(
+        select: 'id',
+        formType: formType,
+        timeRange: timeRange,
+      );
+      return List<Map<String, dynamic>>.from(rows).length;
+    } catch (e) {
+      debugPrint('[DashboardAnalyticsService/fetchSubmissionCount] Error: $e');
+      return 0;
+    }
+  }
+
+  Future<Map<String, int>> fetchSubmissionsByFormType({
+    DateTimeRange? timeRange,
+  }) async {
+    try {
+      final rows = await _clientSubmissionsQuery(
+        select: 'form_type',
+        timeRange: timeRange,
+      );
+      final counts = <String, int>{};
+
+      for (final row in List<Map<String, dynamic>>.from(rows)) {
+        final formType = row['form_type']?.toString().trim();
+        final key = (formType == null || formType.isEmpty) ? 'Unknown' : formType;
+        counts[key] = (counts[key] ?? 0) + 1;
+      }
+
+      return counts;
+    } catch (e) {
+      debugPrint('[DashboardAnalyticsService/fetchSubmissionsByFormType] Error: $e');
+      return {};
+    }
+  }
+
+  Future<Map<String, int>> fetchSubmissionsByWorker({
+    String? formType,
+    DateTimeRange? timeRange,
+  }) async {
+    try {
+      final rows = await _clientSubmissionsQuery(
+        select: 'created_by, last_edited_by',
+        formType: formType,
+        timeRange: timeRange,
+      );
+
+      final counts = <String, int>{};
+      final workerIds = <String>{};
+
+      for (final row in List<Map<String, dynamic>>.from(rows)) {
+        final workerId = _workerIdFromSubmissionRow(row);
+        if (workerId.isEmpty) {
+          continue;
+        }
+        workerIds.add(workerId);
+        counts[workerId] = (counts[workerId] ?? 0) + 1;
+      }
+
+      if (counts.isEmpty) {
+        return {};
+      }
+
+      final labelMap = await _fetchStaffDisplayNames(workerIds.toList());
+      return {
+        for (final entry in counts.entries)
+          (labelMap[entry.key]?.trim().isNotEmpty == true
+                  ? labelMap[entry.key]!
+                  : entry.key):
+              entry.value,
+      };
+    } catch (e) {
+      debugPrint('[DashboardAnalyticsService/fetchSubmissionsByWorker] Error: $e');
+      return {};
+    }
+  }
+
+  Future<int> fetchUniqueClientCount({DateTimeRange? timeRange}) async {
+    try {
+      final rows = await _clientSubmissionsQuery(
+        select: 'user_id',
+        timeRange: timeRange,
+      );
+
+      final ids = <String>{};
+      for (final row in List<Map<String, dynamic>>.from(rows)) {
+        final userId = row['user_id']?.toString().trim() ?? '';
+        if (userId.isNotEmpty) {
+          ids.add(userId);
+        }
+      }
+
+      return ids.length;
+    } catch (e) {
+      debugPrint('[DashboardAnalyticsService/fetchUniqueClientCount] Error: $e');
+      return 0;
+    }
+  }
+
+  Future<int> fetchStaffAccountCount() async {
+    try {
+      final rows = await _supabase.from('staff_accounts').select('cswd_id');
+      return List<Map<String, dynamic>>.from(rows).length;
+    } catch (e) {
+      debugPrint('[DashboardAnalyticsService/fetchStaffAccountCount] Error: $e');
+      return 0;
+    }
   }
 
   Future<Map<String, int>> fetchCountsByFormType() async {
@@ -142,11 +290,10 @@ class DashboardAnalyticsService {
 
   Future<Map<String, int>> fetchStaffWorkloadDistribution({
     int topN = 8,
+    DateTimeRange? timeRange,
   }) async {
     try {
-      final rows = await _supabase
-          .from('audit_logs')
-          .select('actor_id, actor_name')
+      final rows = await _auditLogQuery(timeRange: timeRange)
           .order('created_at', ascending: false)
           .limit(500);
 
@@ -250,6 +397,20 @@ class DashboardAnalyticsService {
     }
   }
 
+  String _workerIdFromSubmissionRow(Map<String, dynamic> row) {
+    final createdBy = row['created_by']?.toString().trim() ?? '';
+    if (createdBy.isNotEmpty) {
+      return createdBy;
+    }
+
+    final editedBy = row['last_edited_by']?.toString().trim() ?? '';
+    if (editedBy.isNotEmpty) {
+      return editedBy;
+    }
+
+    return row['submitted_by']?.toString().trim() ?? '';
+  }
+
   String _sanitizeActorLabel(String rawValue) {
     final value = rawValue.trim();
     if (value.isEmpty) {
@@ -275,9 +436,15 @@ class DashboardAnalyticsService {
     return uuid.hasMatch(value);
   }
 
-  Future<Map<String, int>> fetchGenderRatio({String formType = 'All'}) async {
+  Future<Map<String, int>> fetchGenderRatio({
+    String formType = 'All',
+    DateTimeRange? timeRange,
+  }) async {
     try {
-      final rows = await _fetchSubmissionDataRows(formType: formType);
+      final rows = await _fetchSubmissionDataRows(
+        formType: formType,
+        timeRange: timeRange,
+      );
       final dist = <String, int>{};
 
       for (final row in List<Map<String, dynamic>>.from(rows)) {
@@ -317,9 +484,13 @@ class DashboardAnalyticsService {
 
   Future<Map<String, int>> fetchAgeBracketDistribution({
     String formType = 'All',
+    DateTimeRange? timeRange,
   }) async {
     try {
-      final rows = await _fetchSubmissionDataRows(formType: formType);
+      final rows = await _fetchSubmissionDataRows(
+        formType: formType,
+        timeRange: timeRange,
+      );
       final dist = <String, int>{};
 
       for (final row in List<Map<String, dynamic>>.from(rows)) {
@@ -345,9 +516,13 @@ class DashboardAnalyticsService {
   Future<Map<String, int>> fetchBarangayVolume({
     String formType = 'All',
     int topN = 10,
+    DateTimeRange? timeRange,
   }) async {
     try {
-      final rows = await _fetchSubmissionDataRows(formType: formType);
+      final rows = await _fetchSubmissionDataRows(
+        formType: formType,
+        timeRange: timeRange,
+      );
       final dist = <String, int>{};
 
       for (final row in List<Map<String, dynamic>>.from(rows)) {
@@ -374,6 +549,7 @@ class DashboardAnalyticsService {
   Future<List<IssueTrendItem>> fetchIssueTrends({
     String formType = 'All',
     int topN = 6,
+    DateTimeRange? timeRange,
   }) async {
     if (_staffId == null) {
       debugPrint('[DashboardAnalyticsService/fetchIssueTrends] Action: staffId not set');
@@ -385,16 +561,15 @@ class DashboardAnalyticsService {
       final currentMonthStart = DateTime(now.year, now.month, 1);
       final previousMonthStart = DateTime(now.year, now.month - 1, 1);
 
-      final rows = formType == 'All'
-          ? await _supabase
-                .from('client_submissions')
-                .select('id, data, data_encryption_version, created_at')
-                .gte('created_at', previousMonthStart.toIso8601String())
-          : await _supabase
-                .from('client_submissions')
-                .select('id, data, data_encryption_version, created_at')
-                .eq('form_type', formType)
-                .gte('created_at', previousMonthStart.toIso8601String());
+      dynamic query = _clientSubmissionsQuery(
+        select: 'id, data, data_encryption_version, created_at',
+        formType: formType,
+        timeRange: timeRange,
+      );
+      if (timeRange == null) {
+        query = query.gte('created_at', previousMonthStart.toIso8601String());
+      }
+      final rows = await query;
 
       final current = <String, int>{};
       final previous = <String, int>{};
@@ -498,10 +673,12 @@ class DashboardAnalyticsService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> fetchClientHistory(String userId) async {
+  Future<List<Map<String, dynamic>>> fetchClientHistory(
+    String userId, {
+    DateTimeRange? timeRange,
+  }) async {
     try {
-      final sessions = await _supabase
-          .from('form_submission')
+      final sessions = await _formSubmissionQuery(timeRange: timeRange)
           .select('id')
           .eq('user_id', userId);
 
@@ -514,9 +691,10 @@ class DashboardAnalyticsService {
         return [];
       }
 
-      final history = await _supabase
-          .from('client_submissions')
-          .select('id, form_type, created_at, intake_reference')
+      final history = await _clientSubmissionsQuery(
+        select: 'id, form_type, created_at, intake_reference',
+        timeRange: timeRange,
+      )
           .inFilter('session_id', sessionIds)
           .order('created_at', ascending: false)
           .limit(50);
@@ -530,9 +708,11 @@ class DashboardAnalyticsService {
 
   Future<Map<String, String>> fetchEligibilityFrequencyFlags(
     String userId,
-  ) async {
+    {
+    DateTimeRange? timeRange,
+  }) async {
     try {
-      final history = await fetchClientHistory(userId);
+      final history = await fetchClientHistory(userId, timeRange: timeRange);
       if (history.isEmpty) {
         return {};
       }
@@ -574,6 +754,7 @@ class DashboardAnalyticsService {
     bool isNumeric = false,
     bool isMultiSelect = false,
     int topN = 10,
+    DateTimeRange? timeRange,
   }) async {
     if (_staffId == null) {
       debugPrint('[DashboardAnalyticsService/fetchFieldDistribution] Action: staffId not set');
@@ -581,10 +762,11 @@ class DashboardAnalyticsService {
     }
 
     try {
-      final rows = await _supabase
-          .from('client_submissions')
-          .select('id, data, data_encryption_version')
-          .eq('form_type', formType);
+      final rows = await _clientSubmissionsQuery(
+        select: 'id, data, data_encryption_version',
+        formType: formType,
+        timeRange: timeRange,
+      );
 
       final dist = <String, int>{};
 
@@ -668,29 +850,24 @@ class DashboardAnalyticsService {
     }
   }
 
-  Future<Map<String, int>> fetchSubmissionCountsByFormType() async {
-    return fetchCountsByFormType();
+  Future<Map<String, int>> fetchSubmissionCountsByFormType({
+    DateTimeRange? timeRange,
+  }) async {
+    return fetchSubmissionsByFormType(timeRange: timeRange);
   }
 
-  Future<int> fetchTotalCount() async {
-    final counts = await fetchSubmissionCountsByFormType();
+  Future<int> fetchTotalCount({DateTimeRange? timeRange}) async {
+    final counts = await fetchSubmissionCountsByFormType(timeRange: timeRange);
     return counts.values.fold<int>(0, (sum, count) => sum + count);
   }
 
-  Future<List<Map<String, dynamic>>> fetchSubmissionsForFormType(
-    String formType,
-  ) async {
+  Future<List<Map<String, dynamic>>> fetchSubmissionsForFormType(String formType, {DateTimeRange? timeRange}) async {
     try {
-      final rows = formType == 'All'
-          ? await _supabase
-                .from('client_submissions')
-                .select('id, form_type, data, created_at')
-                .order('created_at', ascending: false)
-          : await _supabase
-                .from('client_submissions')
-                .select('id, form_type, data, created_at')
-                .eq('form_type', formType)
-                .order('created_at', ascending: false);
+      final rows = await _clientSubmissionsQuery(
+        select: 'id, form_type, data, created_at',
+        formType: formType,
+        timeRange: timeRange,
+      ).order('created_at', ascending: false);
 
       return List<Map<String, dynamic>>.from(rows);
     } catch (e) {
@@ -701,26 +878,18 @@ class DashboardAnalyticsService {
     }
   }
 
-  Future<Map<String, int>> getFieldDistribution(
-    String formType,
-    String fieldKey,
-  ) async {
+  Future<Map<String, int>> getFieldDistribution(String formType, String fieldKey, {DateTimeRange? timeRange}) async {
     if (_staffId == null) {
       debugPrint('[DashboardAnalyticsService/getFieldDistribution] Action: staffId not set');
       return {};
     }
 
     try {
-      final rows = formType == 'All'
-          ? await _supabase
-                .from('client_submissions')
-                .select('id, data, data_encryption_version')
-                .order('created_at', ascending: false)
-          : await _supabase
-                .from('client_submissions')
-                .select('id, data, data_encryption_version')
-                .eq('form_type', formType)
-                .order('created_at', ascending: false);
+      final rows = await _clientSubmissionsQuery(
+        select: 'id, data, data_encryption_version',
+        formType: formType,
+        timeRange: timeRange,
+      ).order('created_at', ascending: false);
 
       final distribution = <String, int>{};
 
@@ -797,18 +966,16 @@ class DashboardAnalyticsService {
     return types;
   }
 
-  Future<Map<String, int>> fetchMonthlyTrend(String formType) async {
+  Future<Map<String, int>> fetchMonthlyTrend(
+    String formType, {
+    DateTimeRange? timeRange,
+  }) async {
     try {
-      final rows = formType == 'All'
-          ? await _supabase
-                .from('client_submissions')
-                .select('created_at')
-                .order('created_at', ascending: true)
-          : await _supabase
-                .from('client_submissions')
-                .select('created_at')
-                .eq('form_type', formType)
-                .order('created_at', ascending: true);
+      final rows = await _clientSubmissionsQuery(
+        select: 'created_at',
+        formType: formType,
+        timeRange: timeRange,
+      ).order('created_at', ascending: true);
 
       final trend = <String, int>{};
       for (final row in List<Map<String, dynamic>>.from(rows)) {
@@ -1203,6 +1370,7 @@ class DashboardAnalyticsService {
 
   Future<List<Map<String, dynamic>>> _fetchSubmissionDataRows({
     required String formType,
+    DateTimeRange? timeRange,
   }) async {
     if (_staffId == null) {
       debugPrint('[DashboardAnalyticsService/_fetchSubmissionDataRows] Action: staffId not set');
@@ -1210,14 +1378,11 @@ class DashboardAnalyticsService {
     }
 
     try {
-      final rows = formType == 'All'
-          ? await _supabase
-                .from('client_submissions')
-                .select('id, data, data_encryption_version')
-          : await _supabase
-                .from('client_submissions')
-                .select('id, data, data_encryption_version')
-                .eq('form_type', formType);
+      final rows = await _clientSubmissionsQuery(
+        select: 'id, data, data_encryption_version',
+        formType: formType,
+        timeRange: timeRange,
+      );
 
       final decryptedRows = <Map<String, dynamic>>[];
 

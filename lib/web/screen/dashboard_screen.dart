@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
+
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/models/form_template_models.dart';
-import 'package:sappiire/services/dashboard_config_service.dart';
 import 'package:sappiire/services/dashboard_analytics_service.dart';
+import 'package:sappiire/services/dashboard_config_service.dart';
 import 'package:sappiire/services/form_template_service.dart';
 import 'package:sappiire/web/components/intake_chart_widgets.dart';
+import 'package:sappiire/web/controllers/dashboard_controller.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
-import 'package:sappiire/web/controllers/dashboard_controller.dart';
 
 class DashboardScreen extends StatefulWidget {
   final String cswd_id;
@@ -27,7 +28,8 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen>
+    with TickerProviderStateMixin {
   final _controller = DashboardController();
   final _analyticsService = DashboardAnalyticsService();
   final _templateService = FormTemplateService();
@@ -35,10 +37,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   List<FormTemplate> _templates = [];
   String _selectedFormType = 'All';
+  String _selectedTimeRange = 'all';
   String? _selectedTemplateId;
   List<DashboardWidgetConfig> _widgetConfigs = [];
   final Map<String, Future<Map<String, int>>> _distributionFutures = {};
   bool _isLoadingWidgetConfigs = false;
+  bool _isLoadingOverview = true;
+  int _activeFormCount = 0;
+  int _staffAccountCount = 0;
+  int _uniqueClientCount = 0;
+  Map<String, int> _workerAnalytics = {};
+  int _refreshToken = 0;
   int _selectionToken = 0;
 
   Map<String, int> get _countsByFormType => _controller.countsByFormType;
@@ -78,10 +87,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadDashboardData() async {
-    await Future.wait([
-      _controller.loadSummary(),
-      _loadTemplates(),
-    ]);
+    await _loadTemplates();
+    await _refreshDashboardData();
   }
 
   Future<void> _loadTemplates() async {
@@ -92,10 +99,104 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (!mounted) return;
     setState(() {
       _templates = templates;
+      _activeFormCount = templates.length;
+      _controller.availableFormTypes = templates
+          .map((template) => template.formName)
+          .toSet()
+          .toList()
+        ..sort();
       if (_selectedFormType != 'All') {
         _selectedTemplateId = _resolveTemplateId(_selectedFormType);
       }
+      _isLoadingOverview = false;
     });
+  }
+
+  DateTimeRange? _getTimeRange() {
+    final now = DateTime.now();
+    switch (_selectedTimeRange) {
+      case 'daily':
+        return DateTimeRange(
+          start: DateTime(now.year, now.month, now.day),
+          end: now,
+        );
+      case 'weekly':
+        return DateTimeRange(
+          start: now.subtract(const Duration(days: 7)),
+          end: now,
+        );
+      case 'monthly':
+        return DateTimeRange(start: DateTime(now.year, now.month, 1), end: now);
+      case 'yearly':
+        return DateTimeRange(start: DateTime(now.year, 1, 1), end: now);
+      default:
+        return null;
+    }
+  }
+
+  String _timeRangeLabel() {
+    switch (_selectedTimeRange) {
+      case 'daily':
+        return 'Today';
+      case 'weekly':
+        return 'This Week';
+      case 'monthly':
+        return 'This Month';
+      case 'yearly':
+        return 'This Year';
+      default:
+        return 'All Time';
+    }
+  }
+
+  Future<void> _refreshDashboardData() async {
+    final token = ++_refreshToken;
+    final timeRange = _getTimeRange();
+    final formType = _selectedFormType;
+
+    if (mounted) {
+      setState(() => _isLoadingOverview = true);
+    }
+
+    await Future.wait([
+      _controller.loadSummary(timeRange: timeRange),
+      _controller.loadOperationalInsights(timeRange: timeRange),
+      _controller.loadPlanningInsights(
+        formType,
+        timeRange: timeRange,
+      ),
+    ]);
+
+    if (!mounted || token != _refreshToken) return;
+
+    final workerAnalytics = await _analyticsService.fetchSubmissionsByWorker(
+      formType: formType == 'All' ? null : formType,
+      timeRange: timeRange,
+    );
+    final staffCount = await _analyticsService.fetchStaffAccountCount();
+    final uniqueClients = await _analyticsService.fetchUniqueClientCount(
+      timeRange: timeRange,
+    );
+
+    if (!mounted || token != _refreshToken) return;
+
+    setState(() {
+      _workerAnalytics = workerAnalytics;
+      _staffAccountCount = staffCount;
+      _uniqueClientCount = uniqueClients;
+      _activeFormCount = _templates.length;
+      _isLoadingOverview = false;
+    });
+
+    if (_selectedClientId != null) {
+      await _controller.selectClient(
+        {
+          'user_id': _selectedClientId!,
+          'name': _selectedClientName,
+        },
+        timeRange: timeRange,
+      );
+    }
   }
 
   String? _resolveTemplateId(String formType) {
@@ -119,7 +220,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _isLoadingWidgetConfigs = formType != 'All';
     });
 
-    await _controller.loadPlanningInsights(formType);
+    await _refreshDashboardData();
     if (!mounted || token != _selectionToken) return;
 
     if (formType == 'All') {
@@ -144,7 +245,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _searchClients() => _controller.searchClients();
 
   Future<void> _selectClient(Map<String, String> client) =>
-      _controller.selectClient(client);
+      _controller.selectClient(client, timeRange: _getTimeRange());
 
   @override
   Widget build(BuildContext context) {
@@ -182,23 +283,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: AnimatedBuilder(
         animation: _controller,
         builder: (context, _) {
-          return _isLoadingCounts
+          final isLoadingDashboard =
+              _isLoadingOverview ||
+              _controller.isLoadingCounts ||
+              _controller.isLoadingInsights ||
+              _isLoadingWidgetConfigs;
+
+          return isLoadingDashboard
               ? const Center(
                   child: CircularProgressIndicator(
                     color: AppColors.highlight,
                   ),
                 )
               : SingleChildScrollView(
-              padding: const EdgeInsets.all(28),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildFormCardsSection(),
-                  const SizedBox(height: 28),
-                  _buildChartsSection(),
-                ],
-              ),
-            );
+                  padding: const EdgeInsets.all(28),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildFormCardsSection(),
+                      const SizedBox(height: 18),
+                      _buildTimeRangeSelector(),
+                      const SizedBox(height: 28),
+                      _buildChartsSection(_getTimeRange()),
+                    ],
+                  ),
+                );
         },
       ),
     );
@@ -214,18 +323,74 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildChartsSection() {
+  Widget _buildTimeRangeSelector() {
+    final options = const [
+      MapEntry('all', 'All Time'),
+      MapEntry('yearly', 'Yearly'),
+      MapEntry('monthly', 'Monthly'),
+      MapEntry('weekly', 'Weekly'),
+      MapEntry('daily', 'Daily'),
+    ];
+
+    final selected = options.map((option) => option.key == _selectedTimeRange).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ToggleButtons(
+          isSelected: selected,
+          onPressed: (index) {
+            final next = options[index].key;
+            if (next == _selectedTimeRange) return;
+            setState(() => _selectedTimeRange = next);
+            _refreshDashboardData();
+          },
+          borderRadius: BorderRadius.circular(999),
+          selectedColor: Colors.white,
+          fillColor: AppColors.highlight,
+          color: AppColors.textDark,
+          borderColor: AppColors.cardBorder,
+          selectedBorderColor: AppColors.highlight,
+          constraints: const BoxConstraints(minHeight: 42),
+          children: options
+              .map(
+                (option) => Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(option.value),
+                ),
+              )
+              .toList(),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Showing data for: ${_timeRangeLabel()}',
+          style: const TextStyle(
+            color: AppColors.textMuted,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildChartsSection(DateTimeRange? timeRange) {
     if (_selectedFormType == 'All') {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildAllFormsOverview(),
+          _buildGeneralMetricsSection(),
           const SizedBox(height: 28),
-          _buildOperationalSection(),
+          _buildAllFormsOverview(timeRange),
           const SizedBox(height: 28),
-          _buildPlanningSection(),
+          _buildWorkerAnalyticsSection('All', timeRange),
           const SizedBox(height: 28),
-          _buildClientHistorySection(),
+          // TODO: add a trend sparkline once time-bucketed analytics are exposed.
+          _buildOperationalSection(timeRange),
+          const SizedBox(height: 28),
+          _buildPlanningSection(timeRange),
+          const SizedBox(height: 28),
+          _buildClientHistorySection(timeRange),
         ],
       );
     }
@@ -249,16 +414,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ..._widgetConfigs.map((config) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 24),
-            child: _buildConfiguredWidget(config),
+            child: _buildConfiguredWidget(config, timeRange),
           );
         }),
-        _buildPlanningSection(),
+        if (widget.role == 'superadmin' || widget.role == 'admin') ...[
+          const SizedBox(height: 4),
+          _buildWorkerAnalyticsSection(_selectedFormType, timeRange),
+          const SizedBox(height: 28),
+        ],
+        _buildPlanningSection(timeRange),
       ],
     );
   }
 
-  Widget _buildConfiguredWidget(DashboardWidgetConfig config) {
-    final cacheKey = '${config.fieldName}:${config.chartType}';
+  Widget _buildConfiguredWidget(
+    DashboardWidgetConfig config,
+    DateTimeRange? timeRange,
+  ) {
+    final cacheKey =
+        '${config.fieldName}:${config.chartType}:${timeRange?.start.toIso8601String() ?? 'all'}:${timeRange?.end.toIso8601String() ?? 'all'}';
     final future = _distributionFutures.putIfAbsent(
       cacheKey,
       () => _analyticsService.fetchFieldDistribution(
@@ -267,6 +441,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         isNumeric: false,
         isMultiSelect: false,
         topN: 20,
+        timeRange: timeRange,
       ),
     );
 
@@ -310,7 +485,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           case 'pie':
             return SimpleDistributionPie(title: config.fieldLabel, data: data);
           case 'counter':
-            final entries = data.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+            final entries = data.entries.toList()
+              ..sort((a, b) => b.value.compareTo(a.value));
             final topEntry = entries.first;
             return MetricCard(
               label: config.fieldLabel,
@@ -402,12 +578,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildAllFormsOverview() {
+  Widget _buildGeneralMetricsSection() {
+    return Wrap(
+      spacing: 16,
+      runSpacing: 16,
+      children: [
+        MetricCard(
+          label: 'Total Submissions',
+          value: _totalCount.toString(),
+          icon: Icons.how_to_reg,
+          color: AppColors.highlight,
+          subtitle: _timeRangeLabel(),
+          expand: false,
+        ),
+        MetricCard(
+          label: 'Total Active Forms',
+          value: _activeFormCount.toString(),
+          icon: Icons.list_alt_rounded,
+          color: AppColors.successGreen,
+          subtitle: 'Configured templates',
+          expand: false,
+        ),
+        MetricCard(
+          label: 'Total Staff Accounts',
+          value: _staffAccountCount.toString(),
+          icon: Icons.groups_rounded,
+          color: AppColors.highlight,
+          subtitle: 'Worker accounts',
+          expand: false,
+        ),
+        MetricCard(
+          label: 'Total Clients',
+          value: _uniqueClientCount.toString(),
+          icon: Icons.people_alt_rounded,
+          color: AppColors.highlight,
+          subtitle: 'Unique applicants',
+          expand: false,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAllFormsOverview(DateTimeRange? timeRange) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Submission Overview',
+          'Forms Submitted Breakdown',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
@@ -415,16 +632,76 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        SimpleBarChart(
+        SimpleDistributionPie(
           title: 'Submissions by Form Type',
           data: _countsByFormType,
-          primaryColor: AppColors.highlight,
         ),
       ],
     );
   }
 
-  Widget _buildOperationalSection() {
+  Widget _buildWorkerAnalyticsSection(
+    String formType,
+    DateTimeRange? timeRange,
+  ) {
+    final isGeneral = formType == 'All';
+    final title = isGeneral ? 'Staff Submission Activity' : 'Staff Workload';
+    final subtitle = isGeneral
+        ? 'For audit and workload monitoring purposes'
+        : 'Number of submissions handled per worker account';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cardBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textDark,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 16),
+          if (_workerAnalytics.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Text(
+                'No submission data for this period.',
+                style: TextStyle(color: AppColors.textMuted),
+              ),
+            )
+          else
+            SimpleHorizontalBarChart(
+              title: 'Submissions per Worker',
+              data: _workerAnalytics,
+              primaryColor: AppColors.highlight,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOperationalSection(DateTimeRange? timeRange) {
     if (_isLoadingInsights) {
       return _buildLoadingCard('Loading operational metrics...');
     }
@@ -444,13 +721,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         SimpleBarChart(
           title: 'Staff Workload Distribution (Audit Activity)',
           data: _staffWorkload,
-          primaryColor: const Color(0xFF4ECDC4),
+          primaryColor: AppColors.highlight,
         ),
       ],
     );
   }
 
-  Widget _buildPlanningSection() {
+  Widget _buildPlanningSection(DateTimeRange? timeRange) {
     if (_isLoadingInsights) {
       return _buildLoadingCard('Loading planning analytics...');
     }
@@ -485,7 +762,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   SimpleBarChart(
                     title: 'Age Bracket Distribution',
                     data: _ageBrackets,
-                    primaryColor: const Color(0xFF9B6EF3),
+                    primaryColor: AppColors.highlight,
                   ),
                 ],
               );
@@ -504,7 +781,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: SimpleBarChart(
                     title: 'Age Bracket Distribution',
                     data: _ageBrackets,
-                    primaryColor: const Color(0xFF9B6EF3),
+                    primaryColor: AppColors.highlight,
                   ),
                 ),
               ],
@@ -515,13 +792,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         SimpleBarChart(
           title: 'Barangay Volume (Top Requests)',
           data: _barangayVolume,
-          primaryColor: const Color(0xFF2EC4B6),
+          primaryColor: AppColors.highlight,
         ),
       ],
     );
   }
 
-  Widget _buildClientHistorySection() {
+  Widget _buildClientHistorySection(DateTimeRange? timeRange) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -564,9 +841,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         Align(
                           alignment: Alignment.centerLeft,
                           child: ElevatedButton(
-                            onPressed: _isSearchingClients
-                                ? null
-                                : _searchClients,
+                            onPressed: _isSearchingClients ? null : _searchClients,
                             child: _isSearchingClients
                                 ? const SizedBox(
                                     width: 16,
@@ -616,8 +891,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   spacing: 8,
                   runSpacing: 8,
                   children: _clientSearchResults.map((client) {
-                    final isSelected =
-                        (client['user_id'] ?? '') == _selectedClientId;
+                    final isSelected = (client['user_id'] ?? '') == _selectedClientId;
                     return GestureDetector(
                       onTap: () => _selectClient(client),
                       child: Container(
@@ -653,7 +927,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               if (_isLoadingClientHistory)
                 const Padding(
                   padding: EdgeInsets.only(top: 18),
-                  child: CircularProgressIndicator(),
+                  child: CircularProgressIndicator(color: AppColors.highlight),
                 ),
               if (!_isLoadingClientHistory && _selectedClientId != null) ...[
                 const SizedBox(height: 16),
@@ -716,7 +990,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Map<String, int> _groupHistoryByFormType(List<Map<String, dynamic>> history) =>
+  Map<String, int> _groupHistoryByFormType(
+    List<Map<String, dynamic>> history,
+  ) =>
       _controller.groupHistoryByFormType(history);
 
   Widget _buildLoadingCard(String message) {
@@ -776,7 +1052,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
-
 }
 
 class _SummaryCard extends StatelessWidget {
@@ -899,7 +1174,6 @@ class _FormCardsSectionState extends State<_FormCardsSection> {
     if (next == _searchQuery) {
       return;
     }
-
     setState(() => _searchQuery = next);
   }
 
@@ -1130,56 +1404,4 @@ class _FormCardItem {
     required this.count,
     required this.formType,
   });
-}
-
-class _MetricTile extends StatelessWidget {
-  final String title;
-  final String value;
-  final String subtitle;
-
-  const _MetricTile({
-    required this.title,
-    required this.value,
-    required this.subtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 260,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.cardBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.textMuted,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 24,
-              color: AppColors.textDark,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
-          ),
-        ],
-      ),
-    );
-  }
 }

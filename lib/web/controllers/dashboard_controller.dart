@@ -1,12 +1,11 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:sappiire/services/dashboard_analytics_service.dart';
 
 /// Coordinates dashboard data loading, planning insights, and client search state.
 class DashboardController extends ChangeNotifier {
-  DashboardController({
-    DashboardAnalyticsService? analyticsService,
-  }) : _analyticsService = analyticsService ?? DashboardAnalyticsService();
+  DashboardController({DashboardAnalyticsService? analyticsService})
+    : _analyticsService = analyticsService ?? DashboardAnalyticsService();
 
   final DashboardAnalyticsService _analyticsService;
 
@@ -36,24 +35,23 @@ class DashboardController extends ChangeNotifier {
     _analyticsService.setStaffId(cswdId);
   }
 
-  Future<void> loadSummary() async {
+  Future<void> loadSummary({DateTimeRange? timeRange}) async {
     isLoadingCounts = true;
     notifyListeners();
 
     try {
-      final counts = await _analyticsService.fetchCountsByFormType();
+      final counts = await _analyticsService.fetchSubmissionsByFormType(
+        timeRange: timeRange,
+      );
       final types = counts.keys.toList()..sort();
 
       countsByFormType = counts;
       totalCount = counts.values.fold(0, (a, b) => a + b);
-      availableFormTypes = types;
+      if (availableFormTypes.isEmpty) {
+        availableFormTypes = types;
+      }
       isLoadingCounts = false;
       notifyListeners();
-
-      await Future.wait([
-        loadOperationalInsights(),
-        loadPlanningInsights('All'),
-      ]);
     } catch (e) {
       debugPrint('[DashboardController/loadSummary] Error: $e');
       isLoadingCounts = false;
@@ -61,9 +59,11 @@ class DashboardController extends ChangeNotifier {
     }
   }
 
-  Future<void> loadOperationalInsights() async {
+  Future<void> loadOperationalInsights({DateTimeRange? timeRange}) async {
     try {
-      final workload = await _analyticsService.fetchStaffWorkloadDistribution();
+      final workload = await _analyticsService.fetchStaffWorkloadDistribution(
+        timeRange: timeRange,
+      );
       staffWorkload = workload;
       notifyListeners();
     } catch (e) {
@@ -71,7 +71,10 @@ class DashboardController extends ChangeNotifier {
     }
   }
 
-  Future<void> loadPlanningInsights(String formType) async {
+  Future<void> loadPlanningInsights(
+    String formType, {
+    DateTimeRange? timeRange,
+  }) async {
     isLoadingInsights = true;
     planningScopeFormType = formType;
     notifyListeners();
@@ -79,9 +82,18 @@ class DashboardController extends ChangeNotifier {
     try {
       final scopedForm = formType == 'All' ? 'All' : formType;
       final results = await Future.wait([
-        _analyticsService.fetchGenderRatio(formType: scopedForm),
-        _analyticsService.fetchAgeBracketDistribution(formType: scopedForm),
-        _analyticsService.fetchBarangayVolume(formType: scopedForm),
+        _analyticsService.fetchGenderRatio(
+          formType: scopedForm,
+          timeRange: timeRange,
+        ),
+        _analyticsService.fetchAgeBracketDistribution(
+          formType: scopedForm,
+          timeRange: timeRange,
+        ),
+        _analyticsService.fetchBarangayVolume(
+          formType: scopedForm,
+          timeRange: timeRange,
+        ),
       ]);
 
       genderRatio = results[0];
@@ -116,7 +128,10 @@ class DashboardController extends ChangeNotifier {
     }
   }
 
-  Future<void> selectClient(Map<String, String> client) async {
+  Future<void> selectClient(
+    Map<String, String> client, {
+    DateTimeRange? timeRange,
+  }) async {
     final clientId = client['user_id'] ?? '';
     if (clientId.isEmpty) return;
 
@@ -129,8 +144,11 @@ class DashboardController extends ChangeNotifier {
 
     try {
       final results = await Future.wait([
-        _analyticsService.fetchClientHistory(clientId),
-        _analyticsService.fetchEligibilityFrequencyFlags(clientId),
+        _analyticsService.fetchClientHistory(clientId, timeRange: timeRange),
+        _analyticsService.fetchEligibilityFrequencyFlags(
+          clientId,
+          timeRange: timeRange,
+        ),
       ]);
 
       selectedClientHistory = results[0] as List<Map<String, dynamic>>;
