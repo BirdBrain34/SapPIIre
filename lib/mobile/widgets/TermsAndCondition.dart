@@ -316,7 +316,7 @@ class _TermsAndConditionsDialogState extends State<TermsAndConditionsDialog> {
                       size: 14, color: Colors.green.shade600),
                   const SizedBox(width: 6),
                   Text(
-                    'You\'ve read the full terms. Please tick the box below.',
+                    'You\'ve read the full terms.',
                     style: TextStyle(
                         fontSize: 11,
                         color: Colors.green.shade700,
