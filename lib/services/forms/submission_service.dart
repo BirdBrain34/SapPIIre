@@ -329,6 +329,7 @@ class SubmissionService {
   Future<Map<String, dynamic>?> decryptSubmissionData({
     required dynamic submissionId,
     required String staffId,
+    bool logAccess = true,
   }) async {
     const supabaseUrl = 'https://tgbfxepldpdswxehhlkx.supabase.co';
     const anonKey =
@@ -343,7 +344,11 @@ class SubmissionService {
         'apikey': anonKey,
         'Content-Type': 'application/json',
       },
-      body: jsonEncode({'submissionId': submissionId, 'staffId': staffId}),
+      body: jsonEncode({
+        'submissionId': submissionId,
+        'staffId': staffId,
+        'logAccess': logAccess,
+      }),
     );
 
     if (response.statusCode != 200) {
@@ -355,6 +360,44 @@ class SubmissionService {
 
     final result = jsonDecode(response.body) as Map<String, dynamic>;
     return result['data'] as Map<String, dynamic>?;
+  }
+
+  Future<Map<int, Map<String, dynamic>>> batchDecryptSubmissions(
+    List<int> submissionIds,
+    String staffId, {
+    bool logAccess = false,
+  }) async {
+    if (submissionIds.isEmpty) {
+      return {};
+    }
+
+    final uniqueSubmissionIds = submissionIds.toSet().toList();
+    final decryptedEntries = await Future.wait(
+      uniqueSubmissionIds.map((submissionId) async {
+        try {
+          final decryptedData = await decryptSubmissionData(
+            submissionId: submissionId,
+            staffId: staffId,
+            logAccess: logAccess,
+          );
+
+          return MapEntry<int, Map<String, dynamic>?>(
+            submissionId,
+            decryptedData,
+          );
+        } catch (e) {
+          debugPrint(
+            '[SubmissionService/batchDecryptSubmissions] Error for submissionId=$submissionId: $e',
+          );
+          return MapEntry<int, Map<String, dynamic>?>(submissionId, null);
+        }
+      }),
+    );
+
+    return {
+      for (final entry in decryptedEntries)
+        if (entry.value != null) entry.key: entry.value!,
+    };
   }
 
   Future<void> signOut() {

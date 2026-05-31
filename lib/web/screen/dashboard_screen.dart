@@ -154,6 +154,8 @@ class _DashboardScreenState extends State<DashboardScreen>
     final timeRange = _getTimeRange();
     final formType = _selectedFormType;
 
+    _analyticsService.clearDecryptedCache();
+
     if (mounted) {
       setState(() => _isLoadingOverview = true);
     }

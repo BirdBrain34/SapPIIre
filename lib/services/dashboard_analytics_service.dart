@@ -36,10 +36,49 @@ class DashboardAnalyticsService {
 
   final SupabaseClient _supabase = Supabase.instance.client;
   final SubmissionService _submissionService = SubmissionService();
+  Map<String, List<Map<String, dynamic>>> _decryptedCache = {};
+  Map<String, DateTime> _cacheTimestamps = {};
+  static const Duration _cacheTTL = Duration(minutes: 5);
   String? _staffId;
 
   void setStaffId(String staffId) {
     _staffId = staffId;
+  }
+
+  String _cacheKey(String formType, DateTimeRange? timeRange) {
+    if (timeRange == null) {
+      return formType;
+    }
+
+    return '$formType|${timeRange.start.toIso8601String()}|${timeRange.end.toIso8601String()}';
+  }
+
+  Future<List<Map<String, dynamic>>> _getDecryptedRows(
+    String formType,
+    DateTimeRange? timeRange,
+  ) async {
+    final key = _cacheKey(formType, timeRange);
+    final cachedRows = _decryptedCache[key];
+    final cachedAt = _cacheTimestamps[key];
+
+    if (cachedRows != null && cachedAt != null) {
+      if (DateTime.now().difference(cachedAt) <= _cacheTTL) {
+        return cachedRows;
+      }
+    }
+
+    final freshRows = await _fetchSubmissionDataRows(
+      formType: formType,
+      timeRange: timeRange,
+    );
+    _decryptedCache[key] = freshRows;
+    _cacheTimestamps[key] = DateTime.now();
+    return freshRows;
+  }
+
+  void clearDecryptedCache() {
+    _decryptedCache.clear();
+    _cacheTimestamps.clear();
   }
 
   dynamic _applyTimeRange(dynamic query, DateTimeRange? timeRange) {
@@ -105,13 +144,17 @@ class DashboardAnalyticsService {
 
       for (final row in List<Map<String, dynamic>>.from(rows)) {
         final formType = row['form_type']?.toString().trim();
-        final key = (formType == null || formType.isEmpty) ? 'Unknown' : formType;
+        final key = (formType == null || formType.isEmpty)
+            ? 'Unknown'
+            : formType;
         counts[key] = (counts[key] ?? 0) + 1;
       }
 
       return counts;
     } catch (e) {
-      debugPrint('[DashboardAnalyticsService/fetchSubmissionsByFormType] Error: $e');
+      debugPrint(
+        '[DashboardAnalyticsService/fetchSubmissionsByFormType] Error: $e',
+      );
       return {};
     }
   }
@@ -152,7 +195,9 @@ class DashboardAnalyticsService {
               entry.value,
       };
     } catch (e) {
-      debugPrint('[DashboardAnalyticsService/fetchSubmissionsByWorker] Error: $e');
+      debugPrint(
+        '[DashboardAnalyticsService/fetchSubmissionsByWorker] Error: $e',
+      );
       return {};
     }
   }
@@ -174,7 +219,9 @@ class DashboardAnalyticsService {
 
       return ids.length;
     } catch (e) {
-      debugPrint('[DashboardAnalyticsService/fetchUniqueClientCount] Error: $e');
+      debugPrint(
+        '[DashboardAnalyticsService/fetchUniqueClientCount] Error: $e',
+      );
       return 0;
     }
   }
@@ -184,7 +231,9 @@ class DashboardAnalyticsService {
       final rows = await _supabase.from('staff_accounts').select('cswd_id');
       return List<Map<String, dynamic>>.from(rows).length;
     } catch (e) {
-      debugPrint('[DashboardAnalyticsService/fetchStaffAccountCount] Error: $e');
+      debugPrint(
+        '[DashboardAnalyticsService/fetchStaffAccountCount] Error: $e',
+      );
       return 0;
     }
   }
@@ -262,7 +311,9 @@ class DashboardAnalyticsService {
 
       return SlaComplianceSummary(compliant: compliant, breached: breached);
     } catch (e) {
-      debugPrint('[DashboardAnalyticsService/fetchCitizenCharterCompliance] Error: $e');
+      debugPrint(
+        '[DashboardAnalyticsService/fetchCitizenCharterCompliance] Error: $e',
+      );
       return const SlaComplianceSummary(compliant: 0, breached: 0);
     }
   }
@@ -283,7 +334,9 @@ class DashboardAnalyticsService {
 
       return output;
     } catch (e) {
-      debugPrint('[DashboardAnalyticsService/fetchPendingVsCompletedLoad] Error: $e');
+      debugPrint(
+        '[DashboardAnalyticsService/fetchPendingVsCompletedLoad] Error: $e',
+      );
       return {'Pending': 0, 'Completed': 0};
     }
   }
@@ -293,9 +346,9 @@ class DashboardAnalyticsService {
     DateTimeRange? timeRange,
   }) async {
     try {
-      final rows = await _auditLogQuery(timeRange: timeRange)
-          .order('created_at', ascending: false)
-          .limit(500);
+      final rows = await _auditLogQuery(
+        timeRange: timeRange,
+      ).order('created_at', ascending: false).limit(500);
 
       final actorIds = List<Map<String, dynamic>>.from(rows)
           .map((row) => row['actor_id']?.toString().trim() ?? '')
@@ -329,7 +382,9 @@ class DashboardAnalyticsService {
 
       return {for (final entry in sorted.take(topN)) entry.key: entry.value};
     } catch (e) {
-      debugPrint('[DashboardAnalyticsService/fetchStaffWorkloadDistribution] Error: $e');
+      debugPrint(
+        '[DashboardAnalyticsService/fetchStaffWorkloadDistribution] Error: $e',
+      );
       return {};
     }
   }
@@ -392,7 +447,9 @@ class DashboardAnalyticsService {
 
       return displayNames;
     } catch (e) {
-      debugPrint('[DashboardAnalyticsService/_fetchStaffDisplayNames] Error: $e');
+      debugPrint(
+        '[DashboardAnalyticsService/_fetchStaffDisplayNames] Error: $e',
+      );
       return {};
     }
   }
@@ -441,28 +498,25 @@ class DashboardAnalyticsService {
     DateTimeRange? timeRange,
   }) async {
     try {
-      final rows = await _fetchSubmissionDataRows(
-        formType: formType,
-        timeRange: timeRange,
-      );
+      final rows = await _getDecryptedRows(formType, timeRange);
       final dist = <String, int>{};
 
       for (final row in List<Map<String, dynamic>>.from(rows)) {
         final data =
             (row['data'] as Map?)?.cast<String, dynamic>() ??
             <String, dynamic>{};
-        
+
         // First try canonical key lookup (works across all templates)
         var value = await _extractFieldValueByCanonicalKey(
           data,
           'kasarian_sex',
         );
-        
+
         // Fallback to legacy field name search
         if (value.isEmpty) {
           value = _extractFieldValue(data, 'Kasarian');
         }
-        
+
         if (value.isEmpty) {
           continue;
         }
@@ -487,10 +541,7 @@ class DashboardAnalyticsService {
     DateTimeRange? timeRange,
   }) async {
     try {
-      final rows = await _fetchSubmissionDataRows(
-        formType: formType,
-        timeRange: timeRange,
-      );
+      final rows = await _getDecryptedRows(formType, timeRange);
       final dist = <String, int>{};
 
       for (final row in List<Map<String, dynamic>>.from(rows)) {
@@ -508,7 +559,9 @@ class DashboardAnalyticsService {
 
       return dist;
     } catch (e) {
-      debugPrint('[DashboardAnalyticsService/fetchAgeBracketDistribution] Error: $e');
+      debugPrint(
+        '[DashboardAnalyticsService/fetchAgeBracketDistribution] Error: $e',
+      );
       return {};
     }
   }
@@ -519,10 +572,7 @@ class DashboardAnalyticsService {
     DateTimeRange? timeRange,
   }) async {
     try {
-      final rows = await _fetchSubmissionDataRows(
-        formType: formType,
-        timeRange: timeRange,
-      );
+      final rows = await _getDecryptedRows(formType, timeRange);
       final dist = <String, int>{};
 
       for (final row in List<Map<String, dynamic>>.from(rows)) {
@@ -552,7 +602,9 @@ class DashboardAnalyticsService {
     DateTimeRange? timeRange,
   }) async {
     if (_staffId == null) {
-      debugPrint('[DashboardAnalyticsService/fetchIssueTrends] Action: staffId not set');
+      debugPrint(
+        '[DashboardAnalyticsService/fetchIssueTrends] Action: staffId not set',
+      );
       return [];
     }
 
@@ -560,44 +612,37 @@ class DashboardAnalyticsService {
       final now = DateTime.now();
       final currentMonthStart = DateTime(now.year, now.month, 1);
       final previousMonthStart = DateTime(now.year, now.month - 1, 1);
-
-      dynamic query = _clientSubmissionsQuery(
-        select: 'id, data, data_encryption_version, created_at',
-        formType: formType,
-        timeRange: timeRange,
+      final effectiveTimeRange = timeRange ?? DateTimeRange(
+        start: previousMonthStart,
+        end: now,
       );
-      if (timeRange == null) {
-        query = query.gte('created_at', previousMonthStart.toIso8601String());
-      }
-      final rows = await query;
+
+      final rows = await _getDecryptedRows(formType, effectiveTimeRange);
+      final metadataRows = List<Map<String, dynamic>>.from(
+        await _clientSubmissionsQuery(
+          select: 'created_at',
+          formType: formType,
+          timeRange: effectiveTimeRange,
+        ).order('created_at', ascending: true),
+      );
+
+      final rowCount = rows.length < metadataRows.length
+          ? rows.length
+          : metadataRows.length;
 
       final current = <String, int>{};
       final previous = <String, int>{};
 
-      for (final row in List<Map<String, dynamic>>.from(rows)) {
+      for (var index = 0; index < rowCount; index++) {
         final createdAt = DateTime.tryParse(
-          row['created_at']?.toString() ?? '',
+          metadataRows[index]['created_at']?.toString() ?? '',
         );
         if (createdAt == null) {
           continue;
         }
 
-        final version = row['data_encryption_version'] ?? 0;
-        Map<String, dynamic> data;
-
-        if (version == 1) {
-          final submissionId = row['id'];
-          final decryptedData = await _submissionService.decryptSubmissionData(
-            submissionId: submissionId,
-            staffId: _staffId!,
-          );
-          
-          if (decryptedData == null) continue;
-          data = decryptedData;
-        } else {
-          data = (row['data'] as Map?)?.cast<String, dynamic>() ??
-              <String, dynamic>{};
-        }
+        final data =
+            rows[index]['data'] as Map<String, dynamic>? ?? <String, dynamic>{};
 
         final value = _extractIssueValue(data);
         if (value.isEmpty) {
@@ -678,9 +723,9 @@ class DashboardAnalyticsService {
     DateTimeRange? timeRange,
   }) async {
     try {
-      final sessions = await _formSubmissionQuery(timeRange: timeRange)
-          .select('id')
-          .eq('user_id', userId);
+      final sessions = await _formSubmissionQuery(
+        timeRange: timeRange,
+      ).select('id').eq('user_id', userId);
 
       final sessionIds = List<Map<String, dynamic>>.from(sessions)
           .map((row) => row['id']?.toString() ?? '')
@@ -691,13 +736,14 @@ class DashboardAnalyticsService {
         return [];
       }
 
-      final history = await _clientSubmissionsQuery(
-        select: 'id, form_type, created_at, intake_reference',
-        timeRange: timeRange,
-      )
-          .inFilter('session_id', sessionIds)
-          .order('created_at', ascending: false)
-          .limit(50);
+      final history =
+          await _clientSubmissionsQuery(
+                select: 'id, form_type, created_at, intake_reference',
+                timeRange: timeRange,
+              )
+              .inFilter('session_id', sessionIds)
+              .order('created_at', ascending: false)
+              .limit(50);
 
       return List<Map<String, dynamic>>.from(history);
     } catch (e) {
@@ -707,8 +753,7 @@ class DashboardAnalyticsService {
   }
 
   Future<Map<String, String>> fetchEligibilityFrequencyFlags(
-    String userId,
-    {
+    String userId, {
     DateTimeRange? timeRange,
   }) async {
     try {
@@ -743,7 +788,9 @@ class DashboardAnalyticsService {
 
       return flags;
     } catch (e) {
-      debugPrint('[DashboardAnalyticsService/fetchEligibilityFrequencyFlags] Error: $e');
+      debugPrint(
+        '[DashboardAnalyticsService/fetchEligibilityFrequencyFlags] Error: $e',
+      );
       return {};
     }
   }
@@ -757,36 +804,20 @@ class DashboardAnalyticsService {
     DateTimeRange? timeRange,
   }) async {
     if (_staffId == null) {
-      debugPrint('[DashboardAnalyticsService/fetchFieldDistribution] Action: staffId not set');
+      debugPrint(
+        '[DashboardAnalyticsService/fetchFieldDistribution] Action: staffId not set',
+      );
       return {};
     }
 
     try {
-      final rows = await _clientSubmissionsQuery(
-        select: 'id, data, data_encryption_version',
-        formType: formType,
-        timeRange: timeRange,
-      );
+      final rows = await _getDecryptedRows(formType, timeRange);
 
       final dist = <String, int>{};
 
-      for (final row in List<Map<String, dynamic>>.from(rows)) {
-        final version = row['data_encryption_version'] ?? 0;
-        Map<String, dynamic> data;
-
-        if (version == 1) {
-          final submissionId = row['id'];
-          final decryptedData = await _submissionService.decryptSubmissionData(
-            submissionId: submissionId,
-            staffId: _staffId!,
-          );
-          
-          if (decryptedData == null) continue;
-          data = decryptedData;
-        } else {
-          data = (row['data'] as Map?)?.cast<String, dynamic>() ??
-              <String, dynamic>{};
-        }
+      for (final row in rows) {
+        final data =
+            row['data'] as Map<String, dynamic>? ?? <String, dynamic>{};
 
         final raw = data[fieldName];
 
@@ -845,7 +876,9 @@ class DashboardAnalyticsService {
 
       return dist;
     } catch (e) {
-      debugPrint('[DashboardAnalyticsService/fetchFieldDistribution] Error: $e');
+      debugPrint(
+        '[DashboardAnalyticsService/fetchFieldDistribution] Error: $e',
+      );
       return {};
     }
   }
@@ -861,7 +894,10 @@ class DashboardAnalyticsService {
     return counts.values.fold<int>(0, (sum, count) => sum + count);
   }
 
-  Future<List<Map<String, dynamic>>> fetchSubmissionsForFormType(String formType, {DateTimeRange? timeRange}) async {
+  Future<List<Map<String, dynamic>>> fetchSubmissionsForFormType(
+    String formType, {
+    DateTimeRange? timeRange,
+  }) async {
     try {
       final rows = await _clientSubmissionsQuery(
         select: 'id, form_type, data, created_at',
@@ -878,38 +914,26 @@ class DashboardAnalyticsService {
     }
   }
 
-  Future<Map<String, int>> getFieldDistribution(String formType, String fieldKey, {DateTimeRange? timeRange}) async {
+  Future<Map<String, int>> getFieldDistribution(
+    String formType,
+    String fieldKey, {
+    DateTimeRange? timeRange,
+  }) async {
     if (_staffId == null) {
-      debugPrint('[DashboardAnalyticsService/getFieldDistribution] Action: staffId not set');
+      debugPrint(
+        '[DashboardAnalyticsService/getFieldDistribution] Action: staffId not set',
+      );
       return {};
     }
 
     try {
-      final rows = await _clientSubmissionsQuery(
-        select: 'id, data, data_encryption_version',
-        formType: formType,
-        timeRange: timeRange,
-      ).order('created_at', ascending: false);
+      final rows = await _getDecryptedRows(formType, timeRange);
 
       final distribution = <String, int>{};
 
-      for (final row in List<Map<String, dynamic>>.from(rows)) {
-        final version = row['data_encryption_version'] ?? 0;
-        Map<String, dynamic> data;
-
-        if (version == 1) {
-          final submissionId = row['id'];
-          final decryptedData = await _submissionService.decryptSubmissionData(
-            submissionId: submissionId,
-            staffId: _staffId!,
-          );
-          
-          if (decryptedData == null) continue;
-          data = decryptedData;
-        } else {
-          data = (row['data'] as Map?)?.cast<String, dynamic>() ??
-              <String, dynamic>{};
-        }
+      for (final row in rows) {
+        final data =
+            row['data'] as Map<String, dynamic>? ?? <String, dynamic>{};
 
         if (fieldKey == '__age_group') {
           final age = _extractAge(data);
@@ -1083,7 +1107,9 @@ class DashboardAnalyticsService {
 
       return '';
     } catch (e) {
-      debugPrint('[DashboardAnalyticsService/_extractFieldValueByCanonicalKey] Error: $e');
+      debugPrint(
+        '[DashboardAnalyticsService/_extractFieldValueByCanonicalKey] Error: $e',
+      );
       return '';
     }
   }
@@ -1368,45 +1394,153 @@ class DashboardAnalyticsService {
     return RegExp(r'^\d+$').hasMatch(value.trim());
   }
 
+  int? _submissionIdAsInt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  int _submissionEncryptionVersion(Map<String, dynamic> row) {
+    final rawVersion = row['data_encryption_version'];
+    if (rawVersion is int) {
+      return rawVersion;
+    }
+
+    if (rawVersion is num) {
+      return rawVersion.toInt();
+    }
+
+    return int.tryParse(rawVersion?.toString() ?? '') ?? 0;
+  }
+
+  Map<String, dynamic> _submissionDataMap(dynamic value) {
+    return (value as Map?)?.cast<String, dynamic>() ?? <String, dynamic>{};
+  }
+
+  Future<Map<int, Map<String, dynamic>>> _batchDecryptSubmissionRows(
+    List<Map<String, dynamic>> encryptedRows,
+  ) async {
+    final submissionIds = <int>[];
+
+    for (final row in encryptedRows) {
+      final submissionId = _submissionIdAsInt(row['id']);
+      if (submissionId == null) {
+        continue;
+      }
+      submissionIds.add(submissionId);
+    }
+
+    if (submissionIds.isEmpty) {
+      return {};
+    }
+
+    return _submissionService.batchDecryptSubmissions(submissionIds, _staffId!);
+  }
+
+  Future<List<Map<String, dynamic>>> _resolveSubmissionRows(
+    List<Map<String, dynamic>> rows,
+  ) async {
+    if (_staffId == null) {
+      debugPrint(
+        '[DashboardAnalyticsService/_resolveSubmissionRows] Action: staffId not set',
+      );
+      return [];
+    }
+
+    final plaintextRows = <Map<String, dynamic>>[];
+    final encryptedRows = <Map<String, dynamic>>[];
+
+    for (final row in rows) {
+      if (_submissionEncryptionVersion(row) == 1) {
+        encryptedRows.add(row);
+      } else {
+        plaintextRows.add(row);
+      }
+    }
+
+    final decryptedById = await _batchDecryptSubmissionRows(encryptedRows);
+
+    final resolvedRows = <Map<String, dynamic>>[];
+
+    for (final row in plaintextRows) {
+      resolvedRows.add({...row, 'data': _submissionDataMap(row['data'])});
+    }
+
+    for (final row in encryptedRows) {
+      final submissionId = _submissionIdAsInt(row['id']);
+      if (submissionId == null) {
+        continue;
+      }
+
+      final decryptedData = decryptedById[submissionId];
+      if (decryptedData == null) {
+        continue;
+      }
+
+      resolvedRows.add({...row, 'data': decryptedData});
+    }
+
+    return resolvedRows;
+  }
+
   Future<List<Map<String, dynamic>>> _fetchSubmissionDataRows({
     required String formType,
     DateTimeRange? timeRange,
   }) async {
     if (_staffId == null) {
-      debugPrint('[DashboardAnalyticsService/_fetchSubmissionDataRows] Action: staffId not set');
+      debugPrint(
+        '[DashboardAnalyticsService/_fetchSubmissionDataRows] Action: staffId not set',
+      );
       return [];
     }
 
     try {
-      final rows = await _clientSubmissionsQuery(
-        select: 'id, data, data_encryption_version',
-        formType: formType,
-        timeRange: timeRange,
+      final rows = List<Map<String, dynamic>>.from(
+        await _clientSubmissionsQuery(
+          select: 'id, data, data_encryption_version',
+          formType: formType,
+          timeRange: timeRange,
+        ).order('created_at', ascending: true),
       );
+
+      final plaintextRows = <Map<String, dynamic>>[];
+      final encryptedRows = <Map<String, dynamic>>[];
+
+      for (final row in rows) {
+        if (_submissionEncryptionVersion(row) == 1) {
+          encryptedRows.add(row);
+        } else {
+          plaintextRows.add(row);
+        }
+      }
+
+      final decryptedById = await _batchDecryptSubmissionRows(encryptedRows);
 
       final decryptedRows = <Map<String, dynamic>>[];
 
-      for (final row in List<Map<String, dynamic>>.from(rows)) {
-        final version = row['data_encryption_version'] ?? 0;
-        final submissionId = row['id'];
-        
-        if (version == 1) {
-          final decryptedData = await _submissionService.decryptSubmissionData(
-            submissionId: submissionId,
-            staffId: _staffId!,
-          );
-          
-          if (decryptedData != null) {
-            decryptedRows.add({'data': decryptedData});
-          }
+      for (final row in rows) {
+        if (_submissionEncryptionVersion(row) == 1) {
+          final submissionId = _submissionIdAsInt(row['id']);
+          final decryptedData = submissionId == null
+              ? null
+              : decryptedById[submissionId];
+          decryptedRows.add({'data': decryptedData ?? <String, dynamic>{}});
         } else {
-          decryptedRows.add({'data': row['data']});
+          decryptedRows.add({'data': _submissionDataMap(row['data'])});
         }
       }
 
       return decryptedRows;
     } catch (e) {
-      debugPrint('[DashboardAnalyticsService/_fetchSubmissionDataRows] Error: $e');
+      debugPrint(
+        '[DashboardAnalyticsService/_fetchSubmissionDataRows] Error: $e',
+      );
       return [];
     }
   }
