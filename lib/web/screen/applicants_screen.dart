@@ -1,6 +1,8 @@
 /// Web screen for browsing, resolving, and editing applicant submissions.
 /// Uses DynamicFormRenderer so any saved form template can be displayed.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -49,6 +51,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   bool _isLoading = true;
   bool _isEditMode = false;
   bool _isSaving = false;
+  bool _isLoadingSubmission = false;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _intakeRefCtrl = TextEditingController();
@@ -56,6 +59,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   RecordSortOrder _recordSortOrder = RecordSortOrder.latestFirst;
   _RightPanelView _rightPanelView = _RightPanelView.records;
   String _formTypeFilter = 'All';
+  int _submissionLoadToken = 0;
 
   // Cache templates by form type.
   final Map<String, FormTemplate> _templateCache = {};
@@ -67,19 +71,30 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   }
 
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _isLoadingSubmission = false;
+    });
     try {
-      final templates = await _templateService.fetchActiveTemplates();
-      for (final t in templates) {
-        _templateCache[t.formName] = t;
-      }
-
-      final submissions = await _submissionService.fetchRecentClientSubmissions(
+      final templatesFuture = _templateService
+          .fetchActiveTemplates()
+          .catchError((Object e, StackTrace st) {
+            debugPrint('[ApplicantsScreen/_loadData] Template load error: $e');
+            return <FormTemplate>[];
+          });
+      final submissions = await _submissionService.fetchApplicantIndex(
         limit: 100,
       );
 
-      // Resolve names for older submissions that lack __applicant_name
-      await _resolveUnknownNames(submissions);
+      final hydrateFuture = _hydrateApplicantMetadata(submissions);
+      final templates = await templatesFuture;
+      await hydrateFuture;
+
+      if (!mounted) return;
+
+      for (final t in templates) {
+        _templateCache[t.formName] = t;
+      }
 
       setState(() {
         _submissions = submissions;
@@ -91,91 +106,121 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     }
   }
 
-  /// Resolve names for legacy submissions that do not store __applicant_name.
-  Future<void> _resolveUnknownNames(
+  Future<void> _openSubmission(Map<String, dynamic> submission) async {
+    final loadToken = ++_submissionLoadToken;
+
+    setState(() {
+      _isLoadingSubmission = true;
+      _rightPanelView = _RightPanelView.form;
+    });
+
+    try {
+      await _loadSubmission(submission, loadToken: loadToken);
+    } finally {
+      if (!mounted || loadToken != _submissionLoadToken) return;
+      setState(() => _isLoadingSubmission = false);
+    }
+  }
+
+  void _cancelSubmissionLoad() {
+    _submissionLoadToken++;
+    _isLoadingSubmission = false;
+  }
+
+  Future<void> _hydrateApplicantMetadata(
     List<Map<String, dynamic>> submissions,
   ) async {
-    final needsResolution = <Map<String, dynamic>>[];
-    
-    // Decrypt encrypted submissions before trying to resolve names.
-    for (final sub in submissions) {
-      final encryptionVersion = sub['data_encryption_version'] ?? 0;
-      if (encryptionVersion == 1 && sub['data'] is String) {
-        try {
-          // Background decryption for list rendering only — do not audit-log,
-          // otherwise every list load floods the audit trail.
-          final decrypted = await _decryptSubmissionData(
-            sub['id'].toString(),
-            logAccess: false,
-          );
-          // Replace the encrypted string with the decrypted map in memory.
-          sub['data'] = decrypted;
-        } catch (e) {
-          debugPrint('[ApplicantsScreen/_resolveUnknownNames] Warning: Failed to decrypt submission for name resolution: $e');
-          // Keep the encrypted data so the submission can still be listed.
-        }
-      }
-    }
-    
-    // Identify submissions that still need a resolved applicant name.
-    for (final sub in submissions) {
-      final data = sub['data'] is Map 
-          ? Map<String, dynamic>.from(sub['data'] as Map)
-          : <String, dynamic>{};
-      if (_applicantsController.hasUsableEmbeddedApplicantName(data)) continue;
-      final sid = data['__session_id']?.toString();
-      if (sid != null && sid.isNotEmpty) needsResolution.add(sub);
-    }
-
-    if (needsResolution.isEmpty) return;
-
-    final sessionIds = needsResolution
-        .map(
-          (s) {
-            final data = s['data'] is Map
-                ? Map<String, dynamic>.from(s['data'] as Map)
-                : <String, dynamic>{};
-            return data['__session_id']?.toString();
-          },
-        )
+    final sessionIds = submissions
+        .map(_resolveSubmissionSessionId)
         .whereType<String>()
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
         .toSet()
         .toList();
+
     if (sessionIds.isEmpty) return;
 
     try {
-      // Map session IDs to user IDs.
       final sessionToUserId = await _submissionService.fetchSessionUserMap(
         sessionIds,
       );
-      final userIds = sessionToUserId.values.toSet();
+      final userIds = sessionToUserId.values
+          .map((value) => value.toString().trim())
+          .where((value) => value.isNotEmpty)
+          .toSet()
+          .toList();
 
       if (userIds.isEmpty) return;
 
-        // Resolve user IDs to canonical names.
-      final userIdToName = await _submissionService
-          .fetchCanonicalNamesByUserIds(userIds.toList());
+      final userIdToCanonicalName = await _submissionService
+          .fetchCanonicalNamesByUserIds(userIds);
 
-        // Embed resolved names back into the submissions.
-      for (final sub in needsResolution) {
-        final data = sub['data'] is Map
-            ? Map<String, dynamic>.from(sub['data'] as Map)
-            : <String, dynamic>{};
-        final sessionId = data['__session_id']?.toString();
-        if (sessionId == null) continue;
+      if (!mounted) return;
+
+      for (final sub in submissions) {
+        final sessionId = _resolveSubmissionSessionId(sub);
+        if (sessionId == null || sessionId.isEmpty) {
+          continue;
+        }
+
         final userId = sessionToUserId[sessionId];
-        if (userId == null) continue;
-        final name = userIdToName[userId];
-        if (name != null &&
-            ((name['last'] ?? '').isNotEmpty ||
-                (name['first'] ?? '').isNotEmpty)) {
-          data['__applicant_name'] = name;
-          sub['data'] = data; // Update the submission with the name
+        if (userId == null || userId.trim().isEmpty) {
+          continue;
+        }
+
+        sub['user_id'] = userId;
+
+        final canonicalName = userIdToCanonicalName[userId];
+        final formattedName = canonicalName == null
+            ? ''
+            : _applicantsController.formatName(canonicalName) ?? '';
+
+        final existingData = sub['data'];
+        final dataMap = existingData is Map
+            ? Map<String, dynamic>.from(existingData as Map)
+            : <String, dynamic>{};
+        dataMap['__session_id'] = sessionId;
+        dataMap['__user_id'] = userId;
+        if (canonicalName != null && canonicalName.isNotEmpty) {
+          dataMap['__applicant_name'] = canonicalName;
+        }
+        sub['data'] = dataMap;
+
+        if (canonicalName != null && canonicalName.isNotEmpty) {
+          sub['applicant_name'] = canonicalName;
+        }
+        if (formattedName.isNotEmpty) {
+          sub['display_name'] = formattedName;
         }
       }
+
+      if (mounted) {
+        setState(() {});
+      }
     } catch (e) {
-      debugPrint('[ApplicantsScreen/_resolveUnknownNames] Error: $e');
+      debugPrint('[ApplicantsScreen/_hydrateApplicantMetadata] Error: $e');
     }
+  }
+
+  String? _resolveSubmissionSessionId(Map<String, dynamic> submission) {
+    final data = submission['data'] is Map
+        ? Map<String, dynamic>.from(submission['data'] as Map)
+        : <String, dynamic>{};
+
+    final candidates = [
+      submission['session_id'],
+      submission['sessionId'],
+      submission['form_submission_id'],
+      submission['submission_id'],
+      data['__session_id'],
+    ];
+
+    for (final candidate in candidates) {
+      final value = candidate?.toString().trim() ?? '';
+      if (value.isNotEmpty) return value;
+    }
+
+    return null;
   }
 
   // Load a submission into the detail panel.
@@ -184,10 +229,50 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   Future<void> _loadSubmission(
     Map<String, dynamic> submission, {
     bool logAccess = true,
+    int? loadToken,
   }) async {
-    final formType = submission['form_type'] as String? ?? '';
-    var data = submission['data'];
-    final encryptionVersion = submission['data_encryption_version'] ?? 0;
+    var submissionToOpen = submission;
+    final metadata = {
+      if (submission['applicant_name'] != null)
+        'applicant_name': submission['applicant_name'],
+      if (submission['display_name'] != null)
+        'display_name': submission['display_name'],
+      if (submission['user_id'] != null) 'user_id': submission['user_id'],
+      if (submission['session_id'] != null)
+        'session_id': submission['session_id'],
+    };
+
+    if (loadToken != null && loadToken != _submissionLoadToken) {
+      return;
+    }
+
+    if (submissionToOpen['data'] == null) {
+      final fullSubmission = await _submissionService.fetchClientSubmissionById(
+        submissionToOpen['id'],
+      );
+
+      if (fullSubmission == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to load submission details.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      submissionToOpen = {...fullSubmission, ...metadata};
+    }
+
+    if (loadToken != null && loadToken != _submissionLoadToken) {
+      return;
+    }
+
+    final formType = submissionToOpen['form_type'] as String? ?? '';
+    var data = submissionToOpen['data'];
+    final encryptionVersion = submissionToOpen['data_encryption_version'] ?? 0;
 
     // Always route encrypted submissions through the edge function on a
     // deliberate open so exactly one server-side access audit row is written,
@@ -195,7 +280,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     if (encryptionVersion == 1) {
       try {
         final decrypted = await _decryptSubmissionData(
-          submission['id'].toString(),
+          submissionToOpen['id'].toString(),
           logAccess: logAccess,
         );
         data = decrypted;
@@ -217,17 +302,27 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       }
     }
 
-    final dataMap = data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+    if (loadToken != null && loadToken != _submissionLoadToken) {
+      return;
+    }
+
+    final dataMap = data is Map
+        ? Map<String, dynamic>.from(data)
+        : <String, dynamic>{};
     final template = _templateCache[formType];
-    _intakeRefCtrl.text = (submission['intake_reference'] as String?) ?? '';
+    _intakeRefCtrl.text =
+        (submissionToOpen['intake_reference'] as String?) ?? '';
 
     _viewCtrl?.dispose();
     _editCtrl?.dispose();
 
     if (template == null) {
+      if (loadToken != null && loadToken != _submissionLoadToken) {
+        return;
+      }
       // Fall back to the raw JSON when the template no longer exists.
       setState(() {
-        _selectedSubmission = submission;
+        _selectedSubmission = submissionToOpen;
         _activeTemplate = null;
         _viewCtrl = null;
         _editCtrl = null;
@@ -239,8 +334,12 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     final view = FormStateController(template: template)..loadFromJson(dataMap);
     final edit = FormStateController(template: template)..loadFromJson(dataMap);
 
+    if (loadToken != null && loadToken != _submissionLoadToken) {
+      return;
+    }
+
     setState(() {
-      _selectedSubmission = submission;
+      _selectedSubmission = submissionToOpen;
       _activeTemplate = template;
       _viewCtrl = view;
       _editCtrl = edit;
@@ -264,7 +363,9 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     );
 
     if (response.status != 200) {
-      debugPrint('[ApplicantsScreen/_decryptSubmissionData] Error response: ${response.data}');
+      debugPrint(
+        '[ApplicantsScreen/_decryptSubmissionData] Error response: ${response.data}',
+      );
       throw Exception(response.data.toString());
     }
 
@@ -327,69 +428,49 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       );
 
       await _loadData();
+      if (!mounted) return;
+
       setState(() {
         _isEditMode = false;
         _isSaving = false;
       });
-      // Reload the same submission with fresh data.
-      final updated = _submissions.firstWhere(
-        (s) => s['id'] == _selectedSubmission!['id'],
-        orElse: () => {},
-      );
-      if (updated.isNotEmpty) _loadSubmission(updated, logAccess: false);
     } catch (e) {
       debugPrint('[ApplicantsScreen/_saveEdit] Error: $e');
-      setState(() => _isSaving = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save changes: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() => _isSaving = false);
+      }
     }
   }
 
   Future<void> _deleteSubmission() async {
     if (_selectedSubmission == null) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete applicant record?'),
-        content: const Text('This action cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Delete', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
 
-    await AuditLogService().log(
-      actionType: kAuditSubmissionDeleted,
-      category: kCategorySubmission,
-      severity: kSeverityCritical,
-      actorId: widget.cswd_id,
-      actorName: widget.displayName,
-      actorRole: widget.role,
-      targetType: 'client_submission',
-      targetId: _selectedSubmission!['id'].toString(),
-      targetLabel: _getApplicantName(_selectedSubmission!),
-      details: {'form_type': _selectedSubmission!['form_type']},
-    );
+    final submissionId = _selectedSubmission!['id'];
 
-    await _submissionService.deleteClientSubmission(_selectedSubmission!['id']);
+    try {
+      await _submissionService.deleteClientSubmission(submissionId);
 
-    setState(() {
-      _selectedSubmission = null;
-      _activeTemplate = null;
-      _viewCtrl?.dispose();
-      _viewCtrl = null;
-      _editCtrl?.dispose();
-      _editCtrl = null;
-      _isEditMode = false;
-    });
-    await _loadData();
+      setState(() {
+        _selectedSubmission = null;
+        _activeTemplate = null;
+        _viewCtrl?.dispose();
+        _viewCtrl = null;
+        _editCtrl?.dispose();
+        _editCtrl = null;
+        _isEditMode = false;
+        _rightPanelView = _RightPanelView.records;
+      });
+
+      await _loadData();
+    } catch (e) {
+      debugPrint('[ApplicantsScreen/_deleteSubmission] Error: $e');
+    }
   }
 
   Future<void> _deleteApplicant() async {
@@ -605,15 +686,38 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                     ),
                   ],
                 ),
-                child: Row(
-                  children: [
-                    _buildListPanel(),
-                    Expanded(
-                      child: _selectedApplicantGroup == null
-                          ? _buildEmptyState()
-                          : _buildApplicantRecordsPanel(),
-                    ),
-                  ],
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 280),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) {
+                    final fade = FadeTransition(
+                      opacity: animation,
+                      child: child,
+                    );
+                    final scale = Tween<double>(
+                      begin: 0.985,
+                      end: 1.0,
+                    ).animate(animation);
+                    return ScaleTransition(scale: scale, child: fade);
+                  },
+                  child: _isLoading
+                      ? Container(
+                          key: const ValueKey('applicants-loading'),
+                          color: Colors.transparent,
+                          child: _buildApplicantsLoadingState(),
+                        )
+                      : Row(
+                          key: const ValueKey('applicants-ready'),
+                          children: [
+                            _buildListPanel(),
+                            Expanded(
+                              child: _selectedApplicantGroup == null
+                                  ? _buildEmptyState()
+                                  : _buildApplicantRecordsPanel(),
+                            ),
+                          ],
+                        ),
                 ),
               ),
             ),
@@ -697,6 +801,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                             splashColor: Colors.white.withValues(alpha: 0.08),
                             onTap: () {
                               setState(() {
+                                _cancelSubmissionLoad();
                                 _selectedApplicantKey = group.key;
                                 _rightPanelView = _RightPanelView.records;
                                 _formTypeFilter = 'All';
@@ -735,7 +840,9 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                                           ? const Color(
                                               0xFF7CC3FF,
                                             ).withValues(alpha: 0.25)
-                                          : Colors.white.withValues(alpha: 0.12),
+                                          : Colors.white.withValues(
+                                              alpha: 0.12,
+                                            ),
                                       shape: BoxShape.circle,
                                       border: Border.all(
                                         color: isSelected
@@ -813,6 +920,76 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     );
   }
 
+  Widget _buildSubmissionLoadingState() {
+    return Center(
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: 0.92, end: 1.0),
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+        builder: (context, scale, child) {
+          return Transform.scale(scale: scale, child: child);
+        },
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 56,
+              height: 56,
+              child: CircularProgressIndicator(
+                strokeWidth: 4,
+                color: Colors.white.withValues(alpha: 0.95),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Loading form...',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildApplicantsLoadingState() {
+    return Center(
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: 0.92, end: 1.0),
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+        builder: (context, scale, child) {
+          return Transform.scale(scale: scale, child: child);
+        },
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 56,
+              height: 56,
+              child: CircularProgressIndicator(
+                strokeWidth: 4,
+                color: Colors.white.withValues(alpha: 0.95),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Grouping applicants...',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildApplicantRecordsPanel() {
     final group = _selectedApplicantGroup;
     if (group == null) return _buildEmptyState();
@@ -843,6 +1020,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                   TextButton.icon(
                     onPressed: () {
                       setState(() {
+                        _cancelSubmissionLoad();
                         _rightPanelView = _RightPanelView.records;
                         _isEditMode = false;
                       });
@@ -882,14 +1060,41 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
               ),
               const SizedBox(height: 12),
               Expanded(
-                child: _selectedSubmission == null
-                    ? const Center(
-                        child: Text(
-                          'Select a record to view full form data.',
-                          style: TextStyle(color: Colors.white70),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 260),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) {
+                    final fade = FadeTransition(
+                      opacity: animation,
+                      child: child,
+                    );
+                    final slide = Tween<Offset>(
+                      begin: const Offset(0.02, 0),
+                      end: Offset.zero,
+                    ).animate(animation);
+                    return SlideTransition(position: slide, child: fade);
+                  },
+                  child: _isLoadingSubmission
+                      ? Container(
+                          key: const ValueKey('submission-loading'),
+                          child: _buildSubmissionLoadingState(),
+                        )
+                      : _selectedSubmission == null
+                      ? const Center(
+                          key: ValueKey('submission-empty'),
+                          child: Text(
+                            'Select a record to view full form data.',
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                        )
+                      : Container(
+                          key: ValueKey(
+                            'submission-${_selectedSubmission!['id']}',
+                          ),
+                          child: _buildDetailPanel(),
                         ),
-                      )
-                    : _buildDetailPanel(),
+                ),
               ),
             ],
           ),
@@ -1147,12 +1352,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                           child: InkWell(
                             hoverColor: Colors.white.withValues(alpha: 0.06),
                             splashColor: Colors.white.withValues(alpha: 0.08),
-                            onTap: () {
-                              _loadSubmission(record);
-                              setState(() {
-                                _rightPanelView = _RightPanelView.form;
-                              });
-                            },
+                            onTap: () => _openSubmission(record),
                             child: SizedBox(
                               height: 78,
                               child: Padding(
@@ -1168,12 +1368,16 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                                         vertical: 4,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: badgeColor.withValues(alpha: 0.18),
+                                        color: badgeColor.withValues(
+                                          alpha: 0.18,
+                                        ),
                                         borderRadius: BorderRadius.circular(
                                           999,
                                         ),
                                         border: Border.all(
-                                          color: badgeColor.withValues(alpha: 0.6),
+                                          color: badgeColor.withValues(
+                                            alpha: 0.6,
+                                          ),
                                         ),
                                       ),
                                       child: Text(
