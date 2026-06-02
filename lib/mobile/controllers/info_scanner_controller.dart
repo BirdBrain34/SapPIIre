@@ -5,6 +5,7 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 import 'package:sappiire/models/id_information.dart';
 import 'package:sappiire/services/supabase_service.dart';
 
+/// Scans the front and back of an ID, extracts PII, and saves it to Supabase.
 class InfoScannerController extends ChangeNotifier {
   final SupabaseService _supabaseService = SupabaseService();
 
@@ -31,7 +32,7 @@ class InfoScannerController extends ChangeNotifier {
   String? get currentUserId => _supabaseService.currentUserId;
 
   Future<void> setupCamera() async {
-
+    // Initialize the first available camera for the scan flow.
     final cameras = await availableCameras();
     if (cameras.isEmpty) return;
     cameraController = CameraController(
@@ -44,9 +45,7 @@ class InfoScannerController extends ChangeNotifier {
       isInitialized = true;
       notifyListeners();
     } catch (e) {
-      debugPrint(
-        '[InfoScannerController/setupCamera] Action: Camera init failed Error: $e',
-      );
+      debugPrint('[InfoScannerController/setupCamera] Error: $e');
     }
   }
 
@@ -66,9 +65,7 @@ class InfoScannerController extends ChangeNotifier {
           .where((l) => l.isNotEmpty)
           .toList();
 
-      debugPrint(
-        '[InfoScannerController/scanImage] Action: OCR extracted Count: ${lines.length}',
-      );
+      debugPrint('[InfoScannerController/scanImage] Action: OCR lines extracted Count: ${lines.length}');
 
       if (!frontScanned) {
         _parseFront(lines);
@@ -80,9 +77,7 @@ class InfoScannerController extends ChangeNotifier {
 
       HapticFeedback.mediumImpact();
     } catch (e) {
-      debugPrint(
-        '[InfoScannerController/scanImage] Action: Scan failed Error: $e',
-      );
+      debugPrint('[InfoScannerController/scanImage] Error: $e');
       rethrow;
     } finally {
       isProcessing = false;
@@ -91,6 +86,7 @@ class InfoScannerController extends ChangeNotifier {
   }
 
   void _parseFront(List<String> lines) {
+    // Map OCR lines from the front of the ID into the PII model.
     for (int i = 0; i < lines.length; i++) {
       final lower = lines[i].toLowerCase();
 
@@ -126,6 +122,7 @@ class InfoScannerController extends ChangeNotifier {
   }
 
   void _parseBack(List<String> lines) {
+    // Map OCR lines from the back of the ID into the remaining fields.
     for (int i = 0; i < lines.length; i++) {
       final lower = lines[i].toLowerCase();
 
@@ -339,9 +336,7 @@ class InfoScannerController extends ChangeNotifier {
           'place_of_birth': data.placeOfBirth,
       };
 
-      debugPrint(
-        '[InfoScannerController/saveToSupabase] Action: Saving extracted fields Count: ${piiMap.length}',
-      );
+      debugPrint('[InfoScannerController/saveToSupabase] Action: Saving extracted fields Count: ${piiMap.length}');
 
       final result = await _supabaseService.saveScannedIdFieldValues(
         userId: userId,
@@ -352,9 +347,7 @@ class InfoScannerController extends ChangeNotifier {
         throw Exception(result['message']?.toString() ?? 'Save failed.');
       }
     } catch (e) {
-      debugPrint(
-        '[InfoScannerController/saveToSupabase] Action: Supabase save failed Error: $e',
-      );
+      debugPrint('[InfoScannerController/saveToSupabase] Error: $e');
       rethrow;
     }
   }

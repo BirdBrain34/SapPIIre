@@ -116,7 +116,7 @@ class FormTemplateNotificationService {
                 final notification = TemplateNotification.fromMap(row);
                 _notificationController.add(notification);
               } catch (e) {
-                debugPrint('FormTemplateNotificationService parse error: $e');
+                debugPrint('[FormTemplateNotificationService/_parseNotification] Error: $e');
               }
             }
 
@@ -125,10 +125,10 @@ class FormTemplateNotificationService {
               _cutoffTime = maxEmittedTime;
             }
           }, onError: (e) {
-            debugPrint('FormTemplateNotificationService.stream error: $e');
+            debugPrint('[FormTemplateNotificationService/notificationStream] Error: $e');
           });
     } catch (e) {
-      debugPrint('FormTemplateNotificationService.startListening error: $e');
+      debugPrint('[FormTemplateNotificationService/startListening] Error: $e');
     }
   }
 

@@ -40,11 +40,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       barrierDismissible: false,
       builder: (ctx) => UnsavedChangesDialog(
         onDiscard: () {
-          debugPrint('ProfileScreen: unsaved dialog button tapped -> Discard');
+          debugPrint('[ProfileScreen/_showUnsavedChangesDialog] Action: Unsaved dialog button Discard');
           Navigator.pop(ctx, false);
         },
         onSaveAndContinue: () async {
-          debugPrint('ProfileScreen: unsaved dialog button tapped -> Save & Continue');
+          debugPrint('[ProfileScreen/_showUnsavedChangesDialog] Action: Unsaved dialog button SaveAndContinue');
           await _saveProfile();
           if (!ctx.mounted) return;
           if (!_controller.hasPendingUnsavedChanges()) {
@@ -64,10 +64,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) return false;
 
       if (result != true) {
-        debugPrint('ProfileScreen: unsaved dialog action=discard');
+        debugPrint('[ProfileScreen/_resolveUnsavedChangesIfAny] Action: Unsaved dialog result Discard');
         await _controller.discardPendingChangesAndRefresh();
       } else {
-        debugPrint('ProfileScreen: unsaved dialog action=save');
+        debugPrint('[ProfileScreen/_resolveUnsavedChangesIfAny] Action: Unsaved dialog result Save');
       }
 
       if (!_controller.hasPendingUnsavedChanges()) return true;
@@ -245,9 +245,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ProfileCard(children: [
             ProfileTextField(label: 'Username', controller: _controller.usernameCtrl, icon: Icons.badge_outlined),
             const ProfileDivider(),
-            ProfileReadOnlyRow(icon: Icons.email_outlined, label: 'Email', value: _controller.emailCtrl.text.isEmpty ? '—' : _controller.emailCtrl.text),
+            ProfileReadOnlyRow(icon: Icons.email_outlined, label: 'Email', value: _controller.emailCtrl.text.isEmpty ? '-' : _controller.emailCtrl.text),
             const ProfileDivider(),
-            ProfileReadOnlyRow(icon: Icons.phone_android_outlined, label: 'Phone Number', value: _controller.phoneCtrl.text.isEmpty ? '—' : _controller.phoneCtrl.text),
+            ProfileReadOnlyRow(icon: Icons.phone_android_outlined, label: 'Phone Number', value: _controller.phoneCtrl.text.isEmpty ? '-' : _controller.phoneCtrl.text),
           ]),
           const SizedBox(height: 4),
           Padding(

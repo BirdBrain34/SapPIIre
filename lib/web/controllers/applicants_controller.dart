@@ -22,6 +22,11 @@ class ApplicantsController {
     Map<String, dynamic> submission,
     Map<String, FormTemplate> templateCache,
   ) {
+    final directName = _resolveDirectApplicantName(submission);
+    if (directName != null) {
+      return directName;
+    }
+
     var data = submission['data'];
 
     if (data is! Map) {
@@ -68,17 +73,24 @@ class ApplicantsController {
           final lbl = field.fieldLabel.toLowerCase();
           final val = dataMap[field.fieldName]?.toString() ?? '';
           if (val.isEmpty) continue;
-          if (src == 'lastname' || lbl.contains('last') && lbl.contains('name')) {
+          if (src == 'lastname' ||
+              lbl.contains('last') && lbl.contains('name')) {
             tLast = val;
           }
-          if (src == 'firstname' || lbl.contains('first') && lbl.contains('name')) {
+          if (src == 'firstname' ||
+              lbl.contains('first') && lbl.contains('name')) {
             tFirst = val;
           }
-          if (src == 'middle_name' || lbl.contains('middle') && lbl.contains('name')) {
+          if (src == 'middle_name' ||
+              lbl.contains('middle') && lbl.contains('name')) {
             tMid = val;
           }
         }
-        final tName = formatName({'last': tLast, 'first': tFirst, 'middle': tMid});
+        final tName = formatName({
+          'last': tLast,
+          'first': tFirst,
+          'middle': tMid,
+        });
         if (tName != null) return tName;
       }
     }
@@ -102,6 +114,34 @@ class ApplicantsController {
       if (val.isNotEmpty) return val;
     }
     return '';
+  }
+
+  String? _resolveDirectApplicantName(Map<String, dynamic> submission) {
+    final directMapCandidates = [
+      submission['applicant_name'],
+      submission['display_name'],
+      submission['full_name'],
+    ];
+
+    for (final candidate in directMapCandidates) {
+      if (candidate is Map) {
+        final name = formatName(Map<dynamic, dynamic>.from(candidate as Map));
+        if (name != null && name.trim().isNotEmpty) return name;
+        continue;
+      }
+
+      final value = candidate?.toString().trim() ?? '';
+      if (value.isNotEmpty) return value;
+    }
+
+    final first = submission['first_name']?.toString().trim() ?? '';
+    final middle = submission['middle_name']?.toString().trim() ?? '';
+    final last = submission['last_name']?.toString().trim() ?? '';
+    if (first.isEmpty && middle.isEmpty && last.isEmpty) {
+      return null;
+    }
+
+    return formatName({'last': last, 'first': first, 'middle': middle});
   }
 
   bool hasUsableEmbeddedApplicantName(Map<String, dynamic> data) {
@@ -133,6 +173,9 @@ class ApplicantsController {
     final candidates = [
       submission['applicant_id'],
       submission['user_id'],
+      submission['session_id'],
+      submission['sessionId'],
+      submission['submission_session_id'],
       data['__applicant_id'],
       data['applicant_id'],
       data['client_id'],
@@ -182,7 +225,8 @@ class ApplicantsController {
       final name = groupName[entry.key] ?? 'Unknown Applicant';
       if (q.isNotEmpty) {
         final matchesGroup =
-            name.toLowerCase().contains(q) || entry.key.toLowerCase().contains(q);
+            name.toLowerCase().contains(q) ||
+            entry.key.toLowerCase().contains(q);
         if (!matchesGroup) continue;
       }
 
@@ -216,7 +260,9 @@ class ApplicantsController {
     final sorted = List<Map<String, dynamic>>.from(group.submissions);
 
     if (formTypeFilter != 'All') {
-      sorted.removeWhere((s) => (s['form_type']?.toString() ?? '') != formTypeFilter);
+      sorted.removeWhere(
+        (s) => (s['form_type']?.toString() ?? '') != formTypeFilter,
+      );
     }
 
     sorted.sort((a, b) {
@@ -237,7 +283,7 @@ class ApplicantsController {
   }
 
   String getFormattedDate(String? iso) {
-    if (iso == null) return '—';
+    if (iso == null) return '-';
     try {
       final dt = DateTime.parse(iso).toLocal();
       return '${dt.day.toString().padLeft(2, '0')}/'

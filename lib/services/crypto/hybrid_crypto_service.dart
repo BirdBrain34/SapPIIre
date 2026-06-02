@@ -161,7 +161,7 @@ class HybridCryptoService {
       }
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('fetchAndCacheRsaPublicKey error: $e');
+        debugPrint('[HybridCryptoService/fetchAndCacheRsaPublicKey] Error: $e');
       }
     }
 

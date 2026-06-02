@@ -119,9 +119,7 @@ class StaffEmailService {
       );
 
       if (kDebugMode) {
-        debugPrint(
-          'StaffEmailService.sendPasswordResetOtp sent for $normalizedEmail',
-        );
+        debugPrint('[StaffEmailService/sendPasswordResetOtp] Action: OTP sent to $normalizedEmail');
       }
 
       return {
@@ -130,14 +128,12 @@ class StaffEmailService {
       };
     } on AuthException catch (e) {
       if (kDebugMode) {
-        debugPrint(
-          'StaffEmailService.sendPasswordResetOtp auth error: ${e.message}',
-        );
+        debugPrint('[StaffEmailService/sendPasswordResetOtp] Auth error: ${e.message}');
       }
       return {'success': false, 'message': e.message};
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('StaffEmailService.sendPasswordResetOtp error: $e');
+        debugPrint('[StaffEmailService/sendPasswordResetOtp] Error: $e');
       }
       return {'success': false, 'message': 'Error: ${e.toString()}'};
     }
@@ -189,14 +185,12 @@ class StaffEmailService {
       };
     } on AuthException catch (e) {
       if (kDebugMode) {
-        debugPrint(
-          'StaffEmailService.verifyPasswordResetOtp auth error: ${e.message}',
-        );
+        debugPrint('[StaffEmailService/verifyPasswordResetOtp] Auth error: ${e.message}');
       }
       return {'success': false, 'message': e.message};
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('StaffEmailService.verifyPasswordResetOtp error: $e');
+        debugPrint('[StaffEmailService/verifyPasswordResetOtp] Error: $e');
       }
       return {'success': false, 'message': 'Error: ${e.toString()}'};
     }

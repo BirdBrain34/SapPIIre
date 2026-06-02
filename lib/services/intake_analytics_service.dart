@@ -23,7 +23,7 @@ class IntakeAnalyticsService {
 
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
-      debugPrint('Error fetching intake submissions: $e');
+      debugPrint('[IntakeAnalyticsService/fetchIntakeSubmissions] Error: $e');
       return [];
     }
   }

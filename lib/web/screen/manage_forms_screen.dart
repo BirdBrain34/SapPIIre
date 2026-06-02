@@ -115,11 +115,13 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   }
 
   Future<void> _loadTemplates() async {
-    debugPrint('Web: Loading templates...');
+    debugPrint('[ManageFormsScreen/_loadTemplates] Action: Loading templates');
     final templates = await _templateService.fetchActiveTemplates(
       forceRefresh: true,
     );
-    debugPrint('Web: Received ${templates.length} templates');
+    debugPrint(
+      '[ManageFormsScreen/_loadTemplates] Action: Received templates Count: ${templates.length}',
+    );
     _setStatePreserveScroll(() {
       _templates = templates;
       _selectedTemplate = templates.isNotEmpty
@@ -131,9 +133,61 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       _isLoading = false;
     });
     if (_selectedTemplate != null) {
-      debugPrint('Web: Selected ${_selectedTemplate!.formName}');
+      debugPrint(
+        '[ManageFormsScreen/_loadTemplates] Action: Selected template ${_selectedTemplate!.formName}',
+      );
       _formCtrl = FormStateController(template: _selectedTemplate!);
     }
+  }
+
+  Future<void> _selectTemplate(FormTemplate template) async {
+    if (_selectedTemplate?.templateId == template.templateId) {
+      return;
+    }
+
+    if (_sessionStarted && !await _confirmTemplateSwitch(template)) {
+      return;
+    }
+
+    _setStatePreserveScroll(() {
+      _selectedTemplate = template;
+      _formCtrl?.dispose();
+      _formCtrl = FormStateController(template: template);
+      _lastAppliedPayloadFingerprint = null;
+    });
+
+    if (_sessionStarted && _currentSessionId != 'WAITING-FOR-SESSION') {
+      await _displayService.pushSession(
+        stationId: _stationId,
+        sessionId: _currentSessionId,
+        templateId: template.templateId,
+        formName: template.formName,
+      );
+    }
+  }
+
+  Future<bool> _confirmTemplateSwitch(FormTemplate template) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Switch forms?'),
+        content: Text(
+          'Changing the selected form while a session is active will update the live view to "${template.formName}". Continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Switch'),
+          ),
+        ],
+      ),
+    );
+
+    return confirmed == true;
   }
 
   // Start a new QR session
@@ -144,7 +198,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     try {
       // Close previous session if open
       if (_currentSessionId != 'WAITING-FOR-SESSION') {
-        await _submissionService.updateSessionStatus(_currentSessionId, 'closed');
+        await _submissionService.updateSessionStatus(
+          _currentSessionId,
+          'closed',
+        );
       }
 
       // Reset form state
@@ -189,29 +246,35 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         formName: _selectedTemplate!.formName,
       );
     } catch (e) {
-      debugPrint('_createNewSession error: $e');
+      debugPrint('[ManageFormsScreen/_createNewSession] Error: $e');
       _setStatePreserveScroll(() => _isStartingSession = false);
     }
   }
 
   // Listen for mobile QR data via Supabase Realtime
   void _listenForMobileUpdates(String sessionId) {
-    debugPrint('Web: Starting realtime listener for session $sessionId');
+    debugPrint(
+      '[ManageFormsScreen/_listenForMobileUpdates] Action: Starting realtime listener SessionId=$sessionId',
+    );
     _pollTimer?.cancel();
     _formSubscription?.cancel();
     _formSubscription = _submissionService
         .streamSession(sessionId)
         .listen(
           (List<Map<String, dynamic>> data) {
-            debugPrint('Web: Realtime update received');
+            debugPrint(
+              '[ManageFormsScreen/_listenForMobileUpdates] Action: Realtime update received',
+            );
             if (data.isEmpty) {
-              debugPrint('Web: Data is empty');
+              debugPrint(
+                '[ManageFormsScreen/_listenForMobileUpdates] Action: Data is empty',
+              );
               return;
             }
             _applySessionRow(data.first);
           },
           onError: (e) {
-            debugPrint('Session stream error: $e');
+            debugPrint('[ManageFormsScreen/_listenForMobileUpdates] Error: $e');
             // On error, try to fetch data directly
             _hydrateFromSessionSnapshot(sessionId);
           },
@@ -244,23 +307,31 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   }
 
   void _applySessionRow(Map<String, dynamic> row) {
-    debugPrint('\n=== WEB WORKER SCREEN: Received Realtime Update ===');
-    debugPrint('Web: Row status: ${row['status']}');
+    debugPrint(
+      '[ManageFormsScreen/_applySessionRow] Action: Realtime update received',
+    );
+    debugPrint(
+      '[ManageFormsScreen/_applySessionRow] Action: Row status ${row['status']}',
+    );
     final incoming = row['form_data'] as Map<String, dynamic>? ?? {};
-    debugPrint('Web: Incoming data keys: ${incoming.keys.toList()}');
-    debugPrint('Web: Incoming data size: ${incoming.length} fields');
+    debugPrint(
+      '[ManageFormsScreen/_applySessionRow] Action: Incoming keys ${incoming.keys.toList()}',
+    );
+    debugPrint(
+      '[ManageFormsScreen/_applySessionRow] Action: Incoming fields Count: ${incoming.length}',
+    );
     if (incoming.isEmpty) {
       debugPrint(
-        'Web: Incoming data is EMPTY - mobile may not have transmitted yet',
+        '[ManageFormsScreen/_applySessionRow] Action: Incoming data is empty',
       );
-      debugPrint('===================================================\n');
       return;
     }
 
     final fingerprint = _fingerprintPayload(incoming);
     if (fingerprint != null && fingerprint == _lastAppliedPayloadFingerprint) {
-      debugPrint('Web: Duplicate payload detected, skipping re-apply');
-      debugPrint('===================================================\n');
+      debugPrint(
+        '[ManageFormsScreen/_applySessionRow] Action: Duplicate payload detected, skipping reapply',
+      );
       return;
     }
     _lastAppliedPayloadFingerprint = fingerprint;
@@ -269,7 +340,9 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     final currentFormOffset = _formScrollController.hasClients
         ? _formScrollController.offset
         : 0.0;
-    debugPrint('Web: Loading data into form controller...');
+    debugPrint(
+      '[ManageFormsScreen/_applySessionRow] Action: Loading data into form controller',
+    );
     _formCtrl?.loadFromJson(incoming);
     _setStatePreserveScroll(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -279,9 +352,8 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       _formScrollController.jumpTo(target);
     });
     debugPrint(
-      'Web: Form updated successfully with ${incoming.length} fields',
+      '[ManageFormsScreen/_applySessionRow] Action: Form updated successfully Count: ${incoming.length}',
     );
-    debugPrint('===================================================\n');
   }
 
   String? _fingerprintPayload(Map<String, dynamic> payload) {
@@ -290,31 +362,35 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
 
   Future<void> _hydrateFromSessionSnapshot(String sessionId) async {
     try {
-      debugPrint('Web: Polling session $sessionId for data...');
+      debugPrint(
+        '[ManageFormsScreen/_hydrateFromSessionSnapshot] Action: Polling session $sessionId for data',
+      );
       final row = await _submissionService.fetchSessionSnapshot(sessionId);
 
       if (row == null) {
-        debugPrint('Web: Session not found in database');
+        debugPrint(
+          '[ManageFormsScreen/_hydrateFromSessionSnapshot] Action: Session not found in database',
+        );
         return;
       }
 
       final formData = row['form_data'] as Map<String, dynamic>? ?? {};
       if (formData.isNotEmpty) {
         debugPrint(
-          'Web: Found data via polling! Keys: ${formData.keys.toList()}',
+          '[ManageFormsScreen/_hydrateFromSessionSnapshot] Action: Found data via polling Keys: ${formData.keys.toList()}',
         );
       }
 
       _applySessionRow(Map<String, dynamic>.from(row));
     } catch (e) {
-      debugPrint('Session snapshot hydrate error: $e');
+      debugPrint('[ManageFormsScreen/_hydrateFromSessionSnapshot] Error: $e');
     }
   }
 
-  // Finalize: save form data to client_submissions
+  // Finalize the active session by saving form data to client_submissions.
   Future<void> _finalizeEntry() async {
     if (_formCtrl == null || _selectedTemplate == null) return;
-    // Guard: prevent double finalize taps from creating duplicate submissions.
+    // Prevent duplicate finalize taps from creating duplicate submissions.
     if (_isSubmitting) return;
     _setStatePreserveScroll(() {
       _isSubmitting = true;
@@ -377,23 +453,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           'form_type': _selectedTemplate?.formName,
           'session_id': _currentSessionId,
           'intake_reference': intakeReference,
-        },
-      );
-
-      await AuditLogService().log(
-        actionType: 'submission_encrypted_saved',
-        category: kCategorySubmission,
-        severity: kSeverityInfo,
-        actorId: widget.cswd_id,
-        actorName: widget.displayName,
-        actorRole: widget.role,
-        targetType: 'client_submission',
-        targetId: created['id']?.toString() ?? _currentSessionId,
-        targetLabel: _selectedTemplate?.formName,
-        details: {
           'encryption': 'server_aes_256_gcm',
-          'form_type': _selectedTemplate?.formName,
-          'session_id': _currentSessionId,
         },
       );
 
@@ -427,10 +487,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       });
       _formSubscription?.cancel();
 
-      // Revert customer display to standby
+      // Return the customer display to standby after finalizing.
       await _displayService.resetStation(_stationId);
     } catch (e) {
-      debugPrint('_finalizeEntry error: $e');
+      debugPrint('[ManageFormsScreen/_finalizeEntry] Error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -453,9 +513,8 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
 
   /// Resolves a user's name via canonical_field_key values in form_fields.
   /// Works even when template autofill_source is not configured.
-  Future<Map<String, String>?> _resolveNameViaCanonicalRpc(
-    String userId,
-  ) => _manageFormsController.resolveNameViaCanonicalRpc(userId);
+  Future<Map<String, String>?> _resolveNameViaCanonicalRpc(String userId) =>
+      _manageFormsController.resolveNameViaCanonicalRpc(userId);
 
   /// Embeds __applicant_name into the JSONB data.
   /// Tries: 1) session user_id canonical key RPC, 2) autofill_source fields,
@@ -704,14 +763,11 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                       )
                       .toList(),
                   onChanged: (id) {
+                    if (id == null) return;
                     final tpl = _templates.firstWhere(
                       (t) => t.templateId == id,
                     );
-                    _setStatePreserveScroll(() {
-                      _selectedTemplate = tpl;
-                      _formCtrl?.dispose();
-                      _formCtrl = FormStateController(template: tpl);
-                    });
+                    unawaited(_selectTemplate(tpl));
                   },
                 ),
               ),
@@ -815,7 +871,9 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                       color: const Color(0xFFF8FAFF),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: AppColors.buttonOutlineBlue.withValues(alpha: 0.38),
+                        color: AppColors.buttonOutlineBlue.withValues(
+                          alpha: 0.38,
+                        ),
                       ),
                     ),
                     child: DropdownButtonHideUnderline(
@@ -836,7 +894,13 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                               ),
                             )
                             .toList(),
-                        onChanged: null,
+                        onChanged: (id) {
+                          if (id == null) return;
+                          final tpl = _templates.firstWhere(
+                            (t) => t.templateId == id,
+                          );
+                          unawaited(_selectTemplate(tpl));
+                        },
                       ),
                     ),
                   ),
@@ -926,7 +990,9 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.2),
+                      ),
                     ),
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
@@ -978,7 +1044,9 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                     decoration: BoxDecoration(
                       color: Colors.amber.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
+                      border: Border.all(
+                        color: Colors.amber.withValues(alpha: 0.4),
+                      ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,

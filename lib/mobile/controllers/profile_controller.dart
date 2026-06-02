@@ -11,6 +11,7 @@ import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/mobile/screens/auth/login_screen.dart';
 
 
+/// Loads, edits, and saves the signed-in user's profile data.
 class ProfileController extends ChangeNotifier {
   final SupabaseService _supabaseService = SupabaseService();
   final FormTemplateService _templateService = FormTemplateService();
@@ -23,12 +24,12 @@ class ProfileController extends ChangeNotifier {
   bool exitFlowInProgress = false;
   String savedProfileFingerprint = '';
 
-  // Account info controllers
+  // Controllers for the account fields shown in the profile form.
   final TextEditingController usernameCtrl = TextEditingController();
   final TextEditingController emailCtrl = TextEditingController();
   final TextEditingController phoneCtrl = TextEditingController();
 
-  // PII controllers
+  // Controllers for the profile values that are saved to the user record.
   final TextEditingController lastNameCtrl = TextEditingController();
   final TextEditingController firstNameCtrl = TextEditingController();
   final TextEditingController middleNameCtrl = TextEditingController();
@@ -38,7 +39,7 @@ class ProfileController extends ChangeNotifier {
   String sex = '';
   String maritalStatus = '';
 
-  // Signature
+  // Signature state used by the profile form.
   List<Offset?> signaturePoints = [];
   String? signatureBase64;
   bool hasExistingSignature = false;
@@ -119,7 +120,7 @@ class ProfileController extends ChangeNotifier {
 
       markProfileAsSaved();
     } catch (e) {
-      debugPrint('ProfileController.loadProfile error: $e');
+      debugPrint('[ProfileController/loadProfile] Error: $e');
     } finally {
       isLoading = false;
       notifyListeners();
@@ -153,7 +154,7 @@ class ProfileController extends ChangeNotifier {
   }
 
   Future<void> discardPendingChangesAndRefresh() async {
-    debugPrint('ProfileController: discarding changes, refreshing latest saved data');
+    debugPrint('[ProfileController/discardPendingChangesAndRefresh] Action: Refresh latest saved data');
     await loadProfile();
   }
 
@@ -223,12 +224,12 @@ class ProfileController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // 1. Update ONLY username in user_accounts
+      // Update the account username before syncing profile fields.
       await _supabaseService.updateAccountInfo(userId, {
         'username': usernameCtrl.text.trim(),
       });
 
-      // 2. Build PII data map — only include fields with actual values
+      // Build the profile payload with only populated fields.
       final addressParts = addressCtrl.text.trim().split(',');
       final addressLine = addressParts.isNotEmpty ? addressParts[0].trim() : '';
       final subdivision = addressParts.length > 1 ? addressParts[1].trim() : '';
@@ -281,7 +282,7 @@ class ProfileController extends ChangeNotifier {
         canonicalMap['signature'] = signatureBase64!;
       }
 
-      // 3. Save PII via canonical key system
+      // Persist the profile data through the canonical key save path.
       bool savedPII = true;
       if (canonicalMap.isNotEmpty) {
         final result = await _supabaseService.saveScannedIdFieldValues(
@@ -302,7 +303,7 @@ class ProfileController extends ChangeNotifier {
         return false;
       }
     } catch (e) {
-      debugPrint('ProfileController.saveProfile error: $e');
+      debugPrint('[ProfileController/saveProfile] Error: $e');
       isSaving = false;
       notifyListeners();
       return false;
@@ -390,7 +391,7 @@ class ProfileController extends ChangeNotifier {
 
     try {
       final hasPendingUnsaved = hasPendingUnsavedChanges();
-      debugPrint('ProfileController: logout requested, hasPendingUnsaved=$hasPendingUnsaved');
+      debugPrint('[ProfileController/handleLogout] Action: Logout requested, hasPendingUnsaved=$hasPendingUnsaved');
       if (hasPendingUnsaved) {
         return;
       }

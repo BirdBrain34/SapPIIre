@@ -247,7 +247,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                   if (!isSignatureField)
                     const DropdownMenuItem<String?>(
                       value: null,
-                      child: Text('— None —'),
+                      child: Text('None'),
                     ),
                   ...(isSignatureField
                           ? const [(key: 'signature', label: 'Signature')]

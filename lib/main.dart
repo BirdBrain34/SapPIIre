@@ -25,7 +25,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Mobile: no URL routing needed, just show login screen.
+    // Mobile starts on the login screen because it does not use route URLs.
     if (!kIsWeb) {
       return MaterialApp(
         title: 'SapPIIre',
@@ -38,7 +38,7 @@ class MyApp extends StatelessWidget {
       );
     }
 
-    // Web: use onGenerateRoute so /display?station=X opens the customer monitor.
+    // Web uses route parsing so the customer display can open by station ID.
     return MaterialApp(
       title: 'SapPIIre',
       debugShowCheckedModeBanner: false,
@@ -49,7 +49,7 @@ class MyApp extends StatelessWidget {
       onGenerateRoute: (settings) {
         final uri = Uri.parse(settings.name ?? '/');
 
-        // /display?station=desk_1
+        // Route the customer display screen by station ID.
         if (uri.path == '/display') {
           final stationId = uri.queryParameters['station'] ?? 'default';
           return MaterialPageRoute(
@@ -57,7 +57,7 @@ class MyApp extends StatelessWidget {
           );
         }
 
-        // Everything else → login screen (default behaviour)
+        // Default to the staff login screen for unknown routes.
         return MaterialPageRoute(
           builder: (_) => const WorkerLoginScreen(),
         );

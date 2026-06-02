@@ -21,9 +21,9 @@ class ChangePasswordController extends ChangeNotifier {
   String? resolvedEmail;
 
   String get stepTitle => switch (currentPage) {
-    0 => 'Step 1 of 3 — Identify Account',
-    1 => 'Step 2 of 3 — Verify Identity',
-    _ => 'Step 3 of 3 — New Password',
+    0 => 'Step 1 of 3 - Identify Account',
+    1 => 'Step 2 of 3 - Verify Identity',
+    _ => 'Step 3 of 3 - New Password',
   };
 
   bool get pageValid => switch (currentPage) {
@@ -66,7 +66,7 @@ class ChangePasswordController extends ChangeNotifier {
     super.dispose();
   }
 
-  // ── Actions ──────────────────────────────────────────
+  // Actions.
 
   Future<bool> handleSendEmailOtp(BuildContext context) async {
     isLoading = true;

@@ -1,6 +1,6 @@
 class AppDateUtils {
   static String formatDisplay(String? raw) {
-    if (raw == null || raw.isEmpty) return '—';
+    if (raw == null || raw.isEmpty) return '-';
     try {
       final dt = DateTime.parse(raw).toLocal();
       const months = ['Jan','Feb','Mar','Apr','May','Jun',

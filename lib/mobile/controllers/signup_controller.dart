@@ -9,7 +9,7 @@ enum ContactMethod { email, phone, both }
 class SignupController extends ChangeNotifier {
   final SupabaseService _supabaseService = SupabaseService();
 
-  // ── TextEditingControllers ────────────────────────────────
+  // Text editing controllers.
   final lastNameCtrl = TextEditingController();
   final firstNameCtrl = TextEditingController();
   final middleNameCtrl = TextEditingController();
@@ -32,7 +32,7 @@ class SignupController extends ChangeNotifier {
     usernameCtrl, passwordCtrl, confirmPasswordCtrl,
   ];
 
-  // ── State ─────────────────────────────────────────────────
+  // State.
   ContactMethod contactMethod = ContactMethod.email;
   int currentPage = 0;
   bool isLoading = false;
@@ -56,7 +56,7 @@ class SignupController extends ChangeNotifier {
   Timer? phoneOtpTimer;
   int phoneOtpCountdown = 0;
 
-  // ── Computed ──────────────────────────────────────────────
+  // Computed values.
   List<int> get pageSequence {
     switch (contactMethod) {
       case ContactMethod.email:

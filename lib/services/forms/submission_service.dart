@@ -33,6 +33,23 @@ class SubmissionService {
         .single();
   }
 
+  Future<List<Map<String, dynamic>>> fetchApplicantIndex({
+    int limit = 100,
+    int offset = 0,
+    String? formType,
+  }) async {
+    final response = await _supabase.rpc(
+      'get_applicant_index',
+      params: {
+        'p_limit': limit,
+        'p_offset': offset,
+        if (formType != null) 'p_form_type': formType,
+      },
+    );
+
+    return List<Map<String, dynamic>>.from(response as List);
+  }
+
   Future<Map<String, dynamic>?> fetchSessionSnapshot(String sessionId) async {
     final row = await _supabase
         .from('form_submission')
@@ -83,7 +100,8 @@ class SubmissionService {
     String? intakeReference,
   }) async {
     const supabaseUrl = 'https://tgbfxepldpdswxehhlkx.supabase.co';
-    const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnYmZ4ZXBsZHBkc3d4ZWhobGt4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NDYzMDcsImV4cCI6MjA4NjQyMjMwN30.DhoD6RHExKynXw34mibc3XRP-NwfmDnq1PttVM7-GL4';
+    const anonKey =
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnYmZ4ZXBsZHBkc3d4ZWhobGt4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NDYzMDcsImV4cCI6MjA4NjQyMjMwN30.DhoD6RHExKynXw34mibc3XRP-NwfmDnq1PttVM7-GL4';
 
     final url = Uri.parse(
       '$supabaseUrl/functions/v1/encrypt-and-save-submission',
@@ -114,6 +132,7 @@ class SubmissionService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  @Deprecated('Use fetchApplicantIndex() for list rendering.')
   Future<List<Map<String, dynamic>>> fetchRecentClientSubmissions({
     int limit = 100,
   }) async {
@@ -123,6 +142,17 @@ class SubmissionService {
         .order('created_at', ascending: false)
         .range(0, limit - 1);
     return List<Map<String, dynamic>>.from(response);
+  }
+
+  Future<Map<String, dynamic>?> fetchClientSubmissionById(
+    dynamic submissionId,
+  ) async {
+    final row = await _supabase
+        .from('client_submissions')
+        .select('*')
+        .eq('id', submissionId)
+        .maybeSingle();
+    return row == null ? null : Map<String, dynamic>.from(row);
   }
 
   Future<Map<String, String>> fetchSessionUserMap(
@@ -153,7 +183,9 @@ class SubmissionService {
       return await _fetchCanonicalNamesFromFieldValues(userIds);
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('fetchCanonicalNamesByUserIds error: $e');
+        debugPrint(
+          '[SubmissionService/fetchCanonicalNamesByUserIds] Error: $e',
+        );
       }
       return {};
     }
@@ -297,13 +329,13 @@ class SubmissionService {
   Future<Map<String, dynamic>?> decryptSubmissionData({
     required dynamic submissionId,
     required String staffId,
+    bool logAccess = true,
   }) async {
     const supabaseUrl = 'https://tgbfxepldpdswxehhlkx.supabase.co';
-    const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnYmZ4ZXBsZHBkc3d4ZWhobGt4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NDYzMDcsImV4cCI6MjA4NjQyMjMwN30.DhoD6RHExKynXw34mibc3XRP-NwfmDnq1PttVM7-GL4';
+    const anonKey =
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnYmZ4ZXBsZHBkc3d4ZWhobGt4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NDYzMDcsImV4cCI6MjA4NjQyMjMwN30.DhoD6RHExKynXw34mibc3XRP-NwfmDnq1PttVM7-GL4';
 
-    final url = Uri.parse(
-      '$supabaseUrl/functions/v1/decrypt-submission-data',
-    );
+    final url = Uri.parse('$supabaseUrl/functions/v1/decrypt-submission-data');
 
     final response = await http.post(
       url,
@@ -315,16 +347,57 @@ class SubmissionService {
       body: jsonEncode({
         'submissionId': submissionId,
         'staffId': staffId,
+        'logAccess': logAccess,
       }),
     );
 
     if (response.statusCode != 200) {
-      debugPrint('decryptSubmissionData error: ${response.body}');
+      debugPrint(
+        '[SubmissionService/decryptSubmissionData] Error response: ${response.body}',
+      );
       return null;
     }
 
     final result = jsonDecode(response.body) as Map<String, dynamic>;
     return result['data'] as Map<String, dynamic>?;
+  }
+
+  Future<Map<int, Map<String, dynamic>>> batchDecryptSubmissions(
+    List<int> submissionIds,
+    String staffId, {
+    bool logAccess = false,
+  }) async {
+    if (submissionIds.isEmpty) {
+      return {};
+    }
+
+    final uniqueSubmissionIds = submissionIds.toSet().toList();
+    final decryptedEntries = await Future.wait(
+      uniqueSubmissionIds.map((submissionId) async {
+        try {
+          final decryptedData = await decryptSubmissionData(
+            submissionId: submissionId,
+            staffId: staffId,
+            logAccess: logAccess,
+          );
+
+          return MapEntry<int, Map<String, dynamic>?>(
+            submissionId,
+            decryptedData,
+          );
+        } catch (e) {
+          debugPrint(
+            '[SubmissionService/batchDecryptSubmissions] Error for submissionId=$submissionId: $e',
+          );
+          return MapEntry<int, Map<String, dynamic>?>(submissionId, null);
+        }
+      }),
+    );
+
+    return {
+      for (final entry in decryptedEntries)
+        if (entry.value != null) entry.key: entry.value!,
+    };
   }
 
   Future<void> signOut() {

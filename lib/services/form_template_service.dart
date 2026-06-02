@@ -1,11 +1,6 @@
-// Form Template Service
-// Loads form templates from Supabase and caches them in memory.
-//
-// Responsibilities:
-// - Fetch form templates with sections, fields, options, and conditions
-// - Cache templates to avoid repeated database queries
-//
-// Used by both mobile and web to load form definitions.
+/// Loads form templates from Supabase and keeps them cached in memory.
+///
+/// Used by both mobile and web to load form definitions.
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -18,15 +13,14 @@ class FormTemplateService {
 
   final _supabase = Supabase.instance.client;
 
-  // In-memory cache
+  // Cache templates in memory so repeated reads do not hit Supabase again.
   final Map<String, FormTemplate> _cache = {};
   List<FormTemplate>? _allTemplates;
 
-  // Fetch all active templates from database
+  // Fetch all active templates for builders and readers.
   Future<List<FormTemplate>> fetchActiveTemplates({bool forceRefresh = false}) async {
     if (!forceRefresh && _allTemplates != null) return _allTemplates!;
     try {
-      debugPrint('Fetching templates from Supabase...');
       final res = await _supabase
           .from('form_templates')
           .select('''
@@ -51,16 +45,11 @@ class FormTemplateService {
           .eq('is_active', true)
           .order('created_at', ascending: false);
 
-      debugPrint('Raw response: ${res.toString().substring(0, res.toString().length > 200 ? 200 : res.toString().length)}...');
-
       final templates = (res as List<dynamic>)
           .map((t) => FormTemplate.fromMap(t as Map<String, dynamic>))
           .toList();
 
-      debugPrint('Parsed ${templates.length} templates');
-      for (final t in templates) {
-        debugPrint('  - ${t.formName} (${t.sections.length} sections, ${t.allFields.length} fields)');
-      }
+      debugPrint('[FormTemplateService/fetchActiveTemplates] Action: Loaded ${templates.length} templates');
 
       _allTemplates = templates;
       for (final t in templates) {
@@ -68,13 +57,13 @@ class FormTemplateService {
       }
       return templates;
     } catch (e, stack) {
-      debugPrint('FormTemplateService.fetchActiveTemplates error: $e');
-      debugPrint('Stack: $stack');
+      debugPrint('[FormTemplateService/fetchActiveTemplates] Error: $e');
+      debugPrint('[FormTemplateService/fetchActiveTemplates] Stack: $stack');
       return [];
     }
   }
 
-  // Fetch single template by ID
+  // Fetch a single template by ID when the caller already knows the record.
   Future<FormTemplate?> fetchTemplate(String templateId, {bool forceRefresh = false}) async {
     if (!forceRefresh && _cache.containsKey(templateId)) return _cache[templateId];
     try {
@@ -106,12 +95,12 @@ class FormTemplateService {
       _cache[templateId] = template;
       return template;
     } catch (e) {
-      debugPrint('FormTemplateService.fetchTemplate error: $e');
+      debugPrint('[FormTemplateService/fetchTemplate] Error: $e');
       return null;
     }
   }
 
-  // Fetch template by name (e.g. "General Intake Sheet")
+  // Fetch a template by name when the caller only has the display label.
   Future<FormTemplate?> fetchTemplateByName(String name) async {
     final templates = await fetchActiveTemplates();
     try {
@@ -123,7 +112,7 @@ class FormTemplateService {
     }
   }
 
-  // Clear cache (e.g. after admin creates/edits a template)
+  // Clear cached templates after an admin changes form definitions.
   void clearCache() {
     _cache.clear();
     _allTemplates = null;

@@ -33,14 +33,12 @@ class SupabaseService {
           .maybeSingle();
       return row == null ? null : Map<String, dynamic>.from(row);
     } catch (e) {
-      debugPrint('fetchTemplatePopupConfig error: $e');
+      debugPrint('[SupabaseService/fetchTemplatePopupConfig] Error: $e');
       return null;
     }
   }
 
-  // ================================================================
-  // PII SAVE — canonical key matching across all templates
-  // ================================================================
+  // Save PII using canonical key matching across templates.
   Future<Map<String, dynamic>> saveScannedIdFieldValues({
     required String userId,
     required Map<String, String> canonicalValues,
@@ -116,9 +114,24 @@ class SupabaseService {
     }
   }
 
-  // ================================================================
-  // AUTHENTICATION — getAccountInfo
-  // ================================================================
+  Future<bool> isSessionFinalized(String sessionId) async {
+    try {
+      final result = await _supabase
+          .from('form_submission')
+          .select('status')
+          .eq('id', sessionId)
+          .maybeSingle();
+
+      if (result == null) return false;
+
+      final status = result['status'] as String? ?? '';
+      return status == 'completed';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Fetch account information for a user.
   Future<Map<String, dynamic>> getAccountInfo(String userId) async {
     try {
       final response = await _supabase
@@ -142,7 +155,7 @@ class SupabaseService {
     }
   }
 
-  // ── updateAccountInfo — only updates username ─────────────────────
+  // Update the username stored in user_accounts.
   Future<void> updateAccountInfo(
     String userId,
     Map<String, dynamic> updates,
@@ -157,7 +170,7 @@ class SupabaseService {
     }
   }
 
-  // ── checkDuplicateSignup ──────────────────────────────────────────
+  // Check whether email, phone, or username already exists.
   Future<Map<String, dynamic>> checkDuplicateSignup({
     String? email,
     String? phone,
@@ -222,7 +235,7 @@ class SupabaseService {
     }
   }
 
-  // ── signUpWithEmail ───────────────────────────────────────────────
+  // Sign up with email and send an OTP when needed.
   Future<Map<String, dynamic>> signUpWithEmail({
     required String email,
     String? password,
@@ -279,16 +292,13 @@ class SupabaseService {
         return {'success': false, 'message': 'Sign-up failed. Try again.'};
       }
 
-      // For real email accounts, send OTP. For synthetic phone emails, skip.
-      if (!normalizedEmail.endsWith('@sappiire.phone')) {
-        try {
-          await _supabase.auth.signInWithOtp(
-            email: normalizedEmail,
-            shouldCreateUser: false,
-          );
-        } catch (e) {
-          debugPrint('OTP send failed: $e');
-        }
+      try {
+        await _supabase.auth.signInWithOtp(
+          email: email,
+          shouldCreateUser: false,
+        );
+      } catch (e) {
+        debugPrint('[SupabaseService/signUpWithEmail] Warning: OTP send failed: $e');
       }
 
       return {
@@ -301,7 +311,7 @@ class SupabaseService {
     }
   }
 
-  // ── verifyEmailOtp ────────────────────────────────────────────────
+  // Verify an email OTP.
   Future<Map<String, dynamic>> verifyEmailOtp({
     required String email,
     required String otp,
@@ -328,7 +338,7 @@ class SupabaseService {
     }
   }
 
-  // ── resendEmailOtp ────────────────────────────────────────────────
+  // Resend an email OTP.
   Future<Map<String, dynamic>> resendEmailOtp(String email) async {
     try {
       await _supabase.auth.signInWithOtp(
@@ -346,7 +356,7 @@ class SupabaseService {
     }
   }
 
-  // ── sendPhoneOtp ──────────────────────────────────────────────────
+  // Send a phone OTP through Semaphore.
   Future<Map<String, dynamic>> sendPhoneOtp(String phone) async {
     try {
       final otp =
@@ -386,7 +396,7 @@ class SupabaseService {
     }
   }
 
-  // ── verifyPhoneOtp ────────────────────────────────────────────────
+  // Verify a phone OTP.
   Future<Map<String, dynamic>> verifyPhoneOtp({
     required String phone,
     required String otp,
@@ -420,7 +430,8 @@ class SupabaseService {
     }
   }
 
-  // ── LOGIN — supports username, email, or phone ────────────────────
+  // Log in with username, email, or phone.
+  // Track failed attempts by identifier in memory.
   static final Map<String, int> _failedAttempts = {};
   static final Map<String, DateTime> _lockoutUntil = {};
   static const int _maxAttempts = 5;
@@ -432,7 +443,7 @@ class SupabaseService {
   }) async {
     final identifier = username.trim().toLowerCase();
 
-    // Check lockout
+    // Enforce the lockout window before retrying.
     final lockout = _lockoutUntil[identifier];
     if (lockout != null && DateTime.now().isBefore(lockout)) {
       final remaining = lockout.difference(DateTime.now()).inMinutes + 1;
@@ -444,8 +455,7 @@ class SupabaseService {
     }
 
     try {
-      // Resolve account by username or email only.
-      // Phone number is not unique across accounts so it cannot be used as a login identifier.
+      // Resolve the account by username, email, or phone.
       final account = await _supabase
           .from('user_accounts')
           .select('user_id, username, email, phone_number, is_active')
@@ -504,18 +514,18 @@ class SupabaseService {
         };
       }
 
-      // Clear failed attempts on success
+      // Clear failed attempts after a successful login.
       _failedAttempts.remove(identifier);
       _lockoutUntil.remove(identifier);
 
-      // Save last_login timestamp
+      // Save the latest login timestamp.
       try {
         await _supabase
             .from('user_accounts')
             .update({'last_login': DateTime.now().toUtc().toIso8601String()})
             .eq('user_id', account['user_id']);
       } catch (e) {
-        debugPrint('last_login update failed: $e');
+        debugPrint('[SupabaseService/login] Warning: last_login update failed: $e');
       }
 
       return {
@@ -544,11 +554,7 @@ class SupabaseService {
     }
   }
 
-  // ── saveProfileAfterVerification — final step of signup ───────────
-  // email and phoneNumber are nullable:
-  //   - email-only:  email = real email,   phoneNumber = null
-  //   - phone-only:  email = null,          phoneNumber = real phone
-  //   - both:        email = real email,   phoneNumber = real phone
+  // Save the profile data after verification.
   Future<Map<String, dynamic>> saveProfileAfterVerification({
     required String userId,
     required String username,
@@ -565,20 +571,15 @@ class SupabaseService {
     required String addressLine,
   }) async {
     try {
-      // 1. Set the real password in Supabase Auth.
-      //    For email accounts the auth session is already active from OTP verify.
-      //    For phone-only, signUpWithEmail already set the password correctly.
+      // Set the password in Supabase Auth.
       try {
         await _supabase.auth.updateUser(UserAttributes(password: password));
       } catch (e) {
-        debugPrint('Password update failed (non-fatal): $e');
+        debugPrint('[SupabaseService/saveProfileAfterVerification] Warning: Password update failed: $e');
       }
 
-      // 2. Upsert user_accounts.
-      //    Store null for email on phone-only accounts — the unique partial index
-      //    on phone_number (WHERE phone_number IS NOT NULL) handles uniqueness.
-      //    The check constraint ensures at least one of email/phone is present.
-      final upsertData = <String, dynamic>{
+      // Upsert the user account record, including phone number.
+      await _supabase.from('user_accounts').upsert({
         'user_id': userId,
         'username': username,
         'is_active': true,
@@ -597,7 +598,7 @@ class SupabaseService {
         onConflict: 'user_id',
       );
 
-      // 3. Parse birthdate M/D/YYYY → YYYY-MM-DD
+      // Parse the birthdate into YYYY-MM-DD format.
       final dateParts = dateOfBirth.split('/');
       final formattedDate = dateParts.length == 3
           ? '${dateParts[2]}-'
@@ -609,7 +610,7 @@ class SupabaseService {
       final age =
           birthYear != null ? DateTime.now().year - birthYear : null;
 
-      // 4. Fetch ALL templates
+      // Fetch all templates.
       final templateSvc = FormTemplateService();
       final templates = await templateSvc.fetchActiveTemplates();
 
@@ -623,8 +624,8 @@ class SupabaseService {
 
       final allFields = templates.expand((t) => t.allFields).toList();
 
-      // 5. Build canonical_field_key → value map (only include non-null values)
-      final piiData = <String, String>{
+      // Build the canonical field map used for saving profile data.
+      final piiData = {
         'first_name': firstName,
         'middle_name': middleName,
         'last_name': lastName,
@@ -634,22 +635,13 @@ class SupabaseService {
         'estadong_sibil_civil_status': civilStatus,
         'civil_status': civilStatus,
         'marital_status': civilStatus,
+        // Keep both aliases for compatibility.
         'place_of_birth': birthplace,
         'lugar_ng_kapanganakan_place_of_birth': birthplace,
         'house_number_street_name_phase_purok': addressLine,
       };
 
-      // Only add contact fields that were actually provided
-      if (phoneNumber != null && phoneNumber.isNotEmpty) {
-        piiData['cp_number'] = phoneNumber;
-        piiData['phone_number'] = phoneNumber;
-        piiData['contact_number'] = phoneNumber;
-      }
-      if (email != null && email.isNotEmpty) {
-        piiData['email_address'] = email;
-      }
-
-      // 6. Match canonical_field_key → field_id across ALL templates and save
+      // Match canonical keys to field IDs across all templates and save.
       final formDataByTemplate = <String, Map<String, dynamic>>{};
 
       for (final entry in piiData.entries) {
@@ -700,7 +692,7 @@ class SupabaseService {
         'user_id': userId,
       };
     } catch (e) {
-      debugPrint('saveProfileAfterVerification error: $e');
+      debugPrint('[SupabaseService/saveProfileAfterVerification] Error: $e');
       return {
         'success': false,
         'message': 'Error saving profile: ${e.toString()}',
@@ -708,9 +700,7 @@ class SupabaseService {
     }
   }
 
-  // ================================================================
-  // USER PROFILE
-  // ================================================================
+  // Fetch the stored username for a user.
   Future<String?> getUsername(String userId) async {
     try {
       final response = await _supabase
@@ -720,18 +710,17 @@ class SupabaseService {
           .maybeSingle();
       return response?['username'] as String?;
     } catch (e) {
-      debugPrint('Error fetching username: $e');
+      debugPrint('[SupabaseService/getUsername] Error: $e');
       return null;
     }
   }
 
-  // ================================================================
-  // HISTORY — fetchClientSubmissionHistoryByUser
-  // ================================================================
+  // Read submission history and resolve worker names for display.
   Future<List<Map<String, dynamic>>> fetchClientSubmissionHistoryByUser(
     String userId,
   ) async {
     try {
+      // Get all form_submission IDs for this user.
       final sessionRows = await _supabase
           .from('form_submission')
           .select('id, created_at, scanned_at')
@@ -742,6 +731,7 @@ class SupabaseService {
           .whereType<String>()
           .toList();
 
+      // Build a map from session_id to scanned_at for lookup.
       final scanTimeMap = <String, String>{};
       for (final row in sessionRows as List) {
         final id = row['id']?.toString() ?? '';
@@ -757,6 +747,7 @@ class SupabaseService {
       const fields =
           'id, form_type, intake_reference, created_at, session_id, data, created_by, last_edited_by, last_edited_at';
 
+      // Match client_submissions by session_id.
       final byColumn = await _supabase
           .from('client_submissions')
           .select(fields)
@@ -765,6 +756,7 @@ class SupabaseService {
 
       final submissions = List<Map<String, dynamic>>.from(byColumn as List);
 
+      // Try the JSONB fallback for older records.
       try {
         final byJsonb = await _supabase
             .from('client_submissions')
@@ -779,16 +771,22 @@ class SupabaseService {
             seenIds.add(row['id']);
           }
         }
-      } catch (_) {}
+      } catch (_) {
+        // JSONB filter is optional.
+      }
 
+      // Copy scan time from form_submission into each record.
       for (final s in submissions) {
         final sid = s['session_id']?.toString() ?? '';
         if (sid.isNotEmpty && scanTimeMap.containsKey(sid)) {
           s['scanned_at'] = scanTimeMap[sid];
         }
+        // Fall back to created_at when scanned_at is missing.
         s['scanned_at'] ??= s['created_at'];
       }
 
+      // Resolve worker UUIDs to names via staff_profiles.
+      // last_edited_by may store a UUID or a plain name.
       final workerIds = submissions
           .map((s) => s['last_edited_by']?.toString().trim() ?? '')
           .where((id) => id.isNotEmpty && _looksLikeUuid(id))
@@ -812,6 +810,7 @@ class SupabaseService {
             if (id.isNotEmpty && name.isNotEmpty) nameMap[id] = name;
           }
 
+          // Replace UUIDs with display names in place.
           for (final s in submissions) {
             final editorId = s['last_edited_by']?.toString().trim() ?? '';
             if (nameMap.containsKey(editorId)) {
@@ -819,17 +818,18 @@ class SupabaseService {
             }
           }
         } catch (e) {
-          debugPrint('Worker name resolution error: $e');
+          debugPrint('[SupabaseService/fetchClientSubmissionHistoryByUser] Error resolving worker name: $e');
         }
       }
 
       return submissions;
     } catch (e) {
-      debugPrint('fetchClientSubmissionHistoryByUser error: $e');
+      debugPrint('[SupabaseService/fetchClientSubmissionHistoryByUser] Error: $e');
       return [];
     }
   }
 
+  // Helper: detect UUID strings.
   bool _looksLikeUuid(String s) {
     return RegExp(
       r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
@@ -837,9 +837,7 @@ class SupabaseService {
     ).hasMatch(s);
   }
 
-  // ================================================================
-  // PII LOAD — loadPiiFromFieldValues
-  // ================================================================
+  // Load PII from saved field values.
   Future<Map<String, dynamic>> loadPiiFromFieldValues(String userId) async {
     try {
       final templateSvc = FormTemplateService();
@@ -888,9 +886,7 @@ class SupabaseService {
         if (version == 1) {
           final iv = row['iv'] as String? ?? '';
           if (iv.trim().isEmpty) {
-            debugPrint(
-              'loadPiiFromFieldValues warning: missing iv for field_id=$fid',
-            );
+            debugPrint('[SupabaseService/loadPiiFromFieldValues] Warning: missing iv for field_id=$fid');
             continue;
           }
 
@@ -901,9 +897,7 @@ class SupabaseService {
           );
 
           if (resolvedValue.isEmpty) {
-            debugPrint(
-              'loadPiiFromFieldValues warning: decryption failed for field_id=$fid',
-            );
+            debugPrint('[SupabaseService/loadPiiFromFieldValues] Warning: decryption failed for field_id=$fid');
             continue;
           }
         }
@@ -922,14 +916,13 @@ class SupabaseService {
 
       return result;
     } catch (e) {
-      debugPrint('loadPiiFromFieldValues error: $e');
+      debugPrint('[SupabaseService/loadPiiFromFieldValues] Error: $e');
       return {};
     }
   }
 
-  // ================================================================
-  // QR TRANSMISSION
-  // ================================================================
+  /// Send the selected fields to the matching web session.
+  /// The user chooses which fields to transmit via checkboxes.
   Future<bool> sendDataToWebSession(
     String sessionId,
     Map<String, dynamic> data, {
@@ -942,13 +935,12 @@ class SupabaseService {
           forceRefresh: true,
         );
       } catch (e) {
-        debugPrint('RSA public key fetch failed: $e');
+        debugPrint('[SupabaseService/sendDataToWebSession] Warning: RSA public key fetch failed: $e');
       }
 
       if (publicKey.trim().isEmpty) {
-        debugPrint(
-          'sendDataToWebSession: no RSA key, falling back to unencrypted',
-        );
+        // Fallback: transmit unencrypted (transmission_version = 0)
+        debugPrint('[SupabaseService/sendDataToWebSession] Action: No RSA key, falling back to unencrypted');
         final fallbackResponse = await _supabase
             .from('form_submission')
             .update({
@@ -986,9 +978,8 @@ class SupabaseService {
           .maybeSingle();
 
       if (response == null) {
-        debugPrint(
-          'sendDataToWebSession: status=active filter returned null, retrying without filter',
-        );
+        // Session may no longer be active, so try without the status filter.
+        debugPrint('[SupabaseService/sendDataToWebSession] Action: Status filter returned null, retrying without filter');
         final retryResponse = await _supabase
             .from('form_submission')
             .update({
@@ -1011,7 +1002,7 @@ class SupabaseService {
 
       return true;
     } catch (e) {
-      debugPrint('sendDataToWebSession error for session $sessionId: $e');
+      debugPrint('[SupabaseService/sendDataToWebSession] Error for session $sessionId: $e');
       return false;
     }
   }
@@ -1023,9 +1014,7 @@ class SupabaseService {
     try {
       final accessToken = _supabase.auth.currentSession?.accessToken;
       if (accessToken == null || accessToken.isEmpty) {
-        debugPrint(
-          'decrypt-qr-payload session=$sessionId: missing access token, skipping',
-        );
+        debugPrint('[SupabaseService/_invokeDecryptQrPayloadWithRetry] Action: Missing access token, skipping session=$sessionId');
         return;
       }
 
@@ -1040,9 +1029,7 @@ class SupabaseService {
       final success = data is Map ? data['success'] == true : false;
 
       if (!success && kDebugMode) {
-        debugPrint(
-          'decrypt-qr-payload session=$sessionId attempt=$attempt returned: $data',
-        );
+        debugPrint('[SupabaseService/_invokeDecryptQrPayloadWithRetry] Action: session=$sessionId attempt=$attempt returned: $data');
       }
 
       if (!success &&
@@ -1058,9 +1045,7 @@ class SupabaseService {
         await _invokeDecryptQrPayloadWithRetry(sessionId, attempt: attempt + 1);
       }
     } catch (e) {
-      debugPrint(
-        'decrypt-qr-payload session=$sessionId warning attempt=$attempt: $e',
-      );
+      debugPrint('[SupabaseService/_invokeDecryptQrPayloadWithRetry] Warning: session=$sessionId attempt=$attempt $e');
     }
   }
 

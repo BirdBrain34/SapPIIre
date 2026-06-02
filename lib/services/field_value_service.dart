@@ -130,12 +130,12 @@ class FieldValueService {
       }
       return true;
     } catch (e) {
-      debugPrint('saveUserFieldValues error: $e');
+      debugPrint('[FieldValueService/saveUserFieldValues] Error: $e');
       return false;
     }
   }
 
-  // ── LOAD: fetch saved values and map field_id back to field_name ──
+  // Load saved values and map field_id back to field_name.
   Future<Map<String, dynamic>> loadUserFieldValues({
     required String userId,
     required FormTemplate template,
@@ -167,7 +167,7 @@ class FieldValueService {
         }
       }
 
-      // Reverse map: field_id → field_name and field_id → field_type
+      // Build reverse maps from field IDs to names and types.
       final idToName = {for (final f in eligible) f.fieldId: f.fieldName};
       final idToType = {for (final f in eligible) f.fieldId: f.fieldType};
       final result = <String, dynamic>{};
@@ -237,9 +237,7 @@ class FieldValueService {
               ? decryptedValues[i]
               : '';
           if (decryptedValue.isEmpty && fval.trim().isNotEmpty) {
-            debugPrint(
-              'loadUserFieldValues warning: decryption failed for field_id=$fid',
-            );
+            debugPrint('[FieldValueService/loadUserFieldValues] Warning: decryption failed for field_id=$fid');
           }
 
           applyResolvedValue(fid, decryptedValue);
@@ -247,12 +245,12 @@ class FieldValueService {
       }
       return result;
     } catch (e) {
-      debugPrint('loadUserFieldValues error: $e');
+      debugPrint('[FieldValueService/loadUserFieldValues] Error: $e');
       return {};
     }
   }
 
-  // ── LOAD + CROSS-FORM FILL: direct values first, then canonical matches ──
+  // Load direct values first, then fill missing fields from canonical matches.
   Future<Map<String, dynamic>> loadUserFieldValuesWithCrossFormFill({
     required String userId,
     required FormTemplate template,
@@ -306,12 +304,10 @@ class FieldValueService {
             .add(field);
       }
 
-      debugPrint('DirectValues loaded: ${direct.length} fields');
-      debugPrint('Protected from cross-fill: $protectedCount fields');
+      debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Action: Direct values loaded Count: ${direct.length}');
+      debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Action: Protected fields Count: $protectedCount');
 
-      debugPrint(
-        'crossFormFill: template=${template.formName}, direct=${direct.length}, missingKeys=${missingByCanonical.length}',
-      );
+      debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Action: Template=${template.formName} Direct=${direct.length} MissingKeys=${missingByCanonical.length}');
 
       if (missingByCanonical.isEmpty) {
         return await _applySignatureFallbackIfMissing(
@@ -331,9 +327,7 @@ class FieldValueService {
           .whereType<String>()
           .toSet()
           .toList();
-      debugPrint(
-        'crossFormFill: user_field_values rows=${valueRows.length}, distinctFieldIds=${allFieldIds.length}',
-      );
+      debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Action: user_field_values rows=${valueRows.length} DistinctFieldIds=${allFieldIds.length}');
       if (allFieldIds.isEmpty) {
         return await _applySignatureFallbackIfMissing(
           userId: userId,
@@ -361,12 +355,10 @@ class FieldValueService {
           idToCanonical[fid] = canonical;
         }
       } catch (e) {
-        debugPrint('crossFormFill form_fields query failed: $e');
+        debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Error loading form_fields: $e');
       }
 
-      debugPrint(
-        'crossFormFill: resolved fieldId->canonical=${idToCanonical.length}',
-      );
+      debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Action: Resolved fieldId->canonical Count: ${idToCanonical.length}');
       if (idToCanonical.isEmpty) {
         return await _applySignatureFallbackIfMissing(
           userId: userId,
@@ -430,12 +422,10 @@ class FieldValueService {
             }
           }
         } catch (e) {
-          debugPrint('crossFormFill batch decrypt error: $e');
+          debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Error decrypting batch: $e');
         }
       }
-      debugPrint(
-        'crossFormFill: canonical values=${canonicalBestValue.length}',
-      );
+      debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Action: Canonical values Count: ${canonicalBestValue.length}');
 
       final unmatchedKeys =
           missingByCanonical.keys
@@ -449,10 +439,8 @@ class FieldValueService {
       if (unmatchedKeys.isNotEmpty) {
         final missingPreview = unmatchedKeys.take(12).join(', ');
         final availablePreview = canonicalBestValue.keys.take(20).join(', ');
-        debugPrint(
-          'crossFormFill: unmatchedKeys(${unmatchedKeys.length})=[$missingPreview]',
-        );
-        debugPrint('crossFormFill: availableKeys(sample)=[$availablePreview]');
+        debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Action: Unmatched keys Count: ${unmatchedKeys.length} Values: [$missingPreview]');
+        debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Action: Available keys sample: [$availablePreview]');
       }
 
       final merged = <String, dynamic>{...direct};
@@ -477,7 +465,7 @@ class FieldValueService {
           }
         }
       }
-      debugPrint('Cross-filled: $filledCount fields');
+      debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Action: Cross-filled Count: $filledCount');
 
       final withSignature = await _applySignatureFallbackIfMissing(
         userId: userId,
@@ -492,13 +480,13 @@ class FieldValueService {
           );
           if (legacy.length > withSignature.length) return legacy;
         } catch (e) {
-          debugPrint('crossFormFill legacy fallback failed: $e');
+          debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Error in legacy fallback: $e');
         }
       }
 
       return withSignature;
     } catch (e) {
-      debugPrint('loadUserFieldValuesWithCrossFormFill error: $e');
+      debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Error: $e');
       return await _applySignatureFallbackIfMissing(
         userId: userId,
         values: direct,
@@ -558,13 +546,13 @@ class FieldValueService {
         merged['__signature'] = signatureValue;
       }
     } catch (e) {
-      debugPrint('crossFormFill signature fallback failed: $e');
+      debugPrint('[FieldValueService/_applySignatureFallbackIfMissing] Error: $e');
     }
 
     return merged;
   }
 
-  // ── LOAD + CANONICAL FALLBACK: auto-fill missing fields across templates ──
+  // Load direct values and fill missing fields from canonical matches.
   Future<Map<String, dynamic>> loadUserFieldValuesWithCanonicalFallback({
     required String userId,
     required FormTemplate template,
@@ -648,19 +636,19 @@ class FieldValueService {
 
       return merged;
     } catch (e) {
-      debugPrint('loadUserFieldValuesWithCanonicalFallback error: $e');
+      debugPrint('[FieldValueService/loadUserFieldValuesWithCanonicalFallback] Error: $e');
       return await loadUserFieldValues(userId: userId, template: template);
     }
   }
 
-  // ── QR PUSH: write per-field rows + update form_submission JSONB ──
+  // Write per-field rows and update the form_submission record.
   Future<bool> pushToSubmission({
     required String sessionId,
     required FormTemplate template,
     required Map<String, dynamic> formData,
   }) async {
     try {
-      // 1. Normalised per-field rows
+      // Build the normalized per-field rows.
       final rows = _buildFieldRows(
         template,
         formData,
@@ -678,7 +666,7 @@ class FieldValueService {
         );
       }
 
-      // 2. Update session JSONB + stamp user_id so web can resolve name
+      // Update the session payload and stamp user_id for web lookup.
       final uid = _supabase.auth.currentUser?.id;
       final payload = <String, dynamic>{
         'form_data': formData,
@@ -696,17 +684,17 @@ class FieldValueService {
           .maybeSingle();
 
       if (res == null) {
-        debugPrint('pushToSubmission: session $sessionId not found/closed');
+        debugPrint('[FieldValueService/pushToSubmission] Action: Session not found or closed SessionId=$sessionId');
         return false;
       }
       return true;
     } catch (e) {
-      debugPrint('pushToSubmission error: $e');
+      debugPrint('[FieldValueService/pushToSubmission] Error: $e');
       return false;
     }
   }
 
-  // ── Helpers ───────────────────────────────────────────────
+  // Shared helpers for the save and load flows.
 
   /// Iterate template fields, skip non-saveable types, build row maps.
   List<Map<String, dynamic>> _buildFieldRows(

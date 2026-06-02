@@ -40,6 +40,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
   bool _isLoading = true;
 
   String _categoryFilter = '';
+  String _actionFilter = '';
   String _severityFilter = '';
   DateTime? _dateFrom;
   DateTime? _dateTo;
@@ -56,6 +57,14 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     'template',
   ];
   final _severities = ['', 'info', 'warning', 'critical'];
+  final _actions = [
+    '',
+    kAuditLogin, kAuditLoginFailed, kAuditLogout, kAuditPasswordChanged,
+    kAuditSubmissionCreated, kAuditSubmissionEdited, kAuditSubmissionDeleted, kAuditSubmissionDecrypted,
+    kAuditStaffCreated, kAuditStaffApproved, kAuditStaffRejected, kAuditRoleChanged,
+    kAuditTemplateCreated, kAuditTemplatePublished, kAuditTemplatePushed, kAuditTemplateArchived, kAuditTemplateDeleted,
+    kAuditSessionStarted, kAuditSessionCompleted, kAuditSessionClosed,
+  ];
 
   @override
   void initState() {
@@ -83,6 +92,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         limit: _pageSize,
         offset: _currentPage * _pageSize,
         categoryFilter: _categoryFilter.isEmpty ? null : _categoryFilter,
+        actionFilter: _actionFilter.isEmpty ? null : _actionFilter,
         severityFilter: _severityFilter.isEmpty ? null : _severityFilter,
         actorFilter: _searchController.text.isEmpty
             ? null
@@ -92,6 +102,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
       ),
       _service.fetchCount(
         categoryFilter: _categoryFilter.isEmpty ? null : _categoryFilter,
+        actionFilter: _actionFilter.isEmpty ? null : _actionFilter,
         severityFilter: _severityFilter.isEmpty ? null : _severityFilter,
         actorFilter: _searchController.text.isEmpty
             ? null
@@ -112,6 +123,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
   void _resetFilters() {
     setState(() {
       _categoryFilter = '';
+      _actionFilter = '';
       _severityFilter = '';
       _dateFrom = null;
       _dateTo = null;
@@ -239,6 +251,8 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         return 'Submission Edited';
       case kAuditSubmissionDeleted:
         return 'Submission Deleted';
+      case kAuditSubmissionDecrypted:
+        return 'Submission Decrypted';
       case kAuditStaffCreated:
         return 'Staff Created';
       case kAuditStaffApproved:
@@ -480,6 +494,22 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
             onChanged: (v) {
               setState(() {
                 _categoryFilter = v ?? '';
+                _currentPage = 0;
+              });
+              _loadLogs();
+            },
+          ),
+          const SizedBox(width: 12),
+          _buildDropdownFilter(
+            value: _actionFilter,
+            hint: 'All Actions',
+            items: _actions,
+            labels: {
+              for (final a in _actions) a: a.isEmpty ? 'All Actions' : _actionLabel(a),
+            },
+            onChanged: (v) {
+              setState(() {
+                _actionFilter = v ?? '';
                 _currentPage = 0;
               });
               _loadLogs();

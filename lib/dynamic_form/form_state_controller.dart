@@ -6,19 +6,19 @@ import 'package:sappiire/models/form_template_models.dart';
 class FormStateController extends ChangeNotifier {
   final FormTemplate template;
 
-  // ── Core value store ──────────────────────────────────────
+  // Store the current field values keyed by field name.
   final Map<String, dynamic> _values = {};
 
-  // Per-field notifier — avoids full form repaint on each change
+  // Keep per-field listeners so a single change does not repaint the whole form.
   final Map<String, ValueNotifier<dynamic>> _fieldNotifiers = {};
 
-  // ── TextEditingControllers for text/number/date fields ───
+  // Track text controllers for text, number, date, and computed fields.
   final Map<String, TextEditingController> textControllers = {};
 
-  // Debounce prevents formula recalc on every single keystroke
+  // Debounce formula recalculation while the user is still typing.
   Timer? _recomputeDebounce;
 
-  // ── Complex field state ───────────────────────────────────
+  // Store the state for grouped and computed field types.
   Map<String, bool> membershipData = {
     'solo_parent': false,
     'pwd': false,
@@ -33,10 +33,10 @@ class FormStateController extends ChangeNotifier {
   List<Offset>? signaturePoints;
   bool signatureIsProcessing = false;
 
-  // ── Member table state (generic user-defined tables) ──
+  // Store rows for member table fields.
   Map<String, List<Map<String, dynamic>>> memberTableData = {};
 
-  // ── Checkbox selection state (mobile "what to share") ────
+  // Track which fields are selected for sharing on mobile.
   final Map<String, bool> fieldChecks = {};
   bool selectAll = false;
 
@@ -143,7 +143,7 @@ class FormStateController extends ChangeNotifier {
     if (supportField != null && supportField.fieldName == fieldName) {
       hasSupport = _truthy(value);
     }
-    _fieldNotifiers[fieldName]?.value = value; // Update per-field notifier
+    _fieldNotifiers[fieldName]?.value = value; // Keep the field-specific notifier in sync.
 
     if (textControllers.containsKey(fieldName)) {
       final ctrl = textControllers[fieldName]!;
@@ -159,7 +159,7 @@ class FormStateController extends ChangeNotifier {
       _recomputeFields,
     );
 
-    // Only structural changes (conditions, computed cascades) trigger full repaint
+    // Only structural changes and computed cascades need a full repaint.
     if (notify || _hasStructuralDependencies(fieldName)) {
       notifyListeners();
     }
@@ -271,7 +271,7 @@ class FormStateController extends ChangeNotifier {
       return;
     }
 
-    // Backward compatibility for older templates without explicit age_from_field.
+    // Keep older templates working when they do not define age_from_field.
     FormFieldModel? fallbackDobField;
     FormFieldModel? fallbackAgeField;
     for (final f in fields) {
@@ -326,12 +326,12 @@ class FormStateController extends ChangeNotifier {
     return null;
   }
 
-  /// Checks if a changed field triggers conditional visibility on other fields.
+  /// Returns true when the changed field controls other fields' visibility.
   bool _hasStructuralDependencies(String fieldName) {
     final changedField = template.fieldByName(fieldName);
     if (changedField == null) return false;
 
-    // Check if any field's visibility condition is bound to the changed field.
+    // Check whether any field depends on the changed field for visibility.
     for (final field in template.allFields) {
       if (field.conditions.any(
         (cond) => cond.triggerFieldId == changedField.fieldId,
@@ -342,18 +342,18 @@ class FormStateController extends ChangeNotifier {
     return false;
   }
 
-  // Notifies listeners so computed fields update on screen.
+  // Recompute derived values and notify listeners.
   void recomputeFromFamilyChange() {
     _recomputeFields();
     notifyListeners();
   }
 
-  // Public notifier wrapper for widgets that need a full form refresh.
+  // Notify widgets that need a full form refresh.
   void notifyFormChanged() {
     notifyListeners();
   }
 
-  // ── Member table helpers ──────────────────────────────────
+  // Helpers for member table fields.
   List<Map<String, dynamic>> getMemberTableRows(String fieldName) {
     return memberTableData[fieldName] ?? [];
   }
@@ -377,7 +377,7 @@ class FormStateController extends ChangeNotifier {
     if (rows != null && index >= 0 && index < rows.length) {
       rows.removeAt(index);
       
-      // Trigger recompute when row is removed (affects SUM_COLUMN formulas)
+      // Recompute formulas because removing a row can change totals.
       _recomputeDebounce?.cancel();
       _recomputeDebounce = Timer(
         const Duration(milliseconds: 150),
@@ -398,7 +398,7 @@ class FormStateController extends ChangeNotifier {
     if (rows != null && rowIndex >= 0 && rowIndex < rows.length) {
       rows[rowIndex][colName] = value;
       
-      // Trigger recompute for formulas that depend on member table data
+      // Recompute formulas because member table values feed computed fields.
       _recomputeDebounce?.cancel();
       _recomputeDebounce = Timer(
         const Duration(milliseconds: 150),
@@ -409,7 +409,7 @@ class FormStateController extends ChangeNotifier {
     }
   }
 
-  // Load form data from JSON (from database or QR transmission)
+  // Load form data from JSON from the database or QR transmission.
   void loadFromJson(Map<String, dynamic> data) {
     clearAll(notify: false);
 
@@ -502,16 +502,16 @@ class FormStateController extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Export form data to JSON for database storage
+  // Export form data to JSON for database storage.
   Map<String, dynamic> toJson() {
-    // Flush any pending debounce and recompute derived values before save.
+    // Flush pending recomputation before saving.
     _recomputeDebounce?.cancel();
     _recomputeFields();
 
     final result = <String, dynamic>{};
 
     for (final field in template.allFields) {
-      // Do not persist values for fields that are currently hidden by conditions.
+      // Skip fields that are hidden by conditional logic.
       if (!isFieldVisible(field)) continue;
 
       switch (field.fieldType) {
@@ -559,16 +559,16 @@ class FormStateController extends ChangeNotifier {
     return result;
   }
 
-  // Export filtered data for QR transmission (only checked fields)
+  // Export only the selected fields for QR transmission.
   Map<String, dynamic> toFilteredJson() {
-    // Flush any pending debounce and recompute derived values before transmit.
+    // Flush pending recomputation before transmission.
     _recomputeDebounce?.cancel();
     _recomputeFields();
 
     final result = <String, dynamic>{};
 
     for (final field in template.allFields) {
-      // Hidden fields should never be part of transmitted shared data.
+      // Skip fields that should not be shared.
       if (!isFieldVisible(field)) continue;
 
       final checkKey = field.checkKey;
@@ -632,7 +632,7 @@ class FormStateController extends ChangeNotifier {
     return result;
   }
 
-  // Check if field should be visible based on conditional logic
+  // Check visibility using the field's conditional rules.
   bool isFieldVisible(FormFieldModel field) {
     final triggerMap = <String, dynamic>{};
     for (final f in template.allFields) {
@@ -673,9 +673,8 @@ class FormStateController extends ChangeNotifier {
 
     if (computedFields.isEmpty) return;
 
-    // Resolve chained computed dependencies regardless of template order.
-    // Example: D = A+B+C, F = D/E. If F appears before D in schema, a single
-    // pass can read stale D. Multiple passes converge quickly in practice.
+    // Resolve computed dependencies even when the template order is chained.
+    // Multiple passes let downstream fields settle on the latest values.
     final maxPasses = computedFields.length;
     for (var pass = 0; pass < maxPasses; pass++) {
       var anyChanged = false;
@@ -695,7 +694,7 @@ class FormStateController extends ChangeNotifier {
           );
           anyChanged = anyChanged || changed;
         } catch (_) {
-          // Leave field blank if formula is invalid
+          // Leave the field blank when the formula cannot be evaluated.
         }
       }
 
@@ -703,10 +702,9 @@ class FormStateController extends ChangeNotifier {
     }
   }
 
-  /// Preprocess formula to expand SUM_COLUMN() aggregate function calls.
-  /// Converts SUM_COLUMN(table_key, "allowance") → numeric sum
+  /// Expand SUM_COLUMN() aggregate function calls before evaluation.
   String _expandAggregates(String formula) {
-    // Match: SUM_COLUMN(tableKey, "columnKey") or SUM_COLUMN(tableKey, 'columnKey')
+    // Match SUM_COLUMN(tableKey, "columnKey") or SUM_COLUMN(tableKey, 'columnKey').
     final regex = RegExp(
       'SUM_COLUMN\\(([a-zA-Z_][a-zA-Z0-9_]*)\\s*,\\s*[\'\"]([^\'\"]+)[\'\"]\\s*\\)',
     );
@@ -719,8 +717,7 @@ class FormStateController extends ChangeNotifier {
   }
 
   String _normalizeFormulaFieldReferences(String formula) {
-    // Support legacy formulas that stored human-readable labels instead of
-    // machine-safe field names (e.g. "Total Gross Family Income (A+B+C)=(D)").
+    // Support legacy formulas that use labels instead of field names.
     final replacements = template.allFields
         .where((f) => f.fieldLabel.trim().isNotEmpty)
         .where((f) => f.fieldLabel.trim() != f.fieldName.trim())
@@ -733,8 +730,7 @@ class FormStateController extends ChangeNotifier {
       final key = f.fieldName.trim();
       if (label.isEmpty || key.isEmpty) continue;
 
-      // Replace only standalone label matches so we don't mutate substrings
-      // inside unrelated identifiers.
+      // Replace only standalone label matches so unrelated identifiers stay intact.
       final escaped = RegExp.escape(label);
       final pattern = RegExp('(?<![A-Za-z0-9_])$escaped(?![A-Za-z0-9_])');
       normalized = normalized.replaceAll(pattern, key);
@@ -742,9 +738,7 @@ class FormStateController extends ChangeNotifier {
     return normalized;
   }
 
-  /// Sum all numeric values in a specific column across all rows of a table field.
-  /// Returns 0 if table is empty, not found, or contains no valid numeric values.
-  /// Handles null, empty string, and non-numeric values safely (treated as 0).
+  /// Sum all numeric values in a table column.
   double _sumTableColumn(String tableKey, String columnKey) {
     final table = _resolveTableRows(tableKey);
 
@@ -753,11 +747,11 @@ class FormStateController extends ChangeNotifier {
     double sum = 0.0;
     for (final row in table) {
       final rawValue = _readRowColumnValue(row, tableKey, columnKey);
-      // Treat null and empty string as 0
+      // Treat null and empty values as zero.
       if (rawValue == null || rawValue == '') {
         continue;
       }
-      // Parse as number; non-numeric → 0
+      // Treat non-numeric values as zero.
       final numVal =
           double.tryParse(rawValue.toString().replaceAll(',', '')) ?? 0.0;
       sum += numVal;
@@ -852,10 +846,10 @@ class FormStateController extends ChangeNotifier {
 
   /// Tokenise and evaluate a simple arithmetic formula.
   double _evalFormula(String formula) {
-    // Step 1: Normalize label-based references to machine-safe field names.
+    // Step 1: Normalize label-based references to field names.
     final normalized = _normalizeFormulaFieldReferences(formula);
 
-    // Step 2: Expand aggregate functions (SUM_COLUMN, etc.)
+    // Step 2: Expand aggregate functions such as SUM_COLUMN.
     final expanded = _expandAggregates(normalized);
 
     final knownFieldNames = template.allFields
@@ -864,7 +858,7 @@ class FormStateController extends ChangeNotifier {
         .toSet();
 
     // Step 3: Replace known field names with their numeric values.
-    // Unknown tokens are replaced with 0 to keep evaluation resilient.
+    // Unknown tokens are replaced with zero so evaluation keeps running.
     final resolved = expanded.replaceAllMapped(
       RegExp(r'[a-zA-Z_][a-zA-Z0-9_]*'),
       (m) {
@@ -874,7 +868,7 @@ class FormStateController extends ChangeNotifier {
       },
     );
 
-    // Step 4: Evaluate the arithmetic expression
+    // Step 4: Evaluate the arithmetic expression.
     return _evalExpr(resolved.replaceAll(' ', ''), _Pos(0));
   }
 
@@ -900,16 +894,16 @@ class FormStateController extends ChangeNotifier {
 
   double _evalFactor(String s, _Pos p) {
     if (p.i < s.length && s[p.i] == '(') {
-      p.i++; // consume '('
+      p.i++; // Consume '('.
       final result = _evalExpr(s, p);
-      if (p.i < s.length && s[p.i] == ')') p.i++; // consume ')'
+      if (p.i < s.length && s[p.i] == ')') p.i++; // Consume ')'.
       return result;
     }
     if (p.i < s.length && s[p.i] == '-') {
       p.i++;
       return -_evalFactor(s, p);
     }
-    // Parse number
+    // Parse a number token.
     final start = p.i;
     while (p.i < s.length &&
         (s[p.i] == '.' ||
@@ -934,7 +928,7 @@ class FormStateController extends ChangeNotifier {
     if (textControllers.containsKey(key)) {
       if (textControllers[key]!.text != str) {
         textControllers[key]!.text = str;
-        _fieldNotifiers[key]?.value = str; // Also update notifier
+        _fieldNotifiers[key]?.value = str; // Keep the field notifier in sync.
         changed = true;
       }
     }
@@ -945,14 +939,14 @@ class FormStateController extends ChangeNotifier {
     return changed;
   }
 
-  // ── Select-all toggle ─────────────────────────────────────
+  // Toggle sharing for every field.
   void setSelectAll(bool val) {
     selectAll = val;
     fieldChecks.updateAll((_, __) => val);
     notifyListeners();
   }
 
-  // ── Clear everything ──────────────────────────────────────
+  // Clear all form state.
   void clearAll({bool notify = true}) {
     _values.clear();
     for (final ctrl in textControllers.values) ctrl.clear();

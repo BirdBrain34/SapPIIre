@@ -119,7 +119,64 @@ This provides a server-side encryption layer protecting finalized applicant reco
 
 Audit log views provide privileged inspection of high-impact events (auth, staff, template, session, submission categories), strengthening accountability and incident traceability.
 
-## 3. Security and Governance Control Surface
+## 3. Web Architecture: Separation of Concerns
+
+The web tier implements a layered architecture that cleanly separates business logic from UI rendering, mirroring the mobile pattern:
+
+### 3.1 Controllers Layer (Business Logic & State Management)
+
+Controllers (`lib/web/controllers/`) encapsulate application logic and state coordination:
+
+- **`ManageFormsController`**: Session orchestration, payload fingerprinting, intake reference formatting, session state coordination.
+- **`FormBuilderController`**: Utility functions for form template construction (UUID generation, code sanitization, reference formatting, token/separator management).
+- **`FormBuilderScreenController`**: Complete form builder state management (template loading, field/section/condition editing, publication workflow, unsaved changes tracking).
+- **`DashboardController`**: Analytics data loading, chart generation, client search, workload distribution coordination.
+- **`ApplicantsController`**: Finalized submission retrieval, record editing, applicant history navigation.
+- **`ManageStaffController`**: Staff account lifecycle (pending approvals, role updates, activation/deactivation).
+
+Controllers extend `ChangeNotifier` for reactive state management and coordinate service interactions.
+
+### 3.2 Screens Layer (UI Rendering)
+
+Screens (`lib/web/screen/`) handle UI presentation and delegate business logic to controllers:
+
+- Receive state updates from controllers via listeners.
+- Translate user interactions into controller method calls.
+- Render dynamic forms, data tables, charts, dialogs, and navigation flows.
+- Manage UI-specific state (scroll position, expanded/collapsed panels) separately from business logic.
+
+This separation allows screens to remain thin and testable, with complex logic residing in controllers.
+
+### 3.3 Components Layer (Reusable Analytics & Chart Components)
+
+Components (`lib/web/components/`) provide specialized, reusable pieces for analytics and visualization:
+
+- **`AutoChartBuilder`**: Dynamic chart generation based on analytics data.
+- **`IntakeChartWidgets`**: Visualization components for intake trends, demographics, and workload distribution.
+- **`FormTypeAnalyticsConfig`**: Configuration for form-type-specific analytics rendering.
+
+Components are independent and composed by screens and controllers.
+
+### 3.4 Widgets Layer (Reusable UI Components)
+
+Widgets (`lib/web/widgets/`) provide composable UI building blocks:
+
+- **Form builder components**: `FormBuilderFieldCard`, `FormBuilderSectionHeader`, `FormBuilderTitleCard`, `FormBuilderTemplateListPanel`, `FormBuilderStatusCard` - enabling massive form builder screen reduction and reusability.
+- **Dialog components**: `LogoutConfirmationDialog`.
+- **Navigation components**: `SideMenu`, `WebShell`.
+
+Widgets are independent and reusable across multiple screens, reducing duplication.
+
+### 3.5 Utilities Layer (Shared Helpers)
+
+Utilities (`lib/web/utils/`) provide cross-cutting functionality:
+
+- **`PageTransitions`**: Animated page transition definitions for navigation.
+- **`WebNavigator`**: Centralized navigation routing and context management for staff screens.
+
+This refactoring improves code reusability, testability, and maintainability while optimizing state management. The form builder was particularly heavily refactored: the original 4776-line monolithic screen was split into a controller (964 lines), helper functions (452 lines), reusable widget cards (2151+ lines), enabling future maintenance and feature additions without further bloat.
+
+## 4. Security and Governance Control Surface
 
 The web tier contributes the following controls:
 
@@ -129,15 +186,15 @@ The web tier contributes the following controls:
 4. Session lifecycle containment through `form_submission` status and expiry controls.
 5. Audit logging for sensitive administrative actions.
 
-## 4. Manuscript Alignment and Added Capabilities
+## 5. Manuscript Alignment and Added Capabilities
 
-### 4.1 Manuscript-Aligned Web Core
+### 5.1 Manuscript-Aligned Web Core
 
 1. CSWD staff dashboard for intake management.
 2. Secured autofill consumption after backend decryption.
 3. Basic role-based access for decrypted applicant records.
 
-### 4.2 Added Web Enhancements Beyond Initial Prompt
+### 5.2 Added Web Enhancements Beyond Initial Prompt
 
 1. Dedicated admin creation and staff lifecycle governance.
 2. Dynamic form builder with publication pipeline.
@@ -146,8 +203,9 @@ The web tier contributes the following controls:
 5. Customer-display session broadcasting.
 6. Client submissions server-side AES-256-GCM encryption for finalized applicant records.
 7. Audit log observability and analytics modules.
+8. Layered architecture with clean separation of concerns: Controllers (business logic), Screens (UI rendering), Components (analytics/chart), Widgets (reusable UI), Utilities (shared helpers).
 
-## 5. Primary Data Touchpoints
+## 6. Primary Data Touchpoints
 
 Web workflows interact primarily with:
 

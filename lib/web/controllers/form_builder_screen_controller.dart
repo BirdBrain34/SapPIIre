@@ -268,7 +268,7 @@ class FormBuilderScreenController extends ChangeNotifier {
       isLoadingCanonicalKeys = false;
       markChanged();
     } catch (e) {
-      debugPrint('_loadCanonicalKeys error: $e');
+      debugPrint('[FormBuilderScreenController/_loadCanonicalKeys] Error: $e');
       if (_disposed) return;
       availableCanonicalKeys = List.of(base.standardProfileCanonicalKeys);
       isLoadingCanonicalKeys = false;
@@ -689,7 +689,7 @@ class FormBuilderScreenController extends ChangeNotifier {
           popupDescription: popupDescription,
         );
       } catch (e) {
-        debugPrint('Popup metadata save error: $e');
+        debugPrint('[FormBuilderScreenController/savePopupMetadata] Error: $e');
       }
     }
 

@@ -6,6 +6,7 @@ import 'package:sappiire/mobile/utils/date_utils.dart';
 enum SortField { date, formType }
 enum SortOrder { asc, desc }
 
+/// Loads the signed-in user's submission history and resolves display names.
 class HistoryController extends ChangeNotifier {
   final SupabaseService _supabaseService = SupabaseService();
   final _supabase = Supabase.instance.client;
@@ -30,7 +31,7 @@ class HistoryController extends ChangeNotifier {
       submissions = await _resolveAssistedBy(rawSubmissions);
       _applySort();
     } catch (e) {
-      debugPrint('_loadHistory error: $e');
+      debugPrint('[HistoryController/loadHistory] Error: $e');
     } finally {
       isLoading = false;
       notifyListeners();
@@ -47,6 +48,7 @@ class HistoryController extends ChangeNotifier {
   Future<List<Map<String, dynamic>>> _resolveAssistedBy(
     List<Map<String, dynamic>> submissions,
   ) async {
+    // Resolve staff IDs to readable names before the list is rendered.
     final resolved = submissions
         .map((item) => Map<String, dynamic>.from(item))
         .toList();
@@ -81,7 +83,7 @@ class HistoryController extends ChangeNotifier {
           }
         }
       } catch (e) {
-        debugPrint('HistoryController profile resolution error: $e');
+        debugPrint('[HistoryController/_resolveAssistedBy] Profile lookup failed: $e');
       }
 
       try {
@@ -98,7 +100,7 @@ class HistoryController extends ChangeNotifier {
           }
         }
       } catch (e) {
-        debugPrint('HistoryController account resolution error: $e');
+        debugPrint('[HistoryController/_resolveAssistedBy] Account lookup failed: $e');
       }
     }
 
@@ -130,6 +132,7 @@ class HistoryController extends ChangeNotifier {
   }
 
   void _applySort() {
+    // Keep the filtered list aligned with the selected sort settings.
     final sorted = List<Map<String, dynamic>>.from(submissions);
     sorted.sort((a, b) {
       int cmp;

@@ -1,19 +1,14 @@
 import 'package:flutter/material.dart';
+
 import 'package:sappiire/constants/app_colors.dart';
+import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/services/dashboard_analytics_service.dart';
+import 'package:sappiire/services/dashboard_config_service.dart';
 import 'package:sappiire/services/form_template_service.dart';
-import 'package:sappiire/web/components/auto_chart_builder.dart';
 import 'package:sappiire/web/components/intake_chart_widgets.dart';
-import 'package:sappiire/web/screen/applicants_screen.dart';
-import 'package:sappiire/web/screen/audit_logs_screen.dart';
-import 'package:sappiire/web/screen/create_staff_screen.dart';
-import 'package:sappiire/web/screen/form_builder_screen.dart';
-import 'package:sappiire/web/screen/manage_forms_screen.dart';
-import 'package:sappiire/web/screen/manage_staff_screen.dart';
-import 'package:sappiire/web/utils/page_transitions.dart';
+import 'package:sappiire/web/controllers/dashboard_controller.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
-import 'package:sappiire/web/controllers/dashboard_controller.dart';
 
 class DashboardScreen extends StatefulWidget {
   final String cswd_id;
@@ -33,16 +28,32 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen>
+    with TickerProviderStateMixin {
   final _controller = DashboardController();
+  final _analyticsService = DashboardAnalyticsService();
+  final _templateService = FormTemplateService();
+  final _configService = DashboardConfigService();
+
+  List<FormTemplate> _templates = [];
+  String _selectedFormType = 'All';
+  String _selectedTimeRange = 'all';
+  String? _selectedTemplateId;
+  List<DashboardWidgetConfig> _widgetConfigs = [];
+  final Map<String, Future<Map<String, int>>> _distributionFutures = {};
+  bool _isLoadingWidgetConfigs = false;
+  bool _isLoadingOverview = true;
+  int _activeFormCount = 0;
+  int _staffAccountCount = 0;
+  int _uniqueClientCount = 0;
+  Map<String, int> _workerAnalytics = {};
+  int _refreshToken = 0;
+  int _selectionToken = 0;
 
   Map<String, int> get _countsByFormType => _controller.countsByFormType;
   int get _totalCount => _controller.totalCount;
   List<String> get _availableFormTypes => _controller.availableFormTypes;
   bool get _isLoadingCounts => _controller.isLoadingCounts;
-  String get _selectedFormType => _controller.selectedFormType;
-  List<ChartConfig> get _charts => _controller.charts;
-  bool get _isLoadingCharts => _controller.isLoadingCharts;
   bool get _isLoadingInsights => _controller.isLoadingInsights;
   Map<String, int> get _staffWorkload => _controller.staffWorkload;
   Map<String, int> get _genderRatio => _controller.genderRatio;
@@ -65,7 +76,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _controller.setStaffId(widget.cswd_id);
-    _loadSummary();
+    _analyticsService.setStaffId(widget.cswd_id);
+    _loadDashboardData();
   }
 
   @override
@@ -74,19 +86,168 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
-  Future<void> _loadSummary() => _controller.loadSummary();
+  Future<void> _loadDashboardData() async {
+    await _loadTemplates();
+    await _refreshDashboardData();
+  }
 
-  Future<void> _loadOperationalInsights() => _controller.loadOperationalInsights();
+  Future<void> _loadTemplates() async {
+    final templates = await _templateService.fetchActiveTemplates(
+      forceRefresh: true,
+    );
 
-  Future<void> _loadPlanningInsights(String formType) =>
-      _controller.loadPlanningInsights(formType);
+    if (!mounted) return;
+    setState(() {
+      _templates = templates;
+      _activeFormCount = templates.length;
+      _controller.availableFormTypes = templates
+          .map((template) => template.formName)
+          .toSet()
+          .toList()
+        ..sort();
+      if (_selectedFormType != 'All') {
+        _selectedTemplateId = _resolveTemplateId(_selectedFormType);
+      }
+      _isLoadingOverview = false;
+    });
+  }
 
-  Future<void> _loadChartsFor(String formType) => _controller.loadChartsFor(formType);
+  DateTimeRange? _getTimeRange() {
+    final now = DateTime.now();
+    switch (_selectedTimeRange) {
+      case 'daily':
+        return DateTimeRange(
+          start: DateTime(now.year, now.month, now.day),
+          end: now,
+        );
+      case 'weekly':
+        return DateTimeRange(
+          start: now.subtract(const Duration(days: 7)),
+          end: now,
+        );
+      case 'monthly':
+        return DateTimeRange(start: DateTime(now.year, now.month, 1), end: now);
+      case 'yearly':
+        return DateTimeRange(start: DateTime(now.year, 1, 1), end: now);
+      default:
+        return null;
+    }
+  }
+
+  String _timeRangeLabel() {
+    switch (_selectedTimeRange) {
+      case 'daily':
+        return 'Today';
+      case 'weekly':
+        return 'This Week';
+      case 'monthly':
+        return 'This Month';
+      case 'yearly':
+        return 'This Year';
+      default:
+        return 'All Time';
+    }
+  }
+
+  Future<void> _refreshDashboardData() async {
+    final token = ++_refreshToken;
+    final timeRange = _getTimeRange();
+    final formType = _selectedFormType;
+
+    _analyticsService.clearDecryptedCache();
+
+    if (mounted) {
+      setState(() => _isLoadingOverview = true);
+    }
+
+    await Future.wait([
+      _controller.loadSummary(timeRange: timeRange),
+      _controller.loadOperationalInsights(timeRange: timeRange),
+      _controller.loadPlanningInsights(
+        formType,
+        timeRange: timeRange,
+      ),
+    ]);
+
+    if (!mounted || token != _refreshToken) return;
+
+    final workerAnalytics = await _analyticsService.fetchSubmissionsByWorker(
+      formType: formType == 'All' ? null : formType,
+      timeRange: timeRange,
+    );
+    final staffCount = await _analyticsService.fetchStaffAccountCount();
+    final uniqueClients = await _analyticsService.fetchUniqueClientCount(
+      timeRange: timeRange,
+    );
+
+    if (!mounted || token != _refreshToken) return;
+
+    setState(() {
+      _workerAnalytics = workerAnalytics;
+      _staffAccountCount = staffCount;
+      _uniqueClientCount = uniqueClients;
+      _activeFormCount = _templates.length;
+      _isLoadingOverview = false;
+    });
+
+    if (_selectedClientId != null) {
+      await _controller.selectClient(
+        {
+          'user_id': _selectedClientId!,
+          'name': _selectedClientName,
+        },
+        timeRange: timeRange,
+      );
+    }
+  }
+
+  String? _resolveTemplateId(String formType) {
+    for (final template in _templates) {
+      if (template.formName == formType) {
+        return template.templateId;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _selectFormType(String formType) async {
+    final token = ++_selectionToken;
+    final templateId = formType == 'All' ? null : _resolveTemplateId(formType);
+
+    setState(() {
+      _selectedFormType = formType;
+      _selectedTemplateId = templateId;
+      _widgetConfigs = [];
+      _distributionFutures.clear();
+      _isLoadingWidgetConfigs = formType != 'All';
+    });
+
+    await _refreshDashboardData();
+    if (!mounted || token != _selectionToken) return;
+
+    if (formType == 'All') {
+      setState(() => _isLoadingWidgetConfigs = false);
+      return;
+    }
+
+    if (_selectedTemplateId == null) {
+      setState(() => _isLoadingWidgetConfigs = false);
+      return;
+    }
+
+    final configs = await _configService.fetchConfig(_selectedTemplateId!);
+    if (!mounted || token != _selectionToken) return;
+
+    setState(() {
+      _widgetConfigs = configs;
+      _isLoadingWidgetConfigs = false;
+    });
+  }
 
   Future<void> _searchClients() => _controller.searchClients();
 
   Future<void> _selectClient(Map<String, String> client) =>
-      _controller.selectClient(client);
+      _controller.selectClient(client, timeRange: _getTimeRange());
 
   @override
   Widget build(BuildContext context) {
@@ -98,6 +259,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
       cswd_id: widget.cswd_id,
       displayName: widget.displayName,
       onLogout: widget.onLogout,
+      headerActions: [
+        if (widget.role == 'superadmin' || widget.role == 'admin')
+          OutlinedButton.icon(
+            onPressed: () => WebNavigator.go(
+              context,
+              'DashboardConfig',
+              cswdId: widget.cswd_id,
+              role: widget.role,
+              displayName: widget.displayName,
+              onLogout: widget.onLogout,
+            ),
+            icon: const Icon(Icons.settings),
+            label: const Text('Configure Dashboard'),
+          ),
+      ],
       onNavigate: (path) => WebNavigator.go(
         context,
         path,
@@ -109,19 +285,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: AnimatedBuilder(
         animation: _controller,
         builder: (context, _) {
-          return _isLoadingCounts
-              ? const Center(child: CircularProgressIndicator())
+          final isLoadingDashboard =
+              _isLoadingOverview ||
+              _controller.isLoadingCounts ||
+              _controller.isLoadingInsights ||
+              _isLoadingWidgetConfigs;
+
+          return isLoadingDashboard
+              ? const Center(
+                  child: CircularProgressIndicator(
+                    color: AppColors.highlight,
+                  ),
+                )
               : SingleChildScrollView(
-              padding: const EdgeInsets.all(28),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildFormCardsSection(),
-                  const SizedBox(height: 28),
-                  _buildChartsSection(),
-                ],
-              ),
-            );
+                  padding: const EdgeInsets.all(28),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildFormCardsSection(),
+                      const SizedBox(height: 18),
+                      _buildTimeRangeSelector(),
+                      const SizedBox(height: 28),
+                      _buildChartsSection(_getTimeRange()),
+                    ],
+                  ),
+                );
         },
       ),
     );
@@ -133,72 +321,312 @@ class _DashboardScreenState extends State<DashboardScreen> {
       totalCount: _totalCount,
       availableFormTypes: _availableFormTypes,
       selectedFormType: _selectedFormType,
-      onSelectForm: _loadChartsFor,
+      onSelectForm: _selectFormType,
     );
   }
 
-  Widget _buildChartsSection() {
-    if (_selectedFormType == 'All') {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildAllFormsOverview(),
-          const SizedBox(height: 28),
-          _buildOperationalSection(),
-          const SizedBox(height: 28),
-          _buildPlanningSection(),
-          const SizedBox(height: 28),
-          _buildClientHistorySection(),
-        ],
-      );
-    }
+  Widget _buildTimeRangeSelector() {
+    final options = const [
+      MapEntry('all', 'All Time'),
+      MapEntry('yearly', 'Yearly'),
+      MapEntry('monthly', 'Monthly'),
+      MapEntry('weekly', 'Weekly'),
+      MapEntry('daily', 'Daily'),
+    ];
 
-    if (_isLoadingCharts) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(60),
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
-
-    if (_charts.isEmpty) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildNoChartsPlaceholder(),
-          const SizedBox(height: 24),
-          _buildPlanningSection(),
-        ],
-      );
-    }
+    final selected = options.map((option) => option.key == _selectedTimeRange).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ..._charts.map((chart) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 24),
-            child: chart.style == ChartStyle.pie
-                ? SimpleDistributionPie(title: chart.title, data: chart.data)
-                : SimpleBarChart(
-                    title: chart.title,
-                    data: chart.data,
-                    primaryColor: AppColors.highlight,
-                  ),
-          );
-        }),
-        _buildPlanningSection(),
+        ToggleButtons(
+          isSelected: selected,
+          onPressed: (index) {
+            final next = options[index].key;
+            if (next == _selectedTimeRange) return;
+            setState(() => _selectedTimeRange = next);
+            _refreshDashboardData();
+          },
+          borderRadius: BorderRadius.circular(999),
+          selectedColor: Colors.white,
+          fillColor: AppColors.highlight,
+          color: AppColors.textDark,
+          borderColor: AppColors.cardBorder,
+          selectedBorderColor: AppColors.highlight,
+          constraints: const BoxConstraints(minHeight: 42),
+          children: options
+              .map(
+                (option) => Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(option.value),
+                ),
+              )
+              .toList(),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Showing data for: ${_timeRangeLabel()}',
+          style: const TextStyle(
+            color: AppColors.textMuted,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildAllFormsOverview() {
+  Widget _buildChartsSection(DateTimeRange? timeRange) {
+    if (_selectedFormType == 'All') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildGeneralMetricsSection(),
+          const SizedBox(height: 28),
+          _buildAllFormsOverview(timeRange),
+          const SizedBox(height: 28),
+          _buildWorkerAnalyticsSection('All', timeRange),
+          const SizedBox(height: 28),
+          // TODO: add a trend sparkline once time-bucketed analytics are exposed.
+          _buildOperationalSection(timeRange),
+          const SizedBox(height: 28),
+          _buildPlanningSection(timeRange),
+          const SizedBox(height: 28),
+          _buildClientHistorySection(timeRange),
+        ],
+      );
+    }
+
+    if (_isLoadingWidgetConfigs) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 60),
+        child: Center(
+          child: CircularProgressIndicator(color: AppColors.highlight),
+        ),
+      );
+    }
+
+    if (_widgetConfigs.isEmpty) {
+      return _buildNoDashboardConfigurationState();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ..._widgetConfigs.map((config) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 24),
+            child: _buildConfiguredWidget(config, timeRange),
+          );
+        }),
+        if (widget.role == 'superadmin' || widget.role == 'admin') ...[
+          const SizedBox(height: 4),
+          _buildWorkerAnalyticsSection(_selectedFormType, timeRange),
+          const SizedBox(height: 28),
+        ],
+        _buildPlanningSection(timeRange),
+      ],
+    );
+  }
+
+  Widget _buildConfiguredWidget(
+    DashboardWidgetConfig config,
+    DateTimeRange? timeRange,
+  ) {
+    final cacheKey =
+        '${config.fieldName}:${config.chartType}:${timeRange?.start.toIso8601String() ?? 'all'}:${timeRange?.end.toIso8601String() ?? 'all'}';
+    final future = _distributionFutures.putIfAbsent(
+      cacheKey,
+      () => _analyticsService.fetchFieldDistribution(
+        formType: _selectedFormType,
+        fieldName: config.fieldName,
+        isNumeric: false,
+        isMultiSelect: false,
+        topN: 20,
+        timeRange: timeRange,
+      ),
+    );
+
+    return FutureBuilder<Map<String, int>>(
+      future: future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Padding(
+            padding: EdgeInsets.all(20),
+            child: Center(
+              child: CircularProgressIndicator(color: AppColors.highlight),
+            ),
+          );
+        }
+
+        final data = snapshot.data ?? {};
+        if (data.isEmpty) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: AppColors.cardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.cardBorder),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Text(
+              "No data yet for '${config.fieldLabel}'",
+              style: const TextStyle(color: AppColors.textMuted),
+            ),
+          );
+        }
+
+        switch (config.chartType) {
+          case 'pie':
+            return SimpleDistributionPie(title: config.fieldLabel, data: data);
+          case 'counter':
+            final entries = data.entries.toList()
+              ..sort((a, b) => b.value.compareTo(a.value));
+            final topEntry = entries.first;
+            return MetricCard(
+              label: config.fieldLabel,
+              value: topEntry.value.toString(),
+              icon: Icons.tag,
+              color: AppColors.highlight,
+              subtitle: topEntry.key,
+              expand: false,
+            );
+          case 'hbar':
+            return SimpleHorizontalBarChart(
+              title: config.fieldLabel,
+              data: data,
+              primaryColor: AppColors.highlight,
+            );
+          case 'table':
+            return SimpleDataTable(title: config.fieldLabel, data: data);
+          default:
+            return SimpleBarChart(
+              title: config.fieldLabel,
+              data: data,
+              primaryColor: AppColors.highlight,
+            );
+        }
+      },
+    );
+  }
+
+  Widget _buildNoDashboardConfigurationState() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(36),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cardBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.dashboard_customize_outlined,
+            size: 64,
+            color: AppColors.textMuted.withValues(alpha: 0.45),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'No dashboard configured for this form',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Go to Dashboard Configuration to define which fields to visualize.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, color: AppColors.textMuted),
+          ),
+          if (widget.role == 'superadmin' || widget.role == 'admin') ...[
+            const SizedBox(height: 20),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.highlight,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => WebNavigator.go(
+                context,
+                'DashboardConfig',
+                cswdId: widget.cswd_id,
+                role: widget.role,
+                displayName: widget.displayName,
+                onLogout: widget.onLogout,
+              ),
+              child: const Text('Configure Now'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGeneralMetricsSection() {
+    return Wrap(
+      spacing: 16,
+      runSpacing: 16,
+      children: [
+        MetricCard(
+          label: 'Total Submissions',
+          value: _totalCount.toString(),
+          icon: Icons.how_to_reg,
+          color: AppColors.highlight,
+          subtitle: _timeRangeLabel(),
+          expand: false,
+        ),
+        MetricCard(
+          label: 'Total Active Forms',
+          value: _activeFormCount.toString(),
+          icon: Icons.list_alt_rounded,
+          color: AppColors.successGreen,
+          subtitle: 'Configured templates',
+          expand: false,
+        ),
+        MetricCard(
+          label: 'Total Staff Accounts',
+          value: _staffAccountCount.toString(),
+          icon: Icons.groups_rounded,
+          color: AppColors.highlight,
+          subtitle: 'Worker accounts',
+          expand: false,
+        ),
+        MetricCard(
+          label: 'Total Clients',
+          value: _uniqueClientCount.toString(),
+          icon: Icons.people_alt_rounded,
+          color: AppColors.highlight,
+          subtitle: 'Unique applicants',
+          expand: false,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAllFormsOverview(DateTimeRange? timeRange) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Submission Overview',
+          'Forms Submitted Breakdown',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
@@ -206,16 +634,76 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        SimpleBarChart(
+        SimpleDistributionPie(
           title: 'Submissions by Form Type',
           data: _countsByFormType,
-          primaryColor: AppColors.highlight,
         ),
       ],
     );
   }
 
-  Widget _buildOperationalSection() {
+  Widget _buildWorkerAnalyticsSection(
+    String formType,
+    DateTimeRange? timeRange,
+  ) {
+    final isGeneral = formType == 'All';
+    final title = isGeneral ? 'Staff Submission Activity' : 'Staff Workload';
+    final subtitle = isGeneral
+        ? 'For audit and workload monitoring purposes'
+        : 'Number of submissions handled per worker account';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cardBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textDark,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 16),
+          if (_workerAnalytics.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Text(
+                'No submission data for this period.',
+                style: TextStyle(color: AppColors.textMuted),
+              ),
+            )
+          else
+            SimpleHorizontalBarChart(
+              title: 'Submissions per Worker',
+              data: _workerAnalytics,
+              primaryColor: AppColors.highlight,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOperationalSection(DateTimeRange? timeRange) {
     if (_isLoadingInsights) {
       return _buildLoadingCard('Loading operational metrics...');
     }
@@ -235,13 +723,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         SimpleBarChart(
           title: 'Staff Workload Distribution (Audit Activity)',
           data: _staffWorkload,
-          primaryColor: const Color(0xFF4ECDC4),
+          primaryColor: AppColors.highlight,
         ),
       ],
     );
   }
 
-  Widget _buildPlanningSection() {
+  Widget _buildPlanningSection(DateTimeRange? timeRange) {
     if (_isLoadingInsights) {
       return _buildLoadingCard('Loading planning analytics...');
     }
@@ -276,7 +764,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   SimpleBarChart(
                     title: 'Age Bracket Distribution',
                     data: _ageBrackets,
-                    primaryColor: const Color(0xFF9B6EF3),
+                    primaryColor: AppColors.highlight,
                   ),
                 ],
               );
@@ -295,7 +783,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: SimpleBarChart(
                     title: 'Age Bracket Distribution',
                     data: _ageBrackets,
-                    primaryColor: const Color(0xFF9B6EF3),
+                    primaryColor: AppColors.highlight,
                   ),
                 ),
               ],
@@ -306,13 +794,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         SimpleBarChart(
           title: 'Barangay Volume (Top Requests)',
           data: _barangayVolume,
-          primaryColor: const Color(0xFF2EC4B6),
+          primaryColor: AppColors.highlight,
         ),
       ],
     );
   }
 
-  Widget _buildClientHistorySection() {
+  Widget _buildClientHistorySection(DateTimeRange? timeRange) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -355,9 +843,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         Align(
                           alignment: Alignment.centerLeft,
                           child: ElevatedButton(
-                            onPressed: _isSearchingClients
-                                ? null
-                                : _searchClients,
+                            onPressed: _isSearchingClients ? null : _searchClients,
                             child: _isSearchingClients
                                 ? const SizedBox(
                                     width: 16,
@@ -407,8 +893,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   spacing: 8,
                   runSpacing: 8,
                   children: _clientSearchResults.map((client) {
-                    final isSelected =
-                        (client['user_id'] ?? '') == _selectedClientId;
+                    final isSelected = (client['user_id'] ?? '') == _selectedClientId;
                     return GestureDetector(
                       onTap: () => _selectClient(client),
                       child: Container(
@@ -444,7 +929,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               if (_isLoadingClientHistory)
                 const Padding(
                   padding: EdgeInsets.only(top: 18),
-                  child: CircularProgressIndicator(),
+                  child: CircularProgressIndicator(color: AppColors.highlight),
                 ),
               if (!_isLoadingClientHistory && _selectedClientId != null) ...[
                 const SizedBox(height: 16),
@@ -507,44 +992,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Map<String, int> _groupHistoryByFormType(List<Map<String, dynamic>> history) =>
+  Map<String, int> _groupHistoryByFormType(
+    List<Map<String, dynamic>> history,
+  ) =>
       _controller.groupHistoryByFormType(history);
-
-  Widget _buildNoChartsPlaceholder() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(48),
-      decoration: BoxDecoration(
-        color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.cardBorder),
-      ),
-      child: Column(
-        children: [
-          Icon(
-            Icons.bar_chart_outlined,
-            size: 64,
-            color: AppColors.textMuted.withValues(alpha: 0.4),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'No charts available for this form',
-            style: TextStyle(fontSize: 16, color: AppColors.textMuted),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Charts appear automatically when this form has dropdown, radio,\n'
-            'checkbox, or number fields with enough collected data.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              color: AppColors.textMuted.withValues(alpha: 0.7),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildLoadingCard(String message) {
     return Container(
@@ -603,7 +1054,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
-
 }
 
 class _SummaryCard extends StatelessWidget {
@@ -726,7 +1176,6 @@ class _FormCardsSectionState extends State<_FormCardsSection> {
     if (next == _searchQuery) {
       return;
     }
-
     setState(() => _searchQuery = next);
   }
 
@@ -957,56 +1406,4 @@ class _FormCardItem {
     required this.count,
     required this.formType,
   });
-}
-
-class _MetricTile extends StatelessWidget {
-  final String title;
-  final String value;
-  final String subtitle;
-
-  const _MetricTile({
-    required this.title,
-    required this.value,
-    required this.subtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 260,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.cardBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.textMuted,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 24,
-              color: AppColors.textDark,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
-          ),
-        ],
-      ),
-    );
-  }
 }

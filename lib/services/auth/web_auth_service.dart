@@ -192,7 +192,7 @@ class WebAuthService {
           .eq('cswd_id', cswd_id);
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('WebAuthService.clearFirstLoginFlag error: $e');
+        debugPrint('[WebAuthService/clearFirstLoginFlag] Error: $e');
       }
     }
   }
