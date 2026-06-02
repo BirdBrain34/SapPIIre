@@ -75,13 +75,10 @@ class SignupController extends ChangeNotifier {
   String get stepTitle {
     switch (currentActualPage) {
       case 0: return 'Step 1 of $totalSteps — Personal Info';
-
       case 1: return 'Step 2 of $totalSteps — Contact Method';
-
       case 2: return 'Email Verification';
       case 3: return 'Phone Verification';
       case 4: return 'Step $totalSteps of $totalSteps — Credentials';
-
       default: return 'Sign Up';
     }
   }
@@ -190,6 +187,7 @@ class SignupController extends ChangeNotifier {
         goNextPage(pageController);
         return false;
       case 1:
+        // Reset verification state when contact method page is passed
         emailVerified = false;
         phoneVerified = false;
         emailOtpSent = false;
@@ -225,14 +223,18 @@ class SignupController extends ChangeNotifier {
   Future<void> handleSendEmailOtp(BuildContext context) async {
     isLoading = true;
     notifyListeners();
-    final dupCheck = await _supabaseService.checkDuplicateSignup(email: emailCtrl.text.trim());
+    final dupCheck = await _supabaseService.checkDuplicateSignup(
+      email: emailCtrl.text.trim(),
+    );
     if (!dupCheck['success']) {
       isLoading = false;
       notifyListeners();
       SnackbarUtils.showError(context, dupCheck['message']);
       return;
     }
-    final result = await _supabaseService.signUpWithEmail(email: emailCtrl.text.trim());
+    final result = await _supabaseService.signUpWithEmail(
+      email: emailCtrl.text.trim(),
+    );
     isLoading = false;
     notifyListeners();
     if (result['success']) {
@@ -240,13 +242,15 @@ class SignupController extends ChangeNotifier {
       emailOtpSent = true;
       startEmailCountdown();
       SnackbarUtils.showSuccess(context, 'Code sent to ${emailCtrl.text.trim()}');
-
     } else {
       SnackbarUtils.showError(context, result['message']);
     }
   }
 
-  Future<void> handleVerifyEmailOtp(BuildContext context, PageController pageController) async {
+  Future<void> handleVerifyEmailOtp(
+    BuildContext context,
+    PageController pageController,
+  ) async {
     isLoading = true;
     notifyListeners();
     final result = await _supabaseService.verifyEmailOtp(
@@ -275,7 +279,10 @@ class SignupController extends ChangeNotifier {
       startEmailCountdown();
       SnackbarUtils.showSuccess(context, 'Code resent!');
     } else {
-      SnackbarUtils.showError(context, result['message']?.toString() ?? 'Failed to resend.');
+      SnackbarUtils.showError(
+        context,
+        result['message']?.toString() ?? 'Failed to resend.',
+      );
     }
   }
 
@@ -289,7 +296,9 @@ class SignupController extends ChangeNotifier {
   Future<void> handleSendPhoneOtp(BuildContext context) async {
     isLoading = true;
     notifyListeners();
-    final dupCheck = await _supabaseService.checkDuplicateSignup(phone: phoneCtrl.text.trim());
+    final dupCheck = await _supabaseService.checkDuplicateSignup(
+      phone: phoneCtrl.text.trim(),
+    );
     if (!dupCheck['success']) {
       isLoading = false;
       notifyListeners();
@@ -308,7 +317,10 @@ class SignupController extends ChangeNotifier {
     }
   }
 
-  Future<void> handleVerifyPhoneOtp(BuildContext context, PageController pageController) async {
+  Future<void> handleVerifyPhoneOtp(
+    BuildContext context,
+    PageController pageController,
+  ) async {
     isLoading = true;
     notifyListeners();
     final result = await _supabaseService.verifyPhoneOtp(
@@ -318,18 +330,9 @@ class SignupController extends ChangeNotifier {
     isLoading = false;
     notifyListeners();
     if (result['success']) {
-      if (contactMethod == ContactMethod.phone && verifiedUserId == null) {
-        final tempEmail = '${phoneCtrl.text.trim().replaceAll('+', '')}@sappiire.phone';
-
-        final signupResult = await _supabaseService.signUpWithEmail(
-          email: tempEmail,
-          password: passwordCtrl.text.isNotEmpty ? passwordCtrl.text : 'temp${DateTime.now().millisecondsSinceEpoch}',
-
-        );
-        if (signupResult['success'] == true) {
-          verifiedUserId = signupResult['user_id'];
-        }
-      }
+      // Do NOT create the Supabase Auth user here for phone-only flow.
+      // We don't have the real password yet — that's entered on the next page.
+      // The Auth user is created in handleCreateAccount with the actual password.
       phoneVerified = true;
       SnackbarUtils.showSuccess(context, 'Phone verified!');
       goNextPage(pageController);
@@ -367,29 +370,60 @@ class SignupController extends ChangeNotifier {
       SnackbarUtils.showError(context, dupCheck['message']);
       return false;
     }
+
+    // For phone-only flow: Supabase Auth user doesn't exist yet.
+    // Create it now with the real password using the synthetic email.
+    if (contactMethod == ContactMethod.phone && verifiedUserId == null) {
+      isLoading = true;
+      notifyListeners();
+
+      final syntheticEmail = _syntheticEmailForPhone(phoneCtrl.text.trim());
+      final signupResult = await _supabaseService.signUpWithEmail(
+        email: syntheticEmail,
+        password: passwordCtrl.text,
+      );
+
+      isLoading = false;
+      notifyListeners();
+
+      if (signupResult['success'] != true) {
+        SnackbarUtils.showError(
+          context,
+          signupResult['message'] ?? 'Failed to create account. Try again.',
+        );
+        return false;
+      }
+      verifiedUserId = signupResult['user_id'];
+    }
+
     if (verifiedUserId == null) {
       SnackbarUtils.showError(context, 'Session expired. Please start over.');
       return false;
     }
+
     isLoading = true;
     notifyListeners();
 
-    final phoneNumber = (contactMethod == ContactMethod.email) ? '' : phoneCtrl.text.trim();
-    final email = (contactMethod == ContactMethod.phone)
-        ? '${phoneCtrl.text.trim().replaceAll('+', '')}@sappiire.phone'
-
+    // For phone-only: pass null email so user_accounts.email stays null.
+    // For email/both: pass the real email.
+    final emailToSave = (contactMethod == ContactMethod.phone)
+        ? null
         : emailCtrl.text.trim();
+
+    final phoneToSave = (contactMethod == ContactMethod.email)
+        ? null
+        : phoneCtrl.text.trim();
 
     final result = await _supabaseService.saveProfileAfterVerification(
       userId: verifiedUserId!,
       username: usernameCtrl.text.trim(),
       password: passwordCtrl.text,
-      email: email,
+      email: emailToSave,
+      phoneNumber: phoneToSave,
       firstName: firstNameCtrl.text.trim(),
       middleName: middleNameCtrl.text.trim(),
       lastName: lastNameCtrl.text.trim(),
       dateOfBirth: dobCtrl.text,
-      phoneNumber: phoneNumber,
       birthplace: placeOfBirthCtrl.text.trim(),
       gender: sex == 'Male' ? 'M' : sex == 'Female' ? 'F' : sex,
       civilStatus: switch (maritalStatus) {
@@ -402,8 +436,10 @@ class SignupController extends ChangeNotifier {
       },
       addressLine: addressCtrl.text.trim(),
     );
+
     isLoading = false;
     notifyListeners();
+
     if (result['success']) {
       verifiedUserId = result['user_id'];
       return true;
@@ -413,6 +449,15 @@ class SignupController extends ChangeNotifier {
     }
   }
 
+  // ── Helpers ───────────────────────────────────────────────
+
+  /// Generates a deterministic synthetic email for phone-only Supabase Auth users.
+  /// This is stored only in Supabase Auth — user_accounts.email stays null.
+  String _syntheticEmailForPhone(String phone) {
+    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    return '$digits@sappiire.phone';
+  }
+
   // ── Info scan ─────────────────────────────────────────────
   void applyScannedIdInfo(IdInformation result) {
     firstNameCtrl.text = result.firstName;
@@ -420,7 +465,9 @@ class SignupController extends ChangeNotifier {
     lastNameCtrl.text = result.lastName;
     dobCtrl.text = result.dateOfBirth;
     if (result.address.isNotEmpty) addressCtrl.text = result.address;
-    if (result.placeOfBirth.isNotEmpty) placeOfBirthCtrl.text = result.placeOfBirth;
+    if (result.placeOfBirth.isNotEmpty) {
+      placeOfBirthCtrl.text = result.placeOfBirth;
+    }
     if (result.sex.isNotEmpty) {
       sex = result.sex.toLowerCase().startsWith('f') ? 'Female' : 'Male';
     }

@@ -116,7 +116,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                       _FloatingLabelField(
                         controller: _controller.identifierCtrl,
-                        label: 'Username / Email / Phone',
+                        label: 'Username / Email ',
                         icon: Icons.badge_outlined,
                         textInputAction: TextInputAction.next,
                         onSubmitted: (_) => FocusScope.of(context).nextFocus(),

@@ -34,7 +34,11 @@ class SignUpSuccessScreen extends StatelessWidget {
                 text: 'Proceed',
                 onPressed: () => Navigator.pushReplacement(
                   context,
-                  MaterialPageRoute(builder: (_) => ManageInfoScreen(userId: userId)),
+                  MaterialPageRoute(builder: (_) => ManageInfoScreen(
+                    userId: userId,
+                    isNewAccount: true,
+                    ),
+                  ),
                 ),
                 backgroundColor: Colors.white,
                 textColor: AppColors.primaryBlue,
