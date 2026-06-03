@@ -387,15 +387,55 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     }
   }
 
+  bool _hasMeaningfulValue(dynamic value) {
+    if (value == null) return false;
+    if (value is String) return value.trim().isNotEmpty;
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    if (value is Iterable) return value.any(_hasMeaningfulValue);
+    if (value is Map) return value.values.any(_hasMeaningfulValue);
+    return value.toString().trim().isNotEmpty;
+  }
+
+  bool _hasMeaningfulFormData(
+    FormTemplate template,
+    Map<String, dynamic> data, {
+    bool includeComputed = false,
+  }) {
+    for (final field in template.allFields) {
+      if (!includeComputed && field.fieldType == FormFieldType.computed) {
+        continue;
+      }
+      if (!data.containsKey(field.fieldName)) continue;
+      if (_hasMeaningfulValue(data[field.fieldName])) return true;
+    }
+    return false;
+  }
+
+  Future<void> _showEmptyFormSaveBlockedDialog() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cannot save form'),
+        content: const Text(
+          'Cannot save form. The form is empty and has not been scanned by the mobile app. Please scan the form before saving.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // Finalize the active session by saving form data to client_submissions.
   Future<void> _finalizeEntry() async {
     if (_formCtrl == null || _selectedTemplate == null) return;
     // Prevent duplicate finalize taps from creating duplicate submissions.
     if (_isSubmitting) return;
-    _setStatePreserveScroll(() {
-      _isSubmitting = true;
-      _isFinalizing = true;
-    });
 
     try {
       final formData = _formCtrl!.toJson();
@@ -408,6 +448,26 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       final scannedData = snapshotRaw is Map
           ? Map<String, dynamic>.from(snapshotRaw)
           : <String, dynamic>{};
+
+      final hasUserEnteredData = _hasMeaningfulFormData(
+        _selectedTemplate!,
+        formData,
+      );
+      final hasScannedData = _hasMeaningfulFormData(
+        _selectedTemplate!,
+        scannedData,
+        includeComputed: true,
+      );
+
+      if (!hasUserEnteredData && !hasScannedData) {
+        await _showEmptyFormSaveBlockedDialog();
+        return;
+      }
+
+      _setStatePreserveScroll(() {
+        _isSubmitting = true;
+        _isFinalizing = true;
+      });
 
       await _manageFormsController.preserveComputedValues(
         template: _selectedTemplate!,
@@ -954,6 +1014,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                           template: _selectedTemplate!,
                           controller: _formCtrl!,
                           mode: 'web',
+                          isReadOnly: kIsWeb,
                           showCheckboxes: false,
                         ),
                       ),
