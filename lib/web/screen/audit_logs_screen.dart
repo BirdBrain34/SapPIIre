@@ -36,6 +36,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
   final _searchController = TextEditingController();
 
   List<Map<String, dynamic>> _logs = [];
+  List<Map<String, dynamic>> _displayLogs = [];
   int _totalCount = 0;
   bool _isLoading = true;
 
@@ -45,8 +46,15 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
   DateTime? _dateFrom;
   DateTime? _dateTo;
 
+  // Number of *display rows* (after grouping) we aim to show per page.
   static const _pageSize = 50;
+  // How many raw logs we pull per fetch while accumulating a page.
+  static const _rawBatchSize = 100;
   int _currentPage = 0;
+  // Raw-row offset where each visited page begins. _pageRawOffsets[p] is the
+  // raw offset to start fetching page p from. Grows as the user pages forward.
+  final List<int> _pageRawOffsets = [0];
+  bool _hasMorePages = false;
 
   final _categories = [
     '',
@@ -87,10 +95,20 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
 
   Future<void> _loadLogs() async {
     setState(() => _isLoading = true);
-    final results = await Future.wait([
-      _service.fetchLogs(
-        limit: _pageSize,
-        offset: _currentPage * _pageSize,
+
+    // Accumulate raw logs starting at this page's raw offset, grouping as we go,
+    // until we have more than a full page of display rows (or run out of data).
+    // This keeps the screen filled even when a large group (e.g. dozens of
+    // "Submission Decrypted" events) collapses into a single row.
+    final startRaw = _pageRawOffsets[_currentPage];
+    final accumulated = <Map<String, dynamic>>[];
+    var rawCursor = startRaw;
+    var grouped = <Map<String, dynamic>>[];
+
+    while (true) {
+      final batch = await _service.fetchLogs(
+        limit: _rawBatchSize,
+        offset: rawCursor,
         categoryFilter: _categoryFilter.isEmpty ? null : _categoryFilter,
         actionFilter: _actionFilter.isEmpty ? null : _actionFilter,
         severityFilter: _severityFilter.isEmpty ? null : _severityFilter,
@@ -99,25 +117,70 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
             : _searchController.text,
         dateFrom: _dateFrom,
         dateTo: _dateTo,
-      ),
-      _service.fetchCount(
-        categoryFilter: _categoryFilter.isEmpty ? null : _categoryFilter,
-        actionFilter: _actionFilter.isEmpty ? null : _actionFilter,
-        severityFilter: _severityFilter.isEmpty ? null : _severityFilter,
-        actorFilter: _searchController.text.isEmpty
-            ? null
-            : _searchController.text,
-        dateFrom: _dateFrom,
-        dateTo: _dateTo,
-      ),
-    ]);
+      );
+      if (batch.isEmpty) break;
+      accumulated.addAll(batch);
+      rawCursor += batch.length;
+      grouped = _groupDecryptionLogs(accumulated);
+      // Reached the end of the dataset.
+      if (batch.length < _rawBatchSize) break;
+      // One extra display row past the page tells us there's more to show and
+      // guarantees the rows we keep are fully-formed (not an open group).
+      if (grouped.length > _pageSize) break;
+    }
+
+    final totalCount = await _service.fetchCount(
+      categoryFilter: _categoryFilter.isEmpty ? null : _categoryFilter,
+      actionFilter: _actionFilter.isEmpty ? null : _actionFilter,
+      severityFilter: _severityFilter.isEmpty ? null : _severityFilter,
+      actorFilter: _searchController.text.isEmpty
+          ? null
+          : _searchController.text,
+      dateFrom: _dateFrom,
+      dateTo: _dateTo,
+    );
 
     if (!mounted) return;
+
+    final hasMore = grouped.length > _pageSize;
+    final pageRows = hasMore ? grouped.sublist(0, _pageSize) : grouped;
+    // The raw logs that actually back the displayed rows (a grouped row expands
+    // to its members). Drives both the next-page offset and the summary strip,
+    // so counts reflect exactly what's on screen.
+    final pageRawLogs = <Map<String, dynamic>>[];
+    for (final row in pageRows) {
+      final members = row['_groupedLogs'] as List?;
+      if (members != null) {
+        pageRawLogs.addAll(
+          members.map((e) => Map<String, dynamic>.from(e as Map)),
+        );
+      } else {
+        pageRawLogs.add(row);
+      }
+    }
+    final nextOffset = startRaw + pageRawLogs.length;
+    if (_pageRawOffsets.length <= _currentPage + 1) {
+      _pageRawOffsets.add(nextOffset);
+    } else {
+      _pageRawOffsets[_currentPage + 1] = nextOffset;
+    }
+
     setState(() {
-      _logs = results[0] as List<Map<String, dynamic>>;
-      _totalCount = results[1] as int;
+      _logs = pageRawLogs;
+      _displayLogs = pageRows;
+      _hasMorePages = hasMore;
+      _totalCount = totalCount;
       _isLoading = false;
     });
+  }
+
+  // Filters change the underlying dataset, so the cached per-page raw offsets
+  // are no longer valid -> rewind to the first page.
+  void _resetPaging() {
+    _currentPage = 0;
+    _pageRawOffsets
+      ..clear()
+      ..add(0);
   }
 
   void _resetFilters() {
@@ -127,7 +190,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
       _severityFilter = '';
       _dateFrom = null;
       _dateTo = null;
-      _currentPage = 0;
+      _resetPaging();
       _searchController.clear();
     });
     _loadLogs();
@@ -153,7 +216,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     if (picked != null) {
       setState(() {
         _dateFrom = picked;
-        _currentPage = 0;
+        _resetPaging();
       });
       _loadLogs();
     }
@@ -178,7 +241,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     if (picked != null) {
       setState(() {
         _dateTo = picked;
-        _currentPage = 0;
+        _resetPaging();
       });
       _loadLogs();
     }
@@ -303,7 +366,37 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     }
   }
 
-  int get _totalPages => (_totalCount / _pageSize).ceil();
+  List<Map<String, dynamic>> _groupDecryptionLogs(List<Map<String, dynamic>> logs) {
+    final result = <Map<String, dynamic>>[];
+    for (final log in logs) {
+      if (log['action_type'] != kAuditSubmissionDecrypted) {
+        result.add(log);
+        continue;
+      }
+      if (result.isNotEmpty) {
+        final last = result.last;
+        if (last['action_type'] == kAuditSubmissionDecrypted &&
+            last['actor_id'] == log['actor_id']) {
+          final groupStart = DateTime.tryParse(last['created_at'] as String? ?? '');
+          final thisTime = DateTime.tryParse(log['created_at'] as String? ?? '');
+          if (groupStart != null && thisTime != null &&
+              groupStart.difference(thisTime).abs().inMinutes < 5) {
+            final grouped = List<Map<String, dynamic>>.from(
+              last['_groupedLogs'] as List? ?? [last],
+            )..add(log);
+            result[result.length - 1] = {
+              ...last,
+              '_groupCount': grouped.length,
+              '_groupedLogs': grouped,
+            };
+            continue;
+          }
+        }
+      }
+      result.add({...log, '_groupCount': 1, '_groupedLogs': <Map<String, dynamic>>[log]});
+    }
+    return result;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -333,7 +426,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
             _buildFilterBar(),
             const SizedBox(height: 20),
             Expanded(child: _buildLogsTable()),
-            if (_totalPages > 1) ...[
+            if (_currentPage > 0 || _hasMorePages) ...[
               const SizedBox(height: 16),
               _buildPagination(),
             ],
@@ -453,7 +546,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
             child: TextField(
               controller: _searchController,
               onSubmitted: (_) {
-                _currentPage = 0;
+                _resetPaging();
                 _loadLogs();
               },
               decoration: InputDecoration(
@@ -494,7 +587,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
             onChanged: (v) {
               setState(() {
                 _categoryFilter = v ?? '';
-                _currentPage = 0;
+                _resetPaging();
               });
               _loadLogs();
             },
@@ -510,7 +603,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
             onChanged: (v) {
               setState(() {
                 _actionFilter = v ?? '';
-                _currentPage = 0;
+                _resetPaging();
               });
               _loadLogs();
             },
@@ -529,7 +622,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
             onChanged: (v) {
               setState(() {
                 _severityFilter = v ?? '';
-                _currentPage = 0;
+                _resetPaging();
               });
               _loadLogs();
             },
@@ -691,10 +784,10 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
           const Divider(height: 1, color: AppColors.cardBorder),
           Expanded(
             child: ListView.separated(
-              itemCount: _logs.length,
+              itemCount: _displayLogs.length,
               separatorBuilder: (_, __) =>
                   const Divider(height: 1, color: AppColors.cardBorder),
-              itemBuilder: (_, i) => _buildLogRow(_logs[i]),
+              itemBuilder: (_, i) => _buildLogRow(_displayLogs[i]),
             ),
           ),
         ],
@@ -711,6 +804,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     final target = log['target_label'] as String? ?? '-';
     final targetType = log['target_type'] as String? ?? '';
     final timestamp = log['created_at'] as String?;
+    final groupCount = log['_groupCount'] as int? ?? 1;
 
     final severityColor = _severityColor(severity);
     final catColor = _categoryColor(category);
@@ -773,14 +867,39 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
             ),
             Expanded(
               flex: 2,
-              child: Text(
-                _actionLabel(action),
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textDark,
-                ),
-                overflow: TextOverflow.ellipsis,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      _actionLabel(action),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textDark,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (groupCount > 1) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.highlight.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '×$groupCount',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.highlight,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
             Expanded(
@@ -859,6 +978,11 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
   }
 
   void _showLogDetail(Map<String, dynamic> log) {
+    final groupCount = log['_groupCount'] as int? ?? 1;
+    if (groupCount > 1) {
+      _showGroupedLogDetail(log);
+      return;
+    }
     final rawDetails = log['details'];
     final details = rawDetails is Map<String, dynamic>
         ? rawDetails
@@ -939,6 +1063,117 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     );
   }
 
+  void _showGroupedLogDetail(Map<String, dynamic> log) {
+    final groupedRaw = log['_groupedLogs'] as List? ?? [log];
+    final grouped = groupedRaw
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    final count = grouped.length;
+    // Rows are newest-first within the group.
+    final latest = grouped.first['created_at']?.toString();
+    final earliest = grouped.last['created_at']?.toString();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: _categoryColor(log['category']).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                _categoryIcon(log['category']),
+                color: _categoryColor(log['category']),
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                '${_actionLabel(log['action_type'])} (×$count)',
+                style: const TextStyle(fontSize: 18),
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _detailRow('Category', log['category']?.toString() ?? '-'),
+              _detailRow('Severity', log['severity']?.toString() ?? '-'),
+              _detailRow('Actor', log['actor_name']?.toString() ?? '-'),
+              _detailRow('Actor Role', log['actor_role']?.toString() ?? '-'),
+              _detailRow('Actor ID', log['actor_id']?.toString() ?? '-'),
+              _detailRow(
+                'Time Range',
+                '${_formatDate(earliest)}  →  ${_formatDate(latest)}',
+              ),
+              const Divider(),
+              Text(
+                '$count submissions decrypted',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: grouped.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, color: AppColors.cardBorder),
+                  itemBuilder: (_, i) {
+                    final g = grouped[i];
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            g['target_label']?.toString() ?? '-',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textDark,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${g['target_id'] ?? '-'}  •  ${_formatDate(g['created_at']?.toString())}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textMuted,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _detailRow(String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -982,12 +1217,12 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         ),
         const SizedBox(width: 8),
         Text(
-          'Page ${_currentPage + 1} of $_totalPages  ($_totalCount total events)',
+          'Page ${_currentPage + 1}  ($_totalCount total events)',
           style: const TextStyle(fontSize: 13, color: AppColors.textMuted),
         ),
         const SizedBox(width: 8),
         IconButton(
-          onPressed: _currentPage < _totalPages - 1
+          onPressed: _hasMorePages
               ? () {
                   setState(() => _currentPage++);
                   _loadLogs();

@@ -977,6 +977,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         builder: (context, constraints) {
           return Scrollbar(
             thumbVisibility: true,
+            controller: _qrSidebarScrollController,
             child: SingleChildScrollView(
               controller: _qrSidebarScrollController,
               padding: const EdgeInsets.only(right: 6),

@@ -579,7 +579,7 @@ class SupabaseService {
       }
 
       // Upsert the user account record, including phone number.
-      await _supabase.from('user_accounts').upsert({
+      final upsertData = <String, dynamic>{
         'user_id': userId,
         'username': username,
         'is_active': true,
