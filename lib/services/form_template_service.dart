@@ -32,8 +32,8 @@ class FormTemplateService {
             ),
             form_fields(
               field_id, template_id, section_id, field_name, field_label,
-              field_type, is_required, validation_rules, default_value,
-              field_order, autofill_source, canonical_field_key, placeholder, parent_field_id,
+              field_type, is_required, validation_rules,
+              field_order, canonical_field_key, parent_field_id,
               form_field_options(
                 option_id, option_value, option_label, option_order, is_default
               ),
@@ -78,8 +78,8 @@ class FormTemplateService {
             ),
             form_fields(
               field_id, template_id, section_id, field_name, field_label,
-              field_type, is_required, validation_rules, default_value,
-              field_order, autofill_source, canonical_field_key, placeholder, parent_field_id,
+              field_type, is_required, validation_rules,
+              field_order, canonical_field_key, parent_field_id,
               form_field_options(
                 option_id, option_value, option_label, option_order, is_default
               ),

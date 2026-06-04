@@ -113,7 +113,6 @@ class FormStateController extends ChangeNotifier {
       field.fieldName,
       field.fieldLabel,
       field.canonicalFieldKey ?? '',
-      field.autofillSource ?? '',
       (field.validationRules?['db_map_key'] ?? '').toString(),
     };
 
@@ -171,7 +170,6 @@ class FormStateController extends ChangeNotifier {
     final fieldName = field.fieldName.trim().toLowerCase();
     final label = field.fieldLabel.trim().toLowerCase();
     final canonical = (field.canonicalFieldKey ?? '').trim().toLowerCase();
-    final autofill = (field.autofillSource ?? '').trim().toLowerCase();
     final dbMapKey = (field.validationRules?['db_map_key'] ?? '')
         .toString()
         .trim()
@@ -179,7 +177,6 @@ class FormStateController extends ChangeNotifier {
     return fieldName == 'age' ||
         label == 'age' ||
         canonical == 'age' ||
-        autofill == 'age' ||
         dbMapKey == 'age';
   }
 
@@ -187,7 +184,6 @@ class FormStateController extends ChangeNotifier {
     final fieldName = field.fieldName.trim().toLowerCase();
     final label = field.fieldLabel.trim().toLowerCase();
     final canonical = (field.canonicalFieldKey ?? '').trim().toLowerCase();
-    final autofill = (field.autofillSource ?? '').trim().toLowerCase();
     final dbMapKey = (field.validationRules?['db_map_key'] ?? '')
         .toString()
         .trim()
@@ -200,7 +196,7 @@ class FormStateController extends ChangeNotifier {
             label == 'date of birth' ||
             label == 'birthdate' ||
             canonical == 'birth_date' ||
-            autofill == 'birth_date' ||
+            canonical == 'date_of_birth' ||
             dbMapKey == 'birth_date');
   }
 

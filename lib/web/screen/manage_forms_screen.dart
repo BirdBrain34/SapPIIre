@@ -1036,12 +1036,9 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       padding: const EdgeInsets.fromLTRB(18, 16, 14, 16),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          return Scrollbar(
-            thumbVisibility: true,
+          return SingleChildScrollView(
             controller: _qrSidebarScrollController,
-            child: SingleChildScrollView(
-              controller: _qrSidebarScrollController,
-              padding: const EdgeInsets.only(right: 6),
+            padding: const EdgeInsets.only(right: 6),
               child: Column(
                 children: [
                   Container(
@@ -1222,8 +1219,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                   ),
                 ],
               ),
-            ),
-          );
+            );
         },
       ),
     );

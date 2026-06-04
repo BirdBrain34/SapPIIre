@@ -422,7 +422,6 @@ class FormBuilderScreenController extends ChangeNotifier {
               field['field_type'] as String? ?? 'text',
             ),
             isRequired: (field['is_required'] as bool?) ?? false,
-            placeholder: field['placeholder'] as String?,
             canonicalFieldKey: field['field_type'] == 'signature'
                 ? 'signature'
                 : field['canonical_field_key'] as String?,
@@ -564,7 +563,6 @@ class FormBuilderScreenController extends ChangeNotifier {
           'field_label': field.label,
           'field_type': field.type.toDbString(),
           'is_required': field.isRequired,
-          'placeholder': field.placeholder,
           'canonical_field_key': field.canonicalFieldKey,
           'field_order': fieldIndex,
           if (validationRules.isNotEmpty) 'validation_rules': validationRules,
@@ -598,7 +596,6 @@ class FormBuilderScreenController extends ChangeNotifier {
               'field_label': column.label,
               'field_type': column.type.toDbString(),
               'is_required': false,
-              'placeholder': null,
               'field_order': columnIndex,
               'parent_field_id': field.id,
               if (columnValidationRules.isNotEmpty)
@@ -906,7 +903,6 @@ class FormBuilderScreenController extends ChangeNotifier {
         label: '${source.label} (copy)',
         type: source.type,
         isRequired: source.isRequired,
-        placeholder: source.placeholder,
         canonicalFieldKey: source.canonicalFieldKey,
         ageFromFieldId: source.ageFromFieldId,
         order: fieldIndex + 1,

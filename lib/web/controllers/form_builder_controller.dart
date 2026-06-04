@@ -278,7 +278,6 @@ class BuilderField {
   String fieldName;
   FormFieldType type;
   bool isRequired;
-  String? placeholder;
   String? canonicalFieldKey;
   int order;
   List<BuilderOption> options;
@@ -295,7 +294,6 @@ class BuilderField {
     String? fieldName,
     this.type = FormFieldType.radio,
     this.isRequired = false,
-    this.placeholder,
     this.canonicalFieldKey,
     this.order = 0,
     List<BuilderOption>? options,
