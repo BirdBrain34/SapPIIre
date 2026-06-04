@@ -228,7 +228,7 @@ class _TextField extends StatelessWidget {
         TextFormField(
           controller: ctrl,
           readOnly: isReadOnly,
-          decoration: _inputDeco(hint: field.placeholder, readOnly: isReadOnly),
+          decoration: _inputDeco(readOnly: isReadOnly),
           style: const TextStyle(fontSize: 13),
           onChanged: (v) =>
               controller.setValue(field.fieldName, v, notify: false),
@@ -375,7 +375,7 @@ class _DateField extends StatelessWidget {
                 Expanded(
                   child: Text(
                     ctrl.text.isEmpty
-                        ? (field.placeholder ?? 'Select date')
+                        ? 'Select date'
                         : ctrl.text,
                     style: TextStyle(
                       fontSize: 13,
@@ -426,7 +426,7 @@ class _DropdownField extends StatelessWidget {
                   ? current
                   : null,
               hint: Text(
-                field.placeholder ?? 'Select...',
+                'Select...',
                 style: const TextStyle(fontSize: 13, color: Colors.black38),
               ),
               isExpanded: true,
@@ -1866,7 +1866,7 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
           keyboardType: col.fieldType == FormFieldType.number
               ? const TextInputType.numberWithOptions(decimal: true)
               : TextInputType.text,
-          decoration: _inputDeco(hint: col.placeholder ?? col.fieldLabel)
+          decoration: _inputDeco(hint: col.fieldLabel)
               .copyWith(fillColor: hasAgeFromCol ? const Color(0xFFF5F5F8) : Colors.white),
           style: const TextStyle(fontSize: 13),
           onChanged: (v) {

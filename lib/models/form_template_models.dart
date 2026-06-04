@@ -178,12 +178,8 @@ class FormFieldModel {
   final FormFieldType fieldType;
   final bool isRequired;
   final Map<String, dynamic>? validationRules;
-  final String? defaultValue;
   final int fieldOrder;
-  final String?
-  autofillSource; // Optional autofill source such as lastname or address.barangay.
   final String? canonicalFieldKey;
-  final String? placeholder;
   final List<FieldOption> options;
   final List<FieldCondition> conditions;
   final String? parentFieldId;
@@ -199,11 +195,8 @@ class FormFieldModel {
     required this.fieldType,
     this.isRequired = false,
     this.validationRules,
-    this.defaultValue,
     this.fieldOrder = 0,
-    this.autofillSource,
     this.canonicalFieldKey,
-    this.placeholder,
     this.options = const [],
     this.conditions = const [],
     this.parentFieldId,
@@ -219,11 +212,8 @@ class FormFieldModel {
     fieldType: FormFieldType.fromString(m['field_type'] as String? ?? ''),
     isRequired: (m['is_required'] as bool?) ?? false,
     validationRules: m['validation_rules'] as Map<String, dynamic>?,
-    defaultValue: m['default_value'] as String?,
     fieldOrder: (m['field_order'] as int?) ?? 0,
-    autofillSource: m['autofill_source'] as String?,
     canonicalFieldKey: m['canonical_field_key'] as String?,
-    placeholder: m['placeholder'] as String?,
     options:
         (m['form_field_options'] as List<dynamic>? ?? [])
             .map((o) => FieldOption.fromMap(o as Map<String, dynamic>))
@@ -254,10 +244,7 @@ class FormFieldModel {
     FormFieldType? fieldType,
     bool? isRequired,
     Map<String, dynamic>? validationRules,
-    String? defaultValue,
     int? fieldOrder,
-    String? autofillSource,
-    String? placeholder,
     List<FieldOption>? options,
     List<FieldCondition>? conditions,
     String? parentFieldId,
@@ -272,10 +259,7 @@ class FormFieldModel {
       fieldType: fieldType ?? this.fieldType,
       isRequired: isRequired ?? this.isRequired,
       validationRules: validationRules ?? this.validationRules,
-      defaultValue: defaultValue ?? this.defaultValue,
       fieldOrder: fieldOrder ?? this.fieldOrder,
-      autofillSource: autofillSource ?? this.autofillSource,
-      placeholder: placeholder ?? this.placeholder,
       options: options ?? this.options,
       conditions: conditions ?? this.conditions,
       parentFieldId: parentFieldId ?? this.parentFieldId,

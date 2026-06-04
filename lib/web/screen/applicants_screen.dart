@@ -3,6 +3,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -1022,7 +1023,6 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                       setState(() {
                         _cancelSubmissionLoad();
                         _rightPanelView = _RightPanelView.records;
-                        _isEditMode = false;
                       });
                     },
                     icon: const Icon(Icons.arrow_back, color: Colors.white),
@@ -1081,19 +1081,19 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                           child: _buildSubmissionLoadingState(),
                         )
                       : _selectedSubmission == null
-                      ? const Center(
-                          key: ValueKey('submission-empty'),
-                          child: Text(
-                            'Select a record to view full form data.',
-                            style: TextStyle(color: Colors.white70),
-                          ),
-                        )
-                      : Container(
-                          key: ValueKey(
-                            'submission-${_selectedSubmission!['id']}',
-                          ),
-                          child: _buildDetailPanel(),
-                        ),
+                          ? const Center(
+                              key: ValueKey('submission-empty'),
+                              child: Text(
+                                'Select a record to view full form data.',
+                                style: TextStyle(color: Colors.white70),
+                              ),
+                            )
+                          : Container(
+                              key: ValueKey(
+                                'submission-${_selectedSubmission!['id']}',
+                              ),
+                              child: _buildDetailPanel(),
+                            ),
                 ),
               ),
             ],
@@ -1291,25 +1291,26 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                     ],
                   ),
                   const SizedBox(width: 12),
-                  OutlinedButton.icon(
-                    onPressed: _deleteApplicant,
-                    icon: const Icon(Icons.delete_outline, size: 18),
-                    label: const Text('Delete'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red.shade300,
-                      side: BorderSide(
-                        color: Colors.red.withValues(alpha: 0.5),
-                        width: 1.5,
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                  if (!kIsWeb)
+                    OutlinedButton.icon(
+                      onPressed: _deleteApplicant,
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      label: const Text('Delete'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red.shade300,
+                        side: BorderSide(
+                          color: Colors.red.withValues(alpha: 0.5),
+                          width: 1.5,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -1368,16 +1369,10 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                                         vertical: 4,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: badgeColor.withValues(
-                                          alpha: 0.18,
-                                        ),
-                                        borderRadius: BorderRadius.circular(
-                                          999,
-                                        ),
+                                        color: badgeColor.withValues(alpha: 0.18),
+                                        borderRadius: BorderRadius.circular(999),
                                         border: Border.all(
-                                          color: badgeColor.withValues(
-                                            alpha: 0.6,
-                                          ),
+                                          color: badgeColor.withValues(alpha: 0.6),
                                         ),
                                       ),
                                       child: Text(
@@ -1450,9 +1445,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     );
   }
 
-  // Right panel: dynamic form detail
   Widget _buildDetailPanel() {
-    // Fallback: no template found for this form_type
     if (_activeTemplate == null) {
       final data = _selectedSubmission!['data'] as Map<String, dynamic>? ?? {};
       return SingleChildScrollView(
@@ -1475,7 +1468,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       );
     }
 
-    final ctrl = _isEditMode ? _editCtrl! : _viewCtrl!;
+    final ctrl = _viewCtrl!;
 
     return Container(
       margin: const EdgeInsets.all(16),
@@ -1510,7 +1503,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                   const SizedBox(height: 6),
                   TextField(
                     controller: _intakeRefCtrl,
-                    readOnly: !_isEditMode,
+                    readOnly: true,
                     style: const TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 13,
@@ -1520,9 +1513,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                       hintText: 'No reference assigned',
                       isDense: true,
                       filled: true,
-                      fillColor: _isEditMode
-                          ? AppColors.pageBg
-                          : const Color(0xFFF7F7F7),
+                      fillColor: const Color(0xFFF7F7F7),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                         borderSide: BorderSide.none,
@@ -1538,7 +1529,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                 template: _activeTemplate!,
                 controller: ctrl,
                 mode: 'web',
-                isReadOnly: !_isEditMode,
+                isReadOnly: true,
                 showCheckboxes: false,
               ),
             ),

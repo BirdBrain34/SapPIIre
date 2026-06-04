@@ -167,14 +167,15 @@ class ManageFormsController {
     if (selectedTemplate != null) {
       String last = '', first = '', mid = '';
       for (final field in selectedTemplate.allFields) {
-        final src = field.autofillSource;
-        if (src == 'lastname') {
+        final key = (field.canonicalFieldKey ?? '').trim().toLowerCase();
+        final lbl = field.fieldLabel.toLowerCase();
+        if (key == 'last_name' || (lbl.contains('last') && lbl.contains('name'))) {
           last = formData[field.fieldName]?.toString() ?? '';
         }
-        if (src == 'firstname') {
+        if (key == 'first_name' || (lbl.contains('first') && lbl.contains('name'))) {
           first = formData[field.fieldName]?.toString() ?? '';
         }
-        if (src == 'middle_name') {
+        if (key == 'middle_name' || (lbl.contains('middle') && lbl.contains('name'))) {
           mid = formData[field.fieldName]?.toString() ?? '';
         }
       }

@@ -69,19 +69,19 @@ class ApplicantsController {
       if (template != null) {
         String tLast = '', tFirst = '', tMid = '';
         for (final field in template.allFields) {
-          final src = field.autofillSource;
+          final key = (field.canonicalFieldKey ?? '').trim().toLowerCase();
           final lbl = field.fieldLabel.toLowerCase();
           final val = dataMap[field.fieldName]?.toString() ?? '';
           if (val.isEmpty) continue;
-          if (src == 'lastname' ||
+          if (key == 'last_name' ||
               lbl.contains('last') && lbl.contains('name')) {
             tLast = val;
           }
-          if (src == 'firstname' ||
+          if (key == 'first_name' ||
               lbl.contains('first') && lbl.contains('name')) {
             tFirst = val;
           }
-          if (src == 'middle_name' ||
+          if (key == 'middle_name' ||
               lbl.contains('middle') && lbl.contains('name')) {
             tMid = val;
           }

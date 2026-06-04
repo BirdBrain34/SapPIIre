@@ -340,7 +340,7 @@ class FieldValueService {
         final fieldRows = await _supabase
             .from('form_fields')
             .select(
-              'field_id, canonical_field_key, autofill_source, field_name, field_label',
+              'field_id, canonical_field_key, field_name, field_label',
             )
             .inFilter('field_id', allFieldIds);
 
@@ -348,7 +348,6 @@ class FieldValueService {
           final fid = row['field_id'] as String?;
           final canonical =
               _normalizeCanonicalKey(row['canonical_field_key'] as String?) ??
-              _keyFromTextPreferAlias(row['autofill_source'] as String?) ??
               _keyFromTextPreferAlias(row['field_name'] as String?) ??
               _keyFromTextPreferAlias(row['field_label'] as String?);
           if (fid == null || canonical == null || canonical.isEmpty) continue;
@@ -766,9 +765,6 @@ class FieldValueService {
     final canonical = _keyFromTextPreferAlias(field.canonicalFieldKey);
     if (canonical != null) return canonical;
 
-    final source = _keyFromTextPreferAlias(field.autofillSource);
-    if (source != null) return source;
-
     final aliasFromName = _keyFromTextPreferAlias(field.fieldName);
     if (aliasFromName != null) return aliasFromName;
 
@@ -777,6 +773,7 @@ class FieldValueService {
 
     return _normalizeCanonicalKey(field.fieldName);
   }
+
 
   String? _keyFromTextPreferAlias(String? raw) {
     final alias = _semanticAliasFromText(raw);
