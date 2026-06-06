@@ -35,41 +35,39 @@ const arrayBufferFromBytes = (bytes: Uint8Array): ArrayBuffer => {
   ) as ArrayBuffer;
 };
 
-const tryRsaOaepDecrypt = async (
+const rsaOaepDecrypt = async (
   privateKeyDer: Uint8Array,
   encryptedAesKeyB64: string,
+  hashAlgo: string,
 ): Promise<{ aesKeyBuffer: ArrayBuffer | null; hashUsed: string | null }> => {
   const encryptedBytes = base64ToBytes(encryptedAesKeyB64);
   const encryptedBuffer = arrayBufferFromBytes(encryptedBytes);
   const derBuffer = arrayBufferFromBytes(privateKeyDer);
 
-  for (const hash of ['SHA-1', 'SHA-256']) {
-    try {
-      const privateKey = await crypto.subtle.importKey(
-        'pkcs8',
-        derBuffer,
-        { name: 'RSA-OAEP', hash },
-        false,
-        ['decrypt'],
-      );
-
-      const aesKeyBuffer = await crypto.subtle.decrypt(
-        { name: 'RSA-OAEP' },
-        privateKey,
-        encryptedBuffer,
-      );
-
-      return { aesKeyBuffer, hashUsed: hash };
-    } catch {
-      // Try next hash variant.
-    }
+  try {
+    const privateKey = await crypto.subtle.importKey(
+      'pkcs8',
+      derBuffer,
+      { name: 'RSA-OAEP', hash: hashAlgo },
+      false,
+      ['decrypt'],
+    );
+    const aesKeyBuffer = await crypto.subtle.decrypt(
+      { name: 'RSA-OAEP' },
+      privateKey,
+      encryptedBuffer,
+    );
+    return { aesKeyBuffer, hashUsed: hashAlgo };
+  } catch {
+    return { aesKeyBuffer: null, hashUsed: null };
   }
-
-  return { aesKeyBuffer: null, hashUsed: null };
 };
 
 Deno.serve(async (req: Request) => {
+  console.log('[decrypt-qr-payload] Function invoked');
+  
   if (req.method !== 'POST') {
+    console.log('[decrypt-qr-payload] Non-POST request rejected');
     return json({ success: false, reason: 'method_not_allowed' });
   }
 
@@ -77,6 +75,12 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}));
     const sessionId =
       typeof body?.sessionId === 'string' ? body.sessionId.trim() : '';
+    const hashAlgo: string =
+      typeof body?.hashAlgo === 'string' && body.hashAlgo.trim() !== ''
+        ? body.hashAlgo.trim()
+        : 'SHA-1';
+
+    console.log(`[decrypt-qr-payload] Starting decryption for sessionId=${sessionId}, hashAlgo=${hashAlgo}`);
 
     if (!sessionId) {
       return json({ success: false, reason: 'missing_session_id' });
@@ -102,6 +106,7 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (fetchError || !row) {
+      console.log(`[decrypt-qr-payload] Session not found or fetch failed: sessionId=${sessionId}, error=${fetchError?.message}`);
       return json({ success: false, reason: 'session_not_found_or_fetch_failed' });
     }
 
@@ -120,8 +125,9 @@ Deno.serve(async (req: Request) => {
       return json({ success: false, reason: 'invalid_private_key_pem' });
     }
 
-    const rsaResult = await tryRsaOaepDecrypt(privateKeyDer, encryptedAesKey);
+    const rsaResult = await rsaOaepDecrypt(privateKeyDer, encryptedAesKey, hashAlgo);
     if (!rsaResult.aesKeyBuffer) {
+      console.log(`[decrypt-qr-payload] RSA decryption failed for sessionId=${sessionId}`);
       return json({ success: false, reason: 'rsa_decrypt_failed' });
     }
     const aesKeyBytes = new Uint8Array(rsaResult.aesKeyBuffer);
@@ -163,12 +169,15 @@ Deno.serve(async (req: Request) => {
       .eq('transmission_version', 1);
 
     if (updateError) {
+      console.log(`[decrypt-qr-payload] Update failed for sessionId=${sessionId}: ${updateError.message}`);
       return json({ success: false, reason: 'update_failed' });
     }
 
+    console.log(`[decrypt-qr-payload] Successfully decrypted sessionId=${sessionId} using ${rsaResult.hashUsed}`);
     return json({ success: true, hashUsed: rsaResult.hashUsed });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown_error';
+    console.error(`[decrypt-qr-payload] Error: ${message}`);
     return json({ success: false, reason: 'decryption_failed', message });
   }
 });

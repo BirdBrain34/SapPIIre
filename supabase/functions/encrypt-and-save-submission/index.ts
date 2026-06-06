@@ -66,20 +66,21 @@ Deno.serve(async (req: Request) => {
     const encryptedBase64 = btoa(String.fromCharCode(...new Uint8Array(encryptedBuffer)));
     const ivBase64 = btoa(String.fromCharCode(...iv));
 
-    // Generate intake reference using reference_counter
+    // Generate intake reference using the race-free sequence.
     const supabase = createClient(supabaseUrl, serviceRoleKey);
-    
+
     let finalIntakeReference = intakeReference;
     if (!finalIntakeReference) {
-      const { data: counterData, error: counterError } = await supabase.rpc('increment_reference_counter');
-      if (!counterError && counterData) {
-        const counter = counterData;
+      const { data: seqVal, error: seqError } = await supabase
+        .rpc('next_client_submission_ref');
+      if (!seqError && seqVal != null) {
         const now = new Date();
-        const year = now.getFullYear();
+        const year  = now.getFullYear();
         const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const prefix = formCode?.trim() || 'FORM';
-        finalIntakeReference = `${prefix.toUpperCase()}-${year}${month}${day}-${String(counter).padStart(6, '0')}`;
+        const day   = String(now.getDate()).padStart(2, '0');
+        const prefix = (formCode?.trim() || 'FORM').toUpperCase();
+        finalIntakeReference =
+          `${prefix}-${year}${month}${day}-${String(seqVal).padStart(6, '0')}`;
       }
     }
 

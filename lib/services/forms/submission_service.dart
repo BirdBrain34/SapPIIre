@@ -371,33 +371,58 @@ class SubmissionService {
       return {};
     }
 
+    const supabaseUrl = 'https://tgbfxepldpdswxehhlkx.supabase.co';
+    const anonKey =
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnYmZ4ZXBsZHBkc3d4ZWhobGt4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NDYzMDcsImV4cCI6MjA4NjQyMjMwN30.DhoD6RHExKynXw34mibc3XRP-NwfmDnq1PttVM7-GL4';
+
     final uniqueSubmissionIds = submissionIds.toSet().toList();
-    final decryptedEntries = await Future.wait(
-      uniqueSubmissionIds.map((submissionId) async {
-        try {
-          final decryptedData = await decryptSubmissionData(
-            submissionId: submissionId,
-            staffId: staffId,
-            logAccess: logAccess,
-          );
+    final allResults = <int, Map<String, dynamic>>{};
 
-          return MapEntry<int, Map<String, dynamic>?>(
-            submissionId,
-            decryptedData,
-          );
-        } catch (e) {
+    // Process in batches of 20 (function limit)
+    for (var i = 0; i < uniqueSubmissionIds.length; i += 20) {
+      final batch = uniqueSubmissionIds.skip(i).take(20).toList();
+
+      try {
+        final url = Uri.parse('$supabaseUrl/functions/v1/decrypt-submission-batch');
+        final response = await http.post(
+          url,
+          headers: {
+            'Authorization': 'Bearer $anonKey',
+            'apikey': anonKey,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'submissionIds': batch,
+            'staffId': staffId,
+          }),
+        );
+
+        if (response.statusCode == 200) {
+          final result = jsonDecode(response.body) as Map<String, dynamic>;
+          final results = result['results'] as List;
+
+          for (final item in results) {
+            final id = item['id'] as int;
+            final data = item['data'];
+            final decrypted = item['decrypted'] as bool;
+
+            if (decrypted && data is Map<String, dynamic>) {
+              allResults[id] = data;
+            }
+          }
+        } else {
           debugPrint(
-            '[SubmissionService/batchDecryptSubmissions] Error for submissionId=$submissionId: $e',
+            '[SubmissionService/batchDecryptSubmissions] Batch error: ${response.body}',
           );
-          return MapEntry<int, Map<String, dynamic>?>(submissionId, null);
         }
-      }),
-    );
+      } catch (e) {
+        debugPrint(
+          '[SubmissionService/batchDecryptSubmissions] Error processing batch: $e',
+        );
+      }
+    }
 
-    return {
-      for (final entry in decryptedEntries)
-        if (entry.value != null) entry.key: entry.value!,
-    };
+    return allResults;
   }
 
   Future<void> signOut() {
