@@ -91,6 +91,32 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       final templates = await templatesFuture;
       await hydrateFuture;
 
+      // Decrypt encrypted submissions in batch
+      final encryptedSubmissionIds = submissions
+          .where((s) => (s['data_encryption_version'] ?? 0) == 1)
+          .map((s) => s['id'] as int)
+          .toList();
+
+      if (encryptedSubmissionIds.isNotEmpty) {
+        try {
+          final decryptedData = await _submissionService.batchDecryptSubmissions(
+            encryptedSubmissionIds,
+            widget.cswd_id,
+            logAccess: false,
+          );
+
+          // Merge decrypted data back into submissions
+          for (final submission in submissions) {
+            final id = submission['id'] as int;
+            if (decryptedData.containsKey(id)) {
+              submission['data'] = decryptedData[id];
+            }
+          }
+        } catch (e) {
+          debugPrint('[ApplicantsScreen/_loadData] Batch decrypt error: $e');
+        }
+      }
+
       if (!mounted) return;
 
       for (final t in templates) {
@@ -775,9 +801,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                       style: TextStyle(color: Colors.white54),
                     ),
                   )
-                : Scrollbar(
-                    thumbVisibility: true,
-                    child: ListView.separated(
+                : ListView.separated(
                       itemCount: groups.length,
                       separatorBuilder: (_, __) => Divider(
                         height: 1,
@@ -890,7 +914,6 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                         );
                       },
                     ),
-                  ),
           ),
         ],
       ),
@@ -1332,9 +1355,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: Colors.white24),
                   ),
-                  child: Scrollbar(
-                    thumbVisibility: true,
-                    child: ListView.separated(
+                  child: ListView.separated(
                       padding: const EdgeInsets.symmetric(vertical: 6),
                       itemCount: records.length,
                       separatorBuilder: (_, __) => Divider(
@@ -1436,7 +1457,6 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                         );
                       },
                     ),
-                  ),
                 ),
               ),
           ],

@@ -1,15 +1,4 @@
-// This file runs on the Supabase Edge (Deno) runtime, not Node. The editor's
-// default TypeScript server targets Node and therefore does not know about the
-// `Deno` global or `https://` URL imports. The ambient declarations below stop
-// those false-positive errors without any Deno extension or workspace config.
-// They are erased at build time and have no effect on the deployed function.
-// @ts-ignore - URL import is resolved by the Deno runtime at deploy time.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
-declare const Deno: {
-  env: { get(key: string): string | undefined };
-  serve(handler: (req: Request) => Response | Promise<Response>): void;
-};
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -43,7 +32,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { submissionId, staffId, logAccess } = body;
+    const { submissionId, staffId } = body;
 
     if (!submissionId) {
       return new Response(
@@ -55,13 +44,11 @@ Deno.serve(async (req: Request) => {
     // Validate staff member if staffId provided
     const supabase = createClient(supabaseUrl, serviceRoleKey);
     let actorId = 'anonymous';
-    let actorName: string | null = null;
-    let actorRole: string | null = null;
-
+    
     if (staffId) {
       const { data: staffData, error: staffError } = await supabase
         .from('staff_accounts')
-        .select('cswd_id, role, username')
+        .select('cswd_id, role')
         .eq('cswd_id', staffId)
         .single();
 
@@ -79,28 +66,14 @@ Deno.serve(async (req: Request) => {
           { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-
+      
       actorId = staffId;
-      actorRole = role ?? null;
-
-      // Resolve display name the same way the rest of the app does:
-      // staff_profiles first/last name, falling back to the account username.
-      const { data: profileData } = await supabase
-        .from('staff_profiles')
-        .select('first_name, last_name')
-        .eq('cswd_id', staffId)
-        .maybeSingle();
-
-      const first = (profileData?.first_name ?? '').toString().trim();
-      const last = (profileData?.last_name ?? '').toString().trim();
-      const fullName = `${first} ${last}`.trim();
-      actorName = fullName.length > 0 ? fullName : (staffData.username ?? null);
     }
 
     // Fetch submission from database
     const { data: submission, error: fetchError } = await supabase
       .from('client_submissions')
-      .select('data, data_iv, data_encryption_version, intake_reference')
+      .select('data, data_iv, data_encryption_version')
       .eq('id', submissionId)
       .single();
 
@@ -155,26 +128,14 @@ Deno.serve(async (req: Request) => {
     const decryptedText = new TextDecoder().decode(decryptedBuffer);
     const decryptedData = JSON.parse(decryptedText);
 
-    // Log to audit_logs only for deliberate record views. Background/bulk
-    // decryptions (list rendering, analytics) pass logAccess: false to avoid
-    // flooding the audit trail. Callers that omit the flag still log.
-    if (logAccess !== false) {
-      await supabase.from('audit_logs').insert({
-        action_type: 'submission_decrypted',
-        category: 'submission',
-        severity: 'warning',
-        actor_id: actorId,
-        actor_name: actorName,
-        actor_role: actorRole,
-        target_type: 'client_submission',
-        target_id: submissionId,
-        target_label: submission.intake_reference ?? submissionId,
-        details: {
-          purpose: 'applicant_record_view',
-          encryption_version: version,
-        },
-      });
-    }
+    // Log to audit_logs
+    await supabase.from('audit_logs').insert({
+      action_type: 'submission_decrypted',
+      category: 'submission',
+      severity: 'info',
+      actor_id: actorId,
+      details: { purpose: 'applicant_record_view' },
+    });
 
     return new Response(
       JSON.stringify({ data: decryptedData }),

@@ -402,29 +402,21 @@ class SupabaseService {
     required String otp,
   }) async {
     try {
-      final data = await _supabase
-          .from('phone_otp')
-          .select()
-          .eq('phone', phone)
-          .eq('otp', otp)
-          .order('created_at', ascending: false)
-          .limit(1)
-          .maybeSingle();
+      final result = await _supabase.rpc(
+        'verify_and_consume_phone_otp',
+        params: <String, dynamic>{
+          'p_phone': phone.trim(),
+          'p_otp':   otp.trim(),
+        },
+      );
 
-      if (data == null) {
-        return {'success': false, 'message': 'Invalid code'};
+      if (result == true) {
+        return {'success': true, 'message': 'Phone verified!'};
       }
-
-      if (DateTime.parse(data['expires_at']).isBefore(DateTime.now().toUtc())) {
-        await _supabase.from('phone_otp').delete().eq('id', data['id']);
-        return {
-          'success': false,
-          'message': 'Code has expired. Please request a new one.',
-        };
-      }
-
-      await _supabase.from('phone_otp').delete().eq('id', data['id']);
-      return {'success': true, 'message': 'Phone verified!'};
+      return {
+        'success': false,
+        'message': 'Invalid or expired code. Please request a new one.',
+      };
     } catch (e) {
       return {'success': false, 'message': e.toString()};
     }
@@ -998,54 +990,10 @@ class SupabaseService {
         if (retryResponse == null) return false;
       }
 
-      await _invokeDecryptQrPayloadWithRetry(sessionId);
-
       return true;
     } catch (e) {
       debugPrint('[SupabaseService/sendDataToWebSession] Error for session $sessionId: $e');
       return false;
-    }
-  }
-
-  Future<void> _invokeDecryptQrPayloadWithRetry(
-    String sessionId, {
-    int attempt = 1,
-  }) async {
-    try {
-      final accessToken = _supabase.auth.currentSession?.accessToken;
-      if (accessToken == null || accessToken.isEmpty) {
-        debugPrint('[SupabaseService/_invokeDecryptQrPayloadWithRetry] Action: Missing access token, skipping session=$sessionId');
-        return;
-      }
-
-      final response = await _supabase.functions.invoke(
-        'decrypt-qr-payload',
-        body: {'sessionId': sessionId},
-        headers: {'Authorization': 'Bearer $accessToken'},
-      );
-
-      final data = response.data;
-      final reason = data is Map ? data['reason']?.toString() : null;
-      final success = data is Map ? data['success'] == true : false;
-
-      if (!success && kDebugMode) {
-        debugPrint('[SupabaseService/_invokeDecryptQrPayloadWithRetry] Action: session=$sessionId attempt=$attempt returned: $data');
-      }
-
-      if (!success &&
-          attempt < 4 &&
-          (reason == 'session_not_found_or_fetch_failed' ||
-              reason == 'missing_encrypted_columns')) {
-        final delayMs = attempt == 1
-            ? 400
-            : attempt == 2
-            ? 900
-            : 1600;
-        await Future<void>.delayed(Duration(milliseconds: delayMs));
-        await _invokeDecryptQrPayloadWithRetry(sessionId, attempt: attempt + 1);
-      }
-    } catch (e) {
-      debugPrint('[SupabaseService/_invokeDecryptQrPayloadWithRetry] Warning: session=$sessionId attempt=$attempt $e');
     }
   }
 
