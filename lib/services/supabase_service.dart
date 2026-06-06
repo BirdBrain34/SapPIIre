@@ -38,6 +38,92 @@ class SupabaseService {
     }
   }
 
+  /// Fetch all notifications ordered newest-first, plus which ones the
+  /// current user has already read (from user_notification_reads).
+  Future<Map<String, dynamic>> fetchAppNotifications(String userId) async {
+    try {
+      // Fetch all notifications, newest first.
+      final rows = await _supabase
+          .from('form_template_notifications')
+          .select('id, template_id, template_name, change_type, change_summary, created_at')
+          .order('created_at', ascending: false)
+          .limit(100);
+ 
+      final notifications = List<Map<String, dynamic>>.from(rows as List);
+ 
+      // Fetch which ones this user has read.
+      final readRows = await _supabase
+          .from('user_notification_reads')
+          .select('notification_id')
+          .eq('user_id', userId);
+ 
+      final readIds = (readRows as List)
+          .map((r) => r['notification_id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toList();
+ 
+      return {
+        'notifications': notifications,
+        'readIds': readIds,
+      };
+    } catch (e) {
+      debugPrint('[SupabaseService/fetchAppNotifications] Error: $e');
+      return {'notifications': <Map<String, dynamic>>[], 'readIds': <String>[]};
+    }
+  }
+ 
+  /// Mark one or more notification IDs as read for the given user.
+  Future<void> markNotificationsRead({
+    required String userId,
+    required List<String> notificationIds,
+  }) async {
+    if (notificationIds.isEmpty) return;
+    try {
+      final rows = notificationIds
+          .map((id) => {'user_id': userId, 'notification_id': id})
+          .toList();
+ 
+      await _supabase
+          .from('user_notification_reads')
+          .upsert(rows, onConflict: 'user_id,notification_id');
+    } catch (e) {
+      debugPrint('[SupabaseService/markNotificationsRead] Error: $e');
+    }
+  }
+ 
+  /// Returns the count of unread notifications for the bell badge.
+  Future<int> fetchUnreadNotificationCount(String userId) async {
+    try {
+      // Total notifications
+      final allRows = await _supabase
+          .from('form_template_notifications')
+          .select('id');
+ 
+      final allIds = (allRows as List)
+          .map((r) => r['id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet();
+ 
+      if (allIds.isEmpty) return 0;
+ 
+      // Read notifications for this user
+      final readRows = await _supabase
+          .from('user_notification_reads')
+          .select('notification_id')
+          .eq('user_id', userId);
+ 
+      final readIds = (readRows as List)
+          .map((r) => r['notification_id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet();
+ 
+      return allIds.difference(readIds).length;
+    } catch (e) {
+      debugPrint('[SupabaseService/fetchUnreadNotificationCount] Error: $e');
+      return 0;
+    }
+  }
+
   // Save PII using canonical key matching across templates.
   Future<Map<String, dynamic>> saveScannedIdFieldValues({
     required String userId,

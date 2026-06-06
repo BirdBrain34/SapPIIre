@@ -102,8 +102,7 @@ class FormBuilderTitleCard extends StatelessWidget {
                         controller.referencePrefix = controller.formCode;
                         controller
                             .ctrl('referencePrefix', controller.referencePrefix)
-                            .text = controller
-                            .referencePrefix;
+                            .text = controller.referencePrefix;
                       }
                     },
                   ),
@@ -129,9 +128,7 @@ class FormBuilderTitleCard extends StatelessWidget {
                       ),
                     ),
                     onChanged: (value) {
-                      controller.referencePrefix = controller.sanitizeCode(
-                        value,
-                      );
+                      controller.referencePrefix = controller.sanitizeCode(value);
                     },
                   ),
                 ),
@@ -418,7 +415,7 @@ class FormBuilderTitleCard extends StatelessWidget {
                   activeColor: AppColors.primaryBlue,
                   onChanged: (value) {
                     controller.popupEnabled = value;
-                    controller.markChanged(preserveScroll: true);
+                    controller.markChanged();
                   },
                 ),
               ],

@@ -20,6 +20,7 @@ import 'package:sappiire/mobile/widgets/unsaved_changes_dialog.dart';
 import 'package:sappiire/mobile/widgets/logout_confirmation_dialog.dart';
 import 'package:sappiire/mobile/widgets/TermsandCondition.dart';
 import 'package:sappiire/models/form_template_models.dart';
+import 'package:sappiire/mobile/screens/auth/NotificationScreen.dart';
 
 
 class ManageInfoScreen extends StatefulWidget {
@@ -55,6 +56,9 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   // Track whether the intro card is still visible.
   bool _showFormIntro = true;
 
+  //Track user if they read the notif
+  int _unreadNotifCount = 0;
+
   // Track which required fields are still empty so they can be highlighted.
   Set<String> _highlightedMissingFields = {};
 
@@ -63,6 +67,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     super.initState();
     _controller = ManageInfoController(userId: widget.userId);
     _loadAll();
+    _loadUnreadCount();
     _startTemplateNotifications();
 
     // Show T&C acceptance dialog once the screen is fully rendered,
@@ -222,6 +227,28 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
       _highlightedMissingFields = {};
       _hasUnsavedChanges = false;
     });
+  }
+
+// ── Notif Read Count ──────────────────────────────────────
+    Future<void> _loadUnreadCount() async {
+    final count =
+        await _supabaseService.fetchUnreadNotificationCount(widget.userId);
+    if (mounted) setState(() => _unreadNotifCount = count);
+  }
+
+    Future<void> _openNotifications() async {
+    final returnedReadIds = await Navigator.push<Set<String>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NotificationScreen(userId: widget.userId),
+      ),
+    );
+    // Recalculate badge after returning from notification screen.
+    if (mounted) await _loadUnreadCount();
+    // Also reload if the user read items (form templates may have changed).
+    if (returnedReadIds != null && returnedReadIds.isNotEmpty && mounted) {
+      await _loadAll();
+    }
   }
 
   // ── Real-time template notifications ──────────────────────────────────────
@@ -709,7 +736,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   PreferredSizeWidget _buildAppBar() {
     final displayName =
         _controller.username.isNotEmpty ? _controller.username : 'User';
-
+ 
     return AppBar(
       backgroundColor: AppColors.primaryBlue,
       elevation: 0,
@@ -723,7 +750,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         onTap: () async {
           final canProceed = await _resolveUnsavedChangesIfAny();
           if (!canProceed || !mounted) return;
-
+ 
           await Navigator.push(
             context,
             MaterialPageRoute(
@@ -748,8 +775,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                 color: Colors.white.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child:
-                  const Icon(Icons.person_outline, color: Colors.white, size: 18),
+              child: const Icon(Icons.person_outline,
+                  color: Colors.white, size: 18),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -777,12 +804,46 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         ),
       ),
       actions: [
-        IconButton(
-          icon: const Icon(Icons.camera_alt_outlined,
-              color: Colors.white, size: 22),
-          onPressed: _openCamera,
-          tooltip: 'Scan ID',
+        // ── NOTIFICATION BELL (replaces camera icon) ──────────────
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.notifications_outlined,
+                  color: Colors.white, size: 24),
+              onPressed: _openNotifications,
+              tooltip: 'Notifications',
+            ),
+            if (_unreadNotifCount > 0)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  width: 17,
+                  height: 17,
+                  decoration: BoxDecoration(
+                    // Use AppColors.highlight (gold/amber) to match your FAB style
+                    color: AppColors.highlight,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                        color: AppColors.primaryBlue, width: 1.5),
+                  ),
+                  child: Center(
+                    child: Text(
+                      _unreadNotifCount > 99
+                          ? '99+'
+                          : '$_unreadNotifCount',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
+        // ── SAVE BUTTON (unchanged) ───────────────────────────────
         if (!_showFormIntro && _currentNavIndex == 0)
           IconButton(
             icon: _controller.isSaving
@@ -791,7 +852,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                     height: 20,
                     child: CircularProgressIndicator(
                         strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.save_outlined, color: Colors.white, size: 22),
+                : const Icon(Icons.save_outlined,
+                    color: Colors.white, size: 22),
             onPressed: _controller.isSaving ? null : _saveProfile,
             tooltip: 'Save Profile',
           ),

@@ -214,7 +214,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                                 BuilderOption(label: 'Option 1'),
                               );
                             }
-                            controller.markChanged(preserveScroll: true);
+                            controller.markChanged();
                           },
                         ),
                       ),
@@ -477,7 +477,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                           field.condition.triggerValue = '';
                           field.condition.action = 'show';
                         }
-                        controller.markChanged(preserveScroll: true);
+                        controller.markChanged();
                       },
               ),
             ],
@@ -762,7 +762,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                         ? dateCandidates.first.id
                         : null;
                   }
-                  controller.markChanged(preserveScroll: true);
+                  controller.markChanged();
                 },
               ),
             ],
@@ -879,7 +879,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                         ? dateColumns.first.id
                         : null;
                   }
-                  controller.markChanged(preserveScroll: true);
+                  controller.markChanged();
                 },
               ),
             ],
@@ -1125,11 +1125,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                         IconButton(
                           icon: const Icon(Icons.arrow_upward, size: 16),
                           onPressed: columnIndex > 0
-                              ? () => controller.moveColumn(
-                                  field,
-                                  columnIndex,
-                                  -1,
-                                )
+                              ? () => controller.moveColumn(field, columnIndex, -1)
                               : null,
                           tooltip: 'Move up',
                           padding: EdgeInsets.zero,
@@ -1139,8 +1135,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                         IconButton(
                           icon: const Icon(Icons.arrow_downward, size: 16),
                           onPressed: columnIndex < field.columns.length - 1
-                              ? () =>
-                                    controller.moveColumn(field, columnIndex, 1)
+                              ? () => controller.moveColumn(field, columnIndex, 1)
                               : null,
                           tooltip: 'Move down',
                           padding: EdgeInsets.zero,
@@ -1214,7 +1209,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                                   BuilderOption(label: 'Option 1'),
                                 );
                               }
-                              controller.markChanged(preserveScroll: true);
+                              controller.markChanged();
                             },
                           ),
                         ),
@@ -1229,7 +1224,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                       ),
                       onPressed: () {
                         field.columns.removeAt(columnIndex);
-                        controller.markChanged(preserveScroll: true);
+                        controller.markChanged();
                       },
                     ),
                   ],
@@ -1297,7 +1292,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                               icon: const Icon(Icons.close, size: 14),
                               onPressed: () {
                                 column.options.removeAt(optionEntry.key);
-                                controller.markChanged(preserveScroll: true);
+                                controller.markChanged();
                               },
                             ),
                         ],
@@ -1310,7 +1305,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                             label: 'Option ${column.options.length + 1}',
                           ),
                         );
-                        controller.markChanged(preserveScroll: true);
+                        controller.markChanged();
                       },
                       icon: const Icon(Icons.add, size: 14),
                       label: const Text(
@@ -1330,7 +1325,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                 order: field.columns.length,
               ),
             );
-            controller.markChanged(preserveScroll: true);
+            controller.markChanged();
           },
           icon: const Icon(Icons.add_circle_outline, size: 16),
           label: const Text('Add Column', style: TextStyle(fontSize: 12)),
@@ -1412,11 +1407,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                         IconButton(
                           icon: const Icon(Icons.arrow_upward, size: 16),
                           onPressed: columnIndex > 0
-                              ? () => controller.moveColumn(
-                                  field,
-                                  columnIndex,
-                                  -1,
-                                )
+                              ? () => controller.moveColumn(field, columnIndex, -1)
                               : null,
                           tooltip: 'Move up',
                           padding: EdgeInsets.zero,
@@ -1426,8 +1417,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                         IconButton(
                           icon: const Icon(Icons.arrow_downward, size: 16),
                           onPressed: columnIndex < field.columns.length - 1
-                              ? () =>
-                                    controller.moveColumn(field, columnIndex, 1)
+                              ? () => controller.moveColumn(field, columnIndex, 1)
                               : null,
                           tooltip: 'Move down',
                           padding: EdgeInsets.zero,
@@ -1503,7 +1493,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                                   BuilderOption(label: 'Option 1'),
                                 );
                               }
-                              controller.markChanged(preserveScroll: true);
+                              controller.markChanged();
                             },
                           ),
                         ),
@@ -1518,7 +1508,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                       ),
                       onPressed: () {
                         field.columns.removeAt(columnIndex);
-                        controller.markChanged(preserveScroll: true);
+                        controller.markChanged();
                       },
                     ),
                   ],
@@ -1586,7 +1576,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                               icon: const Icon(Icons.close, size: 14),
                               onPressed: () {
                                 column.options.removeAt(optionEntry.key);
-                                controller.markChanged(preserveScroll: true);
+                                controller.markChanged();
                               },
                             ),
                         ],
@@ -1599,7 +1589,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                             label: 'Option ${column.options.length + 1}',
                           ),
                         );
-                        controller.markChanged(preserveScroll: true);
+                        controller.markChanged();
                       },
                       icon: const Icon(Icons.add, size: 14),
                       label: const Text(
@@ -1619,7 +1609,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                 order: field.columns.length,
               ),
             );
-            controller.markChanged(preserveScroll: true);
+            controller.markChanged();
           },
           icon: const Icon(Icons.add_circle_outline, size: 16),
           label: const Text('Add Column', style: TextStyle(fontSize: 12)),
@@ -1695,7 +1685,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                     ),
                     onPressed: () {
                       field.options.removeAt(optionIndex);
-                      controller.markChanged(preserveScroll: true);
+                      controller.markChanged();
                     },
                   ),
               ],
@@ -1721,7 +1711,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                         order: field.options.length,
                       ),
                     );
-                    controller.markChanged(preserveScroll: true);
+                    controller.markChanged();
                   },
                   child: const Text('Add option'),
                 ),
@@ -1744,10 +1734,9 @@ class FormBuilderFieldCard extends StatelessWidget {
         )
         .toList();
     final fieldLabelMap = {
-      for (final candidate
-          in controller.sections
-              .expand((section) => section.fields)
-              .where((candidate) => candidate.id != field.id))
+      for (final candidate in controller.sections
+          .expand((section) => section.fields)
+          .where((candidate) => candidate.id != field.id))
         candidate.fieldName: (candidate.label.isNotEmpty
             ? candidate.label
             : candidate.fieldName),
@@ -1837,12 +1826,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                     final tokenIndex = entry.key;
                     final token = entry.value;
                     final isOperator = const {
-                      '+',
-                      '-',
-                      '*',
-                      '/',
-                      '(',
-                      ')',
+                      '+', '-', '*', '/', '(', ')',
                     }.contains(token);
                     return Container(
                       padding: const EdgeInsets.symmetric(
@@ -1987,10 +1971,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                 backgroundColor: const Color(0xFFE8EEFF),
                 foregroundColor: AppColors.primaryBlue,
                 elevation: 0,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(6),
                 ),

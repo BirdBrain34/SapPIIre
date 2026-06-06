@@ -40,8 +40,16 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   final _authService = WebAuthService();
   final _scrollCtrl = ScrollController();
   final PageStorageBucket _pageStorageBucket = PageStorageBucket();
-  double _lastCanvasOffset = 0.0;
-  int _lastScrollToken = 0;
+
+  // ---------------------------------------------------------------
+  // Scroll-preservation: instead of fighting the ScrollController
+  // with post-frame callbacks (which caused rubber-banding), we
+  // save the offset before setState and restore it synchronously
+  // in the same frame via a LayoutBuilder / post-frame single shot.
+  // For text-field changes we skip the rebuild entirely.
+  // ---------------------------------------------------------------
+  double _savedScrollOffset = 0.0;
+  bool _pendingScrollRestore = false;
 
   @override
   void initState() {
@@ -53,11 +61,6 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       ..showSnackBar = _showSnackBar
       ..onShowSumColumnPicker = _showSumColumnPicker;
     _controller.addListener(_handleControllerChanged);
-    _scrollCtrl.addListener(() {
-      if (_scrollCtrl.hasClients) {
-        _lastCanvasOffset = _scrollCtrl.offset;
-      }
-    });
     _controller.loadCanonicalKeys();
     _controller.loadTemplateList().then((_) {
       if (widget.editTemplateId != null) {
@@ -66,36 +69,33 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     });
   }
 
+  /// Called whenever the controller calls notifyListeners().
+  ///
+  /// Key insight: text fields update [field.label] directly in their
+  /// onChanged callbacks without calling markChanged(), so we only
+  /// get notified for structural changes (add/remove field, type
+  /// change, etc.).  For those we DO want a rebuild, but we must
+  /// preserve scroll position.
   void _handleControllerChanged() {
     if (!mounted) return;
-    if (_controller.scrollPositionToken != _lastScrollToken) {
-      _lastScrollToken = _controller.scrollPositionToken;
-      _setStatePreserveCanvasScroll(() {});
-    } else {
-      setState(() {});
+    // Snapshot offset before setState so the restore is synchronous.
+    if (_scrollCtrl.hasClients) {
+      _savedScrollOffset = _scrollCtrl.offset;
+      _pendingScrollRestore = true;
     }
-  }
-
-  void _setStatePreserveCanvasScroll(VoidCallback fn) {
-    final targetOffset = _scrollCtrl.hasClients
-        ? _scrollCtrl.offset
-        : _lastCanvasOffset;
-    if (!mounted) return;
-    super.setState(fn);
-
-    void restoreOffset() {
-      if (!mounted || !_scrollCtrl.hasClients) return;
-      final max = _scrollCtrl.position.maxScrollExtent;
-      final clamped = targetOffset.clamp(0.0, max).toDouble();
-      if ((_scrollCtrl.offset - clamped).abs() > 0.5) {
-        _scrollCtrl.jumpTo(clamped);
-      }
+    setState(() {});
+    // Restore in the very next frame — exactly one shot.
+    if (_pendingScrollRestore) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _pendingScrollRestore = false;
+        if (!mounted || !_scrollCtrl.hasClients) return;
+        final max = _scrollCtrl.position.maxScrollExtent;
+        final target = _savedScrollOffset.clamp(0.0, max);
+        if ((_scrollCtrl.offset - target).abs() > 1.0) {
+          _scrollCtrl.jumpTo(target);
+        }
+      });
     }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      restoreOffset();
-      WidgetsBinding.instance.addPostFrameCallback((_) => restoreOffset());
-    });
   }
 
   void _showSnackBar(String message, Color backgroundColor) {

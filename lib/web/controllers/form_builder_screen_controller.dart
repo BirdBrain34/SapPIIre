@@ -91,6 +91,54 @@ const familyTableCoreColumns =
       ),
     ];
 
+// ---------------------------------------------------------------
+// Exact set of columns that exist in form_fields table.
+// Any key NOT in this set will be stripped before upsert to
+// prevent "record has no field X" errors from DB triggers.
+// ---------------------------------------------------------------
+const _allowedFieldKeys = <String>{
+  'field_id',
+  'template_id',
+  'section_id',
+  'field_name',
+  'field_label',
+  'field_type',
+  'is_required',
+  'validation_rules',
+  'field_order',
+  'parent_field_id',
+  'canonical_field_key',
+};
+
+// ---------------------------------------------------------------
+// Exact set of columns that exist in form_sections table.
+// ---------------------------------------------------------------
+const _allowedSectionKeys = <String>{
+  'section_id',
+  'template_id',
+  'section_name',
+  'section_desc',
+  'section_order',
+  'is_collapsible',
+};
+
+/// Strip any key that isn't a real DB column before sending to Supabase.
+/// This prevents "record 'new' has no field 'placeholder'" style errors
+/// caused by DB triggers referencing columns that were removed from the schema.
+Map<String, dynamic> _sanitizeFieldPayload(Map<String, dynamic> raw) {
+  return {
+    for (final entry in raw.entries)
+      if (_allowedFieldKeys.contains(entry.key)) entry.key: entry.value,
+  };
+}
+
+Map<String, dynamic> _sanitizeSectionPayload(Map<String, dynamic> raw) {
+  return {
+    for (final entry in raw.entries)
+      if (_allowedSectionKeys.contains(entry.key)) entry.key: entry.value,
+  };
+}
+
 class FormBuilderScreenController extends ChangeNotifier {
   FormBuilderScreenController({FormBuilderService? service})
     : _service = service ?? FormBuilderService();
@@ -131,7 +179,6 @@ class FormBuilderScreenController extends ChangeNotifier {
   bool hasUnsavedChanges = false;
   List<({String key, String label})> availableCanonicalKeys = const [];
   bool isLoadingCanonicalKeys = false;
-  int scrollPositionToken = 0;
 
   String? get lastSaveError => _service.lastSaveError;
   String? get lastActionError => _service.lastActionError;
@@ -145,7 +192,10 @@ class FormBuilderScreenController extends ChangeNotifier {
       final node = FocusNode(debugLabel: key);
       node.addListener(() {
         if (!node.hasFocus) {
-          markChanged();
+          // Only mark changed on blur — do NOT call notifyListeners on
+          // every keystroke.  Text fields write directly to model objects
+          // (field.label = value) without needing a full rebuild.
+          hasUnsavedChanges = true;
         }
       });
       return node;
@@ -163,24 +213,29 @@ class FormBuilderScreenController extends ChangeNotifier {
     _focusNodes.clear();
   }
 
-  void markChanged({bool preserveScroll = false}) {
+  /// Mark that the form has unsaved changes and notify listeners.
+  ///
+  /// Call this for STRUCTURAL changes only (add/remove field, type change,
+  /// reorder, toggle switch, etc.).  Pure text edits (onChanged in a
+  /// TextField) should just write to the model object directly and NOT
+  /// call markChanged() — that avoids scroll-disrupting rebuilds on every
+  /// keystroke.
+  void markChanged() {
     if (_disposed) return;
-    if (preserveScroll) {
-      scrollPositionToken++;
-    }
+    hasUnsavedChanges = true;
     notifyListeners();
   }
 
   void selectSection(int sectionIndex) {
     activeSectionIdx = sectionIndex;
     activeFieldIdx = null;
-    markChanged(preserveScroll: true);
+    markChanged();
   }
 
   void selectField(int sectionIndex, int fieldIndex) {
     activeSectionIdx = sectionIndex;
     activeFieldIdx = fieldIndex;
-    markChanged(preserveScroll: true);
+    markChanged();
   }
 
   String sanitizeCode(String input) => base.sanitizeCode(input);
@@ -190,20 +245,17 @@ class FormBuilderScreenController extends ChangeNotifier {
 
   void appendReferenceToken(String token) {
     referenceFormat = base.appendReferenceToken(referenceFormat, token);
-    hasUnsavedChanges = true;
-    markChanged(preserveScroll: true);
+    markChanged();
   }
 
   void appendReferenceSeparator(String separator) {
     referenceFormat = base.appendReferenceSeparator(referenceFormat, separator);
-    hasUnsavedChanges = true;
-    markChanged(preserveScroll: true);
+    markChanged();
   }
 
   void removeReferencePartAt(int index) {
     referenceFormat = base.removeReferencePartAt(referenceFormat, index);
-    hasUnsavedChanges = true;
-    markChanged(preserveScroll: true);
+    markChanged();
   }
 
   String referencePreview() => base.referencePreview(
@@ -221,33 +273,31 @@ class FormBuilderScreenController extends ChangeNotifier {
     final tokens = formulaTokens(field);
     tokens.add(token);
     field.formula = tokens.join(' ');
-    hasUnsavedChanges = true;
-    markChanged(preserveScroll: true);
+    markChanged();
   }
 
   void removeFormulaToken(base.BuilderField field, int index) {
     final tokens = formulaTokens(field);
     tokens.removeAt(index);
     field.formula = tokens.join(' ');
-    hasUnsavedChanges = true;
-    markChanged(preserveScroll: true);
+    markChanged();
   }
 
   bool get canPublish => sections.any((section) => section.fields.isNotEmpty);
 
   Future<void> loadTemplateList() async {
     isLoadingList = true;
-    markChanged();
+    notifyListeners();
     final fetchedTemplates = await _service.fetchAllTemplates();
     if (_disposed) return;
     templates = fetchedTemplates;
     isLoadingList = false;
-    markChanged();
+    notifyListeners();
   }
 
   Future<void> loadCanonicalKeys() async {
     isLoadingCanonicalKeys = true;
-    markChanged();
+    notifyListeners();
     try {
       final dbKeys = (await _service.fetchCanonicalFieldKeys()).toSet();
 
@@ -266,26 +316,26 @@ class FormBuilderScreenController extends ChangeNotifier {
       if (_disposed) return;
       availableCanonicalKeys = merged;
       isLoadingCanonicalKeys = false;
-      markChanged();
+      notifyListeners();
     } catch (e) {
       debugPrint('[FormBuilderScreenController/_loadCanonicalKeys] Error: $e');
       if (_disposed) return;
       availableCanonicalKeys = List.of(base.standardProfileCanonicalKeys);
       isLoadingCanonicalKeys = false;
-      markChanged();
+      notifyListeners();
     }
   }
 
   Future<void> loadTemplate(String templateId) async {
     isLoadingTemplate = true;
-    markChanged();
+    notifyListeners();
     clearCtrls();
 
     final data = await _service.fetchTemplateWithStructure(templateId);
     if (_disposed) return;
     if (data == null) {
       isLoadingTemplate = false;
-      markChanged();
+      notifyListeners();
       return;
     }
 
@@ -474,11 +524,12 @@ class FormBuilderScreenController extends ChangeNotifier {
     activeFieldIdx = null;
     hasUnsavedChanges = false;
     isLoadingTemplate = false;
-    markChanged(preserveScroll: true);
+    notifyListeners();
   }
 
   Future<void> createNewTemplate() async {
     const defaultFormat = '{FORMCODE}-{YYYY}-{MM}-{####}';
+    // Use a UUID-derived code so it is guaranteed unique in form_templates.
     final uniqueCode =
         'FORM${base.generateUuid().substring(0, 6).toUpperCase()}';
     final id = await _service.createTemplate(
@@ -497,8 +548,10 @@ class FormBuilderScreenController extends ChangeNotifier {
     activeTemplateId = id;
     formName = 'Untitled Form';
     formDesc = '';
-    formCode = 'UNTITLEDFORM';
-    referencePrefix = 'UNTITLEDFORM';
+    // Reflect the actual code persisted to the DB so Save doesn't try to
+    // re-use a hardcoded code that might already exist.
+    formCode = uniqueCode;
+    referencePrefix = uniqueCode;
     referenceFormat = defaultFormat;
     requiresReference = true;
     formStatus = 'draft';
@@ -516,13 +569,13 @@ class FormBuilderScreenController extends ChangeNotifier {
     activeFieldIdx = 0;
     hasUnsavedChanges = true;
     isLoadingTemplate = false;
-    markChanged(preserveScroll: true);
+    notifyListeners();
   }
 
   Future<bool> saveTemplate() async {
     if (activeTemplateId == null) return false;
     isSaving = true;
-    markChanged();
+    notifyListeners();
 
     final dbSections = <Map<String, dynamic>>[];
     final dbFields = <Map<String, dynamic>>[];
@@ -531,14 +584,16 @@ class FormBuilderScreenController extends ChangeNotifier {
 
     for (var sectionIndex = 0; sectionIndex < sections.length; sectionIndex++) {
       final section = sections[sectionIndex];
-      dbSections.add({
+
+      // Sanitize section payload to only known columns.
+      dbSections.add(_sanitizeSectionPayload({
         'section_id': section.id,
         'template_id': activeTemplateId,
         'section_name': section.name,
         'section_desc': section.description,
         'section_order': sectionIndex,
         'is_collapsible': false,
-      });
+      }));
 
       for (
         var fieldIndex = 0;
@@ -555,7 +610,10 @@ class FormBuilderScreenController extends ChangeNotifier {
             field.ageFromFieldId!.isNotEmpty) {
           validationRules['age_from_field'] = field.ageFromFieldId;
         }
-        dbFields.add({
+
+        // Build the field row then sanitize — strips any key that
+        // isn't a real column in form_fields (e.g. 'placeholder').
+        final rawFieldRow = <String, dynamic>{
           'field_id': field.id,
           'template_id': activeTemplateId,
           'section_id': section.id,
@@ -563,13 +621,13 @@ class FormBuilderScreenController extends ChangeNotifier {
           'field_label': field.label,
           'field_type': field.type.toDbString(),
           'is_required': field.isRequired,
-          'canonical_field_key': field.canonicalFieldKey,
+          'canonical_field_key': field.type == FormFieldType.signature
+              ? 'signature'
+              : field.canonicalFieldKey,
           'field_order': fieldIndex,
           if (validationRules.isNotEmpty) 'validation_rules': validationRules,
-        });
-        if (field.type == FormFieldType.signature) {
-          dbFields.last['canonical_field_key'] = 'signature';
-        }
+        };
+        dbFields.add(_sanitizeFieldPayload(rawFieldRow));
 
         if (field.type == FormFieldType.memberTable ||
             field.type == FormFieldType.familyTable) {
@@ -588,7 +646,8 @@ class FormBuilderScreenController extends ChangeNotifier {
                 column.ageFromColumnId!.isNotEmpty) {
               columnValidationRules['age_from_column'] = column.ageFromColumnId;
             }
-            dbFields.add({
+
+            final rawColumnRow = <String, dynamic>{
               'field_id': column.id,
               'template_id': activeTemplateId,
               'section_id': section.id,
@@ -600,7 +659,8 @@ class FormBuilderScreenController extends ChangeNotifier {
               'parent_field_id': field.id,
               if (columnValidationRules.isNotEmpty)
                 'validation_rules': columnValidationRules,
-            });
+            };
+            dbFields.add(_sanitizeFieldPayload(rawColumnRow));
 
             if (column.type == FormFieldType.dropdown) {
               for (
@@ -693,7 +753,7 @@ class FormBuilderScreenController extends ChangeNotifier {
     if (_disposed) return success;
     isSaving = false;
     if (success) hasUnsavedChanges = false;
-    markChanged();
+    notifyListeners();
     await loadTemplateList();
     return success;
   }
@@ -705,7 +765,7 @@ class FormBuilderScreenController extends ChangeNotifier {
     if (_disposed) return success;
     if (success) {
       formStatus = 'published';
-      markChanged();
+      notifyListeners();
       await loadTemplateList();
 
       await AuditLogService().log(
@@ -730,7 +790,7 @@ class FormBuilderScreenController extends ChangeNotifier {
     if (_disposed) return success;
     if (success) {
       formStatus = 'pushed_to_mobile';
-      markChanged();
+      notifyListeners();
       await loadTemplateList();
 
       await AuditLogService().log(
@@ -755,7 +815,7 @@ class FormBuilderScreenController extends ChangeNotifier {
     if (_disposed) return success;
     if (success) {
       formStatus = 'archived';
-      markChanged();
+      notifyListeners();
       await loadTemplateList();
 
       await AuditLogService().log(
@@ -780,7 +840,7 @@ class FormBuilderScreenController extends ChangeNotifier {
     if (_disposed) return success;
     if (success) {
       formStatus = 'draft';
-      markChanged();
+      notifyListeners();
       await loadTemplateList();
     }
     return success;
@@ -793,7 +853,7 @@ class FormBuilderScreenController extends ChangeNotifier {
     if (_disposed) return success;
     if (success) {
       formStatus = 'draft';
-      markChanged();
+      notifyListeners();
       await loadTemplateList();
     }
     return success;
@@ -806,8 +866,7 @@ class FormBuilderScreenController extends ChangeNotifier {
         order: sections.length,
       ),
     );
-    hasUnsavedChanges = true;
-    markChanged(preserveScroll: true);
+    markChanged();
   }
 
   void addField(int sectionIndex) {
@@ -820,8 +879,7 @@ class FormBuilderScreenController extends ChangeNotifier {
     );
     activeSectionIdx = sectionIndex;
     activeFieldIdx = section.fields.length - 1;
-    hasUnsavedChanges = true;
-    markChanged(preserveScroll: true);
+    markChanged();
   }
 
   void addSystemField(int sectionIndex, FormFieldType type) {
@@ -876,23 +934,20 @@ class FormBuilderScreenController extends ChangeNotifier {
     );
     activeSectionIdx = sectionIndex;
     activeFieldIdx = section.fields.length - 1;
-    hasUnsavedChanges = true;
-    markChanged(preserveScroll: true);
+    markChanged();
   }
 
   void removeField(int sectionIndex, int fieldIndex) {
     sections[sectionIndex].fields.removeAt(fieldIndex);
     activeFieldIdx = null;
-    hasUnsavedChanges = true;
-    markChanged(preserveScroll: true);
+    markChanged();
   }
 
   void removeSection(int sectionIndex) {
     sections.removeAt(sectionIndex);
     activeSectionIdx = null;
     activeFieldIdx = null;
-    hasUnsavedChanges = true;
-    markChanged(preserveScroll: true);
+    markChanged();
   }
 
   void duplicateField(int sectionIndex, int fieldIndex) {
@@ -917,8 +972,7 @@ class FormBuilderScreenController extends ChangeNotifier {
       ),
     );
     activeFieldIdx = fieldIndex + 1;
-    hasUnsavedChanges = true;
-    markChanged(preserveScroll: true);
+    markChanged();
   }
 
   void moveField(int sectionIndex, int fieldIndex, int direction) {
@@ -928,8 +982,7 @@ class FormBuilderScreenController extends ChangeNotifier {
     final field = sections[sectionIndex].fields.removeAt(fieldIndex);
     sections[sectionIndex].fields.insert(nextIndex, field);
     activeFieldIdx = nextIndex;
-    hasUnsavedChanges = true;
-    markChanged(preserveScroll: true);
+    markChanged();
   }
 
   void moveSection(int sectionIndex, int direction) {
@@ -938,8 +991,7 @@ class FormBuilderScreenController extends ChangeNotifier {
     final section = sections.removeAt(sectionIndex);
     sections.insert(nextIndex, section);
     activeSectionIdx = nextIndex;
-    hasUnsavedChanges = true;
-    markChanged(preserveScroll: true);
+    markChanged();
   }
 
   void moveColumn(base.BuilderField field, int columnIndex, int direction) {
@@ -947,8 +999,7 @@ class FormBuilderScreenController extends ChangeNotifier {
     if (nextIndex < 0 || nextIndex >= field.columns.length) return;
     final column = field.columns.removeAt(columnIndex);
     field.columns.insert(nextIndex, column);
-    hasUnsavedChanges = true;
-    markChanged(preserveScroll: true);
+    markChanged();
   }
 
   @override
