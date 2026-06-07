@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
+import 'package:sappiire/web/widgets/confirm_dialog.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
 import 'package:sappiire/web/controllers/manage_staff_controller.dart';
 
@@ -60,32 +61,17 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
   }
 
   Future<void> _deactivateAccount(String cswd_id, String username) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Deactivate Account'),
-        content: Text(
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Deactivate Account',
+      message:
           'Deactivating "@$username" will prevent them from logging in. '
           'Their data and audit history are preserved. Continue?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            child: const Text(
-              'Deactivate',
-              style: TextStyle(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
+      confirmLabel: 'Deactivate',
+      confirmColor: Colors.orange,
     );
 
-    if (confirmed != true) return;
+    if (!confirmed) return;
 
     await _controller.deactivateAccount(
       cswdId: cswd_id,

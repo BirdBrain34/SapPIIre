@@ -15,6 +15,8 @@ import 'package:sappiire/services/forms/submission_service.dart';
 import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
+import 'package:sappiire/web/widgets/web_header_button.dart';
+import 'package:sappiire/web/widgets/confirm_dialog.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
 import 'package:sappiire/web/screen/web_login_screen.dart';
@@ -419,30 +421,15 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     if (group == null) return;
 
     final count = group.submissions.length;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete entire applicant?'),
-        content: Text(
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Delete entire applicant?',
+      message:
           'This will permanently delete all $count form(s) for ${group.displayName}. This action cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text(
-              'Delete All',
-              style: TextStyle(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
+      confirmLabel: 'Delete All',
+      confirmColor: Colors.red,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
 
     // Delete all submissions for this applicant.
     final idsToDelete = <dynamic>[];
@@ -538,10 +525,10 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       displayName: widget.displayName,
       onLogout: _handleLogout,
       headerActions: [
-        _buildHeaderButton('Refresh', Icons.refresh, onPressed: _loadData),
+        WebHeaderButton('Refresh', Icons.refresh, onPressed: _loadData),
         if (_selectedSubmission != null &&
             _rightPanelView == _RightPanelView.form)
-          _buildHeaderButton(
+          WebHeaderButton(
             'Delete',
             Icons.delete,
             onPressed: _deleteSubmission,
@@ -1434,29 +1421,6 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildHeaderButton(
-    String label,
-    IconData icon, {
-    VoidCallback? onPressed,
-  }) {
-    return OutlinedButton.icon(
-      onPressed: onPressed ?? () {},
-      icon: Icon(icon, color: AppColors.primaryBlue),
-      label: Text(
-        label,
-        style: const TextStyle(
-          color: AppColors.primaryBlue,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-      style: OutlinedButton.styleFrom(
-        side: const BorderSide(color: AppColors.buttonOutlineBlue),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }

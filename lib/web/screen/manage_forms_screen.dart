@@ -25,6 +25,8 @@ import 'package:sappiire/services/forms/submission_service.dart';
 import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
+import 'package:sappiire/web/widgets/web_header_button.dart';
+import 'package:sappiire/web/widgets/confirm_dialog.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
 import 'package:sappiire/web/screen/web_login_screen.dart';
@@ -160,28 +162,14 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     }
   }
 
-  Future<bool> _confirmTemplateSwitch(FormTemplate template) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Switch forms?'),
-        content: Text(
+  Future<bool> _confirmTemplateSwitch(FormTemplate template) {
+    return showConfirmDialog(
+      context,
+      title: 'Switch forms?',
+      message:
           'Changing the selected form while a session is active will update the live view to "${template.formName}". Continue?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Switch'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Switch',
     );
-
-    return confirmed == true;
   }
 
   // Start a new QR session
@@ -642,14 +630,14 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         onLogout: _handleLogout,
         headerActions: [
           // "Open Customer Display" button always visible
-          _buildHeaderButton(
+          WebHeaderButton(
             'Open Customer Display',
             Icons.desktop_windows,
             onPressed: _openCustomerDisplay,
           ),
           if (_sessionStarted) ...[
             const SizedBox(width: 8),
-            _buildHeaderButton(
+            WebHeaderButton(
               'New Session',
               Icons.refresh,
               onPressed: _createNewSession,
@@ -1210,29 +1198,6 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
               ),
             );
         },
-      ),
-    );
-  }
-
-  Widget _buildHeaderButton(
-    String label,
-    IconData icon, {
-    VoidCallback? onPressed,
-  }) {
-    return OutlinedButton.icon(
-      onPressed: onPressed ?? () {},
-      icon: Icon(icon, color: AppColors.primaryBlue),
-      label: Text(
-        label,
-        style: const TextStyle(
-          color: AppColors.primaryBlue,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-      style: OutlinedButton.styleFrom(
-        side: const BorderSide(color: AppColors.buttonOutlineBlue),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
