@@ -1,0 +1,25 @@
+# Stage 1: Build the Flutter Web application
+FROM debian:bookworm-slim AS build-env
+
+# Install fundamental system dependencies
+RUN apt-get update && apt-get install -y curl git unzip xz-utils zip libglu1-mesa
+
+# Download and configure the stable Flutter SDK
+RUN git clone https://github.com/flutter/flutter.git /usr/local/flutter
+ENV PATH="/usr/local/flutter/bin:/usr/local/flutter/bin/cache/dart-sdk/bin:${PATH}"
+RUN flutter doctor
+
+# Copy your local repository workspace files into the builder container
+WORKDIR /app
+COPY . .
+
+# Run the Flutter web build process using HTML rendering for maximum hardware compatibility
+RUN flutter build web --web-renderer html --release
+
+# Stage 2: Serve the compiled static web files via Nginx
+FROM nginx:alpine
+COPY --from=build-env /app/build/web /usr/share/nginx/html
+
+# Expose standard web traffic port (Railway will bind to this automatically)
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
