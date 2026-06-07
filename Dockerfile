@@ -6,7 +6,12 @@ RUN apt-get update && apt-get install -y curl git unzip xz-utils zip libglu1-mes
 
 # Download and configure the stable Flutter SDK
 RUN git clone https://github.com/flutter/flutter.git /usr/local/flutter
-ENV PATH="/usr/local/flutter/bin:/usr/local/flutter/bin/cache/dart-sdk/bin:${PATH}"
+
+# Explicitly set the path environment variables individually
+ENV PATH="/usr/local/flutter/bin:${PATH}"
+ENV PATH="/usr/local/flutter/bin/cache/dart-sdk/bin:${PATH}"
+
+# Run doctor to download production artifacts
 RUN flutter doctor
 
 # Copy your local repository workspace files into the builder container
