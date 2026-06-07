@@ -413,7 +413,12 @@ class FormBuilderService {
       }
 
       if (options.isNotEmpty) {
-        await _supabase.from('form_field_options').insert(options);
+        final seen = <String>{};
+        final uniqueOptions = options.where((opt) {
+          final key = '${opt['field_id']}__${(opt['option_value'] as String?)?.trim().toLowerCase() ?? ''}';
+          return seen.add(key);
+        }).toList();
+        await _supabase.from('form_field_options').insert(uniqueOptions);
       }
 
       if (conditions.isNotEmpty) {

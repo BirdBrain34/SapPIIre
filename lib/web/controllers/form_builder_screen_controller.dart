@@ -683,16 +683,19 @@ class FormBuilderScreenController extends ChangeNotifier {
         }
 
         if (field.hasOptions) {
+          final seenValues = <String>{};
           for (
             var optionIndex = 0;
             optionIndex < field.options.length;
             optionIndex++
           ) {
             final option = field.options[optionIndex];
+            final slugged = base.slugify(option.label);
+            if (!seenValues.add(slugged)) continue; // skip duplicate slugs
             dbOptions.add({
               'option_id': option.id,
               'field_id': field.id,
-              'option_value': base.slugify(option.label),
+              'option_value': slugged,
               'option_label': option.label,
               'option_order': optionIndex,
               'is_default': false,

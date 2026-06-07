@@ -409,6 +409,11 @@ class _DropdownField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final current = controller.getValue(field.fieldName)?.toString();
+
+    // Deduplicate options by value to prevent DropdownButton assertion crash.
+    final seen = <String>{};
+    final uniqueOptions = field.options.where((o) => seen.add(o.value)).toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -422,29 +427,23 @@ class _DropdownField extends StatelessWidget {
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
-              value: field.options.any((o) => o.value == current)
-                  ? current
-                  : null,
-              hint: Text(
+              value: uniqueOptions.any((o) => o.value == current) ? current : null,
+              hint: const Text(
                 'Select...',
-                style: const TextStyle(fontSize: 13, color: Colors.black38),
+                style: TextStyle(fontSize: 13, color: Colors.black38),
               ),
               isExpanded: true,
-              items: field.options
+              items: uniqueOptions   // ← was field.options
                   .map(
                     (o) => DropdownMenuItem(
                       value: o.value,
-                      child: Text(
-                        o.label,
-                        style: const TextStyle(fontSize: 13),
-                      ),
+                      child: Text(o.label, style: const TextStyle(fontSize: 13)),
                     ),
                   )
                   .toList(),
               onChanged: isReadOnly
                   ? null
-                  : (v) =>
-                        controller.setValue(field.fieldName, v, notify: true),
+                  : (v) => controller.setValue(field.fieldName, v, notify: true),
             ),
           ),
         ),
@@ -1937,26 +1936,33 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
           ),
         );
 
-      case FormFieldType.dropdown:
-        return DropdownButtonFormField<String>(
-          value: currentValue.isEmpty ? null : currentValue,
-          items: col.options.map((opt) {
-            return DropdownMenuItem(
-              value: opt.value,
-              child: Text(opt.label, style: const TextStyle(fontSize: 13)),
-            );
-          }).toList(),
-          decoration: _inputDeco(hint: 'Select...'),
-          onChanged: (v) {
-            widget.controller.updateMemberTableCell(
-              widget.field.fieldName,
-              rowIdx,
-              col.fieldName,
-              v ?? '',
-            );
-            setState(() {});
-          },
-        );
+        case FormFieldType.dropdown:
+          final seenVals = <String>{};
+          final uniqueOpts = col.options
+              .where((opt) => seenVals.add(opt.value))
+              .toList();
+          final dropVal = uniqueOpts.any((o) => o.value == currentValue)
+              ? currentValue
+              : null;
+          return DropdownButtonFormField<String>(
+            value: (dropVal == null || dropVal.isEmpty) ? null : dropVal,
+            items: uniqueOpts.map((opt) {
+              return DropdownMenuItem(
+                value: opt.value,
+                child: Text(opt.label, style: const TextStyle(fontSize: 13)),
+              );
+            }).toList(),
+            decoration: _inputDeco(hint: 'Select...'),
+            onChanged: (v) {
+              widget.controller.updateMemberTableCell(
+                widget.field.fieldName,
+                rowIdx,
+                col.fieldName,
+                v ?? '',
+              );
+              setState(() {});
+            },
+          );
 
       default:
         final controller = _getController(rowIdx, col.fieldName, currentValue);

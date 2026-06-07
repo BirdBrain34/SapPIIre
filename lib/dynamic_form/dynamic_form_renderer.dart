@@ -46,6 +46,14 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
     }
   }
 
+  FormFieldModel _dedupedField(FormFieldModel field) {
+    if (field.options.isEmpty) return field;
+    final seen = <String>{};
+    final unique = field.options.where((o) => seen.add(o.value)).toList();
+    if (unique.length == field.options.length) return field;
+    return field.copyWith(options: unique);
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -157,7 +165,8 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
                   child: isHighlighted
                       ? _buildHighlightedField(f)
                       : DynamicFieldWidget(
-                          field: f,
+                          field: _dedupedField(f),
+                          
                           controller: _ctrl,
                           isReadOnly: widget.isReadOnly,
                           showCheckbox: widget.showCheckboxes,
@@ -200,7 +209,8 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
             ),
           ),
           DynamicFieldWidget(
-            field: field,
+            field: _dedupedField(field),
+            
             controller: _ctrl,
             isReadOnly: widget.isReadOnly,
             showCheckbox: widget.showCheckboxes,
