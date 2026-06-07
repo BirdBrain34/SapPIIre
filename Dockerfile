@@ -13,8 +13,11 @@ RUN flutter doctor
 WORKDIR /app
 COPY . .
 
-# Run the Flutter web build process using HTML rendering for maximum hardware compatibility
-RUN flutter build web --web-renderer html --release
+# Allow Flutter to run smoothly as root inside the Docker environment
+RUN flutter config --no-analytics
+
+# Run the web compilation with perfectly formatted flags
+RUN flutter build web --web-renderer=html --release
 
 # Stage 2: Serve the compiled static web files via Nginx
 FROM nginx:alpine
