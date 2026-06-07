@@ -53,7 +53,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   Map<String, int> get _countsByFormType => _controller.countsByFormType;
   int get _totalCount => _controller.totalCount;
   List<String> get _availableFormTypes => _controller.availableFormTypes;
-  bool get _isLoadingCounts => _controller.isLoadingCounts;
   bool get _isLoadingInsights => _controller.isLoadingInsights;
   Map<String, int> get _staffWorkload => _controller.staffWorkload;
   Map<String, int> get _genderRatio => _controller.genderRatio;
@@ -464,18 +463,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           return Container(
             width: double.infinity,
             padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: AppColors.cardBg,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.cardBorder),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.06),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
+            decoration: AppColors.cardDecoration(),
             child: Text(
               "No data yet for '${config.fieldLabel}'",
               style: const TextStyle(color: AppColors.textMuted),
@@ -499,7 +487,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               expand: false,
             );
           case 'hbar':
-            return SimpleHorizontalBarChart(
+            return SimpleBarChart(
               title: config.fieldLabel,
               data: data,
               primaryColor: AppColors.highlight,
@@ -521,18 +509,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(36),
-      decoration: BoxDecoration(
-        color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.cardBorder),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+      decoration: AppColors.cardDecoration(),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -655,18 +632,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.cardBorder),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+      decoration: AppColors.cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -693,7 +659,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               ),
             )
           else
-            SimpleHorizontalBarChart(
+            SimpleBarChart(
               title: 'Submissions per Worker',
               data: _workerAnalytics,
               primaryColor: AppColors.highlight,
@@ -968,7 +934,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ),
                   )
                 else
-                  _buildInfoCard(
+                  const _InfoCard(
                     title: 'Eligibility Frequency Check',
                     body: 'No high-frequency assistance flags this year.',
                   ),
@@ -980,7 +946,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     primaryColor: AppColors.highlight,
                   )
                 else
-                  _buildInfoCard(
+                  const _InfoCard(
                     title: 'Cross-Service History',
                     body: 'No service history found for this client yet.',
                   ),
@@ -1026,7 +992,18 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Widget _buildInfoCard({required String title, required String body}) {
+}
+
+/// Light informational card showing a bold title and muted body line, used as
+/// an empty-state placeholder for dashboard sections.
+class _InfoCard extends StatelessWidget {
+  final String title;
+  final String body;
+
+  const _InfoCard({required this.title, required this.body});
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
@@ -1246,7 +1223,7 @@ class _FormCardsSectionState extends State<_FormCardsSection> {
         ),
         const SizedBox(height: 16),
         if (visibleCards.isEmpty)
-          _buildInfoCard(
+          const _InfoCard(
             title: 'No matching forms',
             body: 'Try a different search term to find a form.',
           )
@@ -1366,34 +1343,6 @@ class _FormCardsSectionState extends State<_FormCardsSection> {
     );
   }
 
-  Widget _buildInfoCard({required String title, required String body}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.pageBg,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textDark,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            body,
-            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _FormCardItem {

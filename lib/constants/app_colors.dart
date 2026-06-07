@@ -45,4 +45,22 @@ class AppColors {
   // Legacy colors kept so older mobile widgets continue to compile.
   static const Color buttonPurple = Color(0xFF673AB7);
   static const Color buttonOutlineBlue = Color(0xFF42A5F5);
+
+  /// Standard white card surface used across the web admin screens:
+  /// rounded corners, a subtle border, and a soft drop shadow. Shared so the
+  /// card look stays consistent and is defined in one place.
+  static BoxDecoration cardDecoration({double radius = 16}) {
+    return BoxDecoration(
+      color: cardBg,
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: cardBorder),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.06),
+          blurRadius: 12,
+          offset: const Offset(0, 4),
+        ),
+      ],
+    );
+  }
 }

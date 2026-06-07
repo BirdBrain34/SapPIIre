@@ -537,7 +537,7 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: _selectedRequestedRole,
+          initialValue: _selectedRequestedRole,
           dropdownColor: Color(0xFF0D1B4E),
           style: const TextStyle(color: Colors.white, fontSize: 14),
           decoration: InputDecoration(

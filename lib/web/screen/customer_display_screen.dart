@@ -2,6 +2,7 @@
 ///
 /// The screen listens to Supabase Realtime for station updates and switches
 /// between a standby view and a QR view for the current form session.
+library;
 
 import 'dart:async';
 import 'package:flutter/material.dart';

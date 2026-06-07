@@ -3,8 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/services/auth/web_auth_service.dart';
-import 'package:sappiire/web/controllers/form_builder_screen_controller.dart'
-    hide FormFieldType;
+import 'package:sappiire/web/controllers/form_builder_screen_controller.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
 import 'package:sappiire/web/widgets/form_builder_field_card.dart';
@@ -278,17 +277,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
-  void _showSystemBlockPicker(int sectionIndex) =>
-      showSystemBlockPicker(this, sectionIndex);
-
   void _showSumColumnPicker(BuilderField field) =>
       showSumColumnPicker(this, field);
-
-  void _showColumnPicker(
-    BuilderField field,
-    String tableKey,
-    List<BuilderColumn> columns,
-  ) => showColumnPicker(this, field, tableKey, columns);
 
   @override
   void dispose() {
@@ -300,23 +290,4 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
 
   @override
   Widget build(BuildContext context) => buildFormBuilderScreen(this);
-
-  Widget _buildBuilderCanvas() => buildBuilderCanvas(this);
-
-  Widget _buildCanvasToolbar() => buildCanvasToolbar(this);
-
-  List<Widget> _buildAllSections() => buildAllSections(this);
-
-  Widget _buildAddSectionButton() => buildAddSectionButton(this);
-
-  Widget _buildEmptyState() => buildEmptyState(this);
-
-  List<Widget> _buildHeaderActions() => buildHeaderActions(this);
-
-  Widget _headerBtn(
-    String label,
-    IconData icon, {
-    VoidCallback? onPressed,
-    Color? color,
-  }) => headerBtn(this, label, icon, onPressed: onPressed, color: color);
 }

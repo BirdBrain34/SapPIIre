@@ -33,7 +33,7 @@ class ApplicantsController {
       return 'Unknown Applicant (Encrypted)';
     }
 
-    final dataMap = Map<String, dynamic>.from(data as Map);
+    final dataMap = Map<String, dynamic>.from(data);
 
     if (dataMap['__applicant_name'] is Map) {
       final n = dataMap['__applicant_name'] as Map<String, dynamic>;
@@ -125,7 +125,7 @@ class ApplicantsController {
 
     for (final candidate in directMapCandidates) {
       if (candidate is Map) {
-        final name = formatName(Map<dynamic, dynamic>.from(candidate as Map));
+        final name = formatName(Map<dynamic, dynamic>.from(candidate));
         if (name != null && name.trim().isNotEmpty) return name;
         continue;
       }

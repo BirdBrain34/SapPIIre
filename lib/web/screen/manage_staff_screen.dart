@@ -2,13 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
-import 'package:sappiire/web/screen/manage_forms_screen.dart';
-import 'package:sappiire/web/screen/dashboard_screen.dart';
-import 'package:sappiire/web/screen/create_staff_screen.dart';
-import 'package:sappiire/web/screen/applicants_screen.dart';
-import 'package:sappiire/web/screen/form_builder_screen.dart';
-import 'package:sappiire/web/screen/audit_logs_screen.dart';
-import 'package:sappiire/web/utils/page_transitions.dart';
+import 'package:sappiire/web/widgets/confirm_dialog.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
 import 'package:sappiire/web/controllers/manage_staff_controller.dart';
 
@@ -67,32 +61,17 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
   }
 
   Future<void> _deactivateAccount(String cswd_id, String username) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Deactivate Account'),
-        content: Text(
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Deactivate Account',
+      message:
           'Deactivating "@$username" will prevent them from logging in. '
           'Their data and audit history are preserved. Continue?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            child: const Text(
-              'Deactivate',
-              style: TextStyle(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
+      confirmLabel: 'Deactivate',
+      confirmColor: Colors.orange,
     );
 
-    if (confirmed != true) return;
+    if (!confirmed) return;
 
     await _controller.deactivateAccount(
       cswdId: cswd_id,
@@ -150,13 +129,23 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                   children: [
                     // Pending Approvals
                     if (_controller.pendingAccounts.isNotEmpty) ...[
-                      const Text(
-                        "â³ Pending Approval",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textDark,
-                        ),
+                      const Row(
+                        children: [
+                          Icon(
+                            Icons.hourglass_empty,
+                            color: AppColors.textDark,
+                            size: 20,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            "Pending Approval",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textDark,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 16),
                       ..._controller.pendingAccounts.map(
@@ -224,13 +213,23 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                     ],
 
                     // Active Accounts
-                    const Text(
-                      "ðŸ‘¥ All Staff",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textDark,
-                      ),
+                    const Row(
+                      children: [
+                        Icon(
+                          Icons.groups,
+                          color: AppColors.textDark,
+                          size: 20,
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          "All Staff",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 16),
                     Container(
@@ -243,7 +242,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
                         itemCount: _controller.activeAccounts.length,
-                        separatorBuilder: (_, __) =>
+                        separatorBuilder: (_, _) =>
                             Divider(height: 1, color: AppColors.cardBorder),
                         itemBuilder: (_, i) {
                           final acc = _controller.activeAccounts[i];
