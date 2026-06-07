@@ -18,9 +18,10 @@ import 'package:sappiire/mobile/screens/auth/ProfileScreen.dart';
 import 'package:sappiire/mobile/screens/auth/HistoryScreen.dart';
 import 'package:sappiire/mobile/widgets/unsaved_changes_dialog.dart';
 import 'package:sappiire/mobile/widgets/logout_confirmation_dialog.dart';
-import 'package:sappiire/mobile/widgets/TermsandCondition.dart';
+import 'package:sappiire/mobile/widgets/TermsAndCondition.dart';
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/mobile/screens/auth/NotificationScreen.dart';
+
 
 
 
