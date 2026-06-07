@@ -16,7 +16,7 @@ class StaffEmailService {
     try {
       await _supabase.auth.signInWithOtp(
         email: _normalizedEmail(email),
-        shouldCreateUser: true,
+        shouldCreateUser: false,  // ← was true
       );
       return {
         'success': true,

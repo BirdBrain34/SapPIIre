@@ -51,40 +51,51 @@ class _NewStaffSetupScreenState extends State<NewStaffSetupScreen> {
     super.dispose();
   }
 
-  Future<void> _handleContinueFromEmail() async {
-    final email = _emailController.text.trim();
+Future<void> _handleContinueFromEmail() async {
+  final email = _emailController.text.trim();
 
-    if (email.isEmpty) {
-      setState(() => _errorMessage = 'Please enter your email address.');
-      return;
-    }
+  if (email.isEmpty) {
+    setState(() => _errorMessage = 'Please enter your email address.');
+    return;
+  }
 
-    if (!_emailRegex.hasMatch(email)) {
-      setState(() => _errorMessage = 'Please enter a valid email address.');
-      return;
-    }
+  if (!_emailRegex.hasMatch(email)) {
+    setState(() => _errorMessage = 'Please enter a valid email address.');
+    return;
+  }
 
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-      _infoMessage = null;
-    });
+  setState(() {
+    _isLoading = true;
+    _errorMessage = null;
+    _infoMessage = null;
+  });
 
-    final result = await _emailService.validatePendingSetupEmail(email: email);
+  final result = await _emailService.validatePendingSetupEmail(email: email);
+
+  if (!mounted) return;
+
+  if (result['success'] == true) {
+    // Send the OTP now that the account is confirmed to exist
+    final otpResult = await _emailService.sendAccountCreationOtp(email: email);
 
     if (!mounted) return;
     setState(() => _isLoading = false);
 
-    if (result['success'] == true) {
+    if (otpResult['success'] == true) {
       setState(() {
         _step = 2;
-        _infoMessage =
-            'Enter the original OTP sent when your account was created.';
+        _infoMessage = 'A setup code was sent to your email.';
       });
     } else {
-      setState(() => _errorMessage = result['message']?.toString());
+      setState(() => _errorMessage = otpResult['message']?.toString());
     }
+  } else {
+    setState(() {
+      _isLoading = false;
+      _errorMessage = result['message']?.toString();
+    });
   }
+}
 
   Future<void> _handleVerifyOtp() async {
     if (!_otpRegex.hasMatch(_otpController.text.trim())) {
