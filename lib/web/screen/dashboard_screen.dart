@@ -53,7 +53,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   Map<String, int> get _countsByFormType => _controller.countsByFormType;
   int get _totalCount => _controller.totalCount;
   List<String> get _availableFormTypes => _controller.availableFormTypes;
-  bool get _isLoadingCounts => _controller.isLoadingCounts;
   bool get _isLoadingInsights => _controller.isLoadingInsights;
   Map<String, int> get _staffWorkload => _controller.staffWorkload;
   Map<String, int> get _genderRatio => _controller.genderRatio;

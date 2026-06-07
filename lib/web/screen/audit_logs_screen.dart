@@ -7,12 +7,6 @@ import 'package:sappiire/web/widgets/web_shell.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
 import 'package:sappiire/web/screen/web_login_screen.dart';
-import 'package:sappiire/web/screen/dashboard_screen.dart';
-import 'package:sappiire/web/screen/manage_forms_screen.dart';
-import 'package:sappiire/web/screen/manage_staff_screen.dart';
-import 'package:sappiire/web/screen/create_staff_screen.dart';
-import 'package:sappiire/web/screen/applicants_screen.dart';
-import 'package:sappiire/web/screen/form_builder_screen.dart';
 
 class AuditLogsScreen extends StatefulWidget {
   final String cswd_id;
@@ -785,7 +779,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
           Expanded(
             child: ListView.separated(
               itemCount: _displayLogs.length,
-              separatorBuilder: (_, __) =>
+              separatorBuilder: (_, _) =>
                   const Divider(height: 1, color: AppColors.cardBorder),
               itemBuilder: (_, i) => _buildLogRow(_displayLogs[i]),
             ),
@@ -1128,7 +1122,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
                 child: ListView.separated(
                   shrinkWrap: true,
                   itemCount: grouped.length,
-                  separatorBuilder: (_, __) =>
+                  separatorBuilder: (_, _) =>
                       const Divider(height: 1, color: AppColors.cardBorder),
                   itemBuilder: (_, i) {
                     final g = grouped[i];

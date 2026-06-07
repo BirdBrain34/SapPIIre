@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/models/form_template_models.dart';
-import 'package:sappiire/web/controllers/form_builder_screen_controller.dart'
-    hide FormFieldType;
+import 'package:sappiire/web/controllers/form_builder_screen_controller.dart';
 
 class FormBuilderFieldCard extends StatelessWidget {
   const FormBuilderFieldCard({
@@ -397,7 +396,7 @@ class FormBuilderFieldCard extends StatelessWidget {
             ),
             Switch(
               value: field.isRequired,
-              activeColor: AppColors.highlight,
+              activeThumbColor: AppColors.highlight,
               onChanged: (value) {
                 field.isRequired = value;
                 controller.markChanged();
@@ -464,7 +463,7 @@ class FormBuilderFieldCard extends StatelessWidget {
               const Spacer(),
               Switch(
                 value: hasCondition,
-                activeColor: Colors.orange,
+                activeThumbColor: Colors.orange,
                 onChanged: triggerCandidates.isEmpty
                     ? null
                     : (value) {
@@ -753,7 +752,7 @@ class FormBuilderFieldCard extends StatelessWidget {
               const SizedBox(width: 8),
               Switch(
                 value: hasLink,
-                activeColor: AppColors.highlight,
+                activeThumbColor: AppColors.highlight,
                 onChanged: (value) {
                   if (!value) {
                     field.ageFromFieldId = null;
@@ -870,7 +869,7 @@ class FormBuilderFieldCard extends StatelessWidget {
               const Spacer(),
               Switch(
                 value: hasLink,
-                activeColor: AppColors.highlight,
+                activeThumbColor: AppColors.highlight,
                 onChanged: (value) {
                   if (!value) {
                     column.ageFromColumnId = null;
@@ -1149,7 +1148,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                       flex: 3,
                       child: TextField(
                         focusNode: controller.focusNode('col_${column.id}'),
-                        controller: this.controller.ctrl(
+                        controller: controller.ctrl(
                           'col_${column.id}',
                           column.label,
                         ),
@@ -1431,7 +1430,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                       flex: 3,
                       child: TextField(
                         focusNode: controller.focusNode('col_${column.id}'),
-                        controller: this.controller.ctrl(
+                        controller: controller.ctrl(
                           'col_${column.id}',
                           column.label,
                         ),

@@ -1,5 +1,6 @@
 /// Web screen for browsing, resolving, and editing applicant submissions.
 /// Uses DynamicFormRenderer so any saved form template can be displayed.
+library;
 
 import 'dart:async';
 
@@ -47,11 +48,8 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   Map<String, dynamic>? _selectedSubmission;
   FormTemplate? _activeTemplate;
   FormStateController? _viewCtrl;
-  FormStateController? _editCtrl;
 
   bool _isLoading = true;
-  bool _isEditMode = false;
-  bool _isSaving = false;
   bool _isLoadingSubmission = false;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -204,7 +202,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
 
         final existingData = sub['data'];
         final dataMap = existingData is Map
-            ? Map<String, dynamic>.from(existingData as Map)
+            ? Map<String, dynamic>.from(existingData)
             : <String, dynamic>{};
         dataMap['__session_id'] = sessionId;
         dataMap['__user_id'] = userId;
@@ -341,7 +339,6 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         (submissionToOpen['intake_reference'] as String?) ?? '';
 
     _viewCtrl?.dispose();
-    _editCtrl?.dispose();
 
     if (template == null) {
       if (loadToken != null && loadToken != _submissionLoadToken) {
@@ -352,14 +349,11 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         _selectedSubmission = submissionToOpen;
         _activeTemplate = null;
         _viewCtrl = null;
-        _editCtrl = null;
-        _isEditMode = false;
       });
       return;
     }
 
     final view = FormStateController(template: template)..loadFromJson(dataMap);
-    final edit = FormStateController(template: template)..loadFromJson(dataMap);
 
     if (loadToken != null && loadToken != _submissionLoadToken) {
       return;
@@ -369,8 +363,6 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       _selectedSubmission = submissionToOpen;
       _activeTemplate = template;
       _viewCtrl = view;
-      _editCtrl = edit;
-      _isEditMode = false;
     });
   }
 
@@ -400,81 +392,6 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     return result['data'] as Map<String, dynamic>;
   }
 
-  // Save the edited submission.
-  Future<void> _saveEdit() async {
-    if (_editCtrl == null || _selectedSubmission == null) return;
-    setState(() => _isSaving = true);
-    try {
-      final updatedData = _editCtrl!.toJson();
-      final existingRaw = _selectedSubmission!['data'];
-      final existingData = existingRaw is Map
-          ? Map<String, dynamic>.from(existingRaw)
-          : <String, dynamic>{};
-
-      // Preserve metadata keys such as __applicant_name and __session_id.
-      for (final entry in existingData.entries) {
-        if (!entry.key.startsWith('__')) continue;
-        updatedData.putIfAbsent(entry.key, () => entry.value);
-      }
-
-      // Preserve computed values if they already exist in storage.
-      final template = _activeTemplate;
-      if (template != null) {
-        for (final field in template.allFields) {
-          if (field.fieldType != FormFieldType.computed) continue;
-          if (updatedData.containsKey(field.fieldName)) continue;
-
-          final existingValue = existingData[field.fieldName];
-          if (existingValue == null) continue;
-          if (existingValue.toString().trim().isEmpty) continue;
-
-          updatedData[field.fieldName] = existingValue;
-        }
-      }
-
-      await _submissionService.updateClientSubmission(
-        submissionId: _selectedSubmission!['id'],
-        data: updatedData,
-        intakeReference: _intakeRefCtrl.text.trim().isEmpty
-            ? null
-            : _intakeRefCtrl.text.trim(),
-        editorId: widget.cswd_id,
-      );
-
-      await AuditLogService().log(
-        actionType: kAuditSubmissionEdited,
-        category: kCategorySubmission,
-        severity: kSeverityInfo,
-        actorId: widget.cswd_id,
-        actorName: widget.displayName,
-        actorRole: widget.role,
-        targetType: 'client_submission',
-        targetId: _selectedSubmission!['id'].toString(),
-        targetLabel: _getApplicantName(_selectedSubmission!),
-        details: {'form_type': _selectedSubmission!['form_type']},
-      );
-
-      await _loadData();
-      if (!mounted) return;
-
-      setState(() {
-        _isEditMode = false;
-        _isSaving = false;
-      });
-    } catch (e) {
-      debugPrint('[ApplicantsScreen/_saveEdit] Error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to save changes: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        setState(() => _isSaving = false);
-      }
-    }
-  }
-
   Future<void> _deleteSubmission() async {
     if (_selectedSubmission == null) return;
 
@@ -488,9 +405,6 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         _activeTemplate = null;
         _viewCtrl?.dispose();
         _viewCtrl = null;
-        _editCtrl?.dispose();
-        _editCtrl = null;
-        _isEditMode = false;
         _rightPanelView = _RightPanelView.records;
       });
 
@@ -556,9 +470,6 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       _activeTemplate = null;
       _viewCtrl?.dispose();
       _viewCtrl = null;
-      _editCtrl?.dispose();
-      _editCtrl = null;
-      _isEditMode = false;
     });
     await _loadData();
   }
@@ -629,65 +540,12 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       headerActions: [
         _buildHeaderButton('Refresh', Icons.refresh, onPressed: _loadData),
         if (_selectedSubmission != null &&
-            _rightPanelView == _RightPanelView.form) ...[
-          if (!_isEditMode)
-            _buildHeaderButton(
-              'Edit',
-              Icons.edit,
-              onPressed: () => setState(() => _isEditMode = true),
-            ),
-          if (_isEditMode) ...[
-            _buildHeaderButton(
-              'Delete',
-              Icons.delete,
-              onPressed: _deleteSubmission,
-            ),
-            const SizedBox(width: 8),
-            ElevatedButton.icon(
-              onPressed: _isSaving ? null : _saveEdit,
-              icon: _isSaving
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.check, color: Colors.white, size: 18),
-              label: const Text(
-                'Save',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 14,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            _buildHeaderButton(
-              'Discard',
-              Icons.close,
-              onPressed: () {
-                _editCtrl?.loadFromJson(
-                  _selectedSubmission!['data'] as Map<String, dynamic>? ?? {},
-                );
-                _intakeRefCtrl.text =
-                    (_selectedSubmission!['intake_reference'] as String?) ?? '';
-                setState(() => _isEditMode = false);
-              },
-            ),
-          ],
-        ],
+            _rightPanelView == _RightPanelView.form)
+          _buildHeaderButton(
+            'Delete',
+            Icons.delete,
+            onPressed: _deleteSubmission,
+          ),
       ],
       onNavigate: (p) => WebNavigator.go(
         context,
@@ -803,7 +661,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                   )
                 : ListView.separated(
                       itemCount: groups.length,
-                      separatorBuilder: (_, __) => Divider(
+                      separatorBuilder: (_, _) => Divider(
                         height: 1,
                         color: Colors.white.withValues(alpha: 0.10),
                         indent: 14,
@@ -833,7 +691,6 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                                 _recordSortOrder = RecordSortOrder.latestFirst;
                                 _selectedSubmission = null;
                                 _activeTemplate = null;
-                                _isEditMode = false;
                               });
                             },
                             child: Container(
@@ -1186,18 +1043,29 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                           children: [
                             const Padding(
                               padding: EdgeInsets.only(left: 6, bottom: 4),
-                              child: Text(
-                                'â†• Date',
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.swap_vert,
+                                    color: Colors.white70,
+                                    size: 12,
+                                  ),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Date',
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                             DropdownButtonFormField<RecordSortOrder>(
                               isExpanded: true,
-                              value: _recordSortOrder,
+                              initialValue: _recordSortOrder,
                               onChanged: (value) {
                                 if (value == null) return;
                                 setState(() {
@@ -1252,18 +1120,29 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                           children: [
                             const Padding(
                               padding: EdgeInsets.only(left: 6, bottom: 4),
-                              child: Text(
-                                'âŠž Type',
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.category,
+                                    color: Colors.white70,
+                                    size: 12,
+                                  ),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Type',
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                             DropdownButtonFormField<String>(
                               isExpanded: true,
-                              value: _formTypeFilter,
+                              initialValue: _formTypeFilter,
                               onChanged: (value) {
                                 if (value == null) return;
                                 setState(() {
@@ -1358,7 +1237,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                   child: ListView.separated(
                       padding: const EdgeInsets.symmetric(vertical: 6),
                       itemCount: records.length,
-                      separatorBuilder: (_, __) => Divider(
+                      separatorBuilder: (_, _) => Divider(
                         height: 1,
                         color: Colors.white.withValues(alpha: 0.10),
                       ),
@@ -1587,7 +1466,6 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     _searchController.dispose();
     _intakeRefCtrl.dispose();
     _viewCtrl?.dispose();
-    _editCtrl?.dispose();
     super.dispose();
   }
 }

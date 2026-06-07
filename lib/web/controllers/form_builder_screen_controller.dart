@@ -977,8 +977,9 @@ class FormBuilderScreenController extends ChangeNotifier {
 
   void moveField(int sectionIndex, int fieldIndex, int direction) {
     final nextIndex = fieldIndex + direction;
-    if (nextIndex < 0 || nextIndex >= sections[sectionIndex].fields.length)
+    if (nextIndex < 0 || nextIndex >= sections[sectionIndex].fields.length) {
       return;
+    }
     final field = sections[sectionIndex].fields.removeAt(fieldIndex);
     sections[sectionIndex].fields.insert(nextIndex, field);
     activeFieldIdx = nextIndex;
