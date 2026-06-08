@@ -526,13 +526,6 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       onLogout: _handleLogout,
       headerActions: [
         WebHeaderButton('Refresh', Icons.refresh, onPressed: _loadData),
-        if (_selectedSubmission != null &&
-            _rightPanelView == _RightPanelView.form)
-          WebHeaderButton(
-            'Delete',
-            Icons.delete,
-            onPressed: _deleteSubmission,
-          ),
       ],
       onNavigate: (p) => WebNavigator.go(
         context,
@@ -1180,26 +1173,6 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                     ],
                   ),
                   const SizedBox(width: 12),
-                  if (!kIsWeb)
-                    OutlinedButton.icon(
-                      onPressed: _deleteApplicant,
-                      icon: const Icon(Icons.delete_outline, size: 18),
-                      label: const Text('Delete'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red.shade300,
-                        side: BorderSide(
-                          color: Colors.red.withValues(alpha: 0.5),
-                          width: 1.5,
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
                 ],
               ),
             ),
