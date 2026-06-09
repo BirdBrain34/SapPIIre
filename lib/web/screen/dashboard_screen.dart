@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
-
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/services/dashboard_analytics_service.dart';
 import 'package:sappiire/services/dashboard_config_service.dart';
 import 'package:sappiire/services/form_template_service.dart';
 import 'package:sappiire/web/components/intake_chart_widgets.dart';
+import 'package:sappiire/web/components/enhanced_chart_widgets.dart';
 import 'package:sappiire/web/controllers/dashboard_controller.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
+import 'package:sappiire/web/widgets/dashboard_config_dialog.dart';
+import 'package:sappiire/web/widgets/dashboard_form_card.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -35,30 +37,36 @@ class _DashboardScreenState extends State<DashboardScreen>
   final _templateService = FormTemplateService();
   final _configService = DashboardConfigService();
 
+  // Form and template data
   List<FormTemplate> _templates = [];
-  String _selectedFormType = 'All';
+  Map<String, int> _submissionCounts = {};
+  Map<String, String> _cardColors = {};
+
+  // Selected form and date range
+  String _selectedFormId = 'all';
+  String _selectedFormName = 'All Forms';
+  DateTimeRange? _selectedDateRange;
   String _selectedTimeRange = 'all';
-  String? _selectedTemplateId;
+
+  // Widget configuration state
   List<DashboardWidgetConfig> _widgetConfigs = [];
+  bool _isLoadingConfigs = false;
   final Map<String, Future<Map<String, int>>> _distributionFutures = {};
-  bool _isLoadingWidgetConfigs = false;
+  int _refreshToken = 0;
+
+  // All Forms view state (existing analytics)
   bool _isLoadingOverview = true;
   int _activeFormCount = 0;
   int _staffAccountCount = 0;
-  int _uniqueClientCount = 0;
-  Map<String, int> _workerAnalytics = {};
-  int _refreshToken = 0;
   int _selectionToken = 0;
 
   Map<String, int> get _countsByFormType => _controller.countsByFormType;
   int get _totalCount => _controller.totalCount;
-  List<String> get _availableFormTypes => _controller.availableFormTypes;
   bool get _isLoadingInsights => _controller.isLoadingInsights;
   Map<String, int> get _staffWorkload => _controller.staffWorkload;
   Map<String, int> get _genderRatio => _controller.genderRatio;
   Map<String, int> get _ageBrackets => _controller.ageBrackets;
   Map<String, int> get _barangayVolume => _controller.barangayVolume;
-  String get _planningScopeFormType => _controller.planningScopeFormType;
   TextEditingController get _clientSearchController =>
       _controller.clientSearchController;
   bool get _isSearchingClients => _controller.isSearchingClients;
@@ -69,7 +77,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   String get _selectedClientName => _controller.selectedClientName;
   List<Map<String, dynamic>> get _selectedClientHistory =>
       _controller.selectedClientHistory;
-  Map<String, String> get _selectedClientFlags => _controller.selectedClientFlags;
+  Map<String, String> get _selectedClientFlags =>
+      _controller.selectedClientFlags;
 
   @override
   void initState() {
@@ -87,7 +96,12 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Future<void> _loadDashboardData() async {
     await _loadTemplates();
-    await _refreshDashboardData();
+    await _refreshFormCards();
+    if (mounted && _selectedFormId != 'all') {
+      _loadWidgetConfigs();
+    } else if (mounted) {
+      await _refreshAllFormsData();
+    }
   }
 
   Future<void> _loadTemplates() async {
@@ -96,84 +110,160 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
 
     if (!mounted) return;
+
     setState(() {
       _templates = templates;
       _activeFormCount = templates.length;
-      _controller.availableFormTypes = templates
-          .map((template) => template.formName)
-          .toSet()
-          .toList()
-        ..sort();
-      if (_selectedFormType != 'All') {
-        _selectedTemplateId = _resolveTemplateId(_selectedFormType);
-      }
-      _isLoadingOverview = false;
     });
   }
 
-  DateTimeRange? _getTimeRange() {
+  Future<void> _refreshFormCards() async {
+    if (_templates.isEmpty) return;
+
+    try {
+      final counts = <String, int>{};
+      final colors = <String, String>{};
+
+      for (final template in _templates) {
+        final count = await _analyticsService.fetchSubmissionCount(
+          formType: template.formName,
+          timeRange: _selectedDateRange,
+        );
+        counts[template.templateId] = count;
+
+        final color = await _analyticsService.fetchCardSettings(
+          template.templateId,
+        );
+        colors[template.templateId] = color;
+      }
+
+      if (mounted) {
+        setState(() {
+          _submissionCounts = counts;
+          _cardColors = colors;
+        });
+      }
+    } catch (e) {
+      debugPrint('[DashboardScreen/_refreshFormCards] Error: $e');
+    }
+  }
+
+  Future<void> _loadWidgetConfigs() async {
+    setState(() => _isLoadingConfigs = true);
+
+    _distributionFutures.clear();
+
+    try {
+      final configs = await _configService.fetchConfig(
+        _selectedFormId,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _widgetConfigs = configs;
+        _distributionFutures.clear();
+        _isLoadingConfigs = false;
+      });
+
+      // Trigger data fetch for each widget
+      if (configs.isNotEmpty) {
+        _fetchAllChartData();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingConfigs = false);
+      }
+      debugPrint('[DashboardScreen/_loadWidgetConfigs] Error: $e');
+    }
+  }
+
+  void _fetchAllChartData() {
+    for (final config in _widgetConfigs) {
+      _fetchChartData(config);
+    }
+  }
+
+  void _fetchChartData(DashboardWidgetConfig config) {
+    final cacheKey = _getCacheKey(config);
+    if (_distributionFutures.containsKey(cacheKey)) {
+      return; // Already loading or loaded
+    }
+    
+    final future = _analyticsService.fetchFieldDistribution(
+      formType: _selectedFormName,
+      fieldName: config.fieldName,
+      topN: 15,
+      timeRange: _selectedDateRange,
+    );
+
+    _distributionFutures[cacheKey] = future;
+  }
+
+  String _getCacheKey(DashboardWidgetConfig config) {
+    return '$_selectedFormId:${config.fieldName}:${_selectedDateRange?.start.toIso8601String() ?? 'null'}:${_selectedDateRange?.end.toIso8601String() ?? 'null'}';
+  }
+
+
+  DateTimeRange? _getSelectedDateRange() {
     final now = DateTime.now();
     switch (_selectedTimeRange) {
-      case 'daily':
+      case 'today':
         return DateTimeRange(
           start: DateTime(now.year, now.month, now.day),
           end: now,
         );
-      case 'weekly':
+      case 'week':
         return DateTimeRange(
           start: now.subtract(const Duration(days: 7)),
           end: now,
         );
-      case 'monthly':
-        return DateTimeRange(start: DateTime(now.year, now.month, 1), end: now);
-      case 'yearly':
-        return DateTimeRange(start: DateTime(now.year, 1, 1), end: now);
+      case 'month':
+        return DateTimeRange(
+          start: DateTime(now.year, now.month, 1),
+          end: now,
+        );
+      case 'year':
+        return DateTimeRange(
+          start: DateTime(now.year, 1, 1),
+          end: now,
+        );
       default:
         return null;
     }
   }
 
-  String _timeRangeLabel() {
-    switch (_selectedTimeRange) {
-      case 'daily':
-        return 'Today';
-      case 'weekly':
-        return 'This Week';
-      case 'monthly':
-        return 'This Month';
-      case 'yearly':
-        return 'This Year';
-      default:
-        return 'All Time';
+  Future<void> _onTimeRangeChanged(String timeRange) async {
+    setState(() => _selectedTimeRange = timeRange);
+    _selectedDateRange = _getSelectedDateRange();
+
+    await _refreshFormCards();
+    _distributionFutures.clear();
+    if (_selectedFormId != 'all') {
+      await _loadWidgetConfigs();
+    } else {
+      await _refreshAllFormsData();
     }
   }
 
-  Future<void> _refreshDashboardData() async {
+  Future<void> _refreshAllFormsData() async {
     final token = ++_refreshToken;
-    final timeRange = _getTimeRange();
-    final formType = _selectedFormType;
-
     _analyticsService.clearDecryptedCache();
 
     if (mounted) {
       setState(() => _isLoadingOverview = true);
     }
 
+    final timeRange = _selectedDateRange;
+
     await Future.wait([
       _controller.loadSummary(timeRange: timeRange),
       _controller.loadOperationalInsights(timeRange: timeRange),
-      _controller.loadPlanningInsights(
-        formType,
-        timeRange: timeRange,
-      ),
+      _controller.loadPlanningInsights('All', timeRange: timeRange),
     ]);
 
     if (!mounted || token != _refreshToken) return;
 
-    final workerAnalytics = await _analyticsService.fetchSubmissionsByWorker(
-      formType: formType == 'All' ? null : formType,
-      timeRange: timeRange,
-    );
     final staffCount = await _analyticsService.fetchStaffAccountCount();
     final uniqueClients = await _analyticsService.fetchUniqueClientCount(
       timeRange: timeRange,
@@ -182,97 +272,83 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (!mounted || token != _refreshToken) return;
 
     setState(() {
-      _workerAnalytics = workerAnalytics;
       _staffAccountCount = staffCount;
-      _uniqueClientCount = uniqueClients;
-      _activeFormCount = _templates.length;
       _isLoadingOverview = false;
     });
-
-    if (_selectedClientId != null) {
-      await _controller.selectClient(
-        {
-          'user_id': _selectedClientId!,
-          'name': _selectedClientName,
-        },
-        timeRange: timeRange,
-      );
-    }
   }
 
-  String? _resolveTemplateId(String formType) {
-    for (final template in _templates) {
-      if (template.formName == formType) {
-        return template.templateId;
-      }
-    }
-    return null;
-  }
-
-  Future<void> _selectFormType(String formType) async {
-    final token = ++_selectionToken;
-    final templateId = formType == 'All' ? null : _resolveTemplateId(formType);
-
+  Future<void> _selectForm(String templateId, String formName) async {
     setState(() {
-      _selectedFormType = formType;
-      _selectedTemplateId = templateId;
+      _selectedFormId = templateId;
+      _selectedFormName = formName;
       _widgetConfigs = [];
-      _distributionFutures.clear();
-      _isLoadingWidgetConfigs = formType != 'All';
     });
 
-    await _refreshDashboardData();
-    if (!mounted || token != _selectionToken) return;
-
-    if (formType == 'All') {
-      setState(() => _isLoadingWidgetConfigs = false);
-      return;
-    }
-
-    if (_selectedTemplateId == null) {
-      setState(() => _isLoadingWidgetConfigs = false);
-      return;
-    }
-
-    final configs = await _configService.fetchConfig(_selectedTemplateId!);
-    if (!mounted || token != _selectionToken) return;
-
-    setState(() {
-      _widgetConfigs = configs;
-      _isLoadingWidgetConfigs = false;
-    });
+    await _loadWidgetConfigs();
   }
 
-  Future<void> _searchClients() => _controller.searchClients();
+  Future<void> _selectAllForms() async {
+    setState(() {
+      _selectedFormId = 'all';
+      _selectedFormName = 'All Forms';
+      _widgetConfigs = [];
+    });
 
-  Future<void> _selectClient(Map<String, String> client) =>
-      _controller.selectClient(client, timeRange: _getTimeRange());
+    await _refreshAllFormsData();
+  }
+
+  void _openConfigDialog() {
+    final selectedTemplate = _templates
+        .firstWhere((t) => t.templateId == _selectedFormId);
+
+    showDialog(
+      context: context,
+      builder: (context) => DashboardConfigDialog(
+        templateId: _selectedFormId,
+        template: selectedTemplate,
+        initialConfigs: _widgetConfigs,
+        staffId: widget.cswd_id,
+        onSave: () {
+          _loadWidgetConfigs();
+        },
+      ),
+    );
+  }
+
+  /// Builds a map of form display name → hex color for the color-synced pie chart.
+  /// Maps from template form names to their card color settings.
+  Map<String, String> _buildFormColorsMap() {
+    final colorMap = <String, String>{};
+    for (final template in _templates) {
+      final color = _cardColors[template.templateId] ?? '#4C8BF5';
+      colorMap[template.formName] = color;
+    }
+    return colorMap;
+  }
+
+  /// Returns the number of grid columns based on screen width.
+  int _gridColumns(double width) {
+    if (width < 700) return 1;
+    if (width < 1100) return 2;
+    return 2;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final pageTitle =
+        _selectedFormId == 'all' ? 'Dashboard' : _selectedFormName;
+    final pageSubtitle = _selectedFormId == 'all'
+        ? 'Agency-wide analytics and insights'
+        : 'Form-specific submission analytics';
+
     return WebShell(
-      activePath: 'Dashboard',
-      pageTitle: 'Analytics Dashboard',
-      pageSubtitle: 'Operations, planning, and client insight center',
+      activePath: '/dashboard',
+      pageTitle: pageTitle,
+      pageSubtitle: pageSubtitle,
       role: widget.role,
       cswd_id: widget.cswd_id,
       displayName: widget.displayName,
       onLogout: widget.onLogout,
-      headerActions: [
-        if (widget.role == 'superadmin' || widget.role == 'admin')
-          OutlinedButton.icon(
-            onPressed: () => WebNavigator.go(
-              context,
-              'DashboardConfig',
-              cswdId: widget.cswd_id,
-              role: widget.role,
-              displayName: widget.displayName,
-              onLogout: widget.onLogout,
-            ),
-            icon: const Icon(Icons.settings),
-            label: const Text('Configure Dashboard'),
-          ),
-      ],
       onNavigate: (path) => WebNavigator.go(
         context,
         path,
@@ -281,435 +357,687 @@ class _DashboardScreenState extends State<DashboardScreen>
         displayName: widget.displayName,
         onLogout: widget.onLogout,
       ),
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, _) {
-          final isLoadingDashboard =
-              _isLoadingOverview ||
-              _controller.isLoadingCounts ||
-              _controller.isLoadingInsights ||
-              _isLoadingWidgetConfigs;
+      headerActions: _selectedFormId != 'all'
+          ? [
+              ElevatedButton.icon(
+                onPressed: _openConfigDialog,
+                icon: const Icon(Icons.settings),
+                label: const Text('Configure Dashboard'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.highlight,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ]
+          : null,
+      child: SingleChildScrollView(
+        child: Container(
+          color: AppColors.pageBg,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Form cards section
+              _buildFormCardsSection(),
+              const SizedBox(height: 32),
 
-          return isLoadingDashboard
-              ? const Center(
-                  child: CircularProgressIndicator(
-                    color: AppColors.highlight,
-                  ),
-                )
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.all(28),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildFormCardsSection(),
-                      const SizedBox(height: 18),
-                      _buildTimeRangeSelector(),
-                      const SizedBox(height: 28),
-                      _buildChartsSection(_getTimeRange()),
-                    ],
-                  ),
-                );
-        },
+              if (_selectedFormId == 'all')
+                _buildAllFormsView()
+              else
+                ...[
+                  // Date range selector
+                  _buildDateRangeSelector(),
+                  const SizedBox(height: 24),
+                  // Chart widgets for selected form
+                  _buildChartWidgetsSection(),
+                ],
+            ],
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildFormCardsSection() {
-    return _FormCardsSection(
-      countsByFormType: _countsByFormType,
-      totalCount: _totalCount,
-      availableFormTypes: _availableFormTypes,
-      selectedFormType: _selectedFormType,
-      onSelectForm: _selectFormType,
-    );
-  }
-
-  Widget _buildTimeRangeSelector() {
-    final options = const [
-      MapEntry('all', 'All Time'),
-      MapEntry('yearly', 'Yearly'),
-      MapEntry('monthly', 'Monthly'),
-      MapEntry('weekly', 'Weekly'),
-      MapEntry('daily', 'Daily'),
-    ];
-
-    final selected = options.map((option) => option.key == _selectedTimeRange).toList();
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ToggleButtons(
-          isSelected: selected,
-          onPressed: (index) {
-            final next = options[index].key;
-            if (next == _selectedTimeRange) return;
-            setState(() => _selectedTimeRange = next);
-            _refreshDashboardData();
-          },
-          borderRadius: BorderRadius.circular(999),
-          selectedColor: Colors.white,
-          fillColor: AppColors.highlight,
-          color: AppColors.textDark,
-          borderColor: AppColors.cardBorder,
-          selectedBorderColor: AppColors.highlight,
-          constraints: const BoxConstraints(minHeight: 42),
-          children: options
-              .map(
-                (option) => Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(option.value),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Forms',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textDark,
                 ),
-              )
-              .toList(),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Showing data for: ${_timeRangeLabel()}',
-          style: const TextStyle(
-            color: AppColors.textMuted,
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildChartsSection(DateTimeRange? timeRange) {
-    if (_selectedFormType == 'All') {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildGeneralMetricsSection(),
-          const SizedBox(height: 28),
-          _buildAllFormsOverview(timeRange),
-          const SizedBox(height: 28),
-          _buildWorkerAnalyticsSection('All', timeRange),
-          const SizedBox(height: 28),
-          // TODO: add a trend sparkline once time-bucketed analytics are exposed.
-          _buildOperationalSection(timeRange),
-          const SizedBox(height: 28),
-          _buildPlanningSection(timeRange),
-          const SizedBox(height: 28),
-          _buildClientHistorySection(timeRange),
-        ],
-      );
-    }
-
-    if (_isLoadingWidgetConfigs) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 60),
-        child: Center(
-          child: CircularProgressIndicator(color: AppColors.highlight),
-        ),
-      );
-    }
-
-    if (_widgetConfigs.isEmpty) {
-      return _buildNoDashboardConfigurationState();
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ..._widgetConfigs.map((config) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 24),
-            child: _buildConfiguredWidget(config, timeRange),
-          );
-        }),
-        if (widget.role == 'superadmin' || widget.role == 'admin') ...[
-          const SizedBox(height: 4),
-          _buildWorkerAnalyticsSection(_selectedFormType, timeRange),
-          const SizedBox(height: 28),
-        ],
-        _buildPlanningSection(timeRange),
-      ],
-    );
-  }
-
-  Widget _buildConfiguredWidget(
-    DashboardWidgetConfig config,
-    DateTimeRange? timeRange,
-  ) {
-    final cacheKey =
-        '${config.fieldName}:${config.chartType}:${timeRange?.start.toIso8601String() ?? 'all'}:${timeRange?.end.toIso8601String() ?? 'all'}';
-    final future = _distributionFutures.putIfAbsent(
-      cacheKey,
-      () => _analyticsService.fetchFieldDistribution(
-        formType: _selectedFormType,
-        fieldName: config.fieldName,
-        isNumeric: false,
-        isMultiSelect: false,
-        topN: 20,
-        timeRange: timeRange,
-      ),
-    );
-
-    return FutureBuilder<Map<String, int>>(
-      future: future,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const Padding(
-            padding: EdgeInsets.all(20),
-            child: Center(
-              child: CircularProgressIndicator(color: AppColors.highlight),
-            ),
-          );
-        }
-
-        final data = snapshot.data ?? {};
-        if (data.isEmpty) {
-          return Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(18),
-            decoration: AppColors.cardDecoration(),
-            child: Text(
-              "No data yet for '${config.fieldLabel}'",
-              style: const TextStyle(color: AppColors.textMuted),
-            ),
-          );
-        }
-
-        switch (config.chartType) {
-          case 'pie':
-            return SimpleDistributionPie(title: config.fieldLabel, data: data);
-          case 'counter':
-            final entries = data.entries.toList()
-              ..sort((a, b) => b.value.compareTo(a.value));
-            final topEntry = entries.first;
-            return MetricCard(
-              label: config.fieldLabel,
-              value: topEntry.value.toString(),
-              icon: Icons.tag,
-              color: AppColors.highlight,
-              subtitle: topEntry.key,
-              expand: false,
-            );
-          case 'hbar':
-            return SimpleBarChart(
-              title: config.fieldLabel,
-              data: data,
-              primaryColor: AppColors.highlight,
-            );
-          case 'table':
-            return SimpleDataTable(title: config.fieldLabel, data: data);
-          default:
-            return SimpleBarChart(
-              title: config.fieldLabel,
-              data: data,
-              primaryColor: AppColors.highlight,
-            );
-        }
-      },
-    );
-  }
-
-  Widget _buildNoDashboardConfigurationState() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(36),
-      decoration: AppColors.cardDecoration(),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.dashboard_customize_outlined,
-            size: 64,
-            color: AppColors.textMuted.withValues(alpha: 0.45),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'No dashboard configured for this form',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textDark,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Go to Dashboard Configuration to define which fields to visualize.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: AppColors.textMuted),
-          ),
-          if (widget.role == 'superadmin' || widget.role == 'admin') ...[
-            const SizedBox(height: 20),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.highlight,
-                foregroundColor: Colors.white,
               ),
-              onPressed: () => WebNavigator.go(
-                context,
-                'DashboardConfig',
-                cswdId: widget.cswd_id,
-                role: widget.role,
-                displayName: widget.displayName,
-                onLogout: widget.onLogout,
+              const SizedBox(height: 4),
+              Text(
+                'Select a form to view submission analytics',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textMuted,
+                ),
               ),
-              child: const Text('Configure Now'),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGeneralMetricsSection() {
-    return Wrap(
-      spacing: 16,
-      runSpacing: 16,
-      children: [
-        MetricCard(
-          label: 'Total Submissions',
-          value: _totalCount.toString(),
-          icon: Icons.how_to_reg,
-          color: AppColors.highlight,
-          subtitle: _timeRangeLabel(),
-          expand: false,
+            ],
+          ),
         ),
-        MetricCard(
-          label: 'Total Active Forms',
-          value: _activeFormCount.toString(),
-          icon: Icons.list_alt_rounded,
-          color: AppColors.successGreen,
-          subtitle: 'Configured templates',
-          expand: false,
-        ),
-        MetricCard(
-          label: 'Total Staff Accounts',
-          value: _staffAccountCount.toString(),
-          icon: Icons.groups_rounded,
-          color: AppColors.highlight,
-          subtitle: 'Worker accounts',
-          expand: false,
-        ),
-        MetricCard(
-          label: 'Total Clients',
-          value: _uniqueClientCount.toString(),
-          icon: Icons.people_alt_rounded,
-          color: AppColors.highlight,
-          subtitle: 'Unique applicants',
-          expand: false,
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              // All Forms card
+              GestureDetector(
+                onTap: _selectAllForms,
+                child: Container(
+                  constraints:
+                      const BoxConstraints(minWidth: 200, maxWidth: 280),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: _selectedFormId == 'all'
+                        ? AppColors.highlight.withValues(alpha: 0.95)
+                        : AppColors.cardBg,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _selectedFormId == 'all'
+                          ? AppColors.highlight
+                          : AppColors.cardBorder,
+                      width: _selectedFormId == 'all' ? 2 : 1,
+                    ),
+                    boxShadow: [
+                      if (_selectedFormId == 'all')
+                        BoxShadow(
+                          color: AppColors.highlight.withValues(alpha: 0.3),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        )
+                      else
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.06),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'All Forms',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: _selectedFormId == 'all'
+                              ? Colors.white
+                              : AppColors.textDark,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text(
+                            _totalCount.toString(),
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: _selectedFormId == 'all'
+                                  ? Colors.white
+                                  : AppColors.textDark,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'submissions',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: _selectedFormId == 'all'
+                                  ? Colors.white70
+                                  : AppColors.textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              // Individual form cards
+              ..._templates.map(
+                (template) => Padding(
+                  padding: const EdgeInsets.only(right: 16),
+                  child: DashboardFormCard(
+                    formName: template.formName,
+                    submissionCount:
+                        _submissionCounts[template.templateId] ?? 0,
+                    cardColor:
+                        _cardColors[template.templateId] ?? '#4C8BF5',
+                    isSelected: _selectedFormId == template.templateId,
+                    onTap: () =>
+                        _selectForm(template.templateId, template.formName),
+                    onColorChanged: (color) async {
+                      await _analyticsService.upsertCardSettings(
+                        template.templateId,
+                        color,
+                        widget.cswd_id,
+                      );
+                      setState(() {
+                        _cardColors[template.templateId] = color;
+                      });
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildAllFormsOverview(DateTimeRange? timeRange) {
+  Widget _buildDateRangeSelector() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Forms Submitted Breakdown',
+          'Date Range',
           style: TextStyle(
-            fontSize: 18,
+            fontSize: 14,
             fontWeight: FontWeight.bold,
             color: AppColors.textDark,
           ),
         ),
-        const SizedBox(height: 16),
-        SimpleDistributionPie(
-          title: 'Submissions by Form Type',
-          data: _countsByFormType,
+        const SizedBox(height: 12),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              _buildTimeRangeButton('All Time', 'all'),
+              _buildTimeRangeButton('This Year', 'year'),
+              _buildTimeRangeButton('This Month', 'month'),
+              _buildTimeRangeButton('This Week', 'week'),
+              _buildTimeRangeButton('Today', 'today'),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: () async {
+                  final picked = await showDateRangePicker(
+                    context: context,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now(),
+                  );
+                  if (picked != null) {
+                    setState(() => _selectedDateRange = picked);
+                    _selectedTimeRange = 'custom';
+                    await _refreshFormCards();
+                    if (_selectedFormId != 'all') {
+                      _distributionFutures.clear();
+                      await _loadWidgetConfigs();
+                    } else {
+                      await _refreshAllFormsData();
+                    }
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _selectedTimeRange == 'custom'
+                      ? AppColors.highlight
+                      : AppColors.cardBg,
+                  foregroundColor: _selectedTimeRange == 'custom'
+                      ? Colors.white
+                      : AppColors.textDark,
+                ),
+                child: const Text('Custom...'),
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildWorkerAnalyticsSection(
-    String formType,
-    DateTimeRange? timeRange,
-  ) {
-    final isGeneral = formType == 'All';
-    final title = isGeneral ? 'Staff Submission Activity' : 'Staff Workload';
-    final subtitle = isGeneral
-        ? 'For audit and workload monitoring purposes'
-        : 'Number of submissions handled per worker account';
+  Widget _buildTimeRangeButton(String label, String value) {
+    final isSelected = _selectedTimeRange == value;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ElevatedButton(
+        onPressed: () => _onTimeRangeChanged(value),
+        style: ElevatedButton.styleFrom(
+          backgroundColor:
+              isSelected ? AppColors.highlight : AppColors.cardBg,
+          foregroundColor:
+              isSelected ? Colors.white : AppColors.textDark,
+          elevation: isSelected ? 4 : 0,
+        ),
+        child: Text(label),
+      ),
+    );
+  }
 
+  Widget _buildChartWidgetsSection() {
+    if (_isLoadingConfigs) {
+      return Container(
+        alignment: Alignment.center,
+        padding: const EdgeInsets.all(40),
+        child: const CircularProgressIndicator(),
+      );
+    }
+
+    if (_widgetConfigs.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 60),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.dashboard_customize,
+              size: 64,
+              color: Colors.grey.shade300,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Dashboard Not Configured',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textDark,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Click "Configure Dashboard" to select fields and chart types',
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.textMuted,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: _openConfigDialog,
+              icon: const Icon(Icons.settings),
+              label: const Text('Configure Dashboard'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.highlight,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Responsive grid layout for chart widgets
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = _gridColumns(constraints.maxWidth);
+        return Wrap(
+          spacing: 16,
+          runSpacing: 16,
+          children: _widgetConfigs
+              .map((config) => SizedBox(
+                    width: columns > 1
+                        ? (constraints.maxWidth - 16) / columns
+                        : constraints.maxWidth,
+                    child: _buildChartWidget(config),
+                  ))
+              .toList(),
+        );
+      },
+    );
+  }
+
+  Widget _buildChartWidget(DashboardWidgetConfig config) {
+    final cacheKey = _getCacheKey(config);
+
+    return FutureBuilder<Map<String, int>>(
+      future: _distributionFutures[cacheKey] ??= _distributionFutures.putIfAbsent(
+        cacheKey,
+        () => _analyticsService.fetchFieldDistribution(
+          formType: _selectedFormName,
+          fieldName: config.fieldName,
+          topN: 15,
+          timeRange: _selectedDateRange,
+        ),
+      ),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _buildChartSkeleton(config);
+        }
+
+        if (snapshot.hasError) {
+          return _buildChartError(config, snapshot.error.toString());
+        }
+
+        final data = snapshot.data ?? {};
+
+        if (data.isEmpty) {
+          return _buildChartEmpty(config);
+        }
+
+        return _buildChartForType(config, data);
+      },
+    );
+  }
+
+  Widget _buildChartForType(DashboardWidgetConfig config, Map<String, int> data) {
+    switch (config.chartType) {
+      case 'pie':
+        return SimplePieChart(
+          title: config.fieldLabel,
+          data: data,
+        );
+      case 'donut':
+        return DonutChart(
+          title: config.fieldLabel,
+          data: data,
+        );
+      case 'line':
+        return LineChart(
+          title: config.fieldLabel,
+          data: data,
+        );
+      case 'area':
+        return AreaChart(
+          title: config.fieldLabel,
+          data: data,
+        );
+      case 'funnel':
+        return FunnelChart(
+          title: config.fieldLabel,
+          data: data,
+        );
+      case 'counter':
+        final topEntry = data.entries.first;
+        return MetricCard(
+          label: config.fieldLabel,
+          value: topEntry.value.toString(),
+          icon: Icons.trending_up,
+          color: AppColors.highlight,
+          subtitle: topEntry.key,
+        );
+      case 'table':
+        return SimpleDataTable(
+          title: config.fieldLabel,
+          data: data,
+        );
+      case 'hbar':
+        return SimpleBarChart(
+          title: config.fieldLabel,
+          data: data,
+        );
+      case 'stacked':
+        return StackedBarChart(
+          title: config.fieldLabel,
+          data: {'Overall': data},
+        );
+      case 'bar':
+      default:
+        return SimpleBarChart(
+          title: config.fieldLabel,
+          data: data,
+        );
+    }
+  }
+
+  Widget _buildChartSkeleton(DashboardWidgetConfig config) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      height: 220,
+      padding: const EdgeInsets.all(24),
+      decoration: AppColors.cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 200,
+            height: 20,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChartError(DashboardWidgetConfig config, String error) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
       decoration: AppColors.cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            title,
+            config.fieldLabel,
             style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
               color: AppColors.textDark,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
-          ),
-          const SizedBox(height: 16),
-          if (_workerAnalytics.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: Text(
-                'No submission data for this period.',
-                style: TextStyle(color: AppColors.textMuted),
-              ),
-            )
-          else
-            SimpleBarChart(
-              title: 'Submissions per Worker',
-              data: _workerAnalytics,
-              primaryColor: AppColors.highlight,
+          const SizedBox(height: 24),
+          Center(
+            child: Column(
+              children: [
+                Icon(
+                  Icons.error_outline,
+                  size: 48,
+                  color: AppColors.dangerRed.withValues(alpha: 0.5),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Error loading chart',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppColors.dangerRed,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildOperationalSection(DateTimeRange? timeRange) {
-    if (_isLoadingInsights) {
-      return _buildLoadingCard('Loading operational metrics...');
-    }
+  Widget _buildChartEmpty(DashboardWidgetConfig config) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: AppColors.cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            config.fieldLabel,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textDark,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Center(
+            child: Column(
+              children: [
+                Icon(
+                  Icons.data_exploration,
+                  size: 48,
+                  color: Colors.grey.shade300,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'No data available for this period',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade400,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
 
+  Widget _buildAllFormsView() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Operational & Efficiency',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: AppColors.textDark,
+        // Summary metrics
+        _buildSummaryMetrics(),
+        const SizedBox(height: 32),
+
+        // Responsive row for charts
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final wide = constraints.maxWidth >= 900;
+            return Wrap(
+              spacing: 16,
+              runSpacing: 16,
+              children: [
+                // Submissions by form type - Enhanced with color syncing
+                if (_countsByFormType.isNotEmpty)
+                  SizedBox(
+                    width: wide
+                        ? (constraints.maxWidth - 16) / 2
+                        : constraints.maxWidth,
+                    child: ColorSyncPieChart(
+                      title: 'Submissions by Form Type',
+                      data: _countsByFormType,
+                      formColors: _buildFormColorsMap(),
+                    ),
+                  ),
+
+                // Staff workload - Interactive with drill-down
+                if (_staffWorkload.isNotEmpty)
+                  SizedBox(
+                    width: wide
+                        ? (constraints.maxWidth - 16) / 2
+                        : constraints.maxWidth,
+                    child: InteractiveBarChart(
+                      title: 'Staff Workload Distribution',
+                      data: _staffWorkload,
+                      primaryColor: AppColors.successGreen,
+                      onDrillDown: (account) async {
+                        return _analyticsService.fetchSubmissionsByFormTypeForWorker(
+                          account,
+                          timeRange: _selectedDateRange,
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+
+        const SizedBox(height: 24),
+
+        // Demographics section header
+        const Padding(
+          padding: EdgeInsets.only(top: 8, bottom: 16),
+          child: Text(
+            'Demographics & Planning',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textDark,
+            ),
           ),
         ),
-        const SizedBox(height: 16),
-        SimpleBarChart(
-          title: 'Staff Workload Distribution (Audit Activity)',
-          data: _staffWorkload,
-          primaryColor: AppColors.highlight,
+
+        // Gender ratio and age brackets - responsive
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final wide = constraints.maxWidth >= 900;
+            return Wrap(
+              spacing: 16,
+              runSpacing: 16,
+              children: [
+                SizedBox(
+                  width: wide
+                      ? (constraints.maxWidth - 16) / 2
+                      : constraints.maxWidth,
+                  child: _genderRatio.isNotEmpty
+                      ? SimplePieChart(
+                          title: 'Gender Distribution',
+                          data: _genderRatio,
+                        )
+                      : Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: AppColors.cardDecoration(),
+                          child: const Text('No gender data'),
+                        ),
+                ),
+                SizedBox(
+                  width: wide
+                      ? (constraints.maxWidth - 16) / 2
+                      : constraints.maxWidth,
+                  child: _ageBrackets.isNotEmpty
+                      ? SimpleBarChart(
+                          title: 'Age Brackets',
+                          data: _ageBrackets,
+                          primaryColor: AppColors.highlight,
+                        )
+                      : Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: AppColors.cardDecoration(),
+                          child: const Text('No age data'),
+                        ),
+                ),
+              ],
+            );
+          },
         ),
+
+        const SizedBox(height: 24),
+
+        // Barangay volume
+        if (_barangayVolume.isNotEmpty)
+          SimpleBarChart(
+            title: 'Top Barangays by Volume',
+            data: _barangayVolume,
+            primaryColor: AppColors.warningAmber,
+          ),
+
+        const SizedBox(height: 32),
+
+        // Client 360 section
+        _buildClient360Section(),
       ],
     );
   }
 
-  Widget _buildPlanningSection(DateTimeRange? timeRange) {
-    if (_isLoadingInsights) {
-      return _buildLoadingCard('Loading planning analytics...');
-    }
-
-    final scopeLabel = _planningScopeFormType == 'All'
-        ? 'All Forms'
-        : _planningScopeFormType;
-
+  Widget _buildSummaryMetrics() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Demographic & Trend Analytics - $scopeLabel',
-          style: const TextStyle(
+        const Text(
+          'Summary Metrics',
+          style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
             color: AppColors.textDark,
@@ -718,641 +1046,211 @@ class _DashboardScreenState extends State<DashboardScreen>
         const SizedBox(height: 16),
         LayoutBuilder(
           builder: (context, constraints) {
-            final compact = constraints.maxWidth < 900;
-            if (compact) {
-              return Column(
-                children: [
-                  SimpleDistributionPie(
-                    title: 'Automated GAD Report (Gender Ratio)',
-                    data: _genderRatio,
+            final wide = constraints.maxWidth >= 900;
+            // Use a Wrap with fixed widths to prevent overflow instead of Row with Expanded
+            return Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                SizedBox(
+                  width: wide
+                      ? (constraints.maxWidth - 36) / 4
+                      : (constraints.maxWidth - 12) / 2,
+                  child: MetricCard(
+                    label: 'Total Submissions',
+                    value: _totalCount.toString(),
+                    icon: Icons.assignment,
+                    color: AppColors.highlight,
+                    expand: false,
                   ),
-                  const SizedBox(height: 20),
-                  SimpleBarChart(
-                    title: 'Age Bracket Distribution',
-                    data: _ageBrackets,
-                    primaryColor: AppColors.highlight,
+                ),
+                SizedBox(
+                  width: wide
+                      ? (constraints.maxWidth - 36) / 4
+                      : (constraints.maxWidth - 12) / 2,
+                  child: MetricCard(
+                    label: 'Active Forms',
+                    value: _activeFormCount.toString(),
+                    icon: Icons.description,
+                    color: AppColors.successGreen,
+                    expand: false,
+                  ),
+                ),
+                if (wide) ...[
+                  SizedBox(
+                    width: (constraints.maxWidth - 36) / 4,
+                    child: MetricCard(
+                      label: 'Staff Accounts',
+                      value: _staffAccountCount.toString(),
+                      icon: Icons.people,
+                      color: AppColors.warningAmber,
+                      expand: false,
+                    ),
                   ),
                 ],
-              );
-            }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: SimpleDistributionPie(
-                    title: 'Automated GAD Report (Gender Ratio)',
-                    data: _genderRatio,
-                  ),
-                ),
-                const SizedBox(width: 20),
-                Expanded(
-                  child: SimpleBarChart(
-                    title: 'Age Bracket Distribution',
-                    data: _ageBrackets,
-                    primaryColor: AppColors.highlight,
-                  ),
-                ),
               ],
             );
           },
         ),
-        const SizedBox(height: 20),
-        SimpleBarChart(
-          title: 'Barangay Volume (Top Requests)',
-          data: _barangayVolume,
-          primaryColor: AppColors.highlight,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildClientHistorySection(DateTimeRange? timeRange) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Holistic Client History (360 View)',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: AppColors.textDark,
-          ),
-        ),
-        const SizedBox(height: 16),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: AppColors.cardBg,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.cardBorder),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final compact = constraints.maxWidth < 640;
-                  if (compact) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        TextField(
-                          controller: _clientSearchController,
-                          decoration: const InputDecoration(
-                            labelText: 'Search client by name',
-                            hintText: 'Type first name or last name',
-                          ),
-                          onSubmitted: (_) => _searchClients(),
-                        ),
-                        const SizedBox(height: 10),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: ElevatedButton(
-                            onPressed: _isSearchingClients ? null : _searchClients,
-                            child: _isSearchingClients
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Text('Lookup'),
-                          ),
-                        ),
-                      ],
-                    );
-                  }
-                  return Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _clientSearchController,
-                          decoration: const InputDecoration(
-                            labelText: 'Search client by name',
-                            hintText: 'Type first name or last name',
-                          ),
-                          onSubmitted: (_) => _searchClients(),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      ElevatedButton(
-                        onPressed: _isSearchingClients ? null : _searchClients,
-                        child: _isSearchingClients
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Text('Lookup'),
-                      ),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: 14),
-              if (_clientSearchResults.isNotEmpty)
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _clientSearchResults.map((client) {
-                    final isSelected = (client['user_id'] ?? '') == _selectedClientId;
-                    return GestureDetector(
-                      onTap: () => _selectClient(client),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? AppColors.highlight.withValues(alpha: 0.15)
-                              : AppColors.pageBg,
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: isSelected
-                                ? AppColors.highlight
-                                : AppColors.cardBorder,
-                          ),
-                        ),
-                        child: Text(
-                          client['name'] ?? 'Unknown',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isSelected
-                                ? AppColors.highlight
-                                : AppColors.textMuted,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              if (_isLoadingClientHistory)
-                const Padding(
-                  padding: EdgeInsets.only(top: 18),
-                  child: CircularProgressIndicator(color: AppColors.highlight),
-                ),
-              if (!_isLoadingClientHistory && _selectedClientId != null) ...[
-                const SizedBox(height: 16),
-                Text(
-                  'Selected: $_selectedClientName',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textDark,
+        // Show remaining cards on non-wide screens
+        if (MediaQuery.of(context).size.width < 900)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                SizedBox(
+                  width: (MediaQuery.of(context).size.width - 60) / 2,
+                  child: MetricCard(
+                    label: 'Staff Accounts',
+                    value: _staffAccountCount.toString(),
+                    icon: Icons.people,
+                    color: AppColors.warningAmber,
+                    expand: false,
                   ),
                 ),
-                const SizedBox(height: 10),
-                if (_selectedClientFlags.isNotEmpty)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.warningAmber.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: _selectedClientFlags.entries.map((entry) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Text(
-                            '${entry.key}: ${entry.value}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textDark,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  )
-                else
-                  const _InfoCard(
-                    title: 'Eligibility Frequency Check',
-                    body: 'No high-frequency assistance flags this year.',
-                  ),
-                const SizedBox(height: 12),
-                if (_selectedClientHistory.isNotEmpty)
-                  SimpleBarChart(
-                    title: 'Cross-Service History (By Form Type)',
-                    data: _groupHistoryByFormType(_selectedClientHistory),
-                    primaryColor: AppColors.highlight,
-                  )
-                else
-                  const _InfoCard(
-                    title: 'Cross-Service History',
-                    body: 'No service history found for this client yet.',
-                  ),
               ],
-            ],
+            ),
           ),
-        ),
       ],
     );
   }
 
-  Map<String, int> _groupHistoryByFormType(
-    List<Map<String, dynamic>> history,
-  ) =>
-      _controller.groupHistoryByFormType(history);
-
-  Widget _buildLoadingCard(String message) {
+  Widget _buildClient360Section() {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.cardBorder),
-      ),
-      child: Row(
-        children: [
-          const SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            message,
-            style: const TextStyle(
-              color: AppColors.textMuted,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-}
-
-/// Light informational card showing a bold title and muted body line, used as
-/// an empty-state placeholder for dashboard sections.
-class _InfoCard extends StatelessWidget {
-  final String title;
-  final String body;
-
-  const _InfoCard({required this.title, required this.body});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.pageBg,
-        borderRadius: BorderRadius.circular(12),
-      ),
+      decoration: AppColors.cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 13,
+          const Text(
+            'Client 360 View',
+            style: TextStyle(
+              fontSize: 18,
               fontWeight: FontWeight.bold,
               color: AppColors.textDark,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            body,
-            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _clientSearchController,
+            decoration: InputDecoration(
+              hintText: 'Search clients by name...',
+              prefixIcon: const Icon(Icons.search),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12,
+              ),
+            ),
+            onChanged: (_) => _controller.searchClients(),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SummaryCard extends StatelessWidget {
-  final String label;
-  final int count;
-  final bool isActive;
-  final VoidCallback onTap;
-
-  const _SummaryCard({
-    required this.label,
-    required this.count,
-    required this.isActive,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        width: 190,
-        height: 180,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: isActive ? AppColors.highlight : AppColors.cardBg,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isActive ? AppColors.highlight : AppColors.cardBorder,
-            width: isActive ? 2 : 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
+          if (_isSearchingClients) ...[
+            const SizedBox(height: 12),
+            const Center(child: CircularProgressIndicator()),
+          ] else if (_clientSearchResults.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 200),
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: _clientSearchResults.length,
+                itemBuilder: (context, index) {
+                  final client = _clientSearchResults[index];
+                  return ListTile(
+                    dense: true,
+                    title: Text(client['name'] ?? 'Unknown'),
+                    onTap: () =>
+                        _controller.selectClient(client, timeRange: _selectedDateRange),
+                  );
+                },
+              ),
             ),
           ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+          if (_selectedClientId != null) ...[
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 16),
             Text(
-              count.toString(),
-              style: TextStyle(
-                fontSize: 36,
+              'Client: $_selectedClientName',
+              style: const TextStyle(
+                fontSize: 14,
                 fontWeight: FontWeight.bold,
-                color: isActive ? Colors.white : AppColors.textDark,
-                letterSpacing: -1,
+                color: AppColors.textDark,
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Submissions',
-              style: TextStyle(
-                fontSize: 11,
-                color: isActive ? Colors.white70 : AppColors.textMuted,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Tooltip(
-              message: label,
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: isActive ? Colors.white : AppColors.textDark,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _FormCardsSection extends StatefulWidget {
-  final Map<String, int> countsByFormType;
-  final int totalCount;
-  final List<String> availableFormTypes;
-  final String selectedFormType;
-  final ValueChanged<String> onSelectForm;
-
-  const _FormCardsSection({
-    required this.countsByFormType,
-    required this.totalCount,
-    required this.availableFormTypes,
-    required this.selectedFormType,
-    required this.onSelectForm,
-  });
-
-  @override
-  State<_FormCardsSection> createState() => _FormCardsSectionState();
-}
-
-class _FormCardsSectionState extends State<_FormCardsSection> {
-  final TextEditingController _searchController = TextEditingController();
-  String _searchQuery = '';
-  bool _showListView = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _searchController.addListener(_syncSearchQuery);
-  }
-
-  @override
-  void dispose() {
-    _searchController.removeListener(_syncSearchQuery);
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  void _syncSearchQuery() {
-    final next = _searchController.text;
-    if (next == _searchQuery) {
-      return;
-    }
-    setState(() => _searchQuery = next);
-  }
-
-  List<_FormCardItem> _visibleFormCards() {
-    final cards = <_FormCardItem>[
-      _FormCardItem(
-        label: 'All Forms',
-        count: widget.totalCount,
-        formType: 'All',
-      ),
-      ...widget.availableFormTypes.map(
-        (formType) => _FormCardItem(
-          label: formType,
-          count: widget.countsByFormType[formType] ?? 0,
-          formType: formType,
-        ),
-      ),
-    ];
-
-    final query = _searchQuery.trim().toLowerCase();
-    if (query.isEmpty) {
-      return cards;
-    }
-
-    return cards
-        .where((item) => item.label.toLowerCase().contains(query))
-        .toList();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final visibleCards = _visibleFormCards();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        TextField(
-          controller: _searchController,
-          decoration: InputDecoration(
-            hintText: 'Search forms...',
-            prefixIcon: const Icon(Icons.search),
-            isDense: true,
-            filled: true,
-            fillColor: AppColors.cardBg,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: AppColors.cardBorder),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: AppColors.cardBorder),
-            ),
-          ),
-        ),
-        const SizedBox(height: 10),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: () {
-              setState(() => _showListView = !_showListView);
-            },
-            icon: Icon(
-              _showListView ? Icons.grid_view : Icons.view_list,
-              size: 18,
-            ),
-            label: Text(_showListView ? 'View as cards' : 'View as list'),
-          ),
-        ),
-        const SizedBox(height: 16),
-        if (visibleCards.isEmpty)
-          const _InfoCard(
-            title: 'No matching forms',
-            body: 'Try a different search term to find a form.',
-          )
-        else if (_showListView)
-          _buildFormListView(visibleCards)
-        else
-          _buildSummaryCards(visibleCards),
-      ],
-    );
-  }
-
-  Widget _buildSummaryCards(List<_FormCardItem> cards) {
-    return Wrap(
-      spacing: 16,
-      runSpacing: 16,
-      children: cards.map((item) {
-        return _SummaryCard(
-          label: item.label,
-          count: item.count,
-          isActive: widget.selectedFormType == item.formType,
-          onTap: () => widget.onSelectForm(item.formType),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _buildFormListView(List<_FormCardItem> cards) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.cardBorder),
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
-            ),
-            child: const Row(
-              children: [
-                Expanded(
-                  flex: 5,
-                  child: Text(
-                    'Form Name',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textMuted,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: Text(
-                    'Submission Count',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textMuted,
-                    ),
-                  ),
-                ),
-                SizedBox(width: 72),
-              ],
-            ),
-          ),
-          ...cards.map((item) {
-            return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 5,
-                    child: Tooltip(
-                      message: item.label,
-                      child: Text(
-                        item.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textDark,
+            if (_selectedClientFlags.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: _selectedClientFlags.entries
+                    .map(
+                      (entry) => Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.dangerRed.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          entry.value,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: AppColors.dangerRed,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  Expanded(
-                    flex: 2,
-                    child: Text(
-                      item.count.toString(),
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textDark,
+                    )
+                    .toList(),
+              ),
+            ],
+            if (_isLoadingClientHistory) ...[
+              const SizedBox(height: 12),
+              const Center(child: CircularProgressIndicator()),
+            ] else if (_selectedClientHistory.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Submission History',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textMuted,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ..._selectedClientHistory.take(5).map(
+                    (item) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            item['form_type']?.toString() ?? 'Unknown',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          Text(
+                            item['intake_reference']?.toString() ?? '',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textMuted,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                  SizedBox(
-                    width: 72,
-                    child: TextButton(
-                      onPressed: () => widget.onSelectForm(item.formType),
-                      child: const Text('View'),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
+            ],
+          ],
         ],
       ),
     );
   }
-
-}
-
-class _FormCardItem {
-  final String label;
-  final int count;
-  final String formType;
-
-  const _FormCardItem({
-    required this.label,
-    required this.count,
-    required this.formType,
-  });
 }
