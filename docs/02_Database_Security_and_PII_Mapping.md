@@ -36,8 +36,8 @@ Foreign-key linkage to `form_fields(field_id)` binds values to dynamic metadata 
 1. `status` domain is constrained to `active`, `scanned`, `completed`, `closed`, `expired`.
 2. `expires_at` defaults to 30-minute session validity.
 3. Hybrid transport columns include `encrypted_payload`, `payload_iv`, `encrypted_aes_key`, and `transmission_version`.
-4. Staff linkage is modeled through `cswd_id` foreign key to `staff_accounts(cswd_id)`.
-5. **Zero-Knowledge Staging:** The deprecated `form_data` column is no longer used for decrypted payloads. Decryption occurs strictly in-memory via the `serve-submission-for-review` Edge Function during the request lifecycle, delivering plaintext ephemerally to the dashboard without database persistence.
+4. Staff linkage is modeled through optional `user_id` foreign key (not enforced in schema).
+5. **Zero-Knowledge Staging:** Decryption occurs strictly in-memory via the `serve-submission-for-review` Edge Function during the request lifecycle, delivering plaintext ephemerally to the dashboard without any database persistence.
 
 ### 2.4 Finalized Record Layer: `client_submissions`
 
@@ -102,9 +102,9 @@ When transmission is initiated:
 2. Encrypted envelope data is written to `form_submission` transport columns.
 3. Session status transitions to `scanned` for dashboard pickup.
 
-### 3.4 Zero-Knowledge Staging and Finalization
+### 2.4 Zero-Knowledge Staging and Finalization
 
-**In-Memory Decryption:** The `serve-submission-for-review` Edge Function decrypts the encrypted envelope on-demand and returns plaintext JSON ephemerally in the HTTP response. Plaintext is never written back to `form_submission`. Staff review the decrypted payload directly in the dashboard UI.
+**In-Memory Decryption:** When staff open a session with `status='scanned'` and `transmission_version=1`, the `serve-submission-for-review` Edge Function decrypts the encrypted envelope on-demand and returns plaintext JSON ephemerally in the HTTP response. Staff review the decrypted payload directly in the dashboard UI.
 
 **Server-Side Finalization:** Upon review completion, staff finalize the record via the `encrypt-and-save-submission` Edge Function, which performs server-side AES-256-GCM encryption before persisting to `client_submissions`.
 

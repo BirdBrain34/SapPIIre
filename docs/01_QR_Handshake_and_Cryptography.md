@@ -53,8 +53,6 @@ The web tier creates an active session row in `form_submission` with default lif
 2. `expires_at = now() + 30 minutes`
 3. `transmission_version = 0` (default)
 
-Note: The legacy `form_data` column is deprecated and no longer used for decrypted payloads.
-
 ### 3.2 Mobile Payload Packaging
 
 The mobile app assembles user-selected PII payload entries from dynamic form state and canonical mappings, then serializes into JSON.
@@ -105,7 +103,7 @@ Critical security guarantee: Plaintext is never written back to the database. Th
 
 ### 3.6 Web Autofill Activation
 
-The dashboard controller (`ManageFormsController`) invokes on-demand decryption when a session with `status='scanned'` and empty `form_data` is detected. The Edge Function returns decrypted payload in-memory, which the dashboard hydrates directly into dynamic form controllers, enabling CSWD staff-assisted review and completion. This ephemeral delivery model ensures no plaintext persistence.
+The dashboard controller (`ManageFormsController`) invokes on-demand decryption when a session with `status='scanned'` and `transmission_version=1` is detected (indicating an encrypted envelope). The `serve-submission-for-review` Edge Function returns decrypted payload in-memory, which the dashboard hydrates directly into dynamic form controllers, enabling CSWD staff-assisted review and completion. This ephemeral delivery model ensures no plaintext persistence in the database.
 
 ## 4. `form_submission` Lifecycle and Security Semantics
 

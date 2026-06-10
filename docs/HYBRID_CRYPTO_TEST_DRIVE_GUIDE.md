@@ -17,7 +17,7 @@ This guide explains exactly how the team can run and test the hybrid cryptosyste
   2. App encrypts payload with AES-GCM
   3. App encrypts AES key with RSA-OAEP public key
   4. App stores envelope (`encrypted_payload`, `payload_iv`, `encrypted_aes_key`, `transmission_version = 1`)
-  5. **Zero-Knowledge Staging:** Edge function (`serve-submission-for-review`) decrypts in-memory and returns plaintext ephemerally in HTTP response — plaintext is never written back to the database
+  5. **Zero-Knowledge Staging:** Edge function (`serve-submission-for-review`) decrypts in-memory and returns plaintext ephemerally in HTTP response — plaintext is NEVER written to database
 
 ## 1.1) Security patch sync status (2026-04-03)
 
@@ -122,8 +122,8 @@ Important auth setting:
 1. Start app and authenticate
 2. Open a session in web side
 3. From mobile, send selected fields to web session
-4. Confirm row in `form_submission` moves to `status = scanned`
-5. Confirm edge decrypt writes `form_data`
+4. Confirm row in `form_submission` moves to `status = scanned` with `transmission_version = 1`
+5. Staff invokes `serve-submission-for-review` Edge Function to decrypt in-memory (plaintext never written to database)
 
 ## 8) Verification queries (copy-paste)
 
@@ -216,11 +216,10 @@ where transmission_version = 1;
 ## 9) Expected test results
 
 A healthy run should show:
-- At-rest rows with `encryption_version = 1` and valid IV
-- New session rows with `transmission_version = 1`
+- At-rest rows with `encryption_version = 1` and valid IV in `user_field_values`
+- New session rows with `transmission_version = 1` in `form_submission`
 - Envelope columns present (`encrypted_payload`, `payload_iv`, `encrypted_aes_key`)
 - **Zero-Knowledge Staging:** Encrypted envelope remains in database; decryption happens in-memory on staff request via `serve-submission-for-review` Edge Function
-- Plaintext JSON is never written back to `form_submission`
 
 ## 10) Troubleshooting quick map
 
