@@ -665,10 +665,10 @@ class FieldValueService {
         );
       }
 
-      // Update the session payload and stamp user_id for web lookup.
+      // Update the session status and stamp user_id for web lookup.
+      // Note: form_data column was removed — plaintext is never stored.
       final uid = _supabase.auth.currentUser?.id;
       final payload = <String, dynamic>{
-        'form_data': formData,
         'status': 'scanned',
         'scanned_at': DateTime.now().toUtc().toIso8601String(),
         if (uid != null) 'user_id': uid,

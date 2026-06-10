@@ -9,6 +9,40 @@ class ManageFormsController {
 
   final SubmissionService _submissionService;
 
+  bool _isDecrypting = false;
+
+  /// Whether an on-demand decryption is currently in progress.
+  bool get isDecrypting => _isDecrypting;
+
+  /// Returns true if the session row requires on-demand decryption
+  /// (status='scanned' with empty form_data indicating an encrypted envelope).
+  bool shouldDecrypt(Map<String, dynamic> row) {
+    final status = row['status'] as String? ?? '';
+    final formData = row['form_data'] as Map<String, dynamic>? ?? {};
+    return formData.isEmpty && status == 'scanned';
+  }
+
+  /// On-demand decrypt an encrypted staging submission via the
+  /// serve-submission-for-review Edge Function. Returns plaintext data
+  /// or null if decryption fails or is already in progress.
+  Future<Map<String, dynamic>?> decryptStagingSubmission({
+    required String sessionId,
+    required String staffId,
+  }) async {
+    if (_isDecrypting) return null;
+    _isDecrypting = true;
+    try {
+      final decrypted = await _submissionService.fetchDecryptedStagingSubmission(
+        sessionId: sessionId,
+        staffId: staffId,
+      );
+      if (decrypted == null || decrypted.isEmpty) return null;
+      return decrypted;
+    } finally {
+      _isDecrypting = false;
+    }
+  }
+
   String? fingerprintPayload(Map<String, dynamic> payload) {
     try {
       final normalized = _normalizeForFingerprint(payload);
