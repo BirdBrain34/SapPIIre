@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sappiire/services/forms/submission_service.dart';
@@ -36,8 +35,8 @@ class DashboardAnalyticsService {
 
   final SupabaseClient _supabase = Supabase.instance.client;
   final SubmissionService _submissionService = SubmissionService();
-  Map<String, List<Map<String, dynamic>>> _decryptedCache = {};
-  Map<String, DateTime> _cacheTimestamps = {};
+  final Map<String, List<Map<String, dynamic>>> _decryptedCache = {};
+  final Map<String, DateTime> _cacheTimestamps = {};
   static const Duration _cacheTTL = Duration(minutes: 5);
   String? _staffId;
 
@@ -1441,52 +1440,6 @@ class DashboardAnalyticsService {
     }
 
     return _submissionService.batchDecryptSubmissions(submissionIds, _staffId!);
-  }
-
-  Future<List<Map<String, dynamic>>> _resolveSubmissionRows(
-    List<Map<String, dynamic>> rows,
-  ) async {
-    if (_staffId == null) {
-      debugPrint(
-        '[DashboardAnalyticsService/_resolveSubmissionRows] Action: staffId not set',
-      );
-      return [];
-    }
-
-    final plaintextRows = <Map<String, dynamic>>[];
-    final encryptedRows = <Map<String, dynamic>>[];
-
-    for (final row in rows) {
-      if (_submissionEncryptionVersion(row) == 1) {
-        encryptedRows.add(row);
-      } else {
-        plaintextRows.add(row);
-      }
-    }
-
-    final decryptedById = await _batchDecryptSubmissionRows(encryptedRows);
-
-    final resolvedRows = <Map<String, dynamic>>[];
-
-    for (final row in plaintextRows) {
-      resolvedRows.add({...row, 'data': _submissionDataMap(row['data'])});
-    }
-
-    for (final row in encryptedRows) {
-      final submissionId = _submissionIdAsInt(row['id']);
-      if (submissionId == null) {
-        continue;
-      }
-
-      final decryptedData = decryptedById[submissionId];
-      if (decryptedData == null) {
-        continue;
-      }
-
-      resolvedRows.add({...row, 'data': decryptedData});
-    }
-
-    return resolvedRows;
   }
 
   Future<List<Map<String, dynamic>>> _fetchSubmissionDataRows({

@@ -4,7 +4,6 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -16,11 +15,9 @@ import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
 import 'package:sappiire/web/widgets/web_header_button.dart';
-import 'package:sappiire/web/widgets/confirm_dialog.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
 import 'package:sappiire/web/screen/web_login_screen.dart';
-import 'package:sappiire/services/audit/audit_log_service.dart';
 import 'package:sappiire/web/controllers/applicants_controller.dart';
 
 enum _RightPanelView { records, form }
@@ -393,76 +390,6 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     final result = response.data as Map<String, dynamic>;
     return result['data'] as Map<String, dynamic>;
   }
-
-  Future<void> _deleteSubmission() async {
-    if (_selectedSubmission == null) return;
-
-    final submissionId = _selectedSubmission!['id'];
-
-    try {
-      await _submissionService.deleteClientSubmission(submissionId);
-
-      setState(() {
-        _selectedSubmission = null;
-        _activeTemplate = null;
-        _viewCtrl?.dispose();
-        _viewCtrl = null;
-        _rightPanelView = _RightPanelView.records;
-      });
-
-      await _loadData();
-    } catch (e) {
-      debugPrint('[ApplicantsScreen/_deleteSubmission] Error: $e');
-    }
-  }
-
-  Future<void> _deleteApplicant() async {
-    final group = _selectedApplicantGroup;
-    if (group == null) return;
-
-    final count = group.submissions.length;
-    final confirmed = await showConfirmDialog(
-      context,
-      title: 'Delete entire applicant?',
-      message:
-          'This will permanently delete all $count form(s) for ${group.displayName}. This action cannot be undone.',
-      confirmLabel: 'Delete All',
-      confirmColor: Colors.red,
-    );
-    if (!confirmed) return;
-
-    // Delete all submissions for this applicant.
-    final idsToDelete = <dynamic>[];
-    for (final submission in group.submissions) {
-      await AuditLogService().log(
-        actionType: kAuditSubmissionDeleted,
-        category: kCategorySubmission,
-        severity: kSeverityCritical,
-        actorId: widget.cswd_id,
-        actorName: widget.displayName,
-        actorRole: widget.role,
-        targetType: 'client_submission',
-        targetId: submission['id'].toString(),
-        targetLabel: _getApplicantName(submission),
-        details: {'form_type': submission['form_type'], 'bulk_delete': true},
-      );
-      idsToDelete.add(submission['id']);
-    }
-
-    await _submissionService.deleteClientSubmissions(idsToDelete);
-
-    setState(() {
-      _selectedApplicantKey = null;
-      _selectedSubmission = null;
-      _activeTemplate = null;
-      _viewCtrl?.dispose();
-      _viewCtrl = null;
-    });
-    await _loadData();
-  }
-
-  String _getApplicantName(Map<String, dynamic> submission) =>
-      _applicantsController.getApplicantName(submission, _templateCache);
 
   List<ApplicantGroup> get _groupedApplicants =>
       _applicantsController.groupedApplicants(

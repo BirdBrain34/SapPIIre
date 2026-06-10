@@ -26,7 +26,6 @@ class DashboardFormCard extends StatefulWidget {
 
 class _DashboardFormCardState extends State<DashboardFormCard> {
   late String _displayColor;
-  bool _isShowingColorPicker = false;
 
   // 12 preset colors for quick selection
   static const _presetColors = [

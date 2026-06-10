@@ -55,14 +55,11 @@ class _DashboardScreenState extends State<DashboardScreen>
   int _refreshToken = 0;
 
   // All Forms view state (existing analytics)
-  bool _isLoadingOverview = true;
   int _activeFormCount = 0;
   int _staffAccountCount = 0;
-  int _selectionToken = 0;
 
   Map<String, int> get _countsByFormType => _controller.countsByFormType;
   int get _totalCount => _controller.totalCount;
-  bool get _isLoadingInsights => _controller.isLoadingInsights;
   Map<String, int> get _staffWorkload => _controller.staffWorkload;
   Map<String, int> get _genderRatio => _controller.genderRatio;
   Map<String, int> get _ageBrackets => _controller.ageBrackets;
@@ -251,7 +248,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     _analyticsService.clearDecryptedCache();
 
     if (mounted) {
-      setState(() => _isLoadingOverview = true);
+      setState(() {});
     }
 
     final timeRange = _selectedDateRange;
@@ -265,7 +262,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (!mounted || token != _refreshToken) return;
 
     final staffCount = await _analyticsService.fetchStaffAccountCount();
-    final uniqueClients = await _analyticsService.fetchUniqueClientCount(
+    await _analyticsService.fetchUniqueClientCount(
       timeRange: timeRange,
     );
 
@@ -273,7 +270,6 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     setState(() {
       _staffAccountCount = staffCount;
-      _isLoadingOverview = false;
     });
   }
 

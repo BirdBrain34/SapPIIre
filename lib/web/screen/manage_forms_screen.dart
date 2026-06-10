@@ -73,8 +73,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   bool _isFinalizing = false;
   bool _isSubmitting = false;
   String _lastSavedReference = '';
-  String? _lastAppliedPayloadFingerprint;
-
+  
   /// Derive a stable station ID from the worker's cswd_id.
   String get _stationId => 'desk_${widget.cswd_id}';
 
@@ -149,7 +148,6 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       _selectedTemplate = template;
       _formCtrl?.dispose();
       _formCtrl = FormStateController(template: template);
-      _lastAppliedPayloadFingerprint = null;
     });
 
     if (_sessionStarted && _currentSessionId != 'WAITING-FOR-SESSION') {
@@ -199,7 +197,6 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         _sessionStarted = true;
         _isStartingSession = false;
         _lastSavedReference = '';
-        _lastAppliedPayloadFingerprint = null;
       });
 
       await AuditLogService().log(
