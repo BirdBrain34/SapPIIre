@@ -37,6 +37,7 @@ Foreign-key linkage to `form_fields(field_id)` binds values to dynamic metadata 
 2. `expires_at` defaults to 30-minute session validity.
 3. Hybrid transport columns include `encrypted_payload`, `payload_iv`, `encrypted_aes_key`, and `transmission_version`.
 4. Staff linkage is modeled through `cswd_id` foreign key to `staff_accounts(cswd_id)`.
+5. **Zero-Knowledge Staging:** The deprecated `form_data` column is no longer used for decrypted payloads. Decryption occurs strictly in-memory via the `serve-submission-for-review` Edge Function during the request lifecycle, delivering plaintext ephemerally to the dashboard without database persistence.
 
 ### 2.4 Finalized Record Layer: `client_submissions`
 
@@ -101,9 +102,13 @@ When transmission is initiated:
 2. Encrypted envelope data is written to `form_submission` transport columns.
 3. Session status transitions to `scanned` for dashboard pickup.
 
-### 3.4 Decrypt and Finalize
+### 3.4 Zero-Knowledge Staging and Finalization
 
-Edge decryption writes plaintext JSON into `form_submission.form_data`. Staff review and finalize into `client_submissions` via the `encrypt-and-save-submission` Edge Function, which performs server-side AES-256-GCM encryption before persisting. This creates three distinct encryption/security boundaries:
+**In-Memory Decryption:** The `serve-submission-for-review` Edge Function decrypts the encrypted envelope on-demand and returns plaintext JSON ephemerally in the HTTP response. Plaintext is never written back to `form_submission`. Staff review the decrypted payload directly in the dashboard UI.
+
+**Server-Side Finalization:** Upon review completion, staff finalize the record via the `encrypt-and-save-submission` Edge Function, which performs server-side AES-256-GCM encryption before persisting to `client_submissions`.
+
+This creates three distinct encryption/security boundaries:
 
 1. **At Rest (User Level):** Client-side AES encryption of PII in `user_field_values`.
 2. **In Transit:** Hybrid AES/RSA encrypted payload in `form_submission` transport columns.

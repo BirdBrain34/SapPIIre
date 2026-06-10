@@ -17,7 +17,7 @@ This guide explains exactly how the team can run and test the hybrid cryptosyste
   2. App encrypts payload with AES-GCM
   3. App encrypts AES key with RSA-OAEP public key
   4. App stores envelope (`encrypted_payload`, `payload_iv`, `encrypted_aes_key`, `transmission_version = 1`)
-  5. Edge function decrypts and writes plaintext JSON to `form_data`
+  5. **Zero-Knowledge Staging:** Edge function (`serve-submission-for-review`) decrypts in-memory and returns plaintext ephemerally in HTTP response — plaintext is never written back to the database
 
 ## 1.1) Security patch sync status (2026-04-03)
 
@@ -173,7 +173,7 @@ Pass signal for encrypted sessions:
 - `transmission_version = 1`
 - all `has_*` columns are true
 
-### 8.4 End-to-end decrypt success for one row
+### 8.4 Zero-Knowledge Staging validation (encrypted envelope only)
 ```sql
 with target as (
   select '5f74584f-261d-43df-af3e-24f3f2a61a58'::uuid as submission_id
@@ -185,19 +185,19 @@ select
   (fs.encrypted_payload is not null and fs.encrypted_payload <> '') as has_encrypted_payload,
   (fs.payload_iv is not null and fs.payload_iv <> '') as has_payload_iv,
   (fs.encrypted_aes_key is not null and fs.encrypted_aes_key <> '') as has_encrypted_aes_key,
-  (fs.form_data::jsonb <> '{}'::jsonb) as form_data_not_empty,
   case
     when fs.transmission_version = 1
       and fs.encrypted_payload is not null and fs.encrypted_payload <> ''
       and fs.payload_iv is not null and fs.payload_iv <> ''
       and fs.encrypted_aes_key is not null and fs.encrypted_aes_key <> ''
-      and fs.form_data::jsonb <> '{}'::jsonb
-    then 'PASS'
+    then 'PASS (Zero-Knowledge Staging: encrypted envelope valid)'
     else 'FAIL'
   end as hybrid_result
 from form_submission fs
 join target t on fs.id = t.submission_id;
 ```
+
+Note: Decryption happens in-memory via `serve-submission-for-review` Edge Function. To verify decryption, invoke the function directly with `sessionId` and `staffId` parameters.
 
 ### 8.5 Completion rate for encrypted transmissions
 ```sql
@@ -219,7 +219,8 @@ A healthy run should show:
 - At-rest rows with `encryption_version = 1` and valid IV
 - New session rows with `transmission_version = 1`
 - Envelope columns present (`encrypted_payload`, `payload_iv`, `encrypted_aes_key`)
-- `form_data` becomes non-empty after edge decrypt
+- **Zero-Knowledge Staging:** Encrypted envelope remains in database; decryption happens in-memory on staff request via `serve-submission-for-review` Edge Function
+- Plaintext JSON is never written back to `form_submission`
 
 ## 10) Troubleshooting quick map
 
@@ -247,8 +248,27 @@ A healthy run should show:
 
 ## 12) Source files involved
 
+### Core Cryptography and Services
 - `lib/services/crypto/hybrid_crypto_service.dart`
 - `lib/services/field_value_service.dart`
 - `lib/services/supabase_service.dart`
-- `supabase/functions/decrypt-qr-payload/index.ts`
+- `lib/services/forms/submission_service.dart`
+
+### Controllers
+- `lib/web/controllers/manage_forms_controller.dart`
+
+### Edge Functions (Zero-Knowledge Staging)
+- `supabase/functions/serve-submission-for-review/index.ts` (on-demand in-memory decryption for staff review)
+- `supabase/functions/decrypt-qr-payload/index.ts` (validation-only, status update)
+
+### Edge Functions (Client Submissions)
+- `supabase/functions/encrypt-and-save-submission/index.ts` (server-side AES-256-GCM encryption of finalized records)
+- `supabase/functions/decrypt-submission-data/index.ts` (single-record decryption with role-based access control)
+- `supabase/functions/decrypt-submission-batch/index.ts` (batch decryption for applicants screen, 5-10x faster loading)
+
+### Edge Functions (OTP Verification)
+- `supabase/functions/send-phone-otp/index.ts` (generate and store OTP for phone verification)
+- `supabase/functions/verify-phone-otp/index.ts` (validate OTP using RPC)
+
+### Main Entry Point
 - `lib/main.dart`

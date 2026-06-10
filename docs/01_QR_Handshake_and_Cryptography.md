@@ -11,7 +11,7 @@ The operational data flow follows four bounded stages:
 1. Mobile stage: the user curates and confirms PII fields from the mobile dynamic form state.
 2. QR stage: the mobile application generates a session handoff artifact (QR-linked session context) for dashboard pairing.
 3. Web stage: CSWD dashboard scans or resolves the QR-linked session and binds it to an active intake interface.
-4. Supabase stage: encrypted envelope data is written to `form_submission`, decrypted by Edge Function, and materialized into `form_data` for secure autofill.
+4. Supabase stage: encrypted envelope data is written to `form_submission`, decrypted in-memory by Edge Function during request lifecycle, and delivered ephemerally to the dashboard for secure autofill.
 
 This architecture preserves a clean separation between pairing mechanics (QR/session handshake) and payload confidentiality controls (hybrid cryptography).
 
@@ -47,11 +47,13 @@ This table contains no private key column, enforcing separation between distribu
 
 ### 3.1 Session Initialization
 
-The web tier creates an active session row in `form_submission` with initial JSON state (`form_data = {}`) and default lifecycle values:
+The web tier creates an active session row in `form_submission` with default lifecycle values:
 
 1. `status = active`
 2. `expires_at = now() + 30 minutes`
 3. `transmission_version = 0` (default)
+
+Note: The legacy `form_data` column is deprecated and no longer used for decrypted payloads.
 
 ### 3.2 Mobile Payload Packaging
 
@@ -84,25 +86,26 @@ The mobile client updates the targeted active session row with:
 6. `scanned_at` (UTC timestamp)
 7. `user_id` (when available)
 
-### 3.5 Edge Decryption Sequence
+### 3.5 Zero-Knowledge Staging: On-Demand Edge Decryption
 
-The `decrypt-qr-payload` Edge Function executes the following sequence:
+The system implements "Zero-Knowledge Staging" where decryption occurs strictly in-memory during the request lifecycle. The `serve-submission-for-review` Edge Function executes the following sequence:
 
-1. Validate request method and `sessionId`.
-2. Resolve `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `RSA_PRIVATE_KEY_PEM`.
+1. Validate request method, `sessionId`, and `staffId`.
+2. Verify staff authorization (role-based access control, blocking `viewer` role).
 3. Fetch the encrypted envelope from `form_submission` where `transmission_version = 1`.
-4. Decode private key PEM and import key material.
-5. Unwrap AES key via RSA-OAEP.
+4. Decode private key PEM from Edge secrets (`RSA_PRIVATE_KEY_PEM`).
+5. Unwrap AES key via RSA-OAEP (attempts SHA-1 then SHA-256 for compatibility).
 6. Import AES key into WebCrypto as AES-GCM key material.
-7. Decrypt `encrypted_payload` using `payload_iv`.
+7. Decrypt `encrypted_payload` using `payload_iv` in-memory.
 8. Parse decrypted JSON.
-9. Update `form_submission.form_data` with decrypted payload.
+9. Return plaintext JSON ephemerally in HTTP response body.
+10. Write audit log entry for decryption event.
 
-The implementation includes OAEP hash compatibility attempts to tolerate environment-level key import variance.
+Critical security guarantee: Plaintext is never written back to the database. The encrypted envelope remains the authoritative storage form.
 
 ### 3.6 Web Autofill Activation
 
-Upon successful decryption, the session record now contains usable `form_data`. The dashboard stream listener hydrates dynamic form controllers, enabling CSWD staff-assisted review and completion.
+The dashboard controller (`ManageFormsController`) invokes on-demand decryption when a session with `status='scanned'` and empty `form_data` is detected. The Edge Function returns decrypted payload in-memory, which the dashboard hydrates directly into dynamic form controllers, enabling CSWD staff-assisted review and completion. This ephemeral delivery model ensures no plaintext persistence.
 
 ## 4. `form_submission` Lifecycle and Security Semantics
 

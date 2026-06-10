@@ -17,7 +17,7 @@ This document now serves as the executive summary of implemented capabilities. I
 1. Mobile PII management (data at rest).
 2. Hybrid cryptosystem (AES-256-GCM and RSA-2048 OAEP).
 3. QR handshake protocol (mobile to web session channel).
-4. Secured autofill engine (Edge decryption to staff form runtime).
+4. Secured autofill engine (Zero-Knowledge Staging: Edge decryption delivers plaintext in-memory to staff dashboard without database persistence).
 5. CSWD dashboard operations for intake records.
 6. Basic role-based access for protected staff workflows.
 
@@ -26,10 +26,13 @@ This document now serves as the executive summary of implemented capabilities. I
 1. Dynamic form template builder and runtime rendering.
 2. Conditional logic engine and computed-field behavior.
 3. InfoScanner OCR-assisted ID extraction.
-4. OTP-enabled user and staff security workflows.
+4. OTP-enabled user and staff security workflows with dedicated Edge Functions.
 5. Admin creation, pending approval, and staff lifecycle governance.
 6. Display session broadcasting for station-linked screens.
-7. Audit logging and analytics extensions.
+7. Audit logging and analytics extensions with submission decryption tracking.
+8. **Batch decryption optimization**: Applicants screen loads 5-10x faster using `decrypt-submission-batch` Edge Function.
+9. **Mobile notification center**: Dedicated NotificationScreen for real-time form template change awareness.
+10. **Enhanced dashboard analytics**: Worker drill-down, client search, configurable chart elevation, and time-frame filtering.
 
 ## 5. Detailed Documentation Map
 
