@@ -102,7 +102,7 @@ When transmission is initiated:
 2. Encrypted envelope data is written to `form_submission` transport columns.
 3. Session status transitions to `scanned` for dashboard pickup.
 
-### 2.4 Zero-Knowledge Staging and Finalization
+### 3.4 Zero-Knowledge Staging and Finalization
 
 **In-Memory Decryption:** When staff open a session with `status='scanned'` and `transmission_version=1`, the `serve-submission-for-review` Edge Function decrypts the encrypted envelope on-demand and returns plaintext JSON ephemerally in the HTTP response. Staff review the decrypted payload directly in the dashboard UI.
 
