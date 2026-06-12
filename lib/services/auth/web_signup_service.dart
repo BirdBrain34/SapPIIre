@@ -30,7 +30,6 @@ class WebSignupService {
   }
 
   Future<Map<String, dynamic>> createPendingStaffAccount({
-    required String employeeId,
     required String firstName,
     required String middleName,
     required String lastName,
@@ -57,7 +56,6 @@ class WebSignupService {
       final accountResponse = await _supabase
           .from('staff_accounts')
           .insert({
-            'employee_id': employeeId.trim().isEmpty ? null : employeeId.trim(),
             'email': email.trim(),
             'username': username.trim(),
             'password_hash': _hashPassword(password),

@@ -121,6 +121,8 @@ class StaffAdminService {
     required String email,
     required String firstName,
     required String lastName,
+    String? middleName,
+    String? nameSuffix,
     String? position,
     String? department,
     String? phoneNumber,
@@ -161,7 +163,13 @@ class StaffAdminService {
       await _supabase.from('staff_profiles').insert({
         'cswd_id': cswdId,
         'first_name': firstName.trim(),
+        'middle_name': middleName?.trim().isEmpty == true
+            ? null
+            : middleName?.trim(),
         'last_name': lastName.trim(),
+        'name_suffix': nameSuffix?.trim().isEmpty == true
+            ? null
+            : nameSuffix?.trim(),
         'position': position?.trim().isEmpty == true ? null : position?.trim(),
         'department': department?.trim().isEmpty == true
             ? null

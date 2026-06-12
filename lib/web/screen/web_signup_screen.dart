@@ -13,7 +13,6 @@ class WebSignupScreen extends StatefulWidget {
 }
 
 class _WebSignupScreenState extends State<WebSignupScreen> {
-  final TextEditingController _cswdIdController = TextEditingController();
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _middleNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
@@ -66,7 +65,6 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
 
     try {
       final result = await _webSignupService.createPendingStaffAccount(
-        employeeId: _cswdIdController.text,
         firstName: _firstNameController.text,
         middleName: _middleNameController.text,
         lastName: _lastNameController.text,
@@ -106,7 +104,6 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
 
   @override
   void dispose() {
-    _cswdIdController.dispose();
     _firstNameController.dispose();
     _middleNameController.dispose();
     _lastNameController.dispose();
@@ -215,12 +212,6 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
                         ),
                       ),
                       const SizedBox(height: 32),
-                      _styledField(
-                        'CSWD Employee ID',
-                        _cswdIdController,
-                        false,
-                      ),
-                      const SizedBox(height: 16),
                       Row(
                         children: [
                           Expanded(
@@ -383,8 +374,6 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
-              _styledField('CSWD Employee ID', _cswdIdController, false),
-              const SizedBox(height: 16),
               _styledField('First Name', _firstNameController, false),
               const SizedBox(height: 16),
               _styledField('Middle Name', _middleNameController, false),

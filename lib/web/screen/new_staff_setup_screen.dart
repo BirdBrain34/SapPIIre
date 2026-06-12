@@ -73,27 +73,20 @@ Future<void> _handleContinueFromEmail() async {
   final result = await _emailService.validatePendingSetupEmail(email: email);
 
   if (!mounted) return;
+  setState(() => _isLoading = false);
 
   if (result['success'] == true) {
-    // Send the OTP now that the account is confirmed to exist
-    final otpResult = await _emailService.sendAccountCreationOtp(email: email);
-
-    if (!mounted) return;
-    setState(() => _isLoading = false);
-
-    if (otpResult['success'] == true) {
-      setState(() {
-        _step = 2;
-        _infoMessage = 'A setup code was sent to your email.';
-      });
-    } else {
-      setState(() => _errorMessage = otpResult['message']?.toString());
-    }
-  } else {
+    // Do NOT send a new OTP here. The staff member uses the OTP that was
+    // emailed when the superadmin created the account. Sending another code
+    // would invalidate that original OTP. (Use "Resend OTP" in step 2 if it
+    // has expired.)
     setState(() {
-      _isLoading = false;
-      _errorMessage = result['message']?.toString();
+      _step = 2;
+      _infoMessage =
+          'Enter the setup code sent to your email when your account was created.';
     });
+  } else {
+    setState(() => _errorMessage = result['message']?.toString());
   }
 }
 
