@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sappiire/services/forms/submission_service.dart';
@@ -36,8 +35,8 @@ class DashboardAnalyticsService {
 
   final SupabaseClient _supabase = Supabase.instance.client;
   final SubmissionService _submissionService = SubmissionService();
-  Map<String, List<Map<String, dynamic>>> _decryptedCache = {};
-  Map<String, DateTime> _cacheTimestamps = {};
+  final Map<String, List<Map<String, dynamic>>> _decryptedCache = {};
+  final Map<String, DateTime> _cacheTimestamps = {};
   static const Duration _cacheTTL = Duration(minutes: 5);
   String? _staffId;
 
@@ -1443,52 +1442,6 @@ class DashboardAnalyticsService {
     return _submissionService.batchDecryptSubmissions(submissionIds, _staffId!);
   }
 
-  Future<List<Map<String, dynamic>>> _resolveSubmissionRows(
-    List<Map<String, dynamic>> rows,
-  ) async {
-    if (_staffId == null) {
-      debugPrint(
-        '[DashboardAnalyticsService/_resolveSubmissionRows] Action: staffId not set',
-      );
-      return [];
-    }
-
-    final plaintextRows = <Map<String, dynamic>>[];
-    final encryptedRows = <Map<String, dynamic>>[];
-
-    for (final row in rows) {
-      if (_submissionEncryptionVersion(row) == 1) {
-        encryptedRows.add(row);
-      } else {
-        plaintextRows.add(row);
-      }
-    }
-
-    final decryptedById = await _batchDecryptSubmissionRows(encryptedRows);
-
-    final resolvedRows = <Map<String, dynamic>>[];
-
-    for (final row in plaintextRows) {
-      resolvedRows.add({...row, 'data': _submissionDataMap(row['data'])});
-    }
-
-    for (final row in encryptedRows) {
-      final submissionId = _submissionIdAsInt(row['id']);
-      if (submissionId == null) {
-        continue;
-      }
-
-      final decryptedData = decryptedById[submissionId];
-      if (decryptedData == null) {
-        continue;
-      }
-
-      resolvedRows.add({...row, 'data': decryptedData});
-    }
-
-    return resolvedRows;
-  }
-
   Future<List<Map<String, dynamic>>> _fetchSubmissionDataRows({
     required String formType,
     DateTimeRange? timeRange,
@@ -1542,6 +1495,240 @@ class DashboardAnalyticsService {
         '[DashboardAnalyticsService/_fetchSubmissionDataRows] Error: $e',
       );
       return [];
+    }
+  }
+
+  /// Fetch submissions grouped by form type for a specific worker display name.
+  /// Used by the drill-down feature in the interactive bar chart.
+  Future<Map<String, int>> fetchSubmissionsByFormTypeForWorker(
+    String workerDisplayName, {
+    DateTimeRange? timeRange,
+  }) async {
+    try {
+      // Step 1: Build a lookup from all possible label formats → staff ID.
+      final accounts = await _supabase
+          .from('staff_accounts')
+          .select('cswd_id, username, email');
+      final profiles = await _supabase
+          .from('staff_profiles')
+          .select('cswd_id, first_name, middle_name, last_name');
+
+      final profileById = <String, Map<String, dynamic>>{};
+      for (final row in List<Map<String, dynamic>>.from(profiles)) {
+        final id = row['cswd_id']?.toString().trim() ?? '';
+        if (id.isEmpty) continue;
+        profileById[id] = row;
+      }
+
+      // Build map: label → staff ID covering all possible formats
+      final labelToId = <String, String>{};
+      for (final row in List<Map<String, dynamic>>.from(accounts)) {
+        final id = row['cswd_id']?.toString().trim() ?? '';
+        if (id.isEmpty) continue;
+
+        final profile = profileById[id] ?? const <String, dynamic>{};
+        final first = profile['first_name']?.toString().trim() ?? '';
+        final middle = profile['middle_name']?.toString().trim() ?? '';
+        final last = profile['last_name']?.toString().trim() ?? '';
+        final middleInitial = middle.isNotEmpty ? ' ${middle[0]}.' : '';
+        final fullName = '$first$middleInitial $last'.trim();
+        final username = row['username']?.toString().trim() ?? '';
+        final email = row['email']?.toString().trim() ?? '';
+
+        if (fullName.isNotEmpty) labelToId[fullName] = id;
+        if (username.isNotEmpty) {
+          labelToId[username] = id;
+          labelToId[username.toUpperCase()] = id;
+        }
+        if (email.isNotEmpty) {
+          final localPart = email.split('@').first.trim();
+          if (localPart.isNotEmpty && !_isUuid(localPart)) {
+            labelToId[localPart] = id;
+          }
+        }
+      }
+
+      // Step 2: Resolve label to staff ID (exact + case-insensitive)
+      String? matchedId = labelToId[workerDisplayName];
+      if (matchedId == null) {
+        final lowerName = workerDisplayName.toLowerCase();
+        for (final entry in labelToId.entries) {
+          if (entry.key.toLowerCase() == lowerName) {
+            matchedId = entry.value;
+            break;
+          }
+        }
+      }
+
+      if (matchedId == null) return {};
+
+      final counts = <String, int>{};
+
+      // Primary strategy: Query client_submissions by created_by / last_edited_by
+      // client_submissions is the finalized record table that has form_type
+      // AND created_by populated (unlike form_submission which creates sessions
+      // without setting created_by).
+      try {
+        final rows = await _clientSubmissionsQuery(
+          select: 'form_type, created_by, last_edited_by',
+          formType: null,
+          timeRange: timeRange,
+        );
+
+        for (final row in List<Map<String, dynamic>>.from(rows)) {
+          final createdBy = row['created_by']?.toString().trim() ?? '';
+          final editedBy = row['last_edited_by']?.toString().trim() ?? '';
+
+          if (createdBy != matchedId && editedBy != matchedId) continue;
+
+          final formType = row['form_type']?.toString().trim() ?? 'Unknown';
+          counts[formType] = (counts[formType] ?? 0) + 1;
+        }
+      } catch (e) {
+        debugPrint(
+          '[fetchSubmissionsByFormTypeForWorker] client_submissions query: $e',
+        );
+      }
+
+      // Fallback: Use audit_logs actor_id → session_id → client_submissions.form_type
+      if (counts.isEmpty) {
+        try {
+          dynamic auditQuery = _supabase
+              .from('audit_logs')
+              .select('actor_id, session_id');
+          auditQuery = auditQuery.eq('actor_id', matchedId);
+          auditQuery = _applyTimeRange(auditQuery, timeRange);
+          final auditRows = await auditQuery
+              .order('created_at', ascending: false)
+              .limit(500) as List<dynamic>;
+
+          final sessionIds = List<Map<String, dynamic>>.from(auditRows)
+              .map((row) => row['session_id']?.toString().trim() ?? '')
+              .where((id) => id.isNotEmpty)
+              .toSet()
+              .toList();
+
+          if (sessionIds.isNotEmpty) {
+            final submissions = await _clientSubmissionsQuery(
+              select: 'form_type, session_id',
+              formType: null,
+              timeRange: timeRange,
+            ).inFilter('session_id', sessionIds);
+
+            for (final row in List<Map<String, dynamic>>.from(submissions)) {
+              final formType = row['form_type']?.toString().trim() ?? 'Unknown';
+              counts[formType] = (counts[formType] ?? 0) + 1;
+            }
+          }
+        } catch (e) {
+          debugPrint(
+            '[fetchSubmissionsByFormTypeForWorker] audit_logs fallback: $e',
+          );
+        }
+      }
+
+      return counts;
+    } catch (e) {
+      debugPrint(
+        '[DashboardAnalyticsService/fetchSubmissionsByFormTypeForWorker] Error: $e',
+      );
+      return {};
+    }
+  }
+
+  /// Fetch the card color setting for a specific template
+  Future<String> fetchCardSettings(String templateId) async {
+    try {
+      final result = await _supabase
+          .from('dashboard_card_settings')
+          .select('card_color')
+          .eq('template_id', templateId)
+          .maybeSingle();
+
+      if (result != null) {
+        return result['card_color']?.toString().trim() ?? '#4C8BF5';
+      }
+      return '#4C8BF5'; // Default color
+    } catch (e) {
+      debugPrint('[DashboardAnalyticsService/fetchCardSettings] Error: $e');
+      return '#4C8BF5';
+    }
+  }
+
+  /// Save or update the card color setting for a template
+  Future<void> upsertCardSettings(
+    String templateId,
+    String color,
+    String staffId,
+  ) async {
+    try {
+      final now = DateTime.now().toIso8601String();
+      
+      // Try to update existing record first
+      final existing = await _supabase
+          .from('dashboard_card_settings')
+          .select('id')
+          .eq('template_id', templateId)
+          .maybeSingle();
+
+      if (existing != null) {
+        // Update existing
+        await _supabase
+            .from('dashboard_card_settings')
+            .update({
+              'card_color': color,
+              'updated_at': now,
+              'updated_by': staffId,
+            })
+            .eq('template_id', templateId);
+      } else {
+        // Insert new
+        await _supabase.from('dashboard_card_settings').insert({
+          'template_id': templateId,
+          'card_color': color,
+          'updated_at': now,
+          'updated_by': staffId,
+        });
+      }
+    } catch (e) {
+      debugPrint('[DashboardAnalyticsService/upsertCardSettings] Error: $e');
+      rethrow;
+    }
+  }
+
+  /// Fetch submission timeline using RPC
+  Future<Map<String, int>> fetchSubmissionTimeline({
+    required String templateId,
+    required DateTimeRange dateRange,
+    required String bucket,
+  }) async {
+    try {
+      final result = await _supabase.rpc(
+        'get_submission_timeline',
+        params: {
+          'p_template_id': templateId,
+          'p_date_from': dateRange.start.toIso8601String(),
+          'p_date_to': dateRange.end.toIso8601String(),
+          'p_bucket': bucket, // 'day', 'week', or 'month'
+        },
+      );
+
+      final timeline = <String, int>{};
+      for (final row in result as List<dynamic>) {
+        final data = row as Map<String, dynamic>;
+        final bucket = data['bucket']?.toString() ?? '';
+        final count = (data['count'] as int?) ?? 0;
+        if (bucket.isNotEmpty && count > 0) {
+          timeline[bucket] = count;
+        }
+      }
+
+      return timeline;
+    } catch (e) {
+      debugPrint(
+        '[DashboardAnalyticsService/fetchSubmissionTimeline] Error: $e',
+      );
+      return {};
     }
   }
 }

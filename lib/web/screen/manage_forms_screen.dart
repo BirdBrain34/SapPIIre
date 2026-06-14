@@ -73,8 +73,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   bool _isFinalizing = false;
   bool _isSubmitting = false;
   String _lastSavedReference = '';
-  String? _lastAppliedPayloadFingerprint;
-
+  
   /// Derive a stable station ID from the worker's cswd_id.
   String get _stationId => 'desk_${widget.cswd_id}';
 
@@ -149,7 +148,6 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       _selectedTemplate = template;
       _formCtrl?.dispose();
       _formCtrl = FormStateController(template: template);
-      _lastAppliedPayloadFingerprint = null;
     });
 
     if (_sessionStarted && _currentSessionId != 'WAITING-FOR-SESSION') {
@@ -199,7 +197,6 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         _sessionStarted = true;
         _isStartingSession = false;
         _lastSavedReference = '';
-        _lastAppliedPayloadFingerprint = null;
       });
 
       await AuditLogService().log(
@@ -292,40 +289,51 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     debugPrint(
       '[ManageFormsScreen/_applySessionRow] Action: Realtime update received',
     );
+    final status = row['status'] as String? ?? '';
     debugPrint(
-      '[ManageFormsScreen/_applySessionRow] Action: Row status ${row['status']}',
+      '[ManageFormsScreen/_applySessionRow] Action: Row status $status',
     );
-    final incoming = row['form_data'] as Map<String, dynamic>? ?? {};
-    debugPrint(
-      '[ManageFormsScreen/_applySessionRow] Action: Incoming keys ${incoming.keys.toList()}',
-    );
-    debugPrint(
-      '[ManageFormsScreen/_applySessionRow] Action: Incoming fields Count: ${incoming.length}',
-    );
-    if (incoming.isEmpty) {
+
+    // Delegate encryption detection to controller (form_data column was removed)
+    if (_manageFormsController.shouldDecrypt(row)) {
       debugPrint(
-        '[ManageFormsScreen/_applySessionRow] Action: Incoming data is empty',
+        '[ManageFormsScreen/_applySessionRow] Action: Scanned session detected, decrypting via controller',
       );
+      _hydrateDecrypted();
       return;
     }
 
-    final fingerprint = _fingerprintPayload(incoming);
-    if (fingerprint != null && fingerprint == _lastAppliedPayloadFingerprint) {
-      debugPrint(
-        '[ManageFormsScreen/_applySessionRow] Action: Duplicate payload detected, skipping reapply',
-      );
+    // Active session with no data yet — wait for mobile to scan
+    debugPrint(
+      '[ManageFormsScreen/_applySessionRow] Action: No payload available yet',
+    );
+  }
+
+  /// Fetches decrypted data from the controller and loads it into the form.
+  /// Delegates all crypto/Supabase logic to ManageFormsController.
+  Future<void> _hydrateDecrypted() async {
+    if (_manageFormsController.isDecrypting) return;
+
+    final decrypted = await _manageFormsController.decryptStagingSubmission(
+      sessionId: _currentSessionId,
+      staffId: widget.cswd_id,
+    );
+
+    if (decrypted == null || decrypted.isEmpty) {
+      debugPrint('[ManageFormsScreen/_hydrateDecrypted] Decryption returned null or empty');
       return;
     }
-    _lastAppliedPayloadFingerprint = fingerprint;
+
+    debugPrint(
+      '[ManageFormsScreen/_hydrateDecrypted] Decrypted keys: ${decrypted.keys.toList()}',
+    );
 
     if (!mounted) return;
     final currentFormOffset = _formScrollController.hasClients
         ? _formScrollController.offset
         : 0.0;
-    debugPrint(
-      '[ManageFormsScreen/_applySessionRow] Action: Loading data into form controller',
-    );
-    _formCtrl?.loadFromJson(incoming);
+
+    _formCtrl?.loadFromJson(decrypted);
     _setStatePreserveScroll(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_formScrollController.hasClients) return;
@@ -334,12 +342,8 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       _formScrollController.jumpTo(target);
     });
     debugPrint(
-      '[ManageFormsScreen/_applySessionRow] Action: Form updated successfully Count: ${incoming.length}',
+      '[ManageFormsScreen/_hydrateDecrypted] Form updated successfully Count: ${decrypted.length}',
     );
-  }
-
-  String? _fingerprintPayload(Map<String, dynamic> payload) {
-    return _manageFormsController.fingerprintPayload(payload);
   }
 
   Future<void> _hydrateFromSessionSnapshot(String sessionId) async {
@@ -356,11 +360,16 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         return;
       }
 
-      final formData = row['form_data'] as Map<String, dynamic>? ?? {};
-      if (formData.isNotEmpty) {
+      final status = row['status'] as String? ?? '';
+
+      if (status == 'scanned') {
+        // Polling detected a scanned session with empty form_data.
+        // Try on-demand decryption directly here as a backup.
         debugPrint(
-          '[ManageFormsScreen/_hydrateFromSessionSnapshot] Action: Found data via polling Keys: ${formData.keys.toList()}',
+          '[ManageFormsScreen/_hydrateFromSessionSnapshot] Action: Polling found scanned session with empty form_data, trying decrypt via controller',
         );
+        _hydrateDecrypted();
+        return;
       }
 
       _applySessionRow(Map<String, dynamic>.from(row));

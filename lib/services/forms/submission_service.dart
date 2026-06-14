@@ -17,6 +17,18 @@ class SubmissionService {
         .stream(primaryKey: ['id'])
         .eq('id', sessionId);
   }
+  
+  /// Fetches only the encrypted envelope columns for a staging session.
+  /// Used to check if a session has encrypted payload before triggering decryption.
+  Future<Map<String, dynamic>?> fetchEncryptedEnvelope(String sessionId) async {
+    final row = await _supabase
+        .from('form_submission')
+        .select('id, status, transmission_version, encrypted_payload, payload_iv, encrypted_aes_key')
+        .eq('id', sessionId)
+        .eq('transmission_version', 1)
+        .maybeSingle();
+    return row == null ? null : Map<String, dynamic>.from(row);
+  }
 
   Future<void> updateSessionStatus(String sessionId, String status) async {
     await _supabase
@@ -28,7 +40,7 @@ class SubmissionService {
   Future<Map<String, dynamic>> createSession(String formType) async {
     return await _supabase
         .from('form_submission')
-        .insert({'status': 'active', 'form_type': formType, 'form_data': {}})
+        .insert({'status': 'active', 'form_type': formType})
         .select()
         .single();
   }
@@ -53,7 +65,7 @@ class SubmissionService {
   Future<Map<String, dynamic>?> fetchSessionSnapshot(String sessionId) async {
     final row = await _supabase
         .from('form_submission')
-        .select('id, status, form_data')
+        .select('id, status, transmission_version')
         .eq('id', sessionId)
         .maybeSingle();
     return row == null ? null : Map<String, dynamic>.from(row);
@@ -359,6 +371,61 @@ class SubmissionService {
     }
 
     final result = jsonDecode(response.body) as Map<String, dynamic>;
+    return result['data'] as Map<String, dynamic>?;
+  }
+
+  /// Fetches and decrypts a form_submission staging record for staff review.
+  ///
+  /// Calls the serve-submission-for-review Edge Function which uses the
+  /// server's RSA private key to unwrap the AES key and decrypt the payload.
+  /// The plaintext is returned ephemerally in the HTTP response — it is never
+  /// written back to the database by this call.
+  ///
+  /// Returns null if the session is not found, not encrypted, or the staff
+  /// member lacks permission. Throws on network errors.
+  Future<Map<String, dynamic>?> fetchDecryptedStagingSubmission({
+    required String sessionId,
+    required String staffId,
+  }) async {
+    const supabaseUrl = 'https://tgbfxepldpdswxehhlkx.supabase.co';
+    const anonKey =
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnYmZ4ZXBsZHBkc3d4ZWhobGt4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NDYzMDcsImV4cCI6MjA4NjQyMjMwN30.DhoD6RHExKynXw34mibc3XRP-NwfmDnq1PttVM7-GL4';
+
+    final url = Uri.parse(
+      '$supabaseUrl/functions/v1/serve-submission-for-review',
+    );
+
+    final response = await http.post(
+      url,
+      headers: {
+        'Authorization': 'Bearer $anonKey',
+        'apikey': anonKey,
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'sessionId': sessionId,
+        'staffId': staffId,
+        'hashAlgo': 'SHA-1', // must match Flutter encrypt package RSA-OAEP default
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      debugPrint(
+        '[SubmissionService/fetchDecryptedStagingSubmission] Error '
+        'status=${response.statusCode} body=${response.body}',
+      );
+      return null;
+    }
+
+    final result = jsonDecode(response.body) as Map<String, dynamic>;
+    if (result['success'] != true) {
+      debugPrint(
+        '[SubmissionService/fetchDecryptedStagingSubmission] '
+        'reason=${result['reason']}',
+      );
+      return null;
+    }
+
     return result['data'] as Map<String, dynamic>?;
   }
 

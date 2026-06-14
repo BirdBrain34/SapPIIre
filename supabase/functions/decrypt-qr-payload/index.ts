@@ -1,9 +1,15 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const json = (payload: Record<string, unknown>) =>
-  new Response(JSON.stringify(payload), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 
 const base64ToBytes = (base64: string): Uint8Array => {
@@ -35,40 +41,17 @@ const arrayBufferFromBytes = (bytes: Uint8Array): ArrayBuffer => {
   ) as ArrayBuffer;
 };
 
-const rsaOaepDecrypt = async (
-  privateKeyDer: Uint8Array,
-  encryptedAesKeyB64: string,
-  hashAlgo: string,
-): Promise<{ aesKeyBuffer: ArrayBuffer | null; hashUsed: string | null }> => {
-  const encryptedBytes = base64ToBytes(encryptedAesKeyB64);
-  const encryptedBuffer = arrayBufferFromBytes(encryptedBytes);
-  const derBuffer = arrayBufferFromBytes(privateKeyDer);
-
-  try {
-    const privateKey = await crypto.subtle.importKey(
-      'pkcs8',
-      derBuffer,
-      { name: 'RSA-OAEP', hash: hashAlgo },
-      false,
-      ['decrypt'],
-    );
-    const aesKeyBuffer = await crypto.subtle.decrypt(
-      { name: 'RSA-OAEP' },
-      privateKey,
-      encryptedBuffer,
-    );
-    return { aesKeyBuffer, hashUsed: hashAlgo };
-  } catch {
-    return { aesKeyBuffer: null, hashUsed: null };
-  }
-};
-
 Deno.serve(async (req: Request) => {
   console.log('[decrypt-qr-payload] Function invoked');
-  
+
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
   if (req.method !== 'POST') {
     console.log('[decrypt-qr-payload] Non-POST request rejected');
-    return json({ success: false, reason: 'method_not_allowed' });
+    return json({ success: false, reason: 'method_not_allowed' }, 405);
   }
 
   try {
@@ -80,7 +63,7 @@ Deno.serve(async (req: Request) => {
         ? body.hashAlgo.trim()
         : 'SHA-1';
 
-    console.log(`[decrypt-qr-payload] Starting decryption for sessionId=${sessionId}, hashAlgo=${hashAlgo}`);
+    console.log(`[decrypt-qr-payload] Validating sessionId=${sessionId}, hashAlgo=${hashAlgo}`);
 
     if (!sessionId) {
       return json({ success: false, reason: 'missing_session_id' });
@@ -99,7 +82,7 @@ Deno.serve(async (req: Request) => {
     const { data: row, error: fetchError } = await supabase
       .from('form_submission')
       .select(
-        'id, encrypted_payload, payload_iv, encrypted_aes_key, transmission_version',
+        'id, encrypted_payload, payload_iv, encrypted_aes_key, transmission_version, status',
       )
       .eq('id', sessionId)
       .eq('transmission_version', 1)
@@ -115,66 +98,26 @@ Deno.serve(async (req: Request) => {
     const encryptedAesKey = String(row.encrypted_aes_key ?? '').trim();
 
     if (!encryptedPayload || !payloadIv || !encryptedAesKey) {
+      console.log(`[decrypt-qr-payload] Missing encrypted columns for sessionId=${sessionId}`);
       return json({ success: false, reason: 'missing_encrypted_columns' });
     }
 
-    let privateKeyDer: Uint8Array;
-    try {
-      privateKeyDer = pemToPkcs8(privateKeyPem);
-    } catch {
-      return json({ success: false, reason: 'invalid_private_key_pem' });
-    }
-
-    const rsaResult = await rsaOaepDecrypt(privateKeyDer, encryptedAesKey, hashAlgo);
-    if (!rsaResult.aesKeyBuffer) {
-      console.log(`[decrypt-qr-payload] RSA decryption failed for sessionId=${sessionId}`);
-      return json({ success: false, reason: 'rsa_decrypt_failed' });
-    }
-    const aesKeyBytes = new Uint8Array(rsaResult.aesKeyBuffer);
-
-    const aesKey = await crypto.subtle.importKey(
-      'raw',
-      aesKeyBytes,
-      { name: 'AES-GCM' },
-      false,
-      ['decrypt'],
-    ).catch(() => null);
-    if (!aesKey) {
-      return json({ success: false, reason: 'aes_key_import_failed' });
-    }
-
-    const payloadIvBuffer = arrayBufferFromBytes(base64ToBytes(payloadIv));
-    const encryptedPayloadBuffer = arrayBufferFromBytes(
-      base64ToBytes(encryptedPayload),
-    );
-
-    const decryptedPayloadBuffer = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: payloadIvBuffer },
-      aesKey,
-      encryptedPayloadBuffer,
-    ).catch(() => null);
-    if (!decryptedPayloadBuffer) {
-      return json({ success: false, reason: 'aes_gcm_decrypt_failed' });
-    }
-
-    const decryptedText = new TextDecoder().decode(
-      new Uint8Array(decryptedPayloadBuffer),
-    );
-    const parsedPayload = JSON.parse(decryptedText);
-
+    // Validation-only: do NOT decrypt the payload.
+    // Update status to 'scanned' only if currently 'active' (guard against
+    // overwriting a row already in a later state).
     const { error: updateError } = await supabase
       .from('form_submission')
-      .update({ form_data: parsedPayload })
+      .update({ status: 'scanned', scanned_at: new Date().toISOString() })
       .eq('id', sessionId)
-      .eq('transmission_version', 1);
+      .eq('status', 'active');
 
     if (updateError) {
-      console.log(`[decrypt-qr-payload] Update failed for sessionId=${sessionId}: ${updateError.message}`);
+      console.log(`[decrypt-qr-payload] Status update failed for sessionId=${sessionId}: ${updateError.message}`);
       return json({ success: false, reason: 'update_failed' });
     }
 
-    console.log(`[decrypt-qr-payload] Successfully decrypted sessionId=${sessionId} using ${rsaResult.hashUsed}`);
-    return json({ success: true, hashUsed: rsaResult.hashUsed });
+    console.log(`[decrypt-qr-payload] Successfully validated sessionId=${sessionId}`);
+    return json({ success: true, hashUsed: null });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown_error';
     console.error(`[decrypt-qr-payload] Error: ${message}`);

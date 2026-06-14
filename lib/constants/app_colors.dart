@@ -49,18 +49,30 @@ class AppColors {
   /// Standard white card surface used across the web admin screens:
   /// rounded corners, a subtle border, and a soft drop shadow. Shared so the
   /// card look stays consistent and is defined in one place.
-  static BoxDecoration cardDecoration({double radius = 16}) {
-    return BoxDecoration(
-      color: cardBg,
-      borderRadius: BorderRadius.circular(radius),
-      border: Border.all(color: cardBorder),
-      boxShadow: [
-        BoxShadow(
+  /// [elevation] controls the depth: 1 (subtle), 2 (medium), 3 (deep).
+  static BoxDecoration cardDecoration({double radius = 16, int elevation = 1}) {
+    final shadow = switch (elevation) {
+      3 => BoxShadow(
+          color: Colors.black.withValues(alpha: 0.12),
+          blurRadius: 24,
+          offset: const Offset(0, 8),
+        ),
+      2 => BoxShadow(
+          color: Colors.black.withValues(alpha: 0.08),
+          blurRadius: 16,
+          offset: const Offset(0, 6),
+        ),
+      _ => BoxShadow(
           color: Colors.black.withValues(alpha: 0.06),
           blurRadius: 12,
           offset: const Offset(0, 4),
         ),
-      ],
+    };
+    return BoxDecoration(
+      color: cardBg,
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: cardBorder),
+      boxShadow: [shadow],
     );
   }
 }

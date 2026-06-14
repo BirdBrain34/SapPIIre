@@ -52,7 +52,7 @@ The mobile app performs session-targeted data transmission by:
 2. Building a filtered payload from user-selected fields.
 3. Packaging encrypted envelope artifacts (`encrypted_payload`, `payload_iv`, `encrypted_aes_key`).
 4. Updating `form_submission` with transport metadata and scanned status.
-5. Triggering backend decryption for web-side autofill readiness.
+5. **Zero-Knowledge Staging:** Encrypted envelope persists in database; decryption occurs in-memory on staff request via `serve-submission-for-review` Edge Function, ensuring no plaintext persistence in `form_submission`.
 
 This is the client-side entry point of the hybrid cryptosystem handshake.
 
@@ -83,15 +83,40 @@ Each notification includes a `change_type`, `changeSummary`, and `templateName`.
 - Template removal displays with a minus-circle icon.
 - Each notification includes a RELOAD action, allowing the user to refresh the form manifest immediately.
 
-This enables mobile users to be aware of form infrastructure changes in near-real-time without requiring app restart.
+### 2.8 Mobile Notification Center
 
-### 2.8 User History and Profile Transparency
+The **NotificationScreen** provides a centralized view of all form template notifications for the user:
+
+1. **Notification List**: Displays all template and field change events with visual categorization:
+   - Color-coded accent based on change type (green for added, blue for updated, red for removed).
+   - Icon badges representing each change category.
+   - Unread indicators (blue dot) and unread count in the app bar.
+   - Time-ago timestamps for each notification.
+
+2. **Expandable Details**: Notifications with field-level changes can be expanded to show bullet-point details:
+   - "Added [Field Label]"
+   - "Updated [Field Label]"
+   - "Removed [Field Label]"
+
+3. **Read State Management**:
+   - Tap notification to mark as read.
+   - "Mark all read" button in app bar for bulk operations.
+   - Visual distinction between read (white background) and unread (blue tint) notifications.
+
+4. **Pull-to-Refresh**: Swipe down to reload notifications from server.
+
+5. **Service Integration**: Powered by `SupabaseService.fetchAppNotifications()` and `markNotificationsRead()` methods, which query `app_notifications` and `app_notification_reads` tables.
+
+This enables mobile users to stay informed of form infrastructure changes in near-real-time and provides full notification history with granular detail visibility.
+
+### 2.9 User History and Profile Transparency
 
 The mobile interface includes:
 
 1. Submission history views linked to finalized records.
 2. Profile dashboards for reviewing and updating stored identity fields.
 3. Session-safe logout and account controls.
+4. **Notification Center**: Dedicated NotificationScreen accessible from main navigation, providing centralized view of all form template changes with expandable details.
 
 These functions improve user transparency regarding what has been submitted and what profile state remains active.
 
@@ -171,7 +196,8 @@ The mobile tier contributes the following controls:
 3. Cross-template semantic autofill continuity through canonical field handling.
 4. Unsaved changes detection with form-fingerprint tracking and explicit discard workflow.
 5. Real-time template notifications for field and template lifecycle events, enabling mobile users to be aware of form infrastructure changes.
-6. Layered architecture with clean separation of concerns: Controllers (business logic), Screens (UI rendering), Widgets (reusable components), Utilities (shared helpers).
+6. **Mobile Notification Center**: Dedicated NotificationScreen with expandable notification details, read state management, and pull-to-refresh.
+7. Layered architecture with clean separation of concerns: Controllers (business logic), Screens (UI rendering), Widgets (reusable components), Utilities (shared helpers).
 
 ## 6. Primary Data Touchpoints
 

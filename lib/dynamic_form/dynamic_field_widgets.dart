@@ -1,4 +1,3 @@
-/// Renders the individual widgets used by the dynamic form renderer.
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'dart:ui' as ui;
@@ -1945,7 +1944,7 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
               ? currentValue
               : null;
           return DropdownButtonFormField<String>(
-            value: (dropVal == null || dropVal.isEmpty) ? null : dropVal,
+            initialValue: (dropVal == null || dropVal.isEmpty) ? null : dropVal,
             items: uniqueOpts.map((opt) {
               return DropdownMenuItem(
                 value: opt.value,

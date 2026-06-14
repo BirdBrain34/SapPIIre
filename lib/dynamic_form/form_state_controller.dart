@@ -702,7 +702,7 @@ class FormStateController extends ChangeNotifier {
   String _expandAggregates(String formula) {
     // Match SUM_COLUMN(tableKey, "columnKey") or SUM_COLUMN(tableKey, 'columnKey').
     final regex = RegExp(
-      'SUM_COLUMN\\(([a-zA-Z_][a-zA-Z0-9_]*)\\s*,\\s*[\'\"]([^\'\"]+)[\'\"]\\s*\\)',
+      r"SUM_COLUMN\(([a-zA-Z_][a-zA-Z0-9_]*)\s*,\s*['\u0022]([^'\u0022]+)['\u0022]\s*\)",
     );
     return formula.replaceAllMapped(regex, (m) {
       final tableKey = m.group(1)!;

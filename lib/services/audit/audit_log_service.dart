@@ -168,7 +168,7 @@ class AuditLogService {
       }
 
       final response = await query.count(CountOption.exact);
-      return response.count ?? 0;
+      return response.count;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[AuditLogService/fetchCount] Error: $e');

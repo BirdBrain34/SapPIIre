@@ -1,428 +1,91 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 
-/// Simple bar chart widget for displaying key-value data horizontally
-class SimpleBarChart extends StatelessWidget {
-  final String title;
-  final Map<String, int> data;
-  final Color? primaryColor;
-  final int maxValue;
+/// ============================================================================
+/// Helper utilities
+/// ============================================================================
 
-  const SimpleBarChart({
-    super.key,
-    required this.title,
-    required this.data,
-    this.primaryColor,
-    this.maxValue = 0,
-  });
+List<Color> _chartPalette(int count) {
+  const palette = [
+    Color(0xFF4C8BF5),
+    Color(0xFF2EC4B6),
+    Color(0xFFFF6B6B),
+    Color(0xFFFFA500),
+    Color(0xFF4ECDC4),
+    Color(0xFF95E1D3),
+    Color(0xFFF38181),
+    Color(0xFFAA96DA),
+    Color(0xFFFCBCD2),
+    Color(0xFF9BE8D8),
+  ];
+  final result = <Color>[];
+  for (int i = 0; i < count; i++) {
+    result.add(palette[i % palette.length]);
+  }
+  return result;
+}
 
-  @override
-  Widget build(BuildContext context) {
-    if (data.isEmpty) {
-      return _buildEmptyState();
-    }
-
-    final max = maxValue > 0 ? maxValue : _calculateMaxValue(data);
-
-    return Container(
+Widget _cardWrap({
+  required Widget child,
+  EdgeInsetsGeometry padding = const EdgeInsets.all(24),
+}) =>
+    Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: padding,
       decoration: AppColors.cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: child,
+    );
+
+Widget _cardHeader(String title, {Widget? trailing}) => Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.only(bottom: 24),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textDark,
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: (primaryColor ?? AppColors.highlight).withValues(
-                      alpha: 0.1,
-                    ),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    '${data.length} categories',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: primaryColor ?? AppColors.highlight,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
+          Flexible(
+            child: Text(
+              title,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textDark,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-          // Bars
-          ...data.entries.map(
-            (entry) => _buildBarItem(
-              label: entry.key,
-              value: entry.value,
-              maxValue: max,
-              color: primaryColor ?? AppColors.highlight,
-            ),
-          ),
+          if (trailing != null) trailing,
         ],
       ),
     );
-  }
 
-  Widget _buildBarItem({
-    required String label,
-    required int value,
-    required int maxValue,
-    required Color color,
-  }) {
-    final percentage = maxValue > 0 ? value / maxValue : 0.0;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+Widget _emptyState(String title) => _cardWrap(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: AppColors.textMuted,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Text(
-                value.toString(),
-                style: const TextStyle(
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textDark,
+            ),
+          ),
+          const SizedBox(height: 32),
+          Icon(Icons.data_exploration, size: 48, color: Colors.grey.shade300),
+          const SizedBox(height: 12),
+          Text('No data available',
+              style: TextStyle(
                   fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textDark,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: percentage,
-              minHeight: 8,
-              backgroundColor: Colors.grey.shade200,
-              valueColor: AlwaysStoppedAnimation<Color>(color),
-            ),
-          ),
+                  color: Colors.grey.shade400,
+                  fontWeight: FontWeight.w500)),
         ],
       ),
     );
-  }
 
-  Widget _buildEmptyState() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-      decoration: AppColors.cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textDark,
-            ),
-          ),
-          const SizedBox(height: 40),
-          Center(
-            child: Column(
-              children: [
-                Icon(
-                  Icons.data_exploration,
-                  size: 48,
-                  color: Colors.grey.shade300,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'No data available',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade400,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 40),
-        ],
-      ),
-    );
-  }
-
-  int _calculateMaxValue(Map<String, int> data) {
-    return data.values.isEmpty
-        ? 1
-        : data.values.reduce((a, b) => a > b ? a : b);
-  }
-}
-
-/// Simple pie-like distribution widget showing proportions
-class SimpleDistributionPie extends StatelessWidget {
-  final String title;
-  final Map<String, int> data;
-  final bool showPercentage;
-
-  const SimpleDistributionPie({
-    super.key,
-    required this.title,
-    required this.data,
-    this.showPercentage = true,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (data.isEmpty) {
-      return _buildEmptyState();
-    }
-
-    final total = data.values.fold<int>(0, (sum, val) => sum + val);
-    final colors = _generateColors(data.length);
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: AppColors.cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.only(bottom: 24),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textDark,
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.highlight.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    'Total: $total',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.highlight,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Stacked bar
-          Container(
-            width: double.infinity,
-            height: 48,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.06),
-                  blurRadius: 8,
-                ),
-              ],
-            ),
-            child: Row(
-              children: data.entries.map((entry) {
-                final percentage = (entry.value / total) * 100;
-                final color = colors[data.keys.toList().indexOf(entry.key)];
-
-                return Expanded(
-                  flex: entry.value,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: color,
-                      borderRadius: _getRadiusForPosition(
-                        data.keys.toList().indexOf(entry.key),
-                        data.length,
-                      ),
-                    ),
-                    child: Center(
-                      child: showPercentage && percentage > 12
-                          ? Text(
-                              '${percentage.toStringAsFixed(0)}%',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            )
-                          : const SizedBox(),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-          const SizedBox(height: 24),
-          // Legend
-          Wrap(
-            spacing: 16,
-            runSpacing: 12,
-            children: data.entries.map((entry) {
-              final color = colors[data.keys.toList().indexOf(entry.key)];
-              final percentage = (entry.value / total) * 100;
-
-              return Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: Colors.grey.shade200),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: color,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${entry.key}: ${entry.value} (${percentage.toStringAsFixed(1)}%)',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textMuted,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-      decoration: AppColors.cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textDark,
-            ),
-          ),
-          const SizedBox(height: 40),
-          Center(
-            child: Column(
-              children: [
-                Icon(
-                  Icons.data_exploration,
-                  size: 48,
-                  color: Colors.grey.shade300,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'No data available',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade400,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 40),
-        ],
-      ),
-    );
-  }
-
-  List<Color> _generateColors(int count) {
-    final colors = [
-      AppColors.highlight,
-      AppColors.successGreen,
-      const Color(0xFFFF6B6B),
-      const Color(0xFFFFA500),
-      const Color(0xFF4ECDC4),
-      const Color(0xFF95E1D3),
-      const Color(0xFFF38181),
-      const Color(0xFFAA96DA),
-      const Color(0xFFFCBCD2),
-      const Color(0xFF9BE8D8),
-    ];
-
-    while (colors.length < count) {
-      colors.addAll(colors);
-    }
-
-    return colors.take(count).toList();
-  }
-
-  BorderRadius _getRadiusForPosition(int index, int total) {
-    if (index == 0) {
-      return const BorderRadius.only(
-        topLeft: Radius.circular(8),
-        bottomLeft: Radius.circular(8),
-      );
-    } else if (index == total - 1) {
-      return const BorderRadius.only(
-        topRight: Radius.circular(8),
-        bottomRight: Radius.circular(8),
-      );
-    }
-    return BorderRadius.zero;
-  }
-}
-
-/// Counter card for displaying a single metric
+/// ============================================================================
+/// Metric card
+/// ============================================================================
 class MetricCard extends StatelessWidget {
   final String label;
   final String value;
@@ -462,7 +125,7 @@ class MetricCard extends StatelessWidget {
     final card = GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: backgroundColor ?? AppColors.cardBg,
           borderRadius: BorderRadius.circular(16),
@@ -481,25 +144,22 @@ class MetricCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Icon and subtitle row
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: color.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(icon, color: color, size: 28),
+                  child: Icon(icon, color: color, size: 24),
                 ),
                 if (subtitle != null)
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: color.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(6),
@@ -507,20 +167,18 @@ class MetricCard extends StatelessWidget {
                     child: Text(
                       subtitle!,
                       style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: subtitleColor ?? color,
-                      ),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: subtitleColor ?? color),
                     ),
                   ),
               ],
             ),
-            const SizedBox(height: 16),
-            // Label
+            const SizedBox(height: 14),
             Text(
               label,
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 12,
                 color: labelColor ?? AppColors.textMuted,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0.3,
@@ -528,8 +186,7 @@ class MetricCard extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 10),
-            // Value
+            const SizedBox(height: 8),
             Row(
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
@@ -537,7 +194,7 @@ class MetricCard extends StatelessWidget {
                 Text(
                   value,
                   style: TextStyle(
-                    fontSize: 40,
+                    fontSize: 34,
                     fontWeight: FontWeight.bold,
                     color: valueColor ?? AppColors.textDark,
                     letterSpacing: -1,
@@ -548,10 +205,9 @@ class MetricCard extends StatelessWidget {
                   Text(
                     unit!,
                     style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade600,
-                      fontWeight: FontWeight.w500,
-                    ),
+                        fontSize: 13,
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w500),
                   ),
                 ],
               ],
@@ -560,14 +216,426 @@ class MetricCard extends StatelessWidget {
         ),
       ),
     );
-
-    if (expand) {
-      return Expanded(child: card);
-    }
+    if (expand) return Expanded(child: card);
     return card;
   }
 }
 
+/// ============================================================================
+/// True custom painted pie chart
+/// ============================================================================
+class SimplePieChart extends StatelessWidget {
+  final String title;
+  final Map<String, int> data;
+  final bool showPercentage;
+
+  const SimplePieChart({
+    super.key,
+    required this.title,
+    required this.data,
+    this.showPercentage = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (data.isEmpty) return _emptyState(title);
+    final total = data.values.fold<int>(0, (a, b) => a + b);
+    final colors = _chartPalette(data.length);
+    final entries = data.entries.toList();
+
+    return _cardWrap(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _cardHeader(
+          title,
+          trailing: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.highlight.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text('Total: $total',
+                style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.highlight,
+                    fontWeight: FontWeight.w600)),
+          ),
+        ),
+        LayoutBuilder(builder: (context, constraints) {
+          final chartSize = min<double>(constraints.maxWidth * 0.45, 180);
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: chartSize + 20,
+                height: chartSize + 20,
+                child: CustomPaint(
+                  painter: _PiePainter(entries, colors, total),
+                  size: const Size(180, 180),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: entries.asMap().entries.map((e) {
+                      final idx = e.key;
+                      final entry = e.value;
+                      final pct = (entry.value / total) * 100;
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                color: colors[idx],
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              showPercentage
+                                  ? '${entry.key} (${pct.toStringAsFixed(1)}%)'
+                                  : '${entry.key}: ${entry.value}',
+                              style: const TextStyle(
+                                  fontSize: 11, color: AppColors.textMuted),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+            ],
+          );
+        }),
+      ]),
+    );
+  }
+}
+
+class _PiePainter extends CustomPainter {
+  final List<MapEntry<String, int>> entries;
+  final List<Color> colors;
+  final int total;
+  _PiePainter(this.entries, this.colors, this.total);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (total <= 0) return;
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = min(size.width, size.height) / 2 - 4;
+    final rect = Rect.fromCircle(center: center, radius: radius);
+    double startAngle = -pi / 2;
+
+    for (int i = 0; i < entries.length; i++) {
+      final sweepAngle = (entries[i].value / total) * 2 * pi;
+      canvas.drawArc(
+        rect,
+        startAngle,
+        sweepAngle,
+        true,
+        Paint()
+          ..color = colors[i % colors.length]
+          ..style = PaintingStyle.fill,
+      );
+      startAngle += sweepAngle;
+    }
+
+    // Draw border
+    startAngle = -pi / 2;
+    final borderPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    for (int i = 0; i < entries.length; i++) {
+      final sweepAngle = (entries[i].value / total) * 2 * pi;
+      canvas.drawArc(rect, startAngle, sweepAngle, true, borderPaint);
+      startAngle += sweepAngle;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _PiePainter old) =>
+      old.total != total || old.entries != entries;
+}
+
+/// ============================================================================
+/// Donut chart (CustomPaint with hole)
+/// ============================================================================
+class DonutChart extends StatelessWidget {
+  final String title;
+  final Map<String, int> data;
+  final bool showPercentage;
+
+  const DonutChart({
+    super.key,
+    required this.title,
+    required this.data,
+    this.showPercentage = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (data.isEmpty) return _emptyState(title);
+    final total = data.values.fold<int>(0, (a, b) => a + b);
+    final colors = _chartPalette(data.length);
+    final entries = data.entries.toList();
+
+    return _cardWrap(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _cardHeader(
+          title,
+          trailing: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.highlight.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text('Total: $total',
+                style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.highlight,
+                    fontWeight: FontWeight.w600)),
+          ),
+        ),
+        LayoutBuilder(builder: (context, constraints) {
+          final chartSize = min<double>(constraints.maxWidth * 0.45, 180);
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: chartSize + 20,
+                height: chartSize + 20,
+                child: Stack(alignment: Alignment.center, children: [
+                  CustomPaint(
+                    painter: _DonutPainter(entries, colors, total),
+                    size: const Size(200, 200),
+                  ),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(total.toString(),
+                          style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textDark)),
+                      Text('Total',
+                          style: TextStyle(
+                              fontSize: 11, color: AppColors.textMuted)),
+                    ],
+                  ),
+                ]),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: entries.asMap().entries.map((e) {
+                      final idx = e.key;
+                      final entry = e.value;
+                      final pct = (entry.value / total) * 100;
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                color: colors[idx],
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              showPercentage
+                                  ? '${entry.key} (${pct.toStringAsFixed(1)}%)'
+                                  : '${entry.key}: ${entry.value}',
+                              style: const TextStyle(
+                                  fontSize: 11, color: AppColors.textMuted),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+            ],
+          );
+        }),
+      ]),
+    );
+  }
+}
+
+class _DonutPainter extends CustomPainter {
+  final List<MapEntry<String, int>> entries;
+  final List<Color> colors;
+  final int total;
+  _DonutPainter(this.entries, this.colors, this.total);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (total <= 0) return;
+    final center = Offset(size.width / 2, size.height / 2);
+    final outerRadius = min(size.width, size.height) / 2 - 4;
+    final innerRadius = outerRadius * 0.55;
+    final rect = Rect.fromCircle(center: center, radius: outerRadius);
+    double startAngle = -pi / 2;
+
+    // Draw filled arcs
+    for (int i = 0; i < entries.length; i++) {
+      final sweepAngle = (entries[i].value / total) * 2 * pi;
+      canvas.drawArc(
+        rect,
+        startAngle,
+        sweepAngle,
+        true,
+        Paint()
+          ..color = colors[i % colors.length]
+          ..style = PaintingStyle.fill,
+      );
+      startAngle += sweepAngle;
+    }
+
+    // Punch hole
+    canvas.drawCircle(
+        center,
+        innerRadius,
+        Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.fill);
+  }
+
+  @override
+  bool shouldRepaint(covariant _DonutPainter old) =>
+      old.total != total || old.entries != entries;
+}
+
+/// ============================================================================
+/// Simple horizontal bar chart
+/// ============================================================================
+class SimpleBarChart extends StatelessWidget {
+  final String title;
+  final Map<String, int> data;
+  final Color? primaryColor;
+  final int maxValue;
+
+  const SimpleBarChart({
+    super.key,
+    required this.title,
+    required this.data,
+    this.primaryColor,
+    this.maxValue = 0,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (data.isEmpty) return _emptyState(title);
+
+    final maxVal = maxValue > 0 ? maxValue : data.values.reduce((a, b) => a > b ? a : b);
+    final color = primaryColor ?? AppColors.highlight;
+
+    return _cardWrap(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _cardHeader(
+          title,
+          trailing: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text('${data.length} categories',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: color,
+                    fontWeight: FontWeight.w600)),
+          ),
+        ),
+        ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: data.length * 48.0 + 16),
+          child: ListView(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            children: data.entries.map((entry) {
+              final pct = maxVal > 0 ? entry.value / maxVal : 0.0;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            entry.key,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textMuted,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          entry.value.toString(),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: LinearProgressIndicator(
+                        value: pct,
+                        minHeight: 6,
+                        backgroundColor: Colors.grey.shade200,
+                        valueColor: AlwaysStoppedAnimation<Color>(color),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+/// ============================================================================
+/// Simple data table
+/// ============================================================================
 class SimpleDataTable extends StatelessWidget {
   final String title;
   final Map<String, int> data;
@@ -576,125 +644,450 @@ class SimpleDataTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (data.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-        decoration: AppColors.cardDecoration(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textDark,
-              ),
-            ),
-            const SizedBox(height: 40),
-            Center(
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.table_chart_outlined,
-                    size: 48,
-                    color: Colors.grey.shade300,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'No data available',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey.shade400,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 40),
-          ],
-        ),
-      );
-    }
+    if (data.isEmpty) return _emptyState(title);
 
     final rows = data.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: AppColors.cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textDark,
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.highlight.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    '${rows.length} rows',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.highlight,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
+    return _cardWrap(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _cardHeader(
+          title,
+          trailing: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.highlight.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
             ),
+            child: Text('${rows.length} rows',
+                style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.highlight,
+                    fontWeight: FontWeight.w600)),
           ),
-          SingleChildScrollView(
+        ),
+        LayoutBuilder(builder: (context, constraints) {
+          return SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: DataTable(
-              headingRowColor: WidgetStatePropertyAll(
-                AppColors.highlight.withValues(alpha: 0.08),
-              ),
+              headingRowColor:
+                  WidgetStatePropertyAll(AppColors.highlight.withValues(alpha: 0.08)),
+              columnSpacing: 32,
               columns: const [
                 DataColumn(label: Text('Label')),
                 DataColumn(label: Text('Count')),
               ],
               rows: rows
-                  .map(
-                    (entry) => DataRow(
-                      cells: [
+                  .map((entry) => DataRow(cells: [
                         DataCell(
                           ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 360),
-                            child: Text(
-                              entry.key,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                            constraints: BoxConstraints(
+                                maxWidth: constraints.maxWidth * 0.6),
+                            child: Text(entry.key,
+                                overflow: TextOverflow.ellipsis),
                           ),
                         ),
                         DataCell(Text(entry.value.toString())),
-                      ],
-                    ),
-                  )
+                      ]))
                   .toList(),
             ),
+          );
+        }),
+      ]),
+    );
+  }
+}
+
+/// ============================================================================
+/// Line chart (CustomPaint)
+/// ============================================================================
+class LineChart extends StatelessWidget {
+  final String title;
+  final Map<String, int> data;
+  final String xAxisLabel;
+  final String yAxisLabel;
+
+  const LineChart({
+    super.key,
+    required this.title,
+    required this.data,
+    this.xAxisLabel = '',
+    this.yAxisLabel = '',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (data.isEmpty) return _emptyState(title);
+
+    final maxVal = data.values.reduce((a, b) => a > b ? a : b).toDouble();
+    final entries = data.entries.toList();
+
+    return _cardWrap(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _cardHeader(title),
+        SizedBox(
+          height: 220,
+          child: CustomPaint(
+            painter: _LineChartPainter(entries, maxVal),
+            size: const Size(double.infinity, 220),
           ),
+        ),
+        const SizedBox(height: 12),
+        // X-axis labels
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: entries.asMap().entries.map((e) {
+              final show = e.key % max<int>(1, entries.length ~/ 6) == 0 ||
+                  e.key == entries.length - 1;
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Text(
+                  show ? e.value.key : '',
+                  style:
+                      const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+class _LineChartPainter extends CustomPainter {
+  final List<MapEntry<String, int>> entries;
+  final double maxVal;
+  _LineChartPainter(this.entries, this.maxVal);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (entries.length < 2) return;
+    final hPad = 16.0;
+    final drawW = size.width - hPad * 2;
+    final drawH = size.height - 20;
+
+    // Grid lines
+    final gridPaint = Paint()
+      ..color = Colors.grey.withValues(alpha: 0.15)
+      ..strokeWidth = 0.5;
+    for (int i = 0; i <= 4; i++) {
+      final y = 10 + (drawH / 4) * i;
+      canvas.drawLine(Offset(hPad, y), Offset(hPad + drawW, y), gridPaint);
+    }
+
+    // Data points
+    final pts = <Offset>[];
+    for (int i = 0; i < entries.length; i++) {
+      final x = hPad + (i / (entries.length - 1)) * drawW;
+      final y = 10 + drawH - (entries[i].value / maxVal) * drawH;
+      pts.add(Offset(x, y));
+    }
+
+    // Area fill
+    if (pts.length >= 2) {
+      final area = Paint()
+        ..color = AppColors.highlight.withValues(alpha: 0.12)
+        ..style = PaintingStyle.fill;
+      final path = Path()..moveTo(pts.first.dx, 10 + drawH);
+      for (final p in pts) path.lineTo(p.dx, p.dy);
+      path.lineTo(pts.last.dx, 10 + drawH);
+      path.close();
+      canvas.drawPath(path, area);
+    }
+
+    // Line
+    final line = Paint()
+      ..color = AppColors.highlight
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    final linePath = Path()..moveTo(pts.first.dx, pts.first.dy);
+    for (int i = 1; i < pts.length; i++) {
+      linePath.lineTo(pts[i].dx, pts[i].dy);
+    }
+    canvas.drawPath(linePath, line);
+
+    // Points
+    final dotPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    final dotBorder = Paint()
+      ..color = AppColors.highlight
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    for (final p in pts) {
+      canvas.drawCircle(p, 4, dotPaint);
+      canvas.drawCircle(p, 4, dotBorder);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _LineChartPainter old) =>
+      old.entries != entries || old.maxVal != maxVal;
+}
+
+/// ============================================================================
+/// Area chart (filled line chart)
+/// ============================================================================
+class AreaChart extends StatelessWidget {
+  final String title;
+  final Map<String, int> data;
+
+  const AreaChart({super.key, required this.title, required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    if (data.isEmpty) return _emptyState(title);
+
+    final maxVal = data.values.reduce((a, b) => a > b ? a : b).toDouble();
+    final entries = data.entries.toList();
+
+    return _cardWrap(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _cardHeader(title),
+        SizedBox(
+          height: 220,
+          child: CustomPaint(
+            painter: _AreaChartPainter(entries, maxVal),
+            size: const Size(double.infinity, 220),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // X-axis labels
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: entries.asMap().entries.map((e) {
+              final show = e.key % max<int>(1, entries.length ~/ 6) == 0 ||
+                  e.key == entries.length - 1;
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Text(
+                  show ? e.value.key : '',
+                  style:
+                      const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+class _AreaChartPainter extends CustomPainter {
+  final List<MapEntry<String, int>> entries;
+  final double maxVal;
+  _AreaChartPainter(this.entries, this.maxVal);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (entries.length < 2) return;
+    final hPad = 16.0;
+    final drawW = size.width - hPad * 2;
+    final drawH = size.height - 20;
+
+    final pts = <Offset>[];
+    for (int i = 0; i < entries.length; i++) {
+      final x = hPad + (i / (entries.length - 1)) * drawW;
+      final y = 10 + drawH - (entries[i].value / maxVal) * drawH;
+      pts.add(Offset(x, y));
+    }
+
+    // Area fill
+    final fill = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          AppColors.highlight.withValues(alpha: 0.35),
+          AppColors.highlight.withValues(alpha: 0.02),
         ],
-      ),
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+    final path = Path()..moveTo(hPad, 10 + drawH);
+    for (final p in pts) path.lineTo(p.dx, p.dy);
+    path.lineTo(hPad + drawW, 10 + drawH);
+    path.close();
+    canvas.drawPath(path, fill);
+
+    // Line
+    final line = Paint()
+      ..color = AppColors.highlight
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    final linePath = Path()..moveTo(pts.first.dx, pts.first.dy);
+    for (int i = 1; i < pts.length; i++) linePath.lineTo(pts[i].dx, pts[i].dy);
+    canvas.drawPath(linePath, line);
+
+    // Points
+    for (final p in pts) {
+      canvas.drawCircle(
+          p, 3, Paint()..color = Colors.white..style = PaintingStyle.fill);
+      canvas.drawCircle(
+          p,
+          3,
+          Paint()
+            ..color = AppColors.highlight
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _AreaChartPainter old) =>
+      old.entries != entries || old.maxVal != maxVal;
+}
+
+/// ============================================================================
+/// Stacked bar chart
+/// ============================================================================
+class StackedBarChart extends StatelessWidget {
+  final String title;
+  final Map<String, Map<String, int>> data;
+
+  const StackedBarChart({super.key, required this.title, required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    if (data.isEmpty) return _emptyState(title);
+
+    return _cardWrap(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _cardHeader(title),
+        ...data.entries.map((group) {
+          final total =
+              group.value.values.fold<int>(0, (a, b) => a + b);
+          if (total <= 0) return const SizedBox.shrink();
+          final colors = _chartPalette(group.value.length);
+          final items = group.value.entries.toList();
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(group.key,
+                    style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textMuted,
+                        fontWeight: FontWeight.w500)),
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 28,
+                    child: Row(
+                      children: items.map((item) {
+                        final pct = item.value / total;
+                        final color =
+                            colors[items.indexOf(item) % colors.length];
+                        return Expanded(
+                          flex: (pct * 1000).round().clamp(1, 1000),
+                          child: Container(
+                            color: color,
+                            alignment: Alignment.center,
+                            child: pct > 0.08
+                                ? Text(
+                                    '${(pct * 100).toStringAsFixed(0)}%',
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold),
+                                  )
+                                : null,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ]),
+    );
+  }
+}
+
+/// ============================================================================
+/// Funnel chart
+/// ============================================================================
+class FunnelChart extends StatelessWidget {
+  final String title;
+  final Map<String, int> data;
+
+  const FunnelChart({super.key, required this.title, required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    if (data.isEmpty) return _emptyState(title);
+
+    final sorted = data.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final maxVal = sorted.first.value.toDouble();
+    final colors = _chartPalette(sorted.length);
+
+    return _cardWrap(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _cardHeader(title),
+        ...sorted.asMap().entries.map((e) {
+          final idx = e.key;
+          final entry = e.value;
+          final pct = (entry.value / maxVal) * 100;
+          final color = colors[idx % colors.length];
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Flexible(
+                      child: Text(entry.key,
+                          style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textMuted,
+                              fontWeight: FontWeight.w500),
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${entry.value} (${pct.toStringAsFixed(1)}%)',
+                      style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textDark,
+                          fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: Container(
+                    height: 18,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: FractionallySizedBox(
+                      widthFactor: pct / 100,
+                      child: Container(color: color),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ]),
     );
   }
 }

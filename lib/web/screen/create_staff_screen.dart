@@ -31,7 +31,9 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
 
   // Account creation form controllers
   final TextEditingController _firstNameController = TextEditingController();
+  final TextEditingController _middleNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
+  final TextEditingController _nameSuffixController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _positionController = TextEditingController();
   final TextEditingController _departmentController = TextEditingController();
@@ -49,7 +51,9 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
 
   void _clearCreateForm() {
     _firstNameController.clear();
+    _middleNameController.clear();
     _lastNameController.clear();
+    _nameSuffixController.clear();
     _emailController.clear();
     _positionController.clear();
     _departmentController.clear();
@@ -113,7 +117,9 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
       final createResult = await _staffAdminService.createAdminStaffAccount(
         email: email,
         firstName: firstName,
+        middleName: _middleNameController.text,
         lastName: lastName,
+        nameSuffix: _nameSuffixController.text,
         position: position,
         department: department,
         phoneNumber: _phoneController.text,
@@ -194,7 +200,9 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
   @override
   void dispose() {
     _firstNameController.dispose();
+    _middleNameController.dispose();
     _lastNameController.dispose();
+    _nameSuffixController.dispose();
     _emailController.dispose();
     _positionController.dispose();
     _departmentController.dispose();
@@ -365,11 +373,32 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: TextField(
+                                      controller: _middleNameController,
+                                      decoration: _inputDecoration(
+                                        'Middle Name',
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
                                       controller: _lastNameController,
                                       decoration: _inputDecoration(
                                         'Last Name',
                                         required: true,
                                       ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  SizedBox(
+                                    width: 120,
+                                    child: TextField(
+                                      controller: _nameSuffixController,
+                                      decoration: _inputDecoration('Suffix'),
                                     ),
                                   ),
                                 ],

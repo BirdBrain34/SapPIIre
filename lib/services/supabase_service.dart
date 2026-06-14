@@ -1018,20 +1018,9 @@ class SupabaseService {
 
       if (publicKey.trim().isEmpty) {
         // Fallback: transmit unencrypted (transmission_version = 0)
+        // Note: form_data column was removed — plaintext is never written to DB
         debugPrint('[SupabaseService/sendDataToWebSession] Action: No RSA key, falling back to unencrypted');
-        final fallbackResponse = await _supabase
-            .from('form_submission')
-            .update({
-              'form_data': data,
-              'transmission_version': 0,
-              'status': 'scanned',
-              'scanned_at': DateTime.now().toUtc().toIso8601String(),
-              if (userId != null) 'user_id': userId,
-            })
-            .eq('id', sessionId)
-            .select()
-            .maybeSingle();
-        return fallbackResponse != null;
+        return false;
       }
 
       final envelope = await HybridCryptoService.encryptForTransmission(
