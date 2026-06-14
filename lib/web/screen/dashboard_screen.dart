@@ -673,14 +673,15 @@ class _DashboardScreenState extends State<DashboardScreen>
     return LayoutBuilder(
       builder: (context, constraints) {
         final columns = _gridColumns(constraints.maxWidth);
+        final itemWidth = columns > 1
+            ? ((constraints.maxWidth - 16) / columns).clamp(200.0, double.infinity)
+            : constraints.maxWidth;
         return Wrap(
           spacing: 16,
           runSpacing: 16,
           children: _widgetConfigs
               .map((config) => SizedBox(
-                    width: columns > 1
-                        ? (constraints.maxWidth - 16) / columns
-                        : constraints.maxWidth,
+                    width: itemWidth,
                     child: _buildChartWidget(config),
                   ))
               .toList(),
@@ -902,6 +903,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Date range selector
+        _buildDateRangeSelector(),
+        const SizedBox(height: 24),
         // Summary metrics
         _buildSummaryMetrics(),
         const SizedBox(height: 32),
@@ -910,6 +914,9 @@ class _DashboardScreenState extends State<DashboardScreen>
         LayoutBuilder(
           builder: (context, constraints) {
             final wide = constraints.maxWidth >= 900;
+            final chartWidth = wide
+                ? ((constraints.maxWidth - 16) / 2).clamp(200.0, double.infinity)
+                : constraints.maxWidth;
             return Wrap(
               spacing: 16,
               runSpacing: 16,
@@ -917,9 +924,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 // Submissions by form type - Enhanced with color syncing
                 if (_countsByFormType.isNotEmpty)
                   SizedBox(
-                    width: wide
-                        ? (constraints.maxWidth - 16) / 2
-                        : constraints.maxWidth,
+                    width: chartWidth,
                     child: ColorSyncPieChart(
                       title: 'Submissions by Form Type',
                       data: _countsByFormType,
@@ -930,9 +935,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 // Staff workload - Interactive with drill-down
                 if (_staffWorkload.isNotEmpty)
                   SizedBox(
-                    width: wide
-                        ? (constraints.maxWidth - 16) / 2
-                        : constraints.maxWidth,
+                    width: chartWidth,
                     child: InteractiveBarChart(
                       title: 'Staff Workload Distribution',
                       data: _staffWorkload,
@@ -969,14 +972,15 @@ class _DashboardScreenState extends State<DashboardScreen>
         LayoutBuilder(
           builder: (context, constraints) {
             final wide = constraints.maxWidth >= 900;
+            final itemWidth = wide
+                ? ((constraints.maxWidth - 16) / 2).clamp(200.0, double.infinity)
+                : constraints.maxWidth;
             return Wrap(
               spacing: 16,
               runSpacing: 16,
               children: [
                 SizedBox(
-                  width: wide
-                      ? (constraints.maxWidth - 16) / 2
-                      : constraints.maxWidth,
+                  width: itemWidth,
                   child: _genderRatio.isNotEmpty
                       ? SimplePieChart(
                           title: 'Gender Distribution',
@@ -989,9 +993,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         ),
                 ),
                 SizedBox(
-                  width: wide
-                      ? (constraints.maxWidth - 16) / 2
-                      : constraints.maxWidth,
+                  width: itemWidth,
                   child: _ageBrackets.isNotEmpty
                       ? SimpleBarChart(
                           title: 'Age Brackets',
@@ -1044,14 +1046,15 @@ class _DashboardScreenState extends State<DashboardScreen>
           builder: (context, constraints) {
             final wide = constraints.maxWidth >= 900;
             // Use a Wrap with fixed widths to prevent overflow instead of Row with Expanded
+            final itemWidth = wide
+                ? ((constraints.maxWidth - 36) / 4).clamp(120.0, double.infinity)
+                : ((constraints.maxWidth - 12) / 2).clamp(120.0, double.infinity);
             return Wrap(
               spacing: 12,
               runSpacing: 12,
               children: [
                 SizedBox(
-                  width: wide
-                      ? (constraints.maxWidth - 36) / 4
-                      : (constraints.maxWidth - 12) / 2,
+                  width: itemWidth,
                   child: MetricCard(
                     label: 'Total Submissions',
                     value: _totalCount.toString(),
@@ -1061,9 +1064,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ),
                 ),
                 SizedBox(
-                  width: wide
-                      ? (constraints.maxWidth - 36) / 4
-                      : (constraints.maxWidth - 12) / 2,
+                  width: itemWidth,
                   child: MetricCard(
                     label: 'Active Forms',
                     value: _activeFormCount.toString(),
@@ -1074,7 +1075,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ),
                 if (wide) ...[
                   SizedBox(
-                    width: (constraints.maxWidth - 36) / 4,
+                    width: itemWidth,
                     child: MetricCard(
                       label: 'Staff Accounts',
                       value: _staffAccountCount.toString(),
