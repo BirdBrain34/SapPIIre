@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:sappiire/services/audit/audit_log_service.dart';
+import 'package:sappiire/services/crypto/hybrid_crypto_service.dart';
 
 class WebAuthService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -249,6 +250,7 @@ class WebAuthService {
   }
 
   Future<void> signOut() {
+    HybridCryptoService.clearFieldKeyCache();
     return _supabase.auth.signOut();
   }
 }

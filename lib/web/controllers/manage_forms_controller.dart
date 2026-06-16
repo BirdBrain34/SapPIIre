@@ -160,9 +160,18 @@ class ManageFormsController {
     }
   }
 
-  Future<Map<String, String>?> resolveNameViaCanonicalRpc(String userId) async {
+  /// Resolves applicant display name using the resolve-applicant-names
+  /// Edge Function (server-side decryption). Requires staffId for authorization.
+  Future<Map<String, String>?> resolveNameViaCanonicalRpc({
+    required String userId,
+    required String staffId,
+  }) async {
     try {
-      final row = await _submissionService.fetchCanonicalNameByUserId(userId);
+      final names = await _submissionService.resolveNamesViaEdgeFunction(
+        userIds: [userId],
+        staffId: staffId,
+      );
+      final row = names[userId];
       if (row == null) return null;
 
       final last = (row['last'] ?? '').trim();
@@ -181,13 +190,17 @@ class ManageFormsController {
     required String currentSessionId,
     required FormTemplate? selectedTemplate,
     required Map<String, dynamic> formData,
+    required String staffId,
   }) async {
     if (currentSessionId != 'WAITING-FOR-SESSION') {
       try {
         final userId = await _submissionService.fetchSessionUserId(currentSessionId);
 
         if (userId != null && userId.isNotEmpty) {
-          final name = await resolveNameViaCanonicalRpc(userId);
+          final name = await resolveNameViaCanonicalRpc(
+            userId: userId,
+            staffId: staffId,
+          );
           if (name != null) {
             formData['__applicant_name'] = name;
             return;

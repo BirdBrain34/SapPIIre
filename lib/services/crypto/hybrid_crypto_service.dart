@@ -1,8 +1,8 @@
 import 'dart:convert';
 
-import 'package:crypto/crypto.dart' as crypto;
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class EncryptedValue {
@@ -27,18 +27,62 @@ class QRPayloadEnvelope {
 }
 
 class HybridCryptoService {
-  static const String _appHmacSecret =
-      'sappiire_aes_v1_cswd_santa_rosa_2025';
-
   static String? _cachedPublicKey;
 
-  static Uint8List deriveUserAesKey(String userId) {
-    final hmac = crypto.Hmac(
-      crypto.sha256,
-      utf8.encode(_appHmacSecret),
-    );
-    final digest = hmac.convert(utf8.encode(userId));
-    return Uint8List.fromList(digest.bytes);
+  /// In-memory cache of derived field encryption keys per user.
+  /// Cleared on sign-out.
+  static final Map<String, Uint8List> _fieldKeyCache = {};
+
+  /// Fetches the v2 field encryption key for [userId] from the server.
+  ///
+  /// Results are cached in memory per [userId]. Returns the AES-256 key
+  /// derived server-side via HMAC-SHA256(FIELD_KEY_HMAC_SECRET_V2, userId).
+  ///
+  /// Never emit the derived keys, plaintext, or secrets via debugPrint.
+  static Future<Uint8List> fetchUserFieldKeys(
+    String userId,
+  ) async {
+    final cached = _fieldKeyCache[userId];
+    if (cached != null) return cached;
+
+    try {
+      const supabaseUrl = 'https://tgbfxepldpdswxehhlkx.supabase.co';
+      final accessToken =
+          Supabase.instance.client.auth.currentSession?.accessToken ?? '';
+
+      final response = await http.post(
+        Uri.parse('$supabaseUrl/functions/v1/derive-field-key'),
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'apikey': accessToken,
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        final keyB64 = body['key'] as String?;
+
+        if (keyB64 != null) {
+          final serverKey = Uint8List.fromList(base64Decode(keyB64));
+          _fieldKeyCache[userId] = serverKey;
+          return serverKey;
+        }
+      }
+    } catch (e) {
+      debugPrint('[HybridCryptoService/fetchUserFieldKeys] Server error: $e');
+    }
+
+    // Server call failed or returned bad data.
+    debugPrint('[HybridCryptoService/fetchUserFieldKeys] Failed to derive key from server');
+    final empty = Uint8List(0);
+    _fieldKeyCache[userId] = empty;
+    return empty;
+  }
+
+  /// Clears the in-memory field key cache. Call on every sign-out.
+  static void clearFieldKeyCache() {
+    _fieldKeyCache.clear();
   }
 
   static Future<EncryptedValue> encryptField(

@@ -506,7 +506,7 @@ class _InteractiveBarChartState extends State<InteractiveBarChart> {
 
     return ConstrainedBox(
       constraints: BoxConstraints(
-        maxHeight: widget.data.length * 56.0 + 16,
+        maxHeight: max(100.0, widget.data.length * 56.0 + 16),
         minHeight: 100,
       ),
       child: ListView(

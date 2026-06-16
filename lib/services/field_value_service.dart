@@ -1,6 +1,7 @@
 // Saves/loads field values for ANY template using field_id as the key.
 // Works for GIS and every custom template — no migration needed per form.
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -49,7 +50,7 @@ class FieldValueService {
         },
       );
 
-      final aesKey = HybridCryptoService.deriveUserAesKey(userId);
+      final keys = await HybridCryptoService.fetchUserFieldKeys(userId);
       final encryptableIndices = <int>[];
       final plaintexts = <String>[];
       for (var i = 0; i < rows.length; i++) {
@@ -68,7 +69,7 @@ class FieldValueService {
       if (plaintexts.isNotEmpty) {
         final results = await HybridCryptoService.encryptFieldBatch(
           plaintexts,
-          aesKey,
+          keys,
         );
 
         if (results.length != encryptableIndices.length) {
@@ -80,7 +81,7 @@ class FieldValueService {
           final encrypted = results[i];
           row['field_value'] = encrypted.ciphertext;
           row['iv'] = encrypted.iv;
-          row['encryption_version'] = 1;
+          row['encryption_version'] = 2;
         }
       }
 
@@ -135,6 +136,7 @@ class FieldValueService {
     }
   }
 
+
   // Load saved values and map field_id back to field_name.
   Future<Map<String, dynamic>> loadUserFieldValues({
     required String userId,
@@ -154,7 +156,7 @@ class FieldValueService {
           .inFilter('field_id', eligible.map((f) => f.fieldId).toList())
           .order('updated_at', ascending: false);
 
-      final aesKey = HybridCryptoService.deriveUserAesKey(userId);
+      final keys = await HybridCryptoService.fetchUserFieldKeys(userId);
 
       // If duplicates still exist before DB migration runs, keep the newest row
       // per field_id for deterministic reads.
@@ -207,7 +209,7 @@ class FieldValueService {
         final version = rawVersion is int
             ? rawVersion
             : int.tryParse(rawVersion?.toString() ?? '') ?? 0;
-        if (version == 1) {
+        if (version == 2) {
           encryptedRows.add(row);
           encryptedItems.add((
             ciphertext: fval,
@@ -220,27 +222,21 @@ class FieldValueService {
       }
 
       if (encryptedItems.isNotEmpty) {
-        final decryptedValues = await HybridCryptoService.decryptFieldBatch(
+        final decrypted = await HybridCryptoService.decryptFieldBatch(
           encryptedItems,
-          aesKey,
+          keys,
         );
-
-        for (var i = 0; i < encryptedRows.length; i++) {
+        for (var i = 0; i < decrypted.length; i++) {
           final row = encryptedRows[i];
           final fid = row['field_id'] as String?;
           final fval = row['field_value'] as String? ?? '';
-          if (fid == null) {
-            continue;
+          final decryptedValue = i < decrypted.length ? decrypted[i] : '';
+          if (fid != null) {
+            if (decryptedValue.isEmpty && fval.trim().isNotEmpty) {
+              debugPrint('[FieldValueService/loadUserFieldValues] Warning: v2 decryption failed for field_id=$fid');
+            }
+            applyResolvedValue(fid, decryptedValue);
           }
-
-          final decryptedValue = i < decryptedValues.length
-              ? decryptedValues[i]
-              : '';
-          if (decryptedValue.isEmpty && fval.trim().isNotEmpty) {
-            debugPrint('[FieldValueService/loadUserFieldValues] Warning: decryption failed for field_id=$fid');
-          }
-
-          applyResolvedValue(fid, decryptedValue);
         }
       }
       return result;
@@ -365,7 +361,7 @@ class FieldValueService {
         );
       }
 
-      final aesKey = HybridCryptoService.deriveUserAesKey(userId);
+      final keys = await HybridCryptoService.fetchUserFieldKeys(userId);
 
       final canonicalBestValue = <String, String>{};
 
@@ -395,14 +391,14 @@ class FieldValueService {
             ? rawVersion
             : int.tryParse(rawVersion?.toString() ?? '') ?? 0;
 
-        if (version == 1) {
+        if (version == 2) {
           final iv = row['iv'] as String? ?? '';
           if (iv.isEmpty) continue;
           _crossFillEncryptedRows.add(row);
           _crossFillItems.add((ciphertext: fval, iv: iv));
           _crossFillCanonicals.add(canonical);
         } else {
-          // Plaintext (legacy encryption_version == 0)
+          // Plaintext (encryption_version == 0)
           canonicalBestValue[canonical] = fval;
         }
       }
@@ -410,14 +406,14 @@ class FieldValueService {
       // Batch decrypt all encrypted cross-fill values
       if (_crossFillItems.isNotEmpty) {
         try {
-          final decryptedValues = await HybridCryptoService.decryptFieldBatch(
+          final decrypted = await HybridCryptoService.decryptFieldBatch(
             _crossFillItems,
-            aesKey,
+            keys,
           );
           for (var i = 0; i < _crossFillCanonicals.length; i++) {
-            final decrypted = i < decryptedValues.length ? decryptedValues[i] : '';
-            if (decrypted.isNotEmpty && decrypted != _clearedSentinel) {
-              canonicalBestValue[_crossFillCanonicals[i]] = decrypted;
+            final value = i < decrypted.length ? decrypted[i] : '';
+            if (value.isNotEmpty && value != _clearedSentinel) {
+              canonicalBestValue[_crossFillCanonicals[i]] = value;
             }
           }
         } catch (e) {
@@ -527,14 +523,14 @@ class FieldValueService {
           ? rawVersion
           : int.tryParse(rawVersion?.toString() ?? '') ?? 0;
 
-      if (version == 1 && signatureValue.isNotEmpty) {
+      if (version == 2 && signatureValue.isNotEmpty) {
         final iv = signatureRow['iv']?.toString() ?? '';
         if (iv.isNotEmpty) {
-          final aesKey = HybridCryptoService.deriveUserAesKey(userId);
+          final keys = await HybridCryptoService.fetchUserFieldKeys(userId);
           signatureValue = await HybridCryptoService.decryptField(
             signatureValue,
             iv,
-            aesKey,
+            keys,
           );
         } else {
           signatureValue = '';
@@ -640,59 +636,6 @@ class FieldValueService {
     }
   }
 
-  // Write per-field rows and update the form_submission record.
-  Future<bool> pushToSubmission({
-    required String sessionId,
-    required FormTemplate template,
-    required Map<String, dynamic> formData,
-  }) async {
-    try {
-      // Build the normalized per-field rows.
-      final rows = _buildFieldRows(
-        template,
-        formData,
-        (field, strValue) => {
-          'submission_id': sessionId,
-          'field_id': field.fieldId,
-          'field_value': strValue,
-        },
-      );
-      if (rows.isNotEmpty) {
-        await _upsertChunked(
-          'submission_field_values',
-          rows,
-          'submission_id,field_id',
-        );
-      }
-
-      // Update the session status and stamp user_id for web lookup.
-      // Note: form_data column was removed — plaintext is never stored.
-      final uid = _supabase.auth.currentUser?.id;
-      final payload = <String, dynamic>{
-        'status': 'scanned',
-        'scanned_at': DateTime.now().toUtc().toIso8601String(),
-        if (uid != null) 'user_id': uid,
-      };
-
-      final res = await _supabase
-          .from('form_submission')
-          .update(payload)
-          .eq('id', sessionId)
-          .eq('status', 'active')
-          .select()
-          .maybeSingle();
-
-      if (res == null) {
-        debugPrint('[FieldValueService/pushToSubmission] Action: Session not found or closed SessionId=$sessionId');
-        return false;
-      }
-      return true;
-    } catch (e) {
-      debugPrint('[FieldValueService/pushToSubmission] Error: $e');
-      return false;
-    }
-  }
-
   // Shared helpers for the save and load flows.
 
   /// Iterate template fields, skip non-saveable types, build row maps.
@@ -732,22 +675,6 @@ class FieldValueService {
       rows.add(rowBuilder(field, val));
     }
     return rows;
-  }
-
-  /// Upsert rows in chunks of 50 to stay within Supabase limits.
-  Future<void> _upsertChunked(
-    String table,
-    List<Map<String, dynamic>> rows,
-    String onConflict,
-  ) async {
-    for (var i = 0; i < rows.length; i += 50) {
-      final chunk = rows.sublist(i, (i + 50).clamp(0, rows.length));
-      await _supabase.from(table).upsert(
-        chunk,
-        onConflict: onConflict,
-        ignoreDuplicates: false,
-      );
-    }
   }
 
   String? _normalizeCanonicalKey(String? raw) {
