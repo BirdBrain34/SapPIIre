@@ -52,7 +52,7 @@ async function decryptField(
 
     const aesKey = await crypto.subtle.importKey(
       'raw',
-      aesKeyBytes,
+      aesKeyBytes.buffer.slice(aesKeyBytes.byteOffset, aesKeyBytes.byteOffset + aesKeyBytes.byteLength) as ArrayBuffer,
       { name: 'AES-GCM' },
       false,
       ['decrypt'],
@@ -250,9 +250,13 @@ Deno.serve(async (req: Request) => {
       let resolved = '';
       if (version === 2) {
         resolved = await decryptField(rawValue, row['iv']?.toString() ?? '', key);
-      } else {
-        // Unencrypted plaintext
+      } else if (version === 0) {
+        // Truly unencrypted legacy row (encryption_version=0) — use as-is
         resolved = rawValue;
+      } else {
+        // Any other version (including v1) is unsupported and skipped for safety
+        console.warn(`[resolve-applicant-names] Unsupported encryption_version=${version} for userId=${userId} — skipping`);
+        continue;
       }
 
       const clean = resolved.trim();

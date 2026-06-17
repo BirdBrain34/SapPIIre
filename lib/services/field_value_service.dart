@@ -216,9 +216,11 @@ class FieldValueService {
             iv: row['iv'] as String? ?? '',
           ));
           continue;
+        } else if (version == 0) {
+          applyResolvedValue(fid, fval);
+        } else {
+          continue; // Unsupported encryption versions are skipped safely
         }
-
-        applyResolvedValue(fid, fval);
       }
 
       if (encryptedItems.isNotEmpty) {
@@ -397,9 +399,10 @@ class FieldValueService {
           _crossFillEncryptedRows.add(row);
           _crossFillItems.add((ciphertext: fval, iv: iv));
           _crossFillCanonicals.add(canonical);
-        } else {
-          // Plaintext (encryption_version == 0)
+        } else if (version == 0) {
           canonicalBestValue[canonical] = fval;
+        } else {
+          continue;
         }
       }
 
@@ -535,6 +538,9 @@ class FieldValueService {
         } else {
           signatureValue = '';
         }
+      } else if (version != 0) {
+        // Unsupported encryption version — skip rather than return ciphertext
+        signatureValue = '';
       }
 
       if (signatureValue.isNotEmpty && signatureValue != _clearedSentinel) {

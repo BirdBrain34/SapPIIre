@@ -6,20 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Decode JWT payload without verification (we're extracting the sub claim
-// from the JWT that Supabase Auth already verified on the gateway).
-function getUserIdFromJwt(authHeader: string): string | null {
-  try {
-    const token = authHeader.replace('Bearer ', '').trim();
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const payload = JSON.parse(atob(parts[1]));
-    return payload?.sub ?? null;
-  } catch {
-    return null;
-  }
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -42,29 +28,32 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Extract userId from JWT payload (the JWT was already verified by Supabase gateway)
-    const userId = getUserIdFromJwt(authHeader);
-    if (!userId) {
-      console.error('derive-field-key error: Could not extract userId from JWT');
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized: invalid JWT' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Log userId for debugging (safe — logs the user ID, never the key)
-    console.log(`[derive-field-key] Deriving key for userId=${userId}`);
-
     // Load secrets
     const fieldKeySecretV2 = Deno.env.get('FIELD_KEY_HMAC_SECRET_V2');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-    if (!fieldKeySecretV2) {
-      console.error('derive-field-key error: Missing required secrets (FIELD_KEY_HMAC_SECRET_V2)');
+    if (!fieldKeySecretV2 || !supabaseUrl || !serviceRoleKey) {
+      console.error('derive-field-key error: Missing required secrets');
       return new Response(
         JSON.stringify({ error: 'Server configuration error' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Secure server-side identity resolution — never trust client-supplied userId.
+    // supabase.auth.getUser() re-validates the token against the Auth service.
+    const token = authHeader.replace('Bearer ', '').trim();
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized: invalid or expired session' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    const userId = user.id;
+    console.log(`[derive-field-key] Deriving key for userId=${userId}`);
 
     // Derive key = base64(HMAC-SHA256(secret, userId))
     const encoder = new TextEncoder();
