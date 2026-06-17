@@ -37,6 +37,18 @@ This architecture ensures reusability, testability, and maintainability across t
 | Audit log monitoring | Review sensitive admin and auth events | Screen: `audit_logs_screen.dart` → Service: `AuditLogService` (with action type filtering) | `audit_logs` | Forensic accountability and compliance support; submission decryption events automatically logged by `decrypt-submission-data` Edge Function |
 | Deactivate or reactivate staff accounts | Enforce access lifecycle decisions | Controller: `ManageStaffController` → Screen: `manage_staff_screen.dart` → Service: `WebAuthService` | `staff_accounts` | Immediate revocation and reinstatement governance |
 
+### v1 vs v2 Key Derivation Comparison
+
+| Aspect | v1 (deprecated) | v2 (current) |
+|--------|-----------------|--------------|
+| Key origin | Client-side hardcoded HMAC secret (`_appHmacSecret`) | Server-side derivation via `derive-field-key` Edge Function |
+| Secret location | Embedded in mobile binary (reverse-engineerable) | Edge Secrets (`FIELD_KEY_HMAC_SECRET_V2`) |
+| Authentication | Implicit via app identity | JWT validation per request |
+| IDOR prevention | None | Edge Function verifies requesting user owns target record |
+| Key caching | N/A | Volatile memory on device, cleared on logout |
+| Web key exposure | Keys sent to browser | Server-side decryption via `resolve-applicant-names`; keys never touch browser |
+| `encryption_version` in DB | `1` | `2` (enforced standard) |
+
 ## 3. Validation Notes
 
 1. Web traceability should be demonstrated end-to-end: staff login, form builder unsaved changes test (controller state tracking), template notification receipt, session creation with ManageFormsController coordination, mobile payload arrival, finalize to encrypted `client_submissions`, and audit/event visibility.
