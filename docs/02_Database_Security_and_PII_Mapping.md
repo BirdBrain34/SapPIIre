@@ -22,9 +22,9 @@ This partitioning supports controlled data progression from user input, to encry
 
 `user_field_values` stores mobile-sourced field values by (`user_id`, `field_id`) with cryptographic metadata:
 
-1. `field_value` for encrypted or legacy value content.
+1. `field_value` for encrypted value content.
 2. `iv` for AES-GCM decryption metadata.
-3. `encryption_version` (smallint) for cipher-state branching.
+3. `encryption_version` (smallint) — **version 2 is the enforced standard**. AES keys are no longer derived locally; they are fetched securely via the `derive-field-key` Edge Function.
 4. `updated_at` for recency resolution.
 
 Foreign-key linkage to `form_fields(field_id)` binds values to dynamic metadata definitions.

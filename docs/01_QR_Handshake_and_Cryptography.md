@@ -43,6 +43,17 @@ The public-key inventory is represented in `app_rsa_keypairs`:
 
 This table contains no private key column, enforcing separation between distribution material (public key) and decryption material (secret-managed private key).
 
+### 2.4 Data-At-Rest Key Derivation (v2 Architecture)
+
+The original v1 architecture derived AES keys client-side using a hardcoded HMAC secret (`_appHmacSecret`), which was vulnerable to reverse-engineering of the mobile binary. The v2 architecture replaces this with a Server-Side Key Derivation model:
+
+- The mobile app fetches AES keys on demand by invoking the `derive-field-key` Edge Function.
+- The Edge Function validates the caller's identity via their JWT, derives the AES key using `FIELD_KEY_HMAC_SECRET_V2` (stored in Edge Secrets), and enforces IDOR prevention by verifying the requesting user owns the target record.
+- The derived key is returned to the client, cached in volatile memory on the device, and cleared immediately upon logout.
+- The web dashboard uses a separate Edge Function (`resolve-applicant-names`) which decrypts `user_field_values` server-side and returns only ephemeral plaintext names — encryption keys never touch the browser.
+
+This eliminates the client-side hardcoded secret attack surface and ensures key material is scoped per-user and per-session.
+
 ## 3. Session-Centric Handshake Flow
 
 ### 3.1 Session Initialization

@@ -31,7 +31,9 @@ Persistent PII values are mapped into `user_field_values` by `field_id`, support
 
 ### 2.3 Encrypted Data-at-Rest Semantics
 
-For protected rows, user field values are persisted with encryption metadata (`iv`, `encryption_version`) and resolved during load workflows through decrypt paths. This provides an at-rest protection layer for sensitive user attributes.
+For protected rows, user field values are persisted with encryption metadata (`iv`, `encryption_version`).
+
+The v2 security upgrade ensures AES keys are no longer derived locally using client-side secrets. Instead, the mobile app retrieves AES keys by invoking the `derive-field-key` Edge Function, which validates the caller's JWT, derives the key using `FIELD_KEY_HMAC_SECRET_V2` (stored in Edge Secrets), and prevents IDOR by verifying record ownership. The derived key is cached in volatile memory on the device and destroyed upon logout. This provides an at-rest protection layer for sensitive user attributes while eliminating the client-side hardcoded secret attack surface.
 
 ### 2.4 InfoScanner OCR Workflow (Extended Feature)
 
