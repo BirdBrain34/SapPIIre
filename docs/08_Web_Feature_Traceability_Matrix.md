@@ -26,6 +26,7 @@ This architecture ensures reusability, testability, and maintainability across t
 | Manage Forms session lifecycle | Create, monitor, and close intake sessions | Controller: `ManageFormsController` → Screen: `manage_forms_screen.dart` → Service: `SubmissionService` | `form_submission` | Session-bounded intake operations and expiry containment; Zero-Knowledge Staging ensures no plaintext persistence |
 | Secured autofill consumption | Receive decrypted mobile payload into staff form | Controller: `ManageFormsController.decryptStagingSubmission` → Screen: `manage_forms_screen.dart` → Service: `SubmissionService.fetchDecryptedStagingSubmission` → Edge Function: `serve-submission-for-review` | `form_submission`, `submission_field_values` | Encrypted Envelope → Edge Decryption → In-Memory Delivery; plaintext never written to database |
 | Finalize applicant records with encryption | Commit reviewed data to server-encrypted archive | Controller: `ManageFormsController` → Screen: `manage_forms_screen.dart` → Service: `SubmissionService.upsertClientSubmissionSecure` | `client_submissions` | Server-side AES-256-GCM encrypted intake records with session linkage |
+| Cross-User PII Name Resolution | Securely view applicant names without exposing encryption keys to the browser | Controller: `ManageFormsController` / Service: `SubmissionService` / Edge Function: `resolve-applicant-names` | `user_field_values` | Server-side decryption of `user_field_values` using role-gated access; plaintext names delivered ephemerally |
 | Applicant review and edit workflows | Access and manage historical records | Controller: `ApplicantsController` → Screen: `applicants_screen.dart` → Service: analytics/submission services, `SubmissionService.batchDecryptSubmissions` | `client_submissions`, `form_templates` | Staff productivity with controlled record mutation; 5-10x faster loading via batch decryption Edge Function |
 | Dynamic form builder | Author and evolve form templates | Controller: `FormBuilderScreenController` → Screen: `form_builder_screen.dart` + Widgets (field cards, section headers, etc.) → Service: `FormBuilderService` | `form_templates`, `form_sections`, `form_fields`, `form_field_options`, `form_field_conditions` | Schema-less form evolution and institutional agility |
 | Form builder unsaved changes detection | Prevent accidental loss of template edits | Controller: `FormBuilderScreenController` (change tracking) → Screen: `form_builder_screen.dart` (WillPopScope dialog) | `form_templates` | User intent protection with explicit save/discard dialog |
@@ -35,6 +36,18 @@ This architecture ensures reusability, testability, and maintainability across t
 | Display session broadcasting | Project active session state to monitor | Screen: `customer_display_screen.dart` → Service: `DisplaySessionService` | `display_sessions`, `form_submission` | Frontline coordination and queue transparency |
 | Audit log monitoring | Review sensitive admin and auth events | Screen: `audit_logs_screen.dart` → Service: `AuditLogService` (with action type filtering) | `audit_logs` | Forensic accountability and compliance support; submission decryption events automatically logged by `decrypt-submission-data` Edge Function |
 | Deactivate or reactivate staff accounts | Enforce access lifecycle decisions | Controller: `ManageStaffController` → Screen: `manage_staff_screen.dart` → Service: `WebAuthService` | `staff_accounts` | Immediate revocation and reinstatement governance |
+
+### v1 vs v2 Key Derivation Comparison
+
+| Aspect | v1 (deprecated) | v2 (current) |
+|--------|-----------------|--------------|
+| Key origin | Client-side hardcoded HMAC secret (`_appHmacSecret`) | Server-side derivation via `derive-field-key` Edge Function |
+| Secret location | Embedded in mobile binary (reverse-engineerable) | Edge Secrets (`FIELD_KEY_HMAC_SECRET_V2`) |
+| Authentication | Implicit via app identity | JWT validation per request |
+| IDOR prevention | None | Edge Function verifies requesting user owns target record |
+| Key caching | N/A | Volatile memory on device, cleared on logout |
+| Web key exposure | Keys sent to browser | Server-side decryption via `resolve-applicant-names`; keys never touch browser |
+| `encryption_version` in DB | `1` | `2` (enforced standard) |
 
 ## 3. Validation Notes
 

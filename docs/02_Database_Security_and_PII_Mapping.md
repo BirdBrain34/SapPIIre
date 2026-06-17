@@ -22,12 +22,24 @@ This partitioning supports controlled data progression from user input, to encry
 
 `user_field_values` stores mobile-sourced field values by (`user_id`, `field_id`) with cryptographic metadata:
 
-1. `field_value` for encrypted or legacy value content.
+1. `field_value` for encrypted value content.
 2. `iv` for AES-GCM decryption metadata.
-3. `encryption_version` (smallint) for cipher-state branching.
+3. `encryption_version` (smallint) — **version 2 is the enforced standard**. AES keys are no longer derived locally; they are fetched securely via the `derive-field-key` Edge Function.
 4. `updated_at` for recency resolution.
 
 Foreign-key linkage to `form_fields(field_id)` binds values to dynamic metadata definitions.
+
+**v1 vs v2 Key Derivation Comparison:**
+
+| Aspect | v1 (deprecated) | v2 (current) |
+|--------|-----------------|--------------|
+| Key origin | Client-side hardcoded HMAC secret (`_appHmacSecret`) | Server-side derivation via `derive-field-key` Edge Function |
+| Secret location | Embedded in mobile binary (reverse-engineerable) | Edge Secrets (`FIELD_KEY_HMAC_SECRET_V2`) |
+| Authentication | Implicit via app identity | JWT validation per request |
+| IDOR prevention | None | Edge Function verifies requesting user owns target record |
+| Key caching | N/A | Volatile memory on device, cleared on logout |
+| Web key exposure | Keys sent to browser | Server-side decryption via `resolve-applicant-names`; keys never touch browser |
+| `encryption_version` in DB | `1` | `2` (enforced standard) |
 
 ### 2.3 Transport Session Layer: `form_submission`
 

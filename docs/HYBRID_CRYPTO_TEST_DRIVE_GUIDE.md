@@ -8,7 +8,8 @@ This guide explains exactly how the team can run and test the hybrid cryptosyste
 - Table: `user_field_values`
 - Cipher: AES-256-GCM
 - Trigger point: save/load in app via `FieldValueService`
-- Metadata: `iv`, `encryption_version`
+- Metadata: `iv`, `encryption_version` = 2
+- Key derivation: Server-Side via Edge Functions (`derive-field-key`)
 
 ### RSA + AES in-transit (QR/session handoff)
 - Table: `form_submission`
@@ -37,9 +38,21 @@ This section is the teammate handoff summary for the security fixes implemented 
   - `scanned_at` writes now use UTC (`DateTime.now().toUtc().toIso8601String()`).
   - `updated_at` is no longer client-supplied on `user_field_values` inserts; database server timestamp/default is used.
 
-### Important note on legacy data
-- Historical plaintext rows may still exist from runs before this patch set.
-- Current flow is patched; legacy rows must be re-saved/migrated to eliminate residual plaintext-at-rest.
+### Important note on key derivation
+- The system enforces pure v2 server-side key derivation. All AES keys are fetched via the `derive-field-key` Edge Function — no local client-side secret derivation is used.
+
+### v1 vs v2 Architecture Comparison
+
+| Aspect | v1 (deprecated) | v2 (current) |
+|--------|-----------------|--------------|
+| Key origin | Client-side hardcoded HMAC secret (`_appHmacSecret`) | Server-side derivation via `derive-field-key` Edge Function |
+| Secret location | Embedded in mobile binary (reverse-engineerable) | Edge Secrets (`FIELD_KEY_HMAC_SECRET_V2`) |
+| Authentication | Implicit via app identity | JWT validation per request |
+| IDOR prevention | None | Edge Function verifies requesting user owns target record |
+| Key caching | N/A | Volatile memory on device |
+| Key cleanup | N/A | Cleared on logout |
+| Web key exposure | Keys sent to browser | Server-side decryption via `resolve-applicant-names`; keys never touch browser |
+| `encryption_version` stored in DB | `1` | `2` |
 
 ### Team rollout checklist
 1. Pull latest branch changes.
@@ -131,15 +144,14 @@ Important auth setting:
 ```sql
 select
   count(*) as total_rows,
-  count(*) filter (where encryption_version = 1) as aes_v1_rows,
-  count(*) filter (where encryption_version = 1 and iv is not null and iv <> '') as aes_v1_with_iv,
-  count(*) filter (where encryption_version = 1 and (iv is null or iv = '')) as aes_v1_missing_iv,
-  count(*) filter (where encryption_version = 0) as legacy_plaintext_rows
+  count(*) filter (where encryption_version = 2) as aes_v2_rows,
+  count(*) filter (where encryption_version = 2 and iv is not null and iv <> '') as aes_v2_with_iv,
+  count(*) filter (where encryption_version = 2 and (iv is null or iv = '')) as aes_v2_missing_iv
 from user_field_values;
 ```
 
 Pass signal:
-- `aes_v1_missing_iv = 0`
+- `aes_v2_missing_iv = 0`
 
 ### 8.2 Recent AES rows (schema-safe ordering)
 ```sql
@@ -216,7 +228,7 @@ where transmission_version = 1;
 ## 9) Expected test results
 
 A healthy run should show:
-- At-rest rows with `encryption_version = 1` and valid IV in `user_field_values`
+- At-rest rows with `encryption_version = 2` and valid IV in `user_field_values`
 - New session rows with `transmission_version = 1` in `form_submission`
 - Envelope columns present (`encrypted_payload`, `payload_iv`, `encrypted_aes_key`)
 - **Zero-Knowledge Staging:** Encrypted envelope remains in database; decryption happens in-memory on staff request via `serve-submission-for-review` Edge Function

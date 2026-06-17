@@ -186,127 +186,77 @@ class SubmissionService {
     return sessionToUserId;
   }
 
+  /// Resolves applicant display names using the resolve-applicant-names
+  /// Edge Function (server-side decryption). Requires staffId for authorization.
   Future<Map<String, Map<String, String>>> fetchCanonicalNamesByUserIds(
     List<String> userIds,
   ) async {
     if (userIds.isEmpty) return {};
-
-    try {
-      return await _fetchCanonicalNamesFromFieldValues(userIds);
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint(
-          '[SubmissionService/fetchCanonicalNamesByUserIds] Error: $e',
-        );
-      }
-      return {};
-    }
+    // This method no longer performs local AES decryption.
+    // Callers should use resolveNamesViaEdgeFunction(userIds, staffId) instead.
+    return {};
   }
 
+  @Deprecated('Use resolveNamesViaEdgeFunction with staffId instead.')
   Future<Map<String, String>?> fetchCanonicalNameByUserId(String userId) async {
     final names = await fetchCanonicalNamesByUserIds([userId]);
     return names[userId];
   }
 
-  Future<Map<String, Map<String, String>>> _fetchCanonicalNamesFromFieldValues(
-    List<String> userIds,
-  ) async {
-    final desiredCanonicalToBucket = <String, String>{
-      'first_name': 'first',
-      'middle_name': 'middle',
-      'last_name': 'last',
-    };
-
-    final fieldRows = await _supabase
-        .from('form_fields')
-        .select('field_id, canonical_field_key')
-        .inFilter(
-          'canonical_field_key',
-          desiredCanonicalToBucket.keys.toList(),
-        );
-
-    final fieldIdToBucket = <String, String>{};
-    for (final row in List<Map<String, dynamic>>.from(fieldRows)) {
-      final fieldId = row['field_id']?.toString();
-      final canonical = row['canonical_field_key']?.toString();
-      if (fieldId == null || canonical == null) continue;
-
-      final bucket = desiredCanonicalToBucket[canonical.trim().toLowerCase()];
-      if (bucket == null) continue;
-      fieldIdToBucket[fieldId] = bucket;
-    }
-
-    if (fieldIdToBucket.isEmpty) {
+  /// Resolves applicant names for staff-facing screens using the
+  /// resolve-applicant-names Edge Function (server-side decryption).
+  Future<Map<String, Map<String, String>>> resolveNamesViaEdgeFunction({
+    required List<String> userIds,
+    required String staffId,
+  }) async {
+    if (userIds.isEmpty) {
       return {};
     }
 
-    final valueRows = await _supabase
-        .from('user_field_values')
-        .select(
-          'user_id, field_id, field_value, iv, encryption_version, updated_at',
-        )
-        .inFilter('user_id', userIds)
-        .inFilter('field_id', fieldIdToBucket.keys.toList())
-        .order('updated_at', ascending: false);
+    const supabaseUrl = 'https://tgbfxepldpdswxehhlkx.supabase.co';
+    const anonKey =
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRnYmZ4ZXBsZHBkc3d4ZWhobGt4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NDYzMDcsImV4cCI6MjA4NjQyMjMwN30.DhoD6RHExKynXw34mibc3XRP-NwfmDnq1PttVM7-GL4';
 
-    final namesByUser = <String, Map<String, String>>{};
-    final keyCache = <String, dynamic>{};
+    final url = Uri.parse('$supabaseUrl/functions/v1/resolve-applicant-names');
 
-    for (final row in List<Map<String, dynamic>>.from(valueRows)) {
-      final userId = row['user_id']?.toString();
-      final fieldId = row['field_id']?.toString();
-      final rawValue = row['field_value']?.toString() ?? '';
-
-      if (userId == null || fieldId == null || rawValue.trim().isEmpty) {
-        continue;
-      }
-      if (rawValue == '__CLEARED__') {
-        continue;
-      }
-
-      final bucket = fieldIdToBucket[fieldId];
-      if (bucket == null) {
-        continue;
-      }
-
-      final target = namesByUser.putIfAbsent(
-        userId,
-        () => {'last': '', 'first': '', 'middle': ''},
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer $anonKey',
+          'apikey': anonKey,
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'userIds': userIds,
+          'staffId': staffId,
+        }),
       );
 
-      if ((target[bucket] ?? '').trim().isNotEmpty) {
-        continue;
-      }
-
-      final rawVersion = row['encryption_version'];
-      final version = rawVersion is int
-          ? rawVersion
-          : int.tryParse(rawVersion?.toString() ?? '') ?? 0;
-
-      String resolved = rawValue;
-      if (version == 1) {
-        final iv = row['iv']?.toString() ?? '';
-        if (iv.isEmpty) {
-          continue;
-        }
-
-        final key = keyCache.putIfAbsent(
-          userId,
-          () => HybridCryptoService.deriveUserAesKey(userId),
+      if (response.statusCode != 200) {
+        debugPrint(
+          '[SubmissionService/resolveNamesViaEdgeFunction] Error: ${response.body}',
         );
-
-        resolved = await HybridCryptoService.decryptField(rawValue, iv, key);
+        return {};
       }
 
-      final clean = resolved.trim();
-      if (clean.isEmpty || clean == '__CLEARED__') {
-        continue;
+      final result = jsonDecode(response.body) as Map<String, dynamic>;
+      final namesByUser = <String, Map<String, String>>{};
+      for (final entry in result.entries) {
+        final userNames = entry.value as Map<String, dynamic>;
+        namesByUser[entry.key] = {
+          'last': (userNames['last'] as String?) ?? '',
+          'first': (userNames['first'] as String?) ?? '',
+          'middle': (userNames['middle'] as String?) ?? '',
+        };
       }
-
-      target[bucket] = clean;
+      return namesByUser;
+    } catch (e) {
+      debugPrint(
+        '[SubmissionService/resolveNamesViaEdgeFunction] Error: $e',
+      );
+      return {};
     }
-
-    return namesByUser;
   }
 
   Future<void> updateClientSubmission({
@@ -493,6 +443,7 @@ class SubmissionService {
   }
 
   Future<void> signOut() {
+    HybridCryptoService.clearFieldKeyCache();
     return _supabase.auth.signOut();
   }
 }

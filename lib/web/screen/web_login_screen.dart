@@ -132,7 +132,7 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Logo + app name
-                      Image.asset('lib/Logo/sappiire_logo.png', height: 80),
+                      Image.asset('assets/Logo/sappiire_logo.png', height: 80),
                       const SizedBox(height: 28),
                       const Text(
                         'SapPIIre',

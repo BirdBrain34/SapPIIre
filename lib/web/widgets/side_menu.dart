@@ -43,7 +43,7 @@ class SideMenu extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Image.asset('lib/Logo/sappiire_logo.png', height: 44),
+                Image.asset('assets/Logo/sappiire_logo.png', height: 44),
                 const SizedBox(height: 10),
                 const Text(
                   'SapPIIre Portal',

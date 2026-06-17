@@ -31,7 +31,21 @@ Persistent PII values are mapped into `user_field_values` by `field_id`, support
 
 ### 2.3 Encrypted Data-at-Rest Semantics
 
-For protected rows, user field values are persisted with encryption metadata (`iv`, `encryption_version`) and resolved during load workflows through decrypt paths. This provides an at-rest protection layer for sensitive user attributes.
+For protected rows, user field values are persisted with encryption metadata (`iv`, `encryption_version`).
+
+The v2 security upgrade ensures AES keys are no longer derived locally using client-side secrets. Instead, the mobile app retrieves AES keys by invoking the `derive-field-key` Edge Function, which validates the caller's JWT, derives the key using `FIELD_KEY_HMAC_SECRET_V2` (stored in Edge Secrets), and prevents IDOR by verifying record ownership. The derived key is cached in volatile memory on the device and destroyed upon logout. This provides an at-rest protection layer for sensitive user attributes while eliminating the client-side hardcoded secret attack surface.
+
+**v1 vs v2 Key Derivation Comparison:**
+
+| Aspect | v1 (deprecated) | v2 (current) |
+|--------|-----------------|--------------|
+| Key origin | Client-side hardcoded HMAC secret (`_appHmacSecret`) | Server-side derivation via `derive-field-key` Edge Function |
+| Secret location | Embedded in mobile binary (reverse-engineerable) | Edge Secrets (`FIELD_KEY_HMAC_SECRET_V2`) |
+| Authentication | Implicit via app identity | JWT validation per request |
+| IDOR prevention | None | Edge Function verifies requesting user owns target record |
+| Key caching | N/A | Volatile memory on device, cleared on logout |
+| Web key exposure | Keys sent to browser | Server-side decryption via `resolve-applicant-names`; keys never touch browser |
+| `encryption_version` in DB | `1` | `2` (enforced standard) |
 
 ### 2.4 InfoScanner OCR Workflow (Extended Feature)
 

@@ -16,6 +16,7 @@ class SupabaseService {
   String? get currentUserId => _supabase.auth.currentUser?.id;
 
   Future<void> signOutCurrentUser() {
+    HybridCryptoService.clearFieldKeyCache();
     return _supabase.auth.signOut();
   }
 
@@ -931,7 +932,7 @@ class SupabaseService {
 
       if (fieldIds.isEmpty) return {};
 
-      final aesKey = HybridCryptoService.deriveUserAesKey(userId);
+      final keys = await HybridCryptoService.fetchUserFieldKeys(userId);
 
       final rows = await _supabase
           .from('user_field_values')
@@ -961,7 +962,7 @@ class SupabaseService {
             : int.tryParse(rawVersion?.toString() ?? '') ?? 0;
 
         String resolvedValue = fval;
-        if (version == 1) {
+        if (version == 2) {
           final iv = row['iv'] as String? ?? '';
           if (iv.trim().isEmpty) {
             debugPrint('[SupabaseService/loadPiiFromFieldValues] Warning: missing iv for field_id=$fid');
@@ -971,7 +972,7 @@ class SupabaseService {
           resolvedValue = await HybridCryptoService.decryptField(
             fval,
             iv,
-            aesKey,
+            keys,
           );
 
           if (resolvedValue.isEmpty) {

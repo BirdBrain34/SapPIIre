@@ -68,7 +68,7 @@ flutter:
   # the material Icons class.
   uses-material-design: true
   assets:
-    - lib/Logo/sappiire_logo.png
+    - assets/Logo/sappiire_logo.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

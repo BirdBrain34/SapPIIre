@@ -470,12 +470,9 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       await _embedApplicantName(formData);
       formData['__session_id'] = _currentSessionId;
 
-      // Save field values to submission_field_values
-      await _fieldValueService.pushToSubmission(
-        sessionId: _currentSessionId,
-        template: _selectedTemplate!,
-        formData: formData,
-      );
+      // pushToSubmission is removed — plaintext is no longer written to
+      // submission_field_values. The encrypted path via
+      // upsertClientSubmissionSecure is used instead (below).
 
       // Audit copy (JSONB keeps full submitted data for record)
       // Idempotent save keyed by session_id so repeated submits update one row.
@@ -563,13 +560,14 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   }
 
   /// Embeds __applicant_name into the JSONB data.
-  /// Tries: 1) session user_id canonical key RPC, 2) autofill_source fields,
+  /// Tries: 1) session user_id via Edge Function B, 2) autofill_source fields,
   /// 3) brute-force key name matching.
   Future<void> _embedApplicantName(Map<String, dynamic> formData) =>
       _manageFormsController.embedApplicantName(
         currentSessionId: _currentSessionId,
         selectedTemplate: _selectedTemplate,
         formData: formData,
+        staffId: widget.cswd_id,
       );
 
   /// Open the customer-facing display in a new browser window.

@@ -149,7 +149,7 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
                 padding: const EdgeInsets.all(48),
                 child: Column(
                   children: [
-                    Image.asset('lib/Logo/sappiire_logo.png', height: 64),
+                    Image.asset('assets/Logo/sappiire_logo.png', height: 64),
                     const SizedBox(height: 24),
                     const Text(
                       'SapPIIre',
@@ -362,7 +362,7 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Image.asset('lib/Logo/sappiire_logo.png', height: 48),
+              Image.asset('assets/Logo/sappiire_logo.png', height: 48),
               const SizedBox(height: 16),
               const Text(
                 'Create Account',
