@@ -21,6 +21,7 @@ import 'package:sappiire/mobile/widgets/logout_confirmation_dialog.dart';
 import 'package:sappiire/mobile/widgets/TermsAndCondition.dart';
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/mobile/screens/auth/NotificationScreen.dart';
+import 'package:sappiire/dynamic_form/form_state_controller.dart';
 
 
 
@@ -52,7 +53,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   bool _logoutDialogOpen = false;
   bool _hasUnsavedChanges = false;
   String _savedFormFingerprint = '';
-  ChangeNotifier? _listenedFormController;
+  FormStateController? _listenedFormController;
   VoidCallback? _formControllerListener;
 
   // Track whether the intro card is still visible.
@@ -107,19 +108,19 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
     // Detach from previous instance.
     if (_listenedFormController != null && _formControllerListener != null) {
-      _listenedFormController!.removeListener(_formControllerListener!);
+      _listenedFormController!.isDirty.removeListener(_formControllerListener!);
     }
 
     _formControllerListener = () {
       if (!mounted) return;
-      final nextUnsaved = _currentFormFingerprint() != _savedFormFingerprint;
-      if (nextUnsaved != _hasUnsavedChanges) {
-        debugPrint('[ManageInfoScreen/_attachFormControllerListener] Action: Unsaved state changed Value: $nextUnsaved');
-        setState(() => _hasUnsavedChanges = nextUnsaved);
+      final dirty = formCtrl.isDirty.value;
+      if (dirty != _hasUnsavedChanges) {
+        debugPrint('[ManageInfoScreen/_attachFormControllerListener] Action: Unsaved state changed Value: $dirty');
+        setState(() => _hasUnsavedChanges = dirty);
       }
     };
 
-    formCtrl.addListener(_formControllerListener!);
+    formCtrl.isDirty.addListener(_formControllerListener!);
     _listenedFormController = formCtrl;
   }
 
@@ -141,6 +142,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
   void _markCurrentFormAsSaved() {
     _savedFormFingerprint = _currentFormFingerprint();
+    _controller.formController?.markClean();
     debugPrint('[ManageInfoScreen/_markCurrentFormAsSaved] Action: Form baseline updated');
     if (!mounted) {
       _hasUnsavedChanges = false;
@@ -718,16 +720,31 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                   ? _buildSelectAllFAB()
                   : null,
           floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-          bottomNavigationBar: _buildBottomNav(),
-          body: _currentNavIndex == 2
-              ? HistoryScreen(userId: widget.userId, embedded: true)
-              : _controller.isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _controller.templates.isEmpty
-                      ? _buildEmptyState()
-                      : _showFormIntro
-                          ? _buildFormIntroCard()
-                          : _buildFormContent(),
+                    bottomNavigationBar: _buildBottomNav(),
+          body: Stack(
+            children: [
+              _currentNavIndex == 2
+                  ? HistoryScreen(userId: widget.userId, embedded: true)
+                  : _controller.isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _controller.templates.isEmpty
+                          ? _buildEmptyState()
+                          : _showFormIntro
+                              ? _buildFormIntroCard()
+                              : _buildFormContent(),
+              if (_hasUnsavedChanges)
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: (_controller.formController != null &&
+                          _currentNavIndex == 0 &&
+                          !_showFormIntro)
+                      ? 88
+                      : 16,
+                  child: _buildSaveChangesButton(),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -846,19 +863,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           ],
         ),
         // ── SAVE BUTTON (unchanged) ───────────────────────────────
-        if (!_showFormIntro && _currentNavIndex == 0)
-          IconButton(
-            icon: _controller.isSaving
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.save_outlined,
-                    color: Colors.white, size: 22),
-            onPressed: _controller.isSaving ? null : _saveProfile,
-            tooltip: 'Save Profile',
-          ),
         const SizedBox(width: 8),
       ],
     );
@@ -1166,6 +1170,55 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         isSelectAll ? 'Deselect All' : 'Select All',
         style: const TextStyle(
             color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+      ),
+    );
+  }
+
+  Widget _buildSaveChangesButton() {
+    return Material(
+      elevation: 6,
+      borderRadius: BorderRadius.circular(14),
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: _controller.isSaving ? null : _saveProfile,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF2E7D32),
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Center(
+            child: _controller.isSaving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
+                  )
+                : const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.save_outlined, color: Colors.white, size: 18),
+                      SizedBox(width: 8),
+                      Text(
+                        'Save Changes',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+          ),
+        ),
       ),
     );
   }

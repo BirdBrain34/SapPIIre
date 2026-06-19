@@ -81,7 +81,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   'The efficient way to fill forms, and data safe.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Colors.white70,
+                    color: Colors.white,
                     fontSize: 12,
                     fontStyle: FontStyle.italic,
                   ),

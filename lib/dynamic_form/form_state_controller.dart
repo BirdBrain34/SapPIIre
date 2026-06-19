@@ -37,8 +37,28 @@ class FormStateController extends ChangeNotifier {
   Map<String, List<Map<String, dynamic>>> memberTableData = {};
 
   // Track which fields are selected for sharing on mobile.
+   // Track which fields are selected for sharing on mobile.
   final Map<String, bool> fieldChecks = {};
   bool selectAll = false;
+
+  // Flips true the instant any real field value changes (typing, dropdown,
+  // table edits). Cheap — does NOT trigger a full-form rebuild like
+  // notifyListeners() does. Used purely to show/hide the Save button.
+  final ValueNotifier<bool> isDirty = ValueNotifier(false);
+
+  // True only while programmatically restoring saved data — suppresses
+  // dirty-tracking so loading a profile doesn't falsely show "unsaved changes".
+  bool _isHydrating = false;
+
+  void _markDirty() {
+    if (_isHydrating) return;
+    if (!isDirty.value) isDirty.value = true;
+  }
+
+  /// Call after a successful save (or discard) to reset the dirty flag.
+  void markClean() {
+    isDirty.value = false;
+  }
 
   FormStateController({required this.template}) {
     _initControllers();
@@ -138,6 +158,7 @@ class FormStateController extends ChangeNotifier {
 
   void setValue(String fieldName, dynamic value, {bool notify = true}) {
     _values[fieldName] = value;
+    _markDirty();
     final supportField = _supportBooleanField();
     if (supportField != null && supportField.fieldName == fieldName) {
       hasSupport = _truthy(value);
@@ -356,6 +377,7 @@ class FormStateController extends ChangeNotifier {
 
   void setMemberTableRows(String fieldName, List<Map<String, dynamic>> rows) {
     memberTableData[fieldName] = rows;
+    _markDirty();
     notifyListeners();
   }
 
@@ -365,6 +387,7 @@ class FormStateController extends ChangeNotifier {
     };
     memberTableData.putIfAbsent(fieldName, () => []);
     memberTableData[fieldName]!.add(emptyRow);
+    _markDirty();
     notifyListeners();
   }
 
@@ -372,7 +395,8 @@ class FormStateController extends ChangeNotifier {
     final rows = memberTableData[fieldName];
     if (rows != null && index >= 0 && index < rows.length) {
       rows.removeAt(index);
-      
+      _markDirty();
+
       // Recompute formulas because removing a row can change totals.
       _recomputeDebounce?.cancel();
       _recomputeDebounce = Timer(
@@ -393,6 +417,7 @@ class FormStateController extends ChangeNotifier {
     final rows = memberTableData[fieldName];
     if (rows != null && rowIndex >= 0 && rowIndex < rows.length) {
       rows[rowIndex][colName] = value;
+      _markDirty();
       
       // Recompute formulas because member table values feed computed fields.
       _recomputeDebounce?.cancel();
@@ -407,6 +432,7 @@ class FormStateController extends ChangeNotifier {
 
   // Load form data from JSON from the database or QR transmission.
   void loadFromJson(Map<String, dynamic> data) {
+    _isHydrating = true;
     clearAll(notify: false);
 
     data.forEach((key, value) {
@@ -496,6 +522,8 @@ class FormStateController extends ChangeNotifier {
 
     _recomputeFields();
     notifyListeners();
+    _isHydrating = false;
+    isDirty.value = false;
   }
 
   // Export form data to JSON for database storage.
@@ -1051,6 +1079,7 @@ class FormStateController extends ChangeNotifier {
     for (final notifier in _fieldNotifiers.values) {
       notifier.dispose();
     }
+    isDirty.dispose();
     super.dispose();
   }
 }

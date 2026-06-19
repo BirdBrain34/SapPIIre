@@ -289,7 +289,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                           ),
                         ),
                       ),
-                      if (!_controller.isFinalized) ...[
+                                            if (!_controller.isFinalized) ...[
                         const SizedBox(height: 12),
                         Container(
                           width: double.infinity,
@@ -300,42 +300,15 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: Colors.white24),
                           ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const SizedBox(
-                                    width: 14,
-                                    height: 14,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white70,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  const Text(
-                                    'Being reviewed by CSWD staff...',
-                                    style: TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              const Text(
-                                'View History will unlock once your\n'
-                                'information is saved by the worker.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.white54,
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ],
+                          child: const Text(
+                            'Please wait til the CSWD staff finish reviewing your submission',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              height: 1.4,
+                            ),
                           ),
                         ),
                       ],

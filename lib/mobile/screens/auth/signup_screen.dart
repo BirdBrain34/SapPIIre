@@ -165,13 +165,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
               style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
           const Text('Fill in your details or scan your National ID.',
-              style: TextStyle(color: Colors.white60, fontSize: 13)),
+              style: TextStyle(color: Colors.white, fontSize: 13)),
           const SizedBox(height: 20),
 
           OutlinedButton.icon(
             onPressed: _handleInfoScan,
-            icon: const Icon(Icons.document_scanner_outlined, color: Colors.white70),
-            label: const Text('Scan National ID to autofill', style: TextStyle(color: Colors.white70, fontSize: 13)),
+            icon: const Icon(Icons.document_scanner_outlined, color: Colors.white),
+            label: const Text('Scan National ID to autofill', style: TextStyle(color: Colors.white, fontSize: 13)),
             style: OutlinedButton.styleFrom(
               side: const BorderSide(color: Colors.white30),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -205,7 +205,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   const SizedBox(width: 12),
                   Text(
                     _controller.dobCtrl.text.isEmpty ? 'Date of Birth *' : _controller.dobCtrl.text,
-                    style: TextStyle(color: _controller.dobCtrl.text.isEmpty ? Colors.white54 : Colors.white, fontSize: 14),
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
                   ),
                 ],
               ),
@@ -258,10 +258,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'You need at least one contact method to verify your identity and recover your account if needed.',
-                    style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
-                  ),
+                    const Text(
+                      'You need at least one contact method to verify your identity and recover your account if needed.',
+                      style: TextStyle(color: Colors.white, fontSize: 13, height: 1.5),
+                    ),
                   const SizedBox(height: 32),
 
                   _buildContactOptionCard(
@@ -418,7 +418,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           const SizedBox(height: 8),
 
           if (!_controller.emailOtpSent) ...[
-            const Text('Enter your email address. A verification code will be sent.', style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)),
+            const Text('Enter your email address. A verification code will be sent.', style: TextStyle(color: Colors.white, fontSize: 13, height: 1.5)),
             const SizedBox(height: 28),
             SignupTextField(
               controller: _controller.emailCtrl,
@@ -439,7 +439,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 const SizedBox(height: 16),
                 Text('Check ${_controller.emailCtrl.text}', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600), textAlign: TextAlign.center),
                 const SizedBox(height: 6),
-                const Text('Enter the 8-digit code we sent to your email.', style: TextStyle(color: Colors.white70, fontSize: 13), textAlign: TextAlign.center),
+                const Text('Enter the 8-digit code we sent to your email.', style: TextStyle(color: Colors.white, fontSize: 13), textAlign: TextAlign.center),
                 const SizedBox(height: 28),
                 SignupTextField(
                   controller: _controller.emailOtpCtrl,
@@ -452,7 +452,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Text("Didn't receive it? ", style: TextStyle(color: Colors.white60, fontSize: 13)),
+                    const Text("Didn't receive it? ", style: TextStyle(color: Colors.white, fontSize: 13)),
                     TextButton(
                       onPressed: (_controller.isLoading || _controller.emailOtpCountdown > 0) ? null : () => _controller.handleResendEmailOtp(context),
                       style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
@@ -502,7 +502,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           const SizedBox(height: 8),
 
           if (!_controller.phoneOtpSent) ...[
-            const Text('Enter your Philippine mobile number. We will send a 6-digit code via SMS.', style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)),
+            const Text('Enter your Philippine mobile number. We will send a 6-digit code via SMS.', style: TextStyle(color: Colors.white, fontSize: 13, height: 1.5)),
             const SizedBox(height: 28),
             SignupTextField(
               controller: _controller.phoneCtrl,
@@ -523,7 +523,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 const SizedBox(height: 16),
                 Text('Check ${_controller.phoneCtrl.text}', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600), textAlign: TextAlign.center),
                 const SizedBox(height: 6),
-                const Text('Enter the 6-digit SMS code.', style: TextStyle(color: Colors.white70, fontSize: 13), textAlign: TextAlign.center),
+                const Text('Enter the 6-digit SMS code.', style: TextStyle(color: Colors.white, fontSize: 13), textAlign: TextAlign.center),
                 const SizedBox(height: 28),
                 SignupTextField(
                   controller: _controller.phoneOtpCtrl,
@@ -586,7 +586,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         children: [
           const Text('Set Your Credentials', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          const Text('This is how you will log in to SapPIIre.', style: TextStyle(color: Colors.white60, fontSize: 13)),
+          const Text('This is how you will log in to SapPIIre.', style: TextStyle(color: Colors.white, fontSize: 13)),
           const SizedBox(height: 24),
 
           SignupTextField(controller: _controller.usernameCtrl, label: 'Username', icon: Icons.person_outline, textInputAction: TextInputAction.next),
@@ -713,7 +713,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: value,
-          hint: Text(label, style: const TextStyle(color: Colors.white54, fontSize: 14)),
+          hint: Text(label, style: const TextStyle(color: Colors.white, fontSize: 14)),
           dropdownColor: const Color(0xFF1A237E),
           isExpanded: true,
           iconEnabledColor: Colors.white,
