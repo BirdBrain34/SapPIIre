@@ -75,37 +75,46 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
 
     return Column(
       children: [
-        if (_sections.length > 1)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Opacity(
-                  opacity: _currentSection > 0 ? 1.0 : 0.0,
-                  child: IconButton(
-                    icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-                    color: AppColors.primaryBlue,
-                    onPressed: _currentSection > 0 ? () => setState(() => _currentSection--) : null,
-                  ),
-                ),
-                Text(
-                  'Page ${_currentSection + 1} of ${_sections.length}',
-                  style: const TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                Opacity(
-                  opacity: _currentSection < _sections.length - 1 ? 1.0 : 0.0,
-                  child: IconButton(
-                    icon: const Icon(Icons.arrow_forward_ios, size: 20),
-                    color: AppColors.primaryBlue,
-                    onPressed: _currentSection < _sections.length - 1 ? () => setState(() => _currentSection++) : null,
-                  ),
-                ),
-              ],
+        if (_sections.length > 1) _buildPageNav(),
+        _buildSectionCard(section),
+        if (_sections.length > 1) ...[
+          const SizedBox(height: 12),
+          _buildPageNav(),
+        ],
+      ],
+    );
+  }
+
+  /// Page indicator + prev/next controls. Shown above and below the form
+  /// section so it's reachable without scrolling back up on long pages.
+  Widget _buildPageNav() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Opacity(
+            opacity: _currentSection > 0 ? 1.0 : 0.0,
+            child: IconButton(
+              icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+              color: AppColors.primaryBlue,
+              onPressed: _currentSection > 0 ? () => setState(() => _currentSection--) : null,
             ),
           ),
-        _buildSectionCard(section),
-      ],
+          Text(
+            'Page ${_currentSection + 1} of ${_sections.length}',
+            style: const TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          Opacity(
+            opacity: _currentSection < _sections.length - 1 ? 1.0 : 0.0,
+            child: IconButton(
+              icon: const Icon(Icons.arrow_forward_ios, size: 20),
+              color: AppColors.primaryBlue,
+              onPressed: _currentSection < _sections.length - 1 ? () => setState(() => _currentSection++) : null,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

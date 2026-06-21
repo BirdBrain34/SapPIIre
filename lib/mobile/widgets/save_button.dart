@@ -2,41 +2,108 @@ import 'package:flutter/material.dart';
 
 class SaveButton extends StatelessWidget {
   final VoidCallback onTap;
+  final VoidCallback onDiscard;
+  final bool isSaving;
 
-  const SaveButton({super.key, required this.onTap});
+  const SaveButton({
+    super.key,
+    required this.onTap,
+    required this.onDiscard,
+    this.isSaving = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.green.shade600, // Design choice: Solid Green
-          borderRadius: BorderRadius.circular(30),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.2),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.save, color: Colors.white, size: 18),
-            SizedBox(width: 8),
-            Text(
-              "Save Changes",
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
+    return Material(
+      color: Colors.transparent,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ── X (discard) side ──────────────────────────────────────
+          GestureDetector(
+            onTap: isSaving ? null : onDiscard,
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: isSaving ? Colors.red.shade900 : Colors.red.shade800,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(20),
+                  bottomLeft: Radius.circular(20),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.18),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Icon(
+                Icons.close,
+                color: isSaving ? Colors.white38 : Colors.white,
+                size: 18,
               ),
             ),
-          ],
-        ),
+          ),
+
+          // ── Divider ───────────────────────────────────────────────
+          Container(
+            width: 1,
+            height: 24,
+            color: Colors.white.withOpacity(0.25),
+          ),
+
+          // ── Save side ─────────────────────────────────────────────
+          GestureDetector(
+            onTap: isSaving ? null : onTap,
+            child: Container(
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: isSaving
+                    ? Colors.green.shade700.withOpacity(0.75)
+                    : Colors.green.shade700,
+                borderRadius: const BorderRadius.only(
+                  topRight: Radius.circular(20),
+                  bottomRight: Radius.circular(20),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.18),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isSaving)
+                    const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white70,
+                      ),
+                    )
+                  else
+                    const Icon(Icons.save, color: Colors.white, size: 16),
+                  const SizedBox(width: 6),
+                  Text(
+                    isSaving ? 'Saving…' : 'Save changes',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

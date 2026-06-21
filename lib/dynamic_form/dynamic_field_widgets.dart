@@ -699,6 +699,7 @@ class _MembershipGroupField extends StatelessWidget {
                   ? null
                   : () {
                       controller.membershipData[item.$1] = !selected;
+                      controller.markDirty();
                       controller.notifyFormChanged();
                     },
               child: AnimatedContainer(
@@ -1373,11 +1374,11 @@ class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
                                       hint: 'Relationship',
                                     ).copyWith(isDense: true),
                                     style: const TextStyle(fontSize: 12),
-                                    onChanged: (v) =>
-                                        widget
-                                                .controller
-                                                .supportingFamily[i]['relationship'] =
-                                            v,
+                                    onChanged: (v) {
+                                      widget.controller
+                                          .supportingFamily[i]['relationship'] = v;
+                                      widget.controller.markDirty();
+                                    },
                                   ),
                                   const SizedBox(
                                     height: 4,
@@ -1393,11 +1394,11 @@ class _SupportingFamilyFieldState extends State<_SupportingFamilyField> {
                                       hint: 'Monthly Amt',
                                     ).copyWith(isDense: true),
                                     style: const TextStyle(fontSize: 12),
-                                    onChanged: (v) =>
-                                        widget
-                                                .controller
-                                                .supportingFamily[i]['regular_sustento'] =
-                                            v,
+                                    onChanged: (v) {
+                                      widget.controller
+                                          .supportingFamily[i]['regular_sustento'] = v;
+                                      widget.controller.markDirty();
+                                    },
                                   ),
                                 ],
                               ),
@@ -1492,6 +1493,7 @@ class _SignatureFieldState extends State<_SignatureField> {
             widget.controller.signaturePoints = null;
             widget.controller.signatureIsProcessing = false;
             widget.controller.fieldChecks['Signature'] = false;
+            widget.controller.markDirty();
             widget.controller.notifyFormChanged();
             setState(() {});
           },
@@ -1555,32 +1557,11 @@ class _SignatureFieldState extends State<_SignatureField> {
               _points.add(d.localPosition);
               setState(() {});
             },
-            onPanEnd: (_) async {
+            onPanEnd: (_) {
+              // Break the line so the next stroke starts fresh, but keep
+              // the pad open — don't finalize until the user taps Done.
               _points.add(null);
               setState(() {});
-
-              if (_points.whereType<Offset>().length >= 2) {
-                final token = ++_conversionToken;
-                widget.controller.signatureIsProcessing = true;
-                widget.controller.notifyFormChanged();
-                try {
-                  final b64 = await convertSignatureToBase64(
-                    List<Offset?>.from(_points),
-                  );
-                  if (!mounted || token != _conversionToken) return;
-
-                  if (b64 != null) {
-                    widget.controller.signatureBase64 = b64;
-                    widget.controller.signaturePoints = List.from(_points);
-                    widget.controller.fieldChecks['Signature'] = true;
-                  }
-                } finally {
-                  if (mounted && token == _conversionToken) {
-                    widget.controller.signatureIsProcessing = false;
-                    widget.controller.notifyFormChanged();
-                  }
-                }
-              }
             },
             child: CustomPaint(
               painter: _SignaturePainter(_points),
@@ -1588,19 +1569,54 @@ class _SignatureFieldState extends State<_SignatureField> {
             ),
           ),
         ),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton(
-            onPressed: () {
-              _conversionToken++;
-              setState(() => _points.clear());
-              widget.controller.signatureBase64 = null;
-              widget.controller.signaturePoints = null;
-              widget.controller.signatureIsProcessing = false;
-              widget.controller.fieldChecks['Signature'] = false;
-              widget.controller.notifyFormChanged();
-            },
-            child: const Text('Clear', style: TextStyle(color: Colors.red)),
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              TextButton(
+                onPressed: _points.isEmpty
+                    ? null
+                    : () {
+                        _conversionToken++;
+                        setState(() => _points.clear());
+                      },
+                child: const Text('Clear', style: TextStyle(color: Colors.red)),
+              ),
+              ElevatedButton.icon(
+                onPressed: _points.whereType<Offset>().length < 2
+                    ? null
+                    : () async {
+                        final token = ++_conversionToken;
+                        widget.controller.signatureIsProcessing = true;
+                        widget.controller.notifyFormChanged();
+                        try {
+                          final b64 = await convertSignatureToBase64(
+                            List<Offset?>.from(_points),
+                          );
+                          if (!mounted || token != _conversionToken) return;
+
+                          if (b64 != null) {
+                            widget.controller.signatureBase64 = b64;
+                            widget.controller.signaturePoints = List.from(_points);
+                            widget.controller.fieldChecks['Signature'] = true;
+                            widget.controller.markDirty();
+                          }
+                        } finally {
+                          if (mounted && token == _conversionToken) {
+                            widget.controller.signatureIsProcessing = false;
+                            widget.controller.notifyFormChanged();
+                          }
+                        }
+                      },
+                icon: const Icon(Icons.check, size: 16, color: Colors.white),
+                label: const Text('Done', style: TextStyle(fontSize: 12, color: Colors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryBlue,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                ),
+              ),
+            ],
           ),
         ),
       ],

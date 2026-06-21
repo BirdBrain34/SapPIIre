@@ -381,6 +381,7 @@ class SignupController extends ChangeNotifier {
       final signupResult = await _supabaseService.signUpWithEmail(
         email: syntheticEmail,
         password: passwordCtrl.text,
+        allowOtpRecovery: false,
       );
 
       isLoading = false;

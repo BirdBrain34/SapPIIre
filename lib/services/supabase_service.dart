@@ -323,9 +323,15 @@ class SupabaseService {
   }
 
   // Sign up with email and send an OTP when needed.
+  //
+  // [allowOtpRecovery] should be true for the real-email flow (we can
+  // legitimately email an OTP to recover an orphaned signup), and false
+  // for the phone-only flow's synthetic email (nobody reads
+  // digits@sappiire.phone — recovery there must use the password instead).
   Future<Map<String, dynamic>> signUpWithEmail({
     required String email,
     String? password,
+    bool allowOtpRecovery = true,
   }) async {
     try {
       final normalizedEmail = email.trim().toLowerCase();
@@ -369,30 +375,90 @@ class SupabaseService {
 
       final signupPassword =
           password ?? DateTime.now().millisecondsSinceEpoch.toString();
-      final res = await _supabase.auth.signUp(
-        email: normalizedEmail,
-        password: signupPassword,
-        emailRedirectTo: null,
-      );
-
-      if (res.user == null) {
-        return {'success': false, 'message': 'Sign-up failed. Try again.'};
-      }
 
       try {
-        await _supabase.auth.signInWithOtp(
-          email: email,
-          shouldCreateUser: false,
+        final res = await _supabase.auth.signUp(
+          email: normalizedEmail,
+          password: signupPassword,
+          emailRedirectTo: null,
         );
-      } catch (e) {
-        debugPrint('[SupabaseService/signUpWithEmail] Warning: OTP send failed: $e');
-      }
 
-      return {
-        'success': true,
-        'message': 'OTP sent! Check your email.',
-        'user_id': res.user!.id,
-      };
+        if (res.user == null) {
+          return {'success': false, 'message': 'Sign-up failed. Try again.'};
+        }
+
+        if (allowOtpRecovery) {
+          try {
+            await _supabase.auth.signInWithOtp(
+              email: email,
+              shouldCreateUser: false,
+            );
+          } catch (e) {
+            debugPrint('[SupabaseService/signUpWithEmail] Warning: OTP send failed: $e');
+          }
+        }
+
+        return {
+          'success': true,
+          'message': allowOtpRecovery ? 'OTP sent! Check your email.' : 'Account created.',
+          'user_id': res.user!.id,
+        };
+      } on AuthException catch (e) {
+        final msg = e.message.toLowerCase();
+        final looksOrphaned =
+            msg.contains('already registered') || msg.contains('already exists');
+
+        if (!looksOrphaned) {
+          return {'success': false, 'message': e.message};
+        }
+
+        // A previous attempt created the Auth user but never finished
+        // writing user_accounts (e.g. connection dropped). Try to recover
+        // instead of permanently blocking this email/phone.
+        if (allowOtpRecovery) {
+          try {
+            await _supabase.auth.signInWithOtp(
+              email: normalizedEmail,
+              shouldCreateUser: false,
+            );
+            return {
+              'success': true,
+              'message':
+                  'We found an incomplete previous signup — code resent, check your email.',
+              'user_id': null,
+            };
+          } catch (_) {
+            return {
+              'success': false,
+              'message':
+                  'This email has an incomplete previous signup attempt. Please contact support.',
+            };
+          }
+        } else {
+          // Synthetic phone-email flow: try the password just entered, in
+          // case this is a retry of the exact same failed attempt.
+          try {
+            final signInRes = await _supabase.auth.signInWithPassword(
+              email: normalizedEmail,
+              password: signupPassword,
+            );
+            if (signInRes.user != null) {
+              return {
+                'success': true,
+                'message': 'Resumed previous signup.',
+                'user_id': signInRes.user!.id,
+              };
+            }
+          } catch (_) {
+            // Falls through to the error below.
+          }
+          return {
+            'success': false,
+            'message':
+                'This phone number has an incomplete previous signup attempt. Please contact support to reset it.',
+          };
+        }
+      }
     } catch (e) {
       return {'success': false, 'message': 'Error: ${e.toString()}'};
     }
@@ -718,6 +784,16 @@ class SupabaseService {
         'place_of_birth': birthplace,
         'lugar_ng_kapanganakan_place_of_birth': birthplace,
         'house_number_street_name_phase_purok': addressLine,
+        // Email/phone, kept as multiple aliases — see note below.
+        if (email != null && email.isNotEmpty) ...{
+          'email': email,
+          'email_address': email,
+        },
+        if (phoneNumber != null && phoneNumber.isNotEmpty) ...{
+          'phone_number': phoneNumber,
+          'contact_number': phoneNumber,
+          'numero_ng_telepono_contact_number': phoneNumber,
+        },
       };
 
       // Match canonical keys to field IDs across all templates and save.

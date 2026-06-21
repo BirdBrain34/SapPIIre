@@ -22,7 +22,7 @@ import 'package:sappiire/mobile/widgets/TermsAndCondition.dart';
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/mobile/screens/auth/NotificationScreen.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
-
+import 'package:sappiire/mobile/widgets/save_button.dart';
 
 
 
@@ -713,40 +713,45 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         child: Scaffold(
           backgroundColor: AppColors.pageBg,
           appBar: _buildAppBar(),
-          floatingActionButton:
-              (_controller.formController != null &&
-                      _currentNavIndex == 0 &&
-                      !_showFormIntro)
-                  ? _buildSelectAllFAB()
-                  : null,
+                    floatingActionButton: _buildFabColumn(),
           floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-                    bottomNavigationBar: _buildBottomNav(),
-          body: Stack(
-            children: [
-              _currentNavIndex == 2
-                  ? HistoryScreen(userId: widget.userId, embedded: true)
-                  : _controller.isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : _controller.templates.isEmpty
-                          ? _buildEmptyState()
-                          : _showFormIntro
-                              ? _buildFormIntroCard()
-                              : _buildFormContent(),
-              if (_hasUnsavedChanges)
-                Positioned(
-                  left: 16,
-                  right: 16,
-                  bottom: (_controller.formController != null &&
-                          _currentNavIndex == 0 &&
-                          !_showFormIntro)
-                      ? 88
-                      : 16,
-                  child: _buildSaveChangesButton(),
-                ),
-            ],
+          bottomNavigationBar: _buildBottomNav(),
+          body: _currentNavIndex == 2
+              ? HistoryScreen(userId: widget.userId, embedded: true)
+              : _controller.isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _controller.templates.isEmpty
+                      ? _buildEmptyState()
+                      : _showFormIntro
+                          ? _buildFormIntroCard()
+                          : _buildFormContent(),
+                          ),
+                          ),
+                          );
+                          }
+
+  /// Stacks Select All (top) and Save Changes (bottom) so they never overlap,
+  /// and Save stays visible across tabs as long as there are unsaved edits.
+  Widget? _buildFabColumn() {
+    final showSelectAll = _controller.formController != null &&
+        _currentNavIndex == 0 &&
+        !_showFormIntro;
+    final showSave = _hasUnsavedChanges;
+
+    if (!showSelectAll && !showSave) return null;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (showSelectAll) _buildSelectAllFAB(),
+        if (showSelectAll && showSave) const SizedBox(height: 12),
+        if (showSave)
+          SaveButton(
+            onTap: _saveProfile,
+            onDiscard: _discardPendingChangesAndRefresh,
+            isSaving: _controller.isSaving,
           ),
-        ),
-      ),
+      ],
     );
   }
 
@@ -1170,55 +1175,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         isSelectAll ? 'Deselect All' : 'Select All',
         style: const TextStyle(
             color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-      ),
-    );
-  }
-
-  Widget _buildSaveChangesButton() {
-    return Material(
-      elevation: 6,
-      borderRadius: BorderRadius.circular(14),
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: _controller.isSaving ? null : _saveProfile,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: BoxDecoration(
-            color: const Color(0xFF2E7D32),
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.15),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Center(
-            child: _controller.isSaving
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white),
-                  )
-                : const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.save_outlined, color: Colors.white, size: 18),
-                      SizedBox(width: 8),
-                      Text(
-                        'Save Changes',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-          ),
-        ),
       ),
     );
   }

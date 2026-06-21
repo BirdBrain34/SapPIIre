@@ -74,29 +74,30 @@ class FormStateController extends ChangeNotifier {
         case FormFieldType.computed:
           textControllers[field.fieldName] = TextEditingController();
           _initFieldNotifier(field.fieldName, null);
-          fieldChecks[field.fieldName] = false;
+          // Required fields are pre-checked for QR transmission by default.
+          fieldChecks[field.fieldName] = field.isRequired;
           break;
         case FormFieldType.dropdown:
         case FormFieldType.radio:
         case FormFieldType.checkbox:
         case FormFieldType.boolean:
           _initFieldNotifier(field.fieldName, null);
-          fieldChecks[field.fieldName] = false;
+          fieldChecks[field.fieldName] = field.isRequired;
           break;
         case FormFieldType.familyTable:
-          fieldChecks['Family Composition'] = false;
+          fieldChecks['Family Composition'] = field.isRequired;
           break;
         case FormFieldType.signature:
-          fieldChecks['Signature'] = false;
+          fieldChecks['Signature'] = field.isRequired;
           break;
         case FormFieldType.membershipGroup:
-          fieldChecks['Membership Group'] = false;
+          fieldChecks['Membership Group'] = field.isRequired;
           break;
         case FormFieldType.supportingFamilyTable:
           break;
         case FormFieldType.memberTable:
           memberTableData[field.fieldName] = [];
-          fieldChecks[field.fieldLabel] = false;
+          fieldChecks[field.fieldLabel] = field.isRequired;
           break;
         default:
           break;
@@ -360,10 +361,18 @@ class FormStateController extends ChangeNotifier {
   }
 
   // Recompute derived values and notify listeners.
+// REPLACE
   void recomputeFromFamilyChange() {
+    _markDirty();
     _recomputeFields();
     notifyListeners();
   }
+
+  /// Public entry point for field widgets that mutate controller state
+  /// directly (membership toggles, signature) without going through
+  /// setValue(). Family-table edits already route through
+  /// recomputeFromFamilyChange() above.
+  void markDirty() => _markDirty();
 
   // Notify widgets that need a full form refresh.
   void notifyFormChanged() {
