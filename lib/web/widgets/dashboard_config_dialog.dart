@@ -10,7 +10,7 @@ class DashboardConfigDialog extends StatefulWidget {
   final FormTemplate template;
   final List<DashboardWidgetConfig> initialConfigs;
   final String staffId;
-  final VoidCallback? onSave;
+  final Future<void> Function()? onSave;
 
   const DashboardConfigDialog({
     super.key,
@@ -46,13 +46,7 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
     'bar',
     'hbar',
     'pie',
-    'donut',
     'line',
-    'area',
-    'stacked',
-    'counter',
-    'table',
-    'funnel',
   ];
 
   @override
@@ -160,8 +154,10 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
             duration: Duration(seconds: 2),
           ),
         );
-        widget.onSave?.call();
-        Navigator.of(context).pop();
+        await widget.onSave?.call();
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
       }
     } catch (e) {
       if (mounted) {
