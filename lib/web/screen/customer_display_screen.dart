@@ -1,7 +1,9 @@
-/// Customer-facing second monitor display that shows the active session QR.
+/// Customer-facing second monitor display.
 ///
 /// The screen listens to Supabase Realtime for station updates and switches
-/// between a standby view and a QR view for the current form session.
+/// between a standby view, a QR view for the current form session, and a
+/// read-only "review" view that mirrors the applicant's autofilled form once
+/// their scan data arrives — so the customer can double-check their details.
 library;
 
 import 'dart:async';
@@ -9,7 +11,12 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'package:sappiire/constants/app_colors.dart';
+import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
+import 'package:sappiire/dynamic_form/form_state_controller.dart';
+import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/services/display_session_service.dart';
+import 'package:sappiire/services/form_template_service.dart';
+import 'package:sappiire/services/forms/submission_service.dart';
 
 class CustomerDisplayScreen extends StatefulWidget {
   final String stationId;
@@ -23,12 +30,25 @@ class CustomerDisplayScreen extends StatefulWidget {
 class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
     with SingleTickerProviderStateMixin {
   final _displayService = DisplaySessionService();
+  final _submissionService = SubmissionService();
+  final _templateService = FormTemplateService();
 
-  StreamSubscription? _subscription;
+  StreamSubscription? _subscription; // station row (display_sessions)
+  StreamSubscription? _sessionSub; // active session row (form_submission)
+  Timer? _pollTimer; // backup poll for the scan (realtime is unreliable here)
 
   String? _sessionId;
+  String? _templateId;
   String? _formName;
   String _status = 'standby'; // 'active' | 'standby'
+
+  // Review ("mirror") state — populated once the applicant's scan arrives so
+  // the customer can verify the autofilled form on their own monitor.
+  bool _showReview = false;
+  bool _loadingReview = false;
+  String? _reviewedSessionId;
+  FormTemplate? _reviewTemplate;
+  FormStateController? _reviewController;
 
   late final AnimationController _pulseCtrl;
   late final Animation<double> _pulseAnim;
@@ -49,30 +69,211 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
   void _startListening() {
     _subscription = _displayService.listenStation(
       widget.stationId,
-      (row) {
-        if (!mounted) return;
-        debugPrint('[CustomerDisplayScreen/_startListening] Action: Realtime update received');
-        debugPrint("[CustomerDisplayScreen/_startListening] Action: Status=${row?['status']} SessionId=${row?['session_id']} FormName=${row?['form_name']}");
-
-        setState(() {
-          _status = row?['status'] ?? 'standby';
-          _sessionId = row?['session_id'];
-          _formName = row?['form_name'];
-        });
-      },
+      _onStationUpdate,
     );
+  }
+
+  /// Handle a station (display_sessions) update: drive the QR/standby state and
+  /// (re)subscribe to the active session so we can react to its scan result.
+  void _onStationUpdate(Map<String, dynamic>? row) {
+    if (!mounted) return;
+    final status = row?['status'] as String? ?? 'standby';
+    final sessionId = row?['session_id'] as String?;
+    final templateId = row?['template_id'] as String?;
+    final formName = row?['form_name'] as String?;
+
+    debugPrint(
+      '[CustomerDisplayScreen/_onStationUpdate] status=$status sessionId=$sessionId',
+    );
+
+    // Session ended / reset → clear everything back to the standby welcome.
+    if (status != 'active' || sessionId == null) {
+      _sessionSub?.cancel();
+      _sessionSub = null;
+      _pollTimer?.cancel();
+      _pollTimer = null;
+      _clearReview();
+      setState(() {
+        _status = 'standby';
+        _sessionId = null;
+        _templateId = null;
+        _formName = null;
+      });
+      return;
+    }
+
+    final isNewSession = sessionId != _sessionId;
+    setState(() {
+      _status = status;
+      _sessionId = sessionId;
+      _templateId = templateId;
+      _formName = formName;
+    });
+
+    // A new active session starts on the QR view; watch for its scan result.
+    if (isNewSession) {
+      _clearReview();
+      _subscribeToSession(sessionId);
+    }
+  }
+
+  /// Watch the active session's form_submission row for the applicant's scan.
+  ///
+  /// Realtime on form_submission is unreliable (the worker dashboard polls for
+  /// the same reason), so we use the realtime stream as the primary signal and
+  /// a snapshot poll as the backup.
+  void _subscribeToSession(String sessionId) {
+    _sessionSub?.cancel();
+    _pollTimer?.cancel();
+
+    // Primary: realtime stream. Emits the current row on subscribe, then updates.
+    _sessionSub = _submissionService.streamSession(sessionId).listen(
+      (rows) {
+        if (!mounted || rows.isEmpty) return;
+        _maybeReviewFromStatus(rows.first['status'] as String?, sessionId);
+      },
+      onError: (e) {
+        debugPrint('[CustomerDisplayScreen/_subscribeToSession] Stream error: $e');
+      },
+      cancelOnError: false,
+    );
+
+    // Backup: poll the session snapshot until the scan arrives.
+    _pollSession(sessionId);
+    _pollTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+      if (!mounted ||
+          _sessionId != sessionId ||
+          _reviewedSessionId == sessionId) {
+        timer.cancel();
+        return;
+      }
+      _pollSession(sessionId);
+    });
+  }
+
+  Future<void> _pollSession(String sessionId) async {
+    try {
+      final row = await _submissionService.fetchSessionSnapshot(sessionId);
+      if (!mounted || row == null) return;
+      _maybeReviewFromStatus(row['status'] as String?, sessionId);
+    } catch (e) {
+      debugPrint('[CustomerDisplayScreen/_pollSession] Error: $e');
+    }
+  }
+
+  /// Trigger the review load once the applicant's scan lands (status='scanned').
+  void _maybeReviewFromStatus(String? status, String sessionId) {
+    if (status == 'scanned' &&
+        _reviewedSessionId != sessionId &&
+        !_loadingReview) {
+      _loadReview(sessionId, _templateId);
+    }
+  }
+
+  /// Decrypt the scanned session and build a read-only mirror of the form.
+  ///
+  /// Reuses the same decrypt + render path the worker dashboard uses
+  /// (serve-submission-for-review Edge Function + DynamicFormRenderer).
+  Future<void> _loadReview(String sessionId, String? templateId) async {
+    if (templateId == null || templateId.isEmpty) {
+      debugPrint('[CustomerDisplayScreen/_loadReview] Skipped — no templateId');
+      return;
+    }
+
+    debugPrint(
+      '[CustomerDisplayScreen/_loadReview] Loading mirror session=$sessionId templateId=$templateId',
+    );
+    setState(() {
+      _showReview = true;
+      _loadingReview = true;
+    });
+
+    try {
+      final staffId = _staffIdFromStation(widget.stationId);
+      final template = await _templateService.fetchTemplate(templateId);
+      final decrypted = await _submissionService.fetchDecryptedStagingSubmission(
+        sessionId: sessionId,
+        staffId: staffId,
+      );
+
+      debugPrint(
+        '[CustomerDisplayScreen/_loadReview] template=${template?.templateId} decryptedKeys=${decrypted?.keys.toList()}',
+      );
+
+      if (!mounted) return;
+
+      // Fail safe: never surface a raw error to the customer — fall back to QR.
+      if (template == null || decrypted == null || decrypted.isEmpty) {
+        debugPrint(
+          '[CustomerDisplayScreen/_loadReview] Decrypt/template unavailable — staying on QR',
+        );
+        _clearReview();
+        return;
+      }
+
+      final controller = FormStateController(template: template)
+        ..loadFromJson(decrypted);
+      _reviewController?.dispose();
+      setState(() {
+        _reviewTemplate = template;
+        _reviewController = controller;
+        _reviewedSessionId = sessionId;
+        _loadingReview = false;
+        _showReview = true;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      debugPrint('[CustomerDisplayScreen/_loadReview] Error: $e');
+      _clearReview();
+    }
+  }
+
+  void _clearReview() {
+    _reviewController?.dispose();
+    _reviewController = null;
+    _reviewTemplate = null;
+    _reviewedSessionId = null;
+    if (mounted) {
+      setState(() {
+        _showReview = false;
+        _loadingReview = false;
+      });
+    } else {
+      _showReview = false;
+      _loadingReview = false;
+    }
+  }
+
+  /// Station ids are formatted as `desk_<cswd_id>`; the staff id is the suffix.
+  String _staffIdFromStation(String stationId) {
+    const prefix = 'desk_';
+    return stationId.startsWith(prefix)
+        ? stationId.substring(prefix.length)
+        : stationId;
   }
 
   @override
   void dispose() {
     _subscription?.cancel();
+    _sessionSub?.cancel();
+    _pollTimer?.cancel();
+    _reviewController?.dispose();
     _pulseCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // Render the standby or active session view based on the latest status.
+    // Pick the view: review mirror > active QR > standby welcome.
+    final Widget body;
+    if (_showReview) {
+      body = _buildReviewView();
+    } else if (_status == 'active' && _sessionId != null) {
+      body = _buildActiveView();
+    } else {
+      body = _buildStandbyView();
+    }
+
     return Scaffold(
       body: Container(
         width: double.infinity,
@@ -84,9 +285,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
             colors: [Color(0xFF0A1628), Color(0xFF0D1B4E), Color(0xFF132B6E)],
           ),
         ),
-        child: _status == 'active' && _sessionId != null
-            ? _buildActiveView()
-            : _buildStandbyView(),
+        child: body,
       ),
     );
   }
@@ -269,6 +468,93 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
               const SizedBox(width: 32),
               _instructionStep('3', 'Scan this QR code'),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Read-only "mirror" of the applicant's autofilled form, shown after the scan
+  /// so the customer can confirm their details are correct.
+  Widget _buildReviewView() {
+    if (_loadingReview ||
+        _reviewController == null ||
+        _reviewTemplate == null) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: AppColors.highlight),
+            SizedBox(height: 24),
+            Text(
+              'Loading your details…',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w300,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return SafeArea(
+      child: Column(
+        children: [
+          const SizedBox(height: 32),
+          const Text(
+            'Please confirm your details',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Check that the information below is correct.',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.6),
+              fontSize: 18,
+              fontWeight: FontWeight.w300,
+            ),
+          ),
+          if (_formName != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.highlight.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                _formName!,
+                style: const TextStyle(
+                  color: AppColors.highlight,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 24),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: DynamicFormRenderer(
+                    template: _reviewTemplate!,
+                    controller: _reviewController!,
+                    mode: 'web',
+                    isReadOnly: true,
+                    showCheckboxes: false,
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),

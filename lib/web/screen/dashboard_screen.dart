@@ -57,6 +57,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   // All Forms view state (existing analytics)
   int _activeFormCount = 0;
   int _staffAccountCount = 0;
+  Map<String, int> _monthlyTrend = {};
 
   Map<String, int> get _countsByFormType => _controller.countsByFormType;
   int get _totalCount => _controller.totalCount;
@@ -95,7 +96,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     await _loadTemplates();
     await _refreshFormCards();
     if (mounted && _selectedFormId != 'all') {
-      _loadWidgetConfigs();
+      await _loadWidgetConfigs();
     } else if (mounted) {
       await _refreshAllFormsData();
     }
@@ -261,7 +262,10 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     if (!mounted || token != _refreshToken) return;
 
-    final staffCount = await _analyticsService.fetchStaffAccountCount();
+    final results = await Future.wait([
+      _analyticsService.fetchStaffAccountCount(),
+      _analyticsService.fetchMonthlyTrend('All', timeRange: timeRange),
+    ]);
     await _analyticsService.fetchUniqueClientCount(
       timeRange: timeRange,
     );
@@ -269,7 +273,8 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (!mounted || token != _refreshToken) return;
 
     setState(() {
-      _staffAccountCount = staffCount;
+      _staffAccountCount = results[0] as int;
+      _monthlyTrend = results[1] as Map<String, int>;
     });
   }
 
@@ -278,6 +283,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       _selectedFormId = templateId;
       _selectedFormName = formName;
       _widgetConfigs = [];
+      _distributionFutures.clear();
     });
 
     await _loadWidgetConfigs();
@@ -293,22 +299,28 @@ class _DashboardScreenState extends State<DashboardScreen>
     await _refreshAllFormsData();
   }
 
-  void _openConfigDialog() {
-    final selectedTemplate = _templates
-        .firstWhere((t) => t.templateId == _selectedFormId);
+  Future<void> _openConfigDialog() async {
+    if (_templates.isEmpty) return;
 
-    showDialog(
-      context: context,
-      builder: (context) => DashboardConfigDialog(
-        templateId: _selectedFormId,
-        template: selectedTemplate,
-        initialConfigs: _widgetConfigs,
-        staffId: widget.cswd_id,
-        onSave: () {
-          _loadWidgetConfigs();
-        },
-      ),
-    );
+    try {
+      final selectedTemplate = _templates
+          .firstWhere((t) => t.templateId == _selectedFormId);
+
+      await showDialog(
+        context: context,
+        builder: (context) => DashboardConfigDialog(
+          templateId: _selectedFormId,
+          template: selectedTemplate,
+          initialConfigs: _widgetConfigs,
+          staffId: widget.cswd_id,
+          onSave: () async {
+            await _loadWidgetConfigs();
+          },
+        ),
+      );
+    } catch (e) {
+      debugPrint('[DashboardScreen/_openConfigDialog] Error: $e');
+    }
   }
 
   /// Builds a map of form display name → hex color for the color-synced pie chart.
@@ -730,37 +742,8 @@ class _DashboardScreenState extends State<DashboardScreen>
           title: config.fieldLabel,
           data: data,
         );
-      case 'donut':
-        return DonutChart(
-          title: config.fieldLabel,
-          data: data,
-        );
       case 'line':
         return LineChart(
-          title: config.fieldLabel,
-          data: data,
-        );
-      case 'area':
-        return AreaChart(
-          title: config.fieldLabel,
-          data: data,
-        );
-      case 'funnel':
-        return FunnelChart(
-          title: config.fieldLabel,
-          data: data,
-        );
-      case 'counter':
-        final topEntry = data.entries.first;
-        return MetricCard(
-          label: config.fieldLabel,
-          value: topEntry.value.toString(),
-          icon: Icons.trending_up,
-          color: AppColors.highlight,
-          subtitle: topEntry.key,
-        );
-      case 'table':
-        return SimpleDataTable(
           title: config.fieldLabel,
           data: data,
         );
@@ -768,11 +751,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         return SimpleBarChart(
           title: config.fieldLabel,
           data: data,
-        );
-      case 'stacked':
-        return StackedBarChart(
-          title: config.fieldLabel,
-          data: {'Overall': data},
         );
       case 'bar':
       default:
@@ -784,33 +762,67 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Widget _buildChartSkeleton(DashboardWidgetConfig config) {
-    return Container(
-      width: double.infinity,
-      height: 220,
-      padding: const EdgeInsets.all(24),
-      decoration: AppColors.cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 200,
-            height: 20,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(4),
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 500),
+      builder: (context, opacity, child) {
+        return Opacity(
+          opacity: opacity,
+          child: child,
+        );
+      },
+      child: Container(
+        width: double.infinity,
+        height: 220,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: AppColors.cardBg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.cardBorder),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
             ),
-          ),
-          const SizedBox(height: 24),
-          Expanded(
-            child: Container(
-              width: double.infinity,
+            BoxShadow(
+              color: AppColors.highlight.withValues(alpha: 0.04),
+              blurRadius: 24,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 200,
+              height: 20,
               decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
+                color: Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(4),
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.grey.shade200,
+                    Colors.grey.shade100,
+                    Colors.grey.shade200,
+                  ],
+                  stops: const [0.0, 0.5, 1.0],
+                ),
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 24),
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -819,7 +831,23 @@ class _DashboardScreenState extends State<DashboardScreen>
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
-      decoration: AppColors.cardDecoration(),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.dangerRed.withValues(alpha: 0.2)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+          BoxShadow(
+            color: AppColors.dangerRed.withValues(alpha: 0.06),
+            blurRadius: 24,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -835,10 +863,17 @@ class _DashboardScreenState extends State<DashboardScreen>
           Center(
             child: Column(
               children: [
-                Icon(
-                  Icons.error_outline,
-                  size: 48,
-                  color: AppColors.dangerRed.withValues(alpha: 0.5),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.dangerRed.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.error_outline,
+                    size: 36,
+                    color: AppColors.dangerRed.withValues(alpha: 0.5),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -861,7 +896,23 @@ class _DashboardScreenState extends State<DashboardScreen>
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
-      decoration: AppColors.cardDecoration(),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cardBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+          BoxShadow(
+            color: AppColors.highlight.withValues(alpha: 0.04),
+            blurRadius: 24,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -877,10 +928,17 @@ class _DashboardScreenState extends State<DashboardScreen>
           Center(
             child: Column(
               children: [
-                Icon(
-                  Icons.data_exploration,
-                  size: 48,
-                  color: Colors.grey.shade300,
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.highlight.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.data_exploration,
+                    size: 36,
+                    color: Colors.grey.shade300,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -1019,6 +1077,15 @@ class _DashboardScreenState extends State<DashboardScreen>
             title: 'Top Barangays by Volume',
             data: _barangayVolume,
             primaryColor: AppColors.warningAmber,
+          ),
+
+        const SizedBox(height: 24),
+
+        // Monthly submission trend
+        if (_monthlyTrend.isNotEmpty)
+          LineChart(
+            title: 'Monthly Submission Trend',
+            data: _monthlyTrend,
           ),
 
         const SizedBox(height: 32),
