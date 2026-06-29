@@ -157,21 +157,36 @@ InputDecoration _inputDeco({
 }) => InputDecoration(
   hintText: hint,
   hintStyle: const TextStyle(color: Colors.black38, fontSize: 13),
-  fillColor: readOnly ? const Color(0xFFF5F5F8) : Colors.white,
+  fillColor: readOnly ? const Color(0xFFF0F0F5) : Colors.white,
   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
   border: OutlineInputBorder(
     borderRadius: BorderRadius.circular(10),
-    borderSide: const BorderSide(color: Color(0xFFDDDDEE)),
+    borderSide: BorderSide(
+      color: readOnly ? const Color(0xFFE0E0EA) : const Color(0xFFDDDDEE),
+    ),
   ),
   enabledBorder: OutlineInputBorder(
     borderRadius: BorderRadius.circular(10),
-    borderSide: const BorderSide(color: Color(0xFFDDDDEE)),
+    borderSide: BorderSide(
+      color: readOnly ? const Color(0xFFE0E0EA) : const Color(0xFFDDDDEE),
+    ),
   ),
   focusedBorder: OutlineInputBorder(
     borderRadius: BorderRadius.circular(10),
-    borderSide: const BorderSide(color: AppColors.primaryBlue, width: 1.5),
+    borderSide: readOnly
+        ? const BorderSide(color: Color(0xFFE0E0EA))
+        : const BorderSide(color: AppColors.primaryBlue, width: 1.5),
   ),
-  suffixIcon: suffix,
+  suffixIcon: readOnly
+      ? Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: Icon(
+            Icons.lock_outline,
+            size: 16,
+            color: const Color(0xFFB0B0C0),
+          ),
+        )
+      : suffix,
 );
 
 // Label widget used by every field type.
@@ -359,16 +374,20 @@ class _DateField extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             decoration: BoxDecoration(
-              color: isReadOnly ? const Color(0xFFF5F5F8) : Colors.white,
+              color: isReadOnly ? const Color(0xFFF0F0F5) : Colors.white,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFDDDDEE)),
+              border: Border.all(
+                color: isReadOnly ? const Color(0xFFE0E0EA) : const Color(0xFFDDDDEE),
+              ),
             ),
             child: Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.calendar_today,
                   size: 16,
-                  color: AppColors.primaryBlue,
+                  color: isReadOnly
+                      ? const Color(0xFFB0B0C0)
+                      : AppColors.primaryBlue,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -380,11 +399,20 @@ class _DateField extends StatelessWidget {
                       fontSize: 13,
                       color: ctrl.text.isEmpty
                           ? Colors.black38
-                          : Colors.black87,
+                          : (isReadOnly ? const Color(0xFF8888A0) : Colors.black87),
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                if (isReadOnly)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Icon(
+                      Icons.lock_outline,
+                      size: 16,
+                      color: const Color(0xFFB0B0C0),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -420,30 +448,57 @@ class _DropdownField extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
-            color: isReadOnly ? const Color(0xFFF5F5F8) : Colors.white,
+            color: isReadOnly ? const Color(0xFFF0F0F5) : Colors.white,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFDDDDEE)),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: uniqueOptions.any((o) => o.value == current) ? current : null,
-              hint: const Text(
-                'Select...',
-                style: TextStyle(fontSize: 13, color: Colors.black38),
-              ),
-              isExpanded: true,
-              items: uniqueOptions   // ← was field.options
-                  .map(
-                    (o) => DropdownMenuItem(
-                      value: o.value,
-                      child: Text(o.label, style: const TextStyle(fontSize: 13)),
-                    ),
-                  )
-                  .toList(),
-              onChanged: isReadOnly
-                  ? null
-                  : (v) => controller.setValue(field.fieldName, v, notify: true),
+            border: Border.all(
+              color: isReadOnly ? const Color(0xFFE0E0EA) : const Color(0xFFDDDDEE),
             ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: uniqueOptions.any((o) => o.value == current) ? current : null,
+                    hint: Text(
+                      current?.isNotEmpty == true ? current! : 'Select...',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: current?.isNotEmpty == true
+                            ? (isReadOnly ? const Color(0xFF8888A0) : Colors.black87)
+                            : Colors.black38,
+                      ),
+                    ),
+                    isExpanded: true,
+                    icon: Icon(
+                      Icons.arrow_drop_down,
+                      size: 20,
+                      color: isReadOnly ? const Color(0xFFB0B0C0) : Colors.black45,
+                    ),
+                    items: uniqueOptions
+                        .map(
+                          (o) => DropdownMenuItem(
+                            value: o.value,
+                            child: Text(o.label, style: const TextStyle(fontSize: 13)),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: isReadOnly
+                        ? null
+                        : (v) => controller.setValue(field.fieldName, v, notify: true),
+                  ),
+                ),
+              ),
+              if (isReadOnly)
+                Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: Icon(
+                    Icons.lock_outline,
+                    size: 16,
+                    color: const Color(0xFFB0B0C0),
+                  ),
+                ),
+            ],
           ),
         ),
       ],
@@ -495,13 +550,13 @@ class _RadioField extends StatelessWidget {
                 ),
                 decoration: BoxDecoration(
                   color: selected
-                      ? AppColors.primaryBlue
-                      : const Color(0xFFF0F0F8),
+                      ? (isReadOnly ? const Color(0xFFC0C0D8) : AppColors.primaryBlue)
+                      : (isReadOnly ? const Color(0xFFF5F5F8) : const Color(0xFFF0F0F8)),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
                     color: selected
-                        ? AppColors.primaryBlue
-                        : const Color(0xFFDDDDEE),
+                        ? (isReadOnly ? const Color(0xFFC0C0D8) : AppColors.primaryBlue)
+                        : (isReadOnly ? const Color(0xFFE0E0EA) : const Color(0xFFDDDDEE)),
                   ),
                 ),
                 child: Text(
@@ -509,7 +564,9 @@ class _RadioField extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: selected ? Colors.white : Colors.black87,
+                    color: selected
+                        ? (isReadOnly ? const Color(0xFF8888A0) : Colors.white)
+                        : Colors.black87,
                   ),
                 ),
               ),
@@ -578,13 +635,13 @@ class _CheckboxField extends StatelessWidget {
                 ),
                 decoration: BoxDecoration(
                   color: isSelected
-                      ? AppColors.primaryBlue
-                      : const Color(0xFFF0F0F8),
+                      ? (isReadOnly ? const Color(0xFFC0C0D8) : AppColors.primaryBlue)
+                      : (isReadOnly ? const Color(0xFFF5F5F8) : const Color(0xFFF0F0F8)),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
                     color: isSelected
-                        ? AppColors.primaryBlue
-                        : const Color(0xFFDDDDEE),
+                        ? (isReadOnly ? const Color(0xFFC0C0D8) : AppColors.primaryBlue)
+                        : (isReadOnly ? const Color(0xFFE0E0EA) : const Color(0xFFDDDDEE)),
                   ),
                 ),
                 child: Row(
@@ -595,7 +652,9 @@ class _CheckboxField extends StatelessWidget {
                           ? Icons.check_box
                           : Icons.check_box_outline_blank,
                       size: 14,
-                      color: isSelected ? Colors.white : Colors.black45,
+                      color: isSelected
+                          ? (isReadOnly ? const Color(0xFF8888A0) : Colors.white)
+                          : Colors.black45,
                     ),
                     const SizedBox(width: 5),
                     Text(
@@ -603,7 +662,9 @@ class _CheckboxField extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: isSelected ? Colors.white : Colors.black87,
+                        color: isSelected
+                            ? (isReadOnly ? const Color(0xFF8888A0) : Colors.white)
+                            : Colors.black87,
                       ),
                     ),
                   ],
@@ -653,15 +714,30 @@ class _BooleanField extends StatelessWidget {
                   }
                   controller.setValue(field.fieldName, v, notify: true);
                 },
-          activeColor: AppColors.primaryBlue,
+          activeThumbColor: AppColors.primaryBlue,
+          inactiveThumbColor: isReadOnly ? const Color(0xFFB0B0C0) : null,
+          inactiveTrackColor: isReadOnly ? const Color(0xFFE0E0EA) : null,
         ),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
             field.fieldLabel,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: isReadOnly ? const Color(0xFF8888A0) : Colors.black87,
+            ),
           ),
         ),
+        if (isReadOnly)
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: Icon(
+              Icons.lock_outline,
+              size: 16,
+              color: const Color(0xFFB0B0C0),
+            ),
+          ),
       ],
     );
   }
@@ -687,7 +763,7 @@ class _MembershipGroupField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _FieldLabel(label: 'Membership Group'),
+        _FieldLabel(label: 'Membership Group'),
         const SizedBox(height: 4),
         Wrap(
           spacing: 8,
@@ -710,13 +786,13 @@ class _MembershipGroupField extends StatelessWidget {
                 ),
                 decoration: BoxDecoration(
                   color: selected
-                      ? AppColors.primaryBlue
-                      : const Color(0xFFF0F0F8),
+                      ? (isReadOnly ? const Color(0xFFC0C0D8) : AppColors.primaryBlue)
+                      : (isReadOnly ? const Color(0xFFF5F5F8) : const Color(0xFFF0F0F8)),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
                     color: selected
-                        ? AppColors.primaryBlue
-                        : const Color(0xFFDDDDEE),
+                        ? (isReadOnly ? const Color(0xFFC0C0D8) : AppColors.primaryBlue)
+                        : (isReadOnly ? const Color(0xFFE0E0EA) : const Color(0xFFDDDDEE)),
                   ),
                 ),
                 child: Row(
@@ -727,7 +803,9 @@ class _MembershipGroupField extends StatelessWidget {
                           ? Icons.check_circle
                           : Icons.radio_button_unchecked,
                       size: 14,
-                      color: selected ? Colors.white : Colors.black45,
+                      color: selected
+                          ? (isReadOnly ? const Color(0xFF8888A0) : Colors.white)
+                          : Colors.black45,
                     ),
                     const SizedBox(width: 4),
                     Text(
@@ -735,7 +813,9 @@ class _MembershipGroupField extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: selected ? Colors.white : Colors.black87,
+                        color: selected
+                            ? (isReadOnly ? const Color(0xFF8888A0) : Colors.white)
+                            : Colors.black87,
                       ),
                     ),
                   ],
