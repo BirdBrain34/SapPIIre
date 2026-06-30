@@ -338,8 +338,29 @@ class FormBuilderService {
   // BATCH SAVE (clear & re-insert structure)
   // ================================================================
 
+  Future<void> _insertNotification({
+    required String templateId,
+    required String templateName,
+    required String changeType,
+    required String changeSummary,
+    Map<String, dynamic>? details,
+  }) async {
+    try {
+      await _supabase.from('form_template_notifications').insert({
+        'template_id': templateId,
+        'template_name': templateName,
+        'change_type': changeType,
+        'change_summary': changeSummary,
+        if (details != null && details.isNotEmpty) 'details': details,
+      });
+    } catch (e) {
+      debugPrint('[FormBuilderService/_insertNotification] Error: $e');
+    }
+  }
+
   /// Save the entire template structure (metadata + sections + fields + options).
   /// Upserts current data, then deletes orphaned rows removed in the builder.
+  /// After a successful save, emits notifications for added/updated/deleted fields.
   Future<bool> saveTemplateStructure({
     required String templateId,
     required String formName,
@@ -375,8 +396,13 @@ class FormBuilderService {
       // Refresh child rows, then reinsert the current structure.
       final existingFields = await _supabase
           .from('form_fields')
-          .select('field_id')
+          .select('field_id, field_label, field_type')
           .eq('template_id', templateId);
+
+      final existingOptions = await _supabase
+          .from('form_field_options')
+          .select('field_id, option_label')
+          .inFilter('field_id', existingFields.map((f) => f['field_id'] as String).toList());
 
       if (existingFields.isNotEmpty) {
         final existingIds = existingFields
@@ -457,6 +483,105 @@ class FormBuilderService {
             .inFilter('section_id', orphanSectionIds);
       }
 
+      // ── Emit field-level notifications ──────────────────────────────
+      final existingLabels = <String, String>{};
+      final existingFieldTypes = <String, String>{};
+      for (final f in existingFields) {
+        final fid = f['field_id'] as String;
+        existingLabels[fid] = (f['field_label'] as String?) ?? 'Untitled Question';
+        existingFieldTypes[fid] = (f['field_type'] as String?) ?? 'text';
+      }
+
+      final existingOptionMap = <String, List<String>>{};
+      for (final opt in existingOptions) {
+        final fid = opt['field_id'] as String;
+        final label = (opt['option_label'] as String?) ?? '';
+        existingOptionMap.putIfAbsent(fid, () => []).add(label);
+      }
+      for (final list in existingOptionMap.values) {
+        list.sort();
+      }
+
+      // Build new option map from the separate options parameter.
+      final newOptionMap = <String, List<String>>{};
+      for (final opt in options) {
+        final fid = opt['field_id'] as String;
+        final label = (opt['option_label'] as String?) ?? '';
+        newOptionMap.putIfAbsent(fid, () => []).add(label);
+      }
+      for (final list in newOptionMap.values) {
+        list.sort();
+      }
+
+      final addedFieldIds = newFieldIds.difference(existingFieldIds).toList();
+      final deletedFieldIds = orphanFieldIds;
+
+      for (final fid in addedFieldIds) {
+        final field = fields.firstWhere((f) => f['field_id'] == fid, orElse: () => {});
+        final label = (field['field_label'] as String?) ?? 'Untitled Question';
+        await _insertNotification(
+          templateId: templateId,
+          templateName: formName,
+          changeType: 'field_added',
+          changeSummary: 'New field added: "$label" in "$formName"',
+          details: {'field_id': fid, 'field_label': label},
+        );
+      }
+
+      for (final fid in deletedFieldIds) {
+        final label = existingLabels[fid] ?? 'Unknown field';
+        await _insertNotification(
+          templateId: templateId,
+          templateName: formName,
+          changeType: 'field_deleted',
+          changeSummary: 'Field removed: "$label" from "$formName"',
+          details: {'field_id': fid, 'field_label': label},
+        );
+      }
+
+      // Only flag as updated if the field's label, type, or options changed.
+      final updatedFieldIds = <String>[];
+      for (final fid in newFieldIds.intersection(existingFieldIds)) {
+        final incoming = fields.firstWhere((f) => f['field_id'] == fid, orElse: () => {});
+        final oldLabel = existingLabels[fid] ?? 'Untitled Question';
+        final newLabel = (incoming['field_label'] as String?) ?? 'Untitled Question';
+        final oldType = existingFieldTypes[fid] ?? 'text';
+        final newType = (incoming['field_type'] as String?) ?? 'text';
+
+        final oldOpts = existingOptionMap[fid] ?? <String>[];
+        final newOpts = newOptionMap[fid] ?? <String>[];
+
+        if (oldLabel != newLabel || oldType != newType || oldOpts != newOpts) {
+          updatedFieldIds.add(fid);
+        }
+      }
+
+      for (final fid in updatedFieldIds) {
+        final label = existingLabels[fid] ?? 'Untitled Question';
+        await _insertNotification(
+          templateId: templateId,
+          templateName: formName,
+          changeType: 'field_updated',
+          changeSummary: 'Field updated: "$label" in "$formName"',
+          details: {'field_id': fid, 'field_label': label},
+        );
+      }
+
+      // If something else (e.g. conditions only) changed without any
+      // field add/delete/update, emit a generic update notice.
+      if (addedFieldIds.isEmpty &&
+          deletedFieldIds.isEmpty &&
+          updatedFieldIds.isEmpty &&
+          existingFieldIds.isNotEmpty) {
+        await _insertNotification(
+          templateId: templateId,
+          templateName: formName,
+          changeType: 'updated',
+          changeSummary: '"$formName" was updated. Tap RELOAD to see the changes.',
+          details: {'scope': 'conditions_or_metadata'},
+        );
+      }
+
       return true;
     } catch (e, stack) {
       debugPrint('[FormBuilderService/saveTemplateStructure] Error: $e');
@@ -474,6 +599,13 @@ class FormBuilderService {
   Future<bool> publishTemplate(String templateId) async {
     lastActionError = null;
     try {
+      final templateData = await _supabase
+          .from('form_templates')
+          .select('form_name')
+          .eq('template_id', templateId)
+          .maybeSingle();
+      final formName = templateData?['form_name'] as String? ?? 'Untitled Form';
+
       await _supabase
           .from('form_templates')
           .update({
@@ -483,6 +615,14 @@ class FormBuilderService {
           })
           .eq('template_id', templateId);
       await _setLegacyArchiveFlag(templateId, archived: false);
+
+      await _insertNotification(
+        templateId: templateId,
+        templateName: formName,
+        changeType: 'published',
+        changeSummary: '"$formName" has been published.',
+      );
+
       return true;
     } catch (e) {
       lastActionError = e.toString();
@@ -495,6 +635,13 @@ class FormBuilderService {
   Future<bool> pushToMobile(String templateId) async {
     lastActionError = null;
     try {
+      final templateData = await _supabase
+          .from('form_templates')
+          .select('form_name')
+          .eq('template_id', templateId)
+          .maybeSingle();
+      final formName = templateData?['form_name'] as String? ?? 'Untitled Form';
+
       await _supabase
           .from('form_templates')
           .update({
@@ -503,6 +650,14 @@ class FormBuilderService {
           })
           .eq('template_id', templateId);
       await _setLegacyArchiveFlag(templateId, archived: false);
+
+      await _insertNotification(
+        templateId: templateId,
+        templateName: formName,
+        changeType: 'pushed_to_mobile',
+        changeSummary: '"$formName" has been pushed to mobile. Tap RELOAD to see the changes.',
+      );
+
       return true;
     } catch (e) {
       lastActionError = e.toString();
@@ -537,10 +692,25 @@ class FormBuilderService {
   Future<bool> archiveTemplate(String templateId) async {
     lastActionError = null;
     try {
+      final templateData = await _supabase
+          .from('form_templates')
+          .select('form_name')
+          .eq('template_id', templateId)
+          .maybeSingle();
+      final formName = templateData?['form_name'] as String? ?? 'Untitled Form';
+
       await _supabase
           .from('form_templates')
           .update({'status': 'archived', 'is_active': false})
           .eq('template_id', templateId);
+
+      await _insertNotification(
+        templateId: templateId,
+        templateName: formName,
+        changeType: 'archived',
+        changeSummary: 'Form "$formName" has been archived.',
+      );
+
       return true;
     } catch (e) {
       if (_isStatusCheckConstraintError(e)) {
@@ -570,11 +740,26 @@ class FormBuilderService {
   Future<bool> restoreTemplate(String templateId) async {
     lastActionError = null;
     try {
+      final templateData = await _supabase
+          .from('form_templates')
+          .select('form_name')
+          .eq('template_id', templateId)
+          .maybeSingle();
+      final formName = templateData?['form_name'] as String? ?? 'Untitled Form';
+
       await _supabase
           .from('form_templates')
           .update({'status': 'draft', 'is_active': false})
           .eq('template_id', templateId);
       await _setLegacyArchiveFlag(templateId, archived: false);
+
+      await _insertNotification(
+        templateId: templateId,
+        templateName: formName,
+        changeType: 'updated',
+        changeSummary: 'Form "$formName" has been restored to draft.',
+      );
+
       return true;
     } catch (e) {
       if (_isStatusCheckConstraintError(e)) {

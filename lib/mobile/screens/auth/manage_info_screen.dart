@@ -263,6 +263,8 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
         _notificationService.notificationStream.listen((notification) {
       if (!mounted) return;
 
+      setState(() => _unreadNotifCount++);
+
       final changeType = notification.changeType;
       final message = notification.changeSummary;
 
