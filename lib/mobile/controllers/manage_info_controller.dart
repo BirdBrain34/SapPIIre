@@ -162,6 +162,52 @@ class ManageInfoController extends ChangeNotifier {
         return false;
       }
 
+      // Propagate changed values to all other templates that share the
+      // same canonical_field_key, so the user never has to re-fill them.
+      final canonicalValues = <String, String>{};
+
+      // First, handle the signature separately: __signature in toJson()
+      // is a metadata key, but the actual field has its own fieldName.
+      final sigRaw = data['__signature']?.toString().trim() ?? '';
+      if (sigRaw.isNotEmpty) {
+        final sigField = template.allFields
+            .firstWhere((f) => f.fieldType == FormFieldType.signature,
+                orElse: () => template.allFields.first);
+        final sigCK = sigField.canonicalFieldKey;
+        if (sigCK != null && sigCK.isNotEmpty) {
+          canonicalValues[sigCK] = sigRaw;
+        }
+      }
+
+      for (final entry in data.entries) {
+        if (entry.key.startsWith('__')) continue;
+        final val = entry.value?.toString().trim() ?? '';
+        if (val.isEmpty) continue;
+
+        FormFieldModel? field;
+        for (final f in template.allFields) {
+          if (f.fieldName == entry.key) { field = f; break; }
+        }
+        if (field == null) continue;
+        final ck = field.canonicalFieldKey;
+        if (ck == null || ck.isEmpty) continue;
+
+        // Skip address — ProfileController splits it by comma into
+        // house_number_street_name_phase_purok / subdivison_ / barangay,
+        // so the raw combined string would corrupt those fields.
+        if (ck == 'house_number_street_name_phase_purok' ||
+            ck.contains('address_line')) continue;
+
+        canonicalValues[ck] = val;
+      }
+
+      if (canonicalValues.isNotEmpty) {
+        await _supabaseService.saveScannedIdFieldValues(
+          userId: userId,
+          canonicalValues: canonicalValues,
+        );
+      }
+
       return true;
     } catch (e) {
       errorMessage = e.toString();
