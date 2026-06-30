@@ -189,34 +189,102 @@ InputDecoration _inputDeco({
       : suffix,
 );
 
+String? _selfDescription(FormStateController controller, FormFieldModel field) {
+  if (field.fieldType == FormFieldType.number) {
+    final ageFrom = (field.validationRules?['age_from_field'] ?? '')
+        .toString()
+        .trim();
+    if (ageFrom.isNotEmpty) {
+      try {
+        controller.template.allFields.firstWhere(
+          (f) => f.fieldId == ageFrom,
+        );
+        return 'Calculates ${field.fieldLabel}';
+      } catch (_) {}
+    }
+
+    final formula = (field.validationRules?['formula'] ?? '')
+        .toString()
+        .trim();
+    if (formula.isNotEmpty) {
+      final desc = controller.selfDescription(field);
+      if (desc != null) return desc;
+    }
+  }
+
+  if (field.fieldType == FormFieldType.computed) {
+    final formula = (field.validationRules?['formula'] ?? '')
+        .toString()
+        .trim();
+    if (formula.isNotEmpty) {
+      final desc = controller.selfDescription(field);
+      if (desc != null) return desc;
+    }
+  }
+
+  return null;
+}
+
 // Label widget used by every field type.
 class _FieldLabel extends StatelessWidget {
   final String label;
   final bool isRequired;
-  const _FieldLabel({required this.label, this.isRequired = false});
+  final bool hasInfluence;
+  final List<String> descriptions;
+  const _FieldLabel({
+    required this.label,
+    this.isRequired = false,
+    this.hasInfluence = false,
+    this.descriptions = const [],
+  });
 
   @override
   Widget build(BuildContext context) {
+    final influenceText = _buildInfluenceText();
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
-      child: RichText(
-        text: TextSpan(
-          text: label,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF555577),
-          ),
-          children: [
-            if (isRequired)
-              const TextSpan(
-                text: ' *',
-                style: TextStyle(color: Colors.red),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: RichText(
+              text: TextSpan(
+                text: label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF555577),
+                ),
+                children: [
+                  if (isRequired)
+                    const TextSpan(
+                      text: ' *',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                  if (influenceText != null) ...[
+                    const TextSpan(text: '  – '),
+                    TextSpan(
+                      text: influenceText,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFFB87A00),
+                      ),
+                    ),
+                  ],
+                ],
               ),
-          ],
-        ),
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  String? _buildInfluenceText() {
+    if (!hasInfluence || descriptions.isEmpty) return null;
+    final text = descriptions.join('; ');
+    return text;
   }
 }
 
@@ -235,10 +303,16 @@ class _TextField extends StatelessWidget {
   Widget build(BuildContext context) {
     final ctrl =
         controller.textControllers[field.fieldName] ?? TextEditingController();
+    final descriptions = controller.getInfluenceDescriptions(field.fieldName);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _FieldLabel(label: field.fieldLabel, isRequired: field.isRequired),
+        _FieldLabel(
+          label: field.fieldLabel,
+          isRequired: field.isRequired,
+          hasInfluence: descriptions.isNotEmpty,
+          descriptions: descriptions,
+        ),
         TextFormField(
           controller: ctrl,
           readOnly: isReadOnly,
@@ -272,10 +346,22 @@ class _NumberField extends StatelessWidget {
     final readOnlyNumber = isReadOnly || hasAgeFromMetadata;
     final ctrl =
         controller.textControllers[field.fieldName] ?? TextEditingController();
+    // Age-auto fields are fully padlocked — skip all influence indicators.
+    final isAgeAuto = controller.isAgeAutoField(field);
+    final descriptions = isAgeAuto ? <String>[] : controller.getInfluenceDescriptions(field.fieldName);
+    final selfDesc = isAgeAuto ? null : _selfDescription(controller, field);
+    final all = <String>[];
+    if (descriptions.isNotEmpty) all.addAll(descriptions);
+    if (selfDesc != null) all.add(selfDesc);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _FieldLabel(label: field.fieldLabel, isRequired: field.isRequired),
+        _FieldLabel(
+          label: field.fieldLabel,
+          isRequired: field.isRequired,
+          hasInfluence: all.isNotEmpty,
+          descriptions: all,
+        ),
         TextFormField(
           controller: ctrl,
           readOnly: readOnlyNumber,
@@ -299,10 +385,15 @@ class _ComputedField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ctrl = controller.textControllers[field.fieldName];
+    final selfDesc = _selfDescription(controller, field);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _FieldLabel(label: field.fieldLabel),
+        _FieldLabel(
+          label: field.fieldLabel,
+          hasInfluence: selfDesc != null,
+          descriptions: selfDesc != null ? [selfDesc] : [],
+        ),
         TextFormField(
           controller: ctrl,
           readOnly: true,
@@ -333,10 +424,16 @@ class _DateField extends StatelessWidget {
   Widget build(BuildContext context) {
     final ctrl =
         controller.textControllers[field.fieldName] ?? TextEditingController();
+    final descriptions = controller.getInfluenceDescriptions(field.fieldName);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _FieldLabel(label: field.fieldLabel, isRequired: field.isRequired),
+        _FieldLabel(
+          label: field.fieldLabel,
+          isRequired: field.isRequired,
+          hasInfluence: descriptions.isNotEmpty,
+          descriptions: descriptions,
+        ),
         GestureDetector(
           onTap: isReadOnly
               ? null
@@ -436,6 +533,7 @@ class _DropdownField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final current = controller.getValue(field.fieldName)?.toString();
+    final descriptions = controller.getInfluenceDescriptions(field.fieldName);
 
     // Deduplicate options by value to prevent DropdownButton assertion crash.
     final seen = <String>{};
@@ -444,7 +542,12 @@ class _DropdownField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _FieldLabel(label: field.fieldLabel, isRequired: field.isRequired),
+        _FieldLabel(
+          label: field.fieldLabel,
+          isRequired: field.isRequired,
+          hasInfluence: descriptions.isNotEmpty,
+          descriptions: descriptions,
+        ),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
@@ -520,10 +623,16 @@ class _RadioField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final current = controller.getValue(field.fieldName)?.toString();
+    final descriptions = controller.getInfluenceDescriptions(field.fieldName);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _FieldLabel(label: field.fieldLabel, isRequired: field.isRequired),
+        _FieldLabel(
+          label: field.fieldLabel,
+          isRequired: field.isRequired,
+          hasInfluence: descriptions.isNotEmpty,
+          descriptions: descriptions,
+        ),
         Wrap(
           spacing: 8,
           runSpacing: 6,
@@ -601,11 +710,17 @@ class _CheckboxField extends StatelessWidget {
         raw.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty),
       );
     }
+    final descriptions = controller.getInfluenceDescriptions(field.fieldName);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _FieldLabel(label: field.fieldLabel, isRequired: field.isRequired),
+        _FieldLabel(
+          label: field.fieldLabel,
+          isRequired: field.isRequired,
+          hasInfluence: descriptions.isNotEmpty,
+          descriptions: descriptions,
+        ),
         Wrap(
           spacing: 8,
           runSpacing: 6,
@@ -702,6 +817,7 @@ class _BooleanField extends StatelessWidget {
           raw == true ||
           raw == 'true'; // Coerce string "true" to boolean true.
     }
+    final descriptions = controller.getInfluenceDescriptions(field.fieldName);
     return Row(
       children: [
         Switch(
@@ -720,13 +836,10 @@ class _BooleanField extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: Text(
-            field.fieldLabel,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: isReadOnly ? const Color(0xFF8888A0) : Colors.black87,
-            ),
+          child: _FieldLabel(
+            label: field.fieldLabel,
+            hasInfluence: descriptions.isNotEmpty,
+            descriptions: descriptions,
           ),
         ),
         if (isReadOnly)
@@ -760,10 +873,15 @@ class _MembershipGroupField extends StatelessWidget {
       ('four_ps_member', '4Ps Member'),
       ('phic_member', 'PHIC Member'),
     ];
+    final descriptions = controller.getInfluenceDescriptions('membership_group');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _FieldLabel(label: 'Membership Group'),
+        _FieldLabel(
+          label: 'Membership Group',
+          hasInfluence: descriptions.isNotEmpty,
+          descriptions: descriptions,
+        ),
         const SizedBox(height: 4),
         Wrap(
           spacing: 8,

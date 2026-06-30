@@ -972,6 +972,235 @@ class FormStateController extends ChangeNotifier {
     return changed;
   }
 
+  Map<String, Set<String>> _dependencyGraph = {};
+
+  Set<String> getSourceFieldNames() {
+    _buildDependencyGraph();
+    return _dependencyGraph.keys.toSet();
+  }
+
+  Set<String> getInfluencedFieldLabels(String fieldName) {
+    _buildDependencyGraph();
+    return _dependencyGraph[fieldName] ?? <String>{};
+  }
+
+  List<String> getInfluenceDescriptions(String fieldName) {
+    _buildDependencyGraph();
+    final labels = _dependencyGraph[fieldName];
+    if (labels == null || labels.isEmpty) return [];
+
+    final descriptions = <String>[];
+    for (final targetLabel in labels) {
+      final targetField = template.allFields.firstWhereOrNull(
+        (f) => f.fieldLabel == targetLabel,
+      );
+      if (targetField == null) {
+        descriptions.add(targetLabel);
+        continue;
+      }
+
+      if (targetField.fieldType == FormFieldType.number &&
+          (targetField.validationRules?['age_from_field'] ?? '').toString().trim().isNotEmpty) {
+        descriptions.add('Calculates ${targetField.fieldLabel}');
+        continue;
+      }
+
+      if (targetField.fieldType == FormFieldType.computed) {
+        final formula = (targetField.validationRules?['formula'] ?? '').toString().trim();
+        if (formula.isNotEmpty) {
+          final shortDesc = _shortFormulaDescription(formula, targetField.fieldLabel);
+          descriptions.add(shortDesc);
+          continue;
+        }
+      }
+
+      descriptions.add(targetField.fieldLabel);
+    }
+    return descriptions;
+  }
+
+  String _shortFormulaDescription(String formula, String targetLabel) {
+    final labelByName = <String, String>{};
+    final fieldByName = <String, FormFieldModel>{};
+    for (final f in template.allFields) {
+      if (f.fieldName.trim().isNotEmpty) {
+        labelByName[f.fieldName] = f.fieldLabel;
+        fieldByName[f.fieldName] = f;
+      }
+      if ((f.canonicalFieldKey ?? '').trim().isNotEmpty) {
+        labelByName[f.canonicalFieldKey!.trim()] = f.fieldLabel;
+      }
+    }
+
+    String resolveToken(String token) {
+      final trimmed = token.trim();
+      if (labelByName.containsKey(trimmed)) return labelByName[trimmed]!;
+      final byLabel = template.allFields.firstWhereOrNull(
+        (f) => f.fieldLabel.toLowerCase() == trimmed.toLowerCase(),
+      );
+      if (byLabel != null) return byLabel.fieldLabel;
+      return trimmed;
+    }
+
+    final normalized = formula.replaceAll(' ', '');
+    if (RegExp(r'SUM_COLUMN').hasMatch(formula)) {
+      final parts = formula.split('+').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      final resolved = parts.map((part) {
+        final sumMatch = RegExp(r'SUM_COLUMN\(([a-zA-Z_][a-zA-Z0-9_]*)\s*,\s*["\u0022]([^"\u0022]+)["\u0022]\s*\)').firstMatch(part);
+        if (sumMatch != null) {
+          final label = _resolvedSumColumnLabel(sumMatch.group(1)!, sumMatch.group(2)!);
+          if (label != null) return label;
+        }
+        return resolveToken(part);
+      }).join(' + ');
+      return 'Sum of $resolved';
+    }
+    if (normalized.contains('+')) {
+      final parts = formula.split('+').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      final resolved = parts.map((p) => resolveToken(p)).join(' + ');
+      return resolved;
+    }
+    if (normalized.contains('-') && !normalized.contains('--')) {
+      final parts = formula.split('-').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      if (parts.length == 2) {
+        return '${resolveToken(parts[0])} minus ${resolveToken(parts[1])}';
+      }
+      return 'Subtracts into $targetLabel';
+    }
+    if (normalized.contains('*')) {
+      final parts = formula.split('*').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      if (parts.length == 2) {
+        return 'Multiplies ${resolveToken(parts[0])} × ${resolveToken(parts[1])}';
+      }
+      return 'Multiplies into $targetLabel';
+    }
+    if (normalized.contains('/')) {
+      final parts = formula.split('/').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      if (parts.length == 2) {
+        return '${resolveToken(parts[0])} ÷ ${resolveToken(parts[1])}';
+      }
+      return 'Divides into $targetLabel';
+    }
+    return 'Feeds $targetLabel';
+  }
+
+  void _buildDependencyGraph() {
+    if (_dependencyGraph.isNotEmpty) return;
+    _dependencyGraph = {};
+
+    for (final field in template.allFields) {
+      final sources = <String>{};
+
+      if ((field.fieldType == FormFieldType.computed || field.fieldType == FormFieldType.number)) {
+        final formula = (field.validationRules?['formula'] ?? '').toString();
+        if (formula.trim().isNotEmpty) {
+          sources.addAll(_extractFieldNamesFromFormula(formula));
+          sources.addAll(_extractSumColumnRefs(formula));
+        }
+      }
+
+      if (field.fieldType == FormFieldType.number) {
+        final ageFrom = (field.validationRules?['age_from_field'] ?? '').toString().trim();
+        if (ageFrom.isNotEmpty) {
+          final dobField = template.allFields.firstWhereOrNull((f) => f.fieldId == ageFrom);
+          if (dobField != null) {
+            sources.add(dobField.fieldName);
+          }
+        }
+      }
+
+      for (final cond in field.conditions) {
+        final triggerField = template.allFields.firstWhereOrNull((f) => f.fieldId == cond.triggerFieldId);
+        if (triggerField != null) {
+          sources.add(triggerField.fieldName);
+        }
+      }
+
+      for (final src in sources) {
+        _dependencyGraph.putIfAbsent(src, () => {});
+        _dependencyGraph[src]!.add(field.fieldLabel);
+      }
+    }
+  }
+
+  List<String> _extractSumColumnRefs(String formula) {
+    final refs = <String>{};
+    final regex = RegExp(r"SUM_COLUMN\(([a-zA-Z_][a-zA-Z0-9_]*)\s*,\s*['\u0022]([^'\u0022]+)['\u0022]\s*\)");
+    for (final m in regex.allMatches(formula)) {
+      final tableKey = m.group(1)!;
+      final columnKey = m.group(2)!;
+      final label = _resolvedSumColumnLabel(tableKey, columnKey);
+      if (label != null) refs.add(label);
+    }
+    return refs.toList();
+  }
+
+  String? _resolvedSumColumnLabel(String tableKey, String columnKey) {
+    if (tableKey == '__family_composition') {
+      for (final f in template.allFields) {
+        if (f.fieldType == FormFieldType.familyTable) {
+          for (final col in f.columns) {
+            final mapKey = (col.validationRules?['db_map_key'] ?? '').toString().trim();
+            final label = col.fieldLabel.trim();
+            if ((mapKey == columnKey || col.fieldName.trim() == columnKey) && label.isNotEmpty) {
+              return label;
+            }
+          }
+        }
+      }
+      return _readableToken(columnKey);
+    }
+
+    if (tableKey == '__supporting_family') {
+      for (final f in template.allFields) {
+        if (f.fieldType == FormFieldType.supportingFamilyTable) {
+          final label = f.columns.firstWhereOrNull((c) {
+            final key = (c.validationRules?['db_map_key'] ?? '').toString().trim();
+            return key == columnKey || c.fieldName.trim() == columnKey;
+          })?.fieldLabel.trim();
+          if (label != null && label.isNotEmpty) return label;
+        }
+      }
+      return _readableToken(columnKey);
+    }
+
+    final normalized = tableKey.startsWith('__') ? tableKey.replaceFirst(RegExp(r'^__+'), '') : tableKey;
+    for (final f in template.allFields) {
+      if (f.fieldType == FormFieldType.memberTable && f.fieldName == normalized) {
+        for (final col in f.columns) {
+          final mapKey = (col.validationRules?['db_map_key'] ?? '').toString().trim();
+          final label = col.fieldLabel.trim();
+          if ((mapKey == columnKey || col.fieldName.trim() == columnKey) && label.isNotEmpty) {
+            return label;
+          }
+        }
+        return _readableToken(columnKey);
+      }
+    }
+
+    return _readableToken(columnKey);
+  }
+
+  String _readableToken(String token) {
+    final cleaned = token.replaceAll(RegExp(r'^_+'), '').replaceAll(RegExp(r'_+'), ' ').trim();
+    if (cleaned.isEmpty) return token;
+    return cleaned.split(' ').map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}').join(' ');
+  }
+
+  List<String> _extractFieldNamesFromFormula(String formula) {
+    final known = template.allFields.map((f) => f.fieldName).where((n) => n.trim().isNotEmpty).toSet();
+    final regex = RegExp(r'[a-zA-Z_][a-zA-Z0-9_]*');
+    final matches = regex.allMatches(formula);
+    final result = <String>{};
+    for (final m in matches) {
+      final token = m.group(0)!;
+      if (known.contains(token)) {
+        result.add(token);
+      }
+    }
+    return result.toList();
+  }
+
   // Toggle sharing for every field.
   void setSelectAll(bool val) {
     selectAll = val;
@@ -1081,6 +1310,42 @@ class FormStateController extends ChangeNotifier {
     }
   }
 
+  String? resolveFieldLabel(String token) {
+    final trimmed = token.trim();
+    final byName = template.allFields.firstWhereOrNull((f) => f.fieldName == trimmed);
+    if (byName != null) return byName.fieldLabel;
+    final byLabel = template.allFields.firstWhereOrNull((f) => f.fieldLabel.toLowerCase() == trimmed.toLowerCase());
+    if (byLabel != null) return byLabel.fieldLabel;
+    return null;
+  }
+
+  String? selfDescription(FormFieldModel field) {
+    if (field.fieldType == FormFieldType.number) {
+      if (isAgeAutoField(field)) {
+        return null;
+      }
+
+      final ageFrom = (field.validationRules?['age_from_field'] ?? '').toString().trim();
+      if (ageFrom.isNotEmpty) {
+        return null;
+      }
+
+      final formula = (field.validationRules?['formula'] ?? '').toString().trim();
+      if (formula.isNotEmpty) {
+        return _shortFormulaDescription(formula, field.fieldLabel);
+      }
+    }
+
+    if (field.fieldType == FormFieldType.computed) {
+      final formula = (field.validationRules?['formula'] ?? '').toString().trim();
+      if (formula.isNotEmpty) {
+        return _shortFormulaDescription(formula, field.fieldLabel);
+      }
+    }
+
+    return null;
+  }
+
   @override
   void dispose() {
     _recomputeDebounce?.cancel();
@@ -1090,6 +1355,15 @@ class FormStateController extends ChangeNotifier {
     }
     isDirty.dispose();
     super.dispose();
+  }
+}
+
+extension _FirstWhereOrNullExtension<E> on Iterable<E> {
+  E? firstWhereOrNull(bool Function(E) test) {
+    for (final element in this) {
+      if (test(element)) return element;
+    }
+    return null;
   }
 }
 
