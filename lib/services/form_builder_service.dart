@@ -263,6 +263,7 @@ class FormBuilderService {
           })
           .select('template_id')
           .single();
+
       return res['template_id'] as String;
     } catch (e) {
       debugPrint('[FormBuilderService/createTemplate] Error: $e');
@@ -616,13 +617,6 @@ class FormBuilderService {
           .eq('template_id', templateId);
       await _setLegacyArchiveFlag(templateId, archived: false);
 
-      await _insertNotification(
-        templateId: templateId,
-        templateName: formName,
-        changeType: 'published',
-        changeSummary: '"$formName" has been published.',
-      );
-
       return true;
     } catch (e) {
       lastActionError = e.toString();
@@ -670,11 +664,26 @@ class FormBuilderService {
   Future<bool> unpublishTemplate(String templateId) async {
     lastActionError = null;
     try {
+      final templateData = await _supabase
+          .from('form_templates')
+          .select('form_name')
+          .eq('template_id', templateId)
+          .maybeSingle();
+      final formName = templateData?['form_name'] as String? ?? 'Untitled Form';
+
       await _supabase
           .from('form_templates')
           .update({'status': 'draft', 'is_active': false})
           .eq('template_id', templateId);
       await _setLegacyArchiveFlag(templateId, archived: false);
+
+      await _insertNotification(
+        templateId: templateId,
+        templateName: formName,
+        changeType: 'updated',
+        changeSummary: '"$formName" has been reverted to draft and removed from mobile.',
+      );
+
       return true;
     } catch (e) {
       lastActionError = e.toString();
@@ -691,13 +700,16 @@ class FormBuilderService {
   /// Sets is_active = false and status = 'archived'.
   Future<bool> archiveTemplate(String templateId) async {
     lastActionError = null;
+    var formName = 'Untitled Form';
     try {
       final templateData = await _supabase
           .from('form_templates')
           .select('form_name')
           .eq('template_id', templateId)
           .maybeSingle();
-      final formName = templateData?['form_name'] as String? ?? 'Untitled Form';
+      if (templateData != null) {
+        formName = templateData['form_name'] as String? ?? 'Untitled Form';
+      }
 
       await _supabase
           .from('form_templates')
@@ -720,6 +732,12 @@ class FormBuilderService {
             archived: true,
             setInactive: true,
             statusOverride: 'draft',
+          );
+          await _insertNotification(
+            templateId: templateId,
+            templateName: formName,
+            changeType: 'archived',
+            changeSummary: 'Form "$formName" has been archived.',
           );
           return true;
         } catch (fallbackError) {
@@ -752,13 +770,6 @@ class FormBuilderService {
           .update({'status': 'draft', 'is_active': false})
           .eq('template_id', templateId);
       await _setLegacyArchiveFlag(templateId, archived: false);
-
-      await _insertNotification(
-        templateId: templateId,
-        templateName: formName,
-        changeType: 'updated',
-        changeSummary: 'Form "$formName" has been restored to draft.',
-      );
 
       return true;
     } catch (e) {
