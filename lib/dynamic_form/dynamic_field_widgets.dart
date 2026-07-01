@@ -191,25 +191,8 @@ InputDecoration _inputDeco({
 
 String? _selfDescription(FormStateController controller, FormFieldModel field) {
   if (field.fieldType == FormFieldType.number) {
-    final ageFrom = (field.validationRules?['age_from_field'] ?? '')
-        .toString()
-        .trim();
-    if (ageFrom.isNotEmpty) {
-      try {
-        controller.template.allFields.firstWhere(
-          (f) => f.fieldId == ageFrom,
-        );
-        return 'Calculates ${field.fieldLabel}';
-      } catch (_) {}
-    }
-
-    final formula = (field.validationRules?['formula'] ?? '')
-        .toString()
-        .trim();
-    if (formula.isNotEmpty) {
-      final desc = controller.selfDescription(field);
-      if (desc != null) return desc;
-    }
+    final desc = controller.selfDescription(field);
+    if (desc != null) return desc;
   }
 
   if (field.fieldType == FormFieldType.computed) {
@@ -303,15 +286,15 @@ class _TextField extends StatelessWidget {
   Widget build(BuildContext context) {
     final ctrl =
         controller.textControllers[field.fieldName] ?? TextEditingController();
-    final descriptions = controller.getInfluenceDescriptions(field.fieldName);
+    final selfDesc = _selfDescription(controller, field);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _FieldLabel(
           label: field.fieldLabel,
           isRequired: field.isRequired,
-          hasInfluence: descriptions.isNotEmpty,
-          descriptions: descriptions,
+          hasInfluence: selfDesc != null,
+          descriptions: selfDesc != null ? [selfDesc] : const [],
         ),
         TextFormField(
           controller: ctrl,
@@ -346,21 +329,15 @@ class _NumberField extends StatelessWidget {
     final readOnlyNumber = isReadOnly || hasAgeFromMetadata;
     final ctrl =
         controller.textControllers[field.fieldName] ?? TextEditingController();
-    // Age-auto fields are fully padlocked — skip all influence indicators.
-    final isAgeAuto = controller.isAgeAutoField(field);
-    final descriptions = isAgeAuto ? <String>[] : controller.getInfluenceDescriptions(field.fieldName);
-    final selfDesc = isAgeAuto ? null : _selfDescription(controller, field);
-    final all = <String>[];
-    if (descriptions.isNotEmpty) all.addAll(descriptions);
-    if (selfDesc != null) all.add(selfDesc);
+    final selfDesc = _selfDescription(controller, field);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _FieldLabel(
           label: field.fieldLabel,
           isRequired: field.isRequired,
-          hasInfluence: all.isNotEmpty,
-          descriptions: all,
+          hasInfluence: selfDesc != null,
+          descriptions: selfDesc != null ? [selfDesc] : const [],
         ),
         TextFormField(
           controller: ctrl,
@@ -424,15 +401,14 @@ class _DateField extends StatelessWidget {
   Widget build(BuildContext context) {
     final ctrl =
         controller.textControllers[field.fieldName] ?? TextEditingController();
-    final descriptions = controller.getInfluenceDescriptions(field.fieldName);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _FieldLabel(
           label: field.fieldLabel,
           isRequired: field.isRequired,
-          hasInfluence: descriptions.isNotEmpty,
-          descriptions: descriptions,
+          hasInfluence: false,
+          descriptions: const [],
         ),
         GestureDetector(
           onTap: isReadOnly
@@ -533,7 +509,6 @@ class _DropdownField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final current = controller.getValue(field.fieldName)?.toString();
-    final descriptions = controller.getInfluenceDescriptions(field.fieldName);
 
     // Deduplicate options by value to prevent DropdownButton assertion crash.
     final seen = <String>{};
@@ -545,8 +520,8 @@ class _DropdownField extends StatelessWidget {
         _FieldLabel(
           label: field.fieldLabel,
           isRequired: field.isRequired,
-          hasInfluence: descriptions.isNotEmpty,
-          descriptions: descriptions,
+          hasInfluence: false,
+          descriptions: const [],
         ),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -623,15 +598,14 @@ class _RadioField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final current = controller.getValue(field.fieldName)?.toString();
-    final descriptions = controller.getInfluenceDescriptions(field.fieldName);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _FieldLabel(
           label: field.fieldLabel,
           isRequired: field.isRequired,
-          hasInfluence: descriptions.isNotEmpty,
-          descriptions: descriptions,
+          hasInfluence: false,
+          descriptions: const [],
         ),
         Wrap(
           spacing: 8,
@@ -710,7 +684,7 @@ class _CheckboxField extends StatelessWidget {
         raw.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty),
       );
     }
-    final descriptions = controller.getInfluenceDescriptions(field.fieldName);
+    final descriptions = const <String>[];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -817,7 +791,7 @@ class _BooleanField extends StatelessWidget {
           raw == true ||
           raw == 'true'; // Coerce string "true" to boolean true.
     }
-    final descriptions = controller.getInfluenceDescriptions(field.fieldName);
+    final descriptions = isReadOnly ? controller.getInfluenceDescriptions(field.fieldName) : <String>[];
     return Row(
       children: [
         Switch(
@@ -873,7 +847,7 @@ class _MembershipGroupField extends StatelessWidget {
       ('four_ps_member', '4Ps Member'),
       ('phic_member', 'PHIC Member'),
     ];
-    final descriptions = controller.getInfluenceDescriptions('membership_group');
+    final descriptions = const <String>[];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

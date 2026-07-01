@@ -1001,7 +1001,13 @@ class FormStateController extends ChangeNotifier {
 
       if (targetField.fieldType == FormFieldType.number &&
           (targetField.validationRules?['age_from_field'] ?? '').toString().trim().isNotEmpty) {
-        descriptions.add('Calculates ${targetField.fieldLabel}');
+        final ageFrom = (targetField.validationRules?['age_from_field'] ?? '').toString().trim();
+        final sourceField = template.allFields.firstWhereOrNull((f) => f.fieldId == ageFrom);
+        if (sourceField != null) {
+          descriptions.add('Calculated from ${sourceField.fieldLabel}');
+        } else {
+          descriptions.add('Calculated from ${targetField.fieldLabel}');
+        }
         continue;
       }
 
@@ -1020,15 +1026,11 @@ class FormStateController extends ChangeNotifier {
   }
 
   String _shortFormulaDescription(String formula, String targetLabel) {
+    // Build a map of field names to resolved labels.
     final labelByName = <String, String>{};
-    final fieldByName = <String, FormFieldModel>{};
     for (final f in template.allFields) {
       if (f.fieldName.trim().isNotEmpty) {
         labelByName[f.fieldName] = f.fieldLabel;
-        fieldByName[f.fieldName] = f;
-      }
-      if ((f.canonicalFieldKey ?? '').trim().isNotEmpty) {
-        labelByName[f.canonicalFieldKey!.trim()] = f.fieldLabel;
       }
     }
 
@@ -1042,11 +1044,19 @@ class FormStateController extends ChangeNotifier {
       return trimmed;
     }
 
+    // Detect complex multi-operator formulas with parentheses or mixed operators.
+    final hasParens = formula.contains('(') || formula.contains(')');
+    final operators = ['+', '-', '*', '/'].where((op) => formula.contains(op)).toList();
+    final isComplex = hasParens || operators.length > 1;
+
+    // For simple formulas, use sentence format.
     final normalized = formula.replaceAll(' ', '');
+
+    // SUM_COLUMN — keep the aggregate indicator for genuine aggregate formulas.
     if (RegExp(r'SUM_COLUMN').hasMatch(formula)) {
       final parts = formula.split('+').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
       final resolved = parts.map((part) {
-        final sumMatch = RegExp(r'SUM_COLUMN\(([a-zA-Z_][a-zA-Z0-9_]*)\s*,\s*["\u0022]([^"\u0022]+)["\u0022]\s*\)').firstMatch(part);
+        final sumMatch = RegExp(r"SUM_COLUMN\(([a-zA-Z_][a-zA-Z0-9_]*)\s*,\s*['\u0022]([^'\u0022]+)['\u0022]\s*\)").firstMatch(part);
         if (sumMatch != null) {
           final label = _resolvedSumColumnLabel(sumMatch.group(1)!, sumMatch.group(2)!);
           if (label != null) return label;
@@ -1055,33 +1065,67 @@ class FormStateController extends ChangeNotifier {
       }).join(' + ');
       return 'Sum of $resolved';
     }
-    if (normalized.contains('+')) {
-      final parts = formula.split('+').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
-      final resolved = parts.map((p) => resolveToken(p)).join(' + ');
-      return resolved;
-    }
-    if (normalized.contains('-') && !normalized.contains('--')) {
-      final parts = formula.split('-').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
-      if (parts.length == 2) {
-        return '${resolveToken(parts[0])} minus ${resolveToken(parts[1])}';
+
+    // Simple single-operator formulas: sentence format.
+    if (!isComplex) {
+      if (normalized.contains('+')) {
+        final parts = formula.split('+').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+        if (parts.length == 2) {
+          return '${resolveToken(parts[0])} + ${resolveToken(parts[1])}';
+        }
+        return parts.map((p) => resolveToken(p)).join(' + ');
       }
-      return 'Subtracts into $targetLabel';
-    }
-    if (normalized.contains('*')) {
-      final parts = formula.split('*').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
-      if (parts.length == 2) {
-        return 'Multiplies ${resolveToken(parts[0])} × ${resolveToken(parts[1])}';
+      if (normalized.contains('-') && !normalized.contains('--')) {
+        final parts = formula.split('-').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+        if (parts.length == 2) {
+          return '${resolveToken(parts[0])} - ${resolveToken(parts[1])}';
+        }
+        return 'Subtracts into $targetLabel';
       }
-      return 'Multiplies into $targetLabel';
-    }
-    if (normalized.contains('/')) {
-      final parts = formula.split('/').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
-      if (parts.length == 2) {
-        return '${resolveToken(parts[0])} ÷ ${resolveToken(parts[1])}';
+      if (normalized.contains('*')) {
+        final parts = formula.split('*').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+        if (parts.length == 2) {
+          return '${resolveToken(parts[0])} * ${resolveToken(parts[1])}';
+        }
+        return '$targetLabel (multiplication)';
       }
-      return 'Divides into $targetLabel';
+      if (normalized.contains('/')) {
+        final parts = formula.split('/').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+        if (parts.length == 2) {
+          return '${resolveToken(parts[0])} ÷ ${resolveToken(parts[1])}';
+        }
+        return 'Divides into $targetLabel';
+      }
+      return 'Feeds $targetLabel';
     }
-    return 'Feeds $targetLabel';
+
+    // Complex formulas (parentheses, mixed operators): show the full formula
+    // with field names replaced by labels.
+    final replacements = <String, String>{
+      for (final f in template.allFields)
+        if (f.fieldName.trim().isNotEmpty) f.fieldName.trim(): f.fieldLabel,
+    };
+    final sortedKeys = replacements.keys.toList()
+      ..sort((a, b) => b.length.compareTo(a.length));
+
+    var result = formula;
+    for (final key in sortedKeys) {
+      final escaped = RegExp.escape(key);
+      final pattern = RegExp(r'(?<![a-zA-Z0-9_])' + escaped + r'(?![a-zA-Z0-9_])');
+      result = result.replaceAll(pattern, replacements[key]!);
+    }
+
+    result = result
+        .replaceAll('+', ' + ')
+        .replaceAll('*', ' * ')
+        .replaceAll('/', ' / ')
+        .replaceAll(RegExp(r'(?<!\d)\-(?!\d)'), ' - ')
+        .replaceAll('( ', '(')
+        .replaceAll(' )', ')')
+        .replaceAll(RegExp(r'  +'), ' ')
+        .trim();
+
+    return result;
   }
 
   void _buildDependencyGraph() {
@@ -1321,13 +1365,27 @@ class FormStateController extends ChangeNotifier {
 
   String? selfDescription(FormFieldModel field) {
     if (field.fieldType == FormFieldType.number) {
-      if (isAgeAutoField(field)) {
-        return null;
-      }
-
       final ageFrom = (field.validationRules?['age_from_field'] ?? '').toString().trim();
       if (ageFrom.isNotEmpty) {
-        return null;
+        final dobField = template.allFields.firstWhereOrNull((f) => f.fieldId == ageFrom);
+        if (dobField != null) {
+          return 'Calculated from ${dobField.fieldLabel}';
+        }
+        return 'Calculated from ${field.fieldLabel}';
+      }
+
+      if (isAgeAutoField(field)) {
+        FormFieldModel? dobField;
+        for (final f in template.allFields) {
+          if (_isBirthDateField(f)) {
+            dobField = f;
+            break;
+          }
+        }
+        if (dobField != null) {
+          return 'Calculated from ${dobField.fieldLabel}';
+        }
+        return 'Calculated from ${field.fieldLabel}';
       }
 
       final formula = (field.validationRules?['formula'] ?? '').toString().trim();
