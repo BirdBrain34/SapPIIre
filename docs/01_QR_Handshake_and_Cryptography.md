@@ -43,16 +43,21 @@ The public-key inventory is represented in `app_rsa_keypairs`:
 
 This table contains no private key column, enforcing separation between distribution material (public key) and decryption material (secret-managed private key).
 
-### 2.4 Data-At-Rest Key Derivation (v2 Architecture)
+### 2.4 Data-At-Rest Key Derivation Model
 
-The original v1 architecture derived AES keys client-side using a hardcoded HMAC secret (`_appHmacSecret`), which was vulnerable to reverse-engineering of the mobile binary. The v2 architecture replaces this with a Server-Side Key Derivation model:
+The data-at-rest path now uses server-side key derivation and ephemeral key delivery, removing the client-side hardcoded secret attack surface. The mobile app fetches AES keys on demand through `derive-field-key`, the Edge Function validates JWT identity and record ownership, and the derived key is kept only in volatile memory on the device. The web dashboard uses `resolve-applicant-names` for server-side decryption of `user_field_values`, so encryption keys never touch the browser.
 
-- The mobile app fetches AES keys on demand by invoking the `derive-field-key` Edge Function.
-- The Edge Function validates the caller's identity via their JWT, derives the AES key using `FIELD_KEY_HMAC_SECRET_V2` (stored in Edge Secrets), and enforces IDOR prevention by verifying the requesting user owns the target record.
-- The derived key is returned to the client, cached in volatile memory on the device, and cleared immediately upon logout.
-- The web dashboard uses a separate Edge Function (`resolve-applicant-names`) which decrypts `user_field_values` server-side and returns only ephemeral plaintext names — encryption keys never touch the browser.
+| Aspect | v1 | v2 |
+| --- | --- | --- |
+| Key origin | Client-side hardcoded HMAC secret (`_appHmacSecret`) | Server-side derivation via `derive-field-key` Edge Function |
+| Secret location | Embedded in mobile binary | Edge Secrets (`FIELD_KEY_HMAC_SECRET_V2`) |
+| Identity check | App identity only | JWT validation per request |
+| Ownership control | None | Edge Function verifies the requesting user owns the record |
+| Key lifetime | Client-managed | Volatile memory only, cleared on logout |
+| Browser exposure | Keys could be sent to the browser | Keys never touch the browser |
+| Stored version marker | `encryption_version = 1` | `encryption_version = 2` |
 
-This eliminates the client-side hardcoded secret attack surface and ensures key material is scoped per-user and per-session.
+This keeps the comparison in one security-focused location while the rest of the docs describe the current model.
 
 ## 3. Session-Centric Handshake Flow
 
@@ -126,7 +131,7 @@ The schema-level status domain is:
 4. `closed`
 5. `expired`
 
-`cswd_id` is foreign-keyed to `staff_accounts(cswd_id)`, providing traceable staff-session linkage for operational governance.
+Staff-session governance is handled through the authenticated staff account context that reviews and finalizes the encrypted session record.
 
 `transmission_version` functions as protocol negotiation metadata:
 

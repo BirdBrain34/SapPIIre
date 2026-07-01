@@ -39,20 +39,8 @@ This section is the teammate handoff summary for the security fixes implemented 
   - `updated_at` is no longer client-supplied on `user_field_values` inserts; database server timestamp/default is used.
 
 ### Important note on key derivation
-- The system enforces pure v2 server-side key derivation. All AES keys are fetched via the `derive-field-key` Edge Function — no local client-side secret derivation is used.
-
-### v1 vs v2 Architecture Comparison
-
-| Aspect | v1 (deprecated) | v2 (current) |
-|--------|-----------------|--------------|
-| Key origin | Client-side hardcoded HMAC secret (`_appHmacSecret`) | Server-side derivation via `derive-field-key` Edge Function |
-| Secret location | Embedded in mobile binary (reverse-engineerable) | Edge Secrets (`FIELD_KEY_HMAC_SECRET_V2`) |
-| Authentication | Implicit via app identity | JWT validation per request |
-| IDOR prevention | None | Edge Function verifies requesting user owns target record |
-| Key caching | N/A | Volatile memory on device |
-| Key cleanup | N/A | Cleared on logout |
-| Web key exposure | Keys sent to browser | Server-side decryption via `resolve-applicant-names`; keys never touch browser |
-| `encryption_version` stored in DB | `1` | `2` |
+- The system uses server-side key derivation via the `derive-field-key` Edge Function; no local client-side secret derivation is used.
+- The v1-to-v2 security comparison is documented in [docs/01_QR_Handshake_and_Cryptography.md](docs/01_QR_Handshake_and_Cryptography.md).
 
 ### Team rollout checklist
 1. Pull latest branch changes.

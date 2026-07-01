@@ -9,8 +9,8 @@ This document now serves as the executive summary of implemented capabilities. I
 | Domain | Primary User | Core Objective | Representative Tables |
 | --- | --- | --- | --- |
 | Mobile Client Layer | Citizen/client user | Capture, protect, and selectively transmit PII for intake | `user_accounts`, `user_field_values`, `form_submission`, `phone_otp` |
-| Web Staff Layer | CSWD staff and administrators | Receive secure payloads, manage sessions, finalize records, govern forms and staff | `staff_accounts`, `staff_profiles`, `form_submission`, `client_submissions`, `form_templates` |
-| Security Layer | System-wide | Enforce data-at-rest, data-in-transit, access, verification, and audit controls | `app_rsa_keypairs`, `form_submission`, `phone_otp`, `staff_password_reset_otp`, `audit_logs` |
+| Web Staff Layer | CSWD staff and administrators | Receive secure payloads, manage sessions, finalize records, govern forms and staff | `staff_accounts`, `staff_profiles`, `form_submission`, `client_submissions`, `form_templates`, `dashboard_widget_configs`, `dashboard_card_settings` |
+| Security Layer | System-wide | Enforce data-at-rest, data-in-transit, access, verification, and audit controls | `app_rsa_keypairs`, `form_submission`, `phone_otp`, `audit_logs` |
 
 ## 3. Manuscript-Core Feature Coverage
 

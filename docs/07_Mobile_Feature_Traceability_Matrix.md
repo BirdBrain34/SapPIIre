@@ -31,7 +31,7 @@ This architecture ensures reusability, testability, and maintainability across t
 | Client submission history | Review prior finalized submissions | Controller: `HistoryController` → Screen: `HistoryScreen.dart` → Widget: `HistoryCard` → Service: `SupabaseService.fetchClientSubmissionHistoryByUser` | `client_submissions`, `form_submission` | User transparency for historical submissions |
 | Profile transparency and consent controls | Review and modify stored profile values | Controller: `ProfileController` → Screen: `ProfileScreen.dart` → Service: save/load via `FieldValueService` | `user_field_values`, `user_accounts` | Supports informed user control over stored PII |
 | Read-only and computed field visualization | Distinguish immutable and calculated form values | Controller: `FormStateController` → Widget: `dynamic_field_widgets.dart` → Renderer: `dynamic_form_renderer.dart` | `form_fields` | Reduces accidental edits to locked or computed outputs while preserving field intent |
-| Mobile notification center | View and manage form template change notifications | Screen: `NotificationScreen.dart` → Service: `SupabaseService.fetchAppNotifications`, `markNotificationsRead` | `app_notifications`, `app_notification_reads` | Centralized notification history with expandable details, read state tracking, and pull-to-refresh |
+| Mobile notification center | View and manage form template change notifications | Screen: `NotificationScreen.dart` → Service: `SupabaseService.fetchAppNotifications`, `markNotificationsRead` | `form_template_notifications`, `user_notification_reads` | Centralized notification history with expandable details, read state tracking, and pull-to-refresh |
 
 ## 3. Validation Notes
 

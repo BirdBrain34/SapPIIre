@@ -25,7 +25,7 @@ The staff governance pipeline includes:
 2. Approval and rejection workflows for elevated access.
 3. Superadmin-level direct creation of admin accounts.
 4. Account activation, deactivation, reactivation, and role-update controls.
-5. OTP-assisted new staff setup and reset flows.
+5. OTP-assisted new staff setup and account recovery flows.
 
 This capability directly supports institutional staffing realities and reduces manual account-administration overhead.
 
@@ -121,6 +121,8 @@ The dashboard includes workload and intake analytics modules (counts, trends, di
 5. **Batch Data Processing**: Dashboard analytics now use `batchDecryptSubmissions()` for efficient bulk record loading.
 
 6. **Chart Simplification**: The dashboard keeps only line, horizontal bar, and bar chart types, removing unused chart widgets for a cleaner analytics surface.
+
+7. **Dashboard Configuration Tables**: Per-template chart and card settings are stored in `dashboard_widget_configs` and `dashboard_card_settings`, keeping analytics presentation metadata-driven.
 
 ### 2.9 Display Session Management (Extended Feature)
 
@@ -257,6 +259,5 @@ Web workflows interact primarily with:
 9. `form_field_conditions`
 10. `display_sessions`
 11. `audit_logs`
-12. `staff_password_reset_otp`
 
 This table footprint reflects the web role as intake adjudicator, governance surface, and system configuration authority.

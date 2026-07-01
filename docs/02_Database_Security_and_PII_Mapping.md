@@ -24,22 +24,12 @@ This partitioning supports controlled data progression from user input, to encry
 
 1. `field_value` for encrypted value content.
 2. `iv` for AES-GCM decryption metadata.
-3. `encryption_version` (smallint) — **version 2 is the enforced standard**. AES keys are no longer derived locally; they are fetched securely via the `derive-field-key` Edge Function.
+3. `encryption_version` (smallint) records the protection state for the stored value and supports future migration paths.
 4. `updated_at` for recency resolution.
 
 Foreign-key linkage to `form_fields(field_id)` binds values to dynamic metadata definitions.
 
-**v1 vs v2 Key Derivation Comparison:**
-
-| Aspect | v1 (deprecated) | v2 (current) |
-|--------|-----------------|--------------|
-| Key origin | Client-side hardcoded HMAC secret (`_appHmacSecret`) | Server-side derivation via `derive-field-key` Edge Function |
-| Secret location | Embedded in mobile binary (reverse-engineerable) | Edge Secrets (`FIELD_KEY_HMAC_SECRET_V2`) |
-| Authentication | Implicit via app identity | JWT validation per request |
-| IDOR prevention | None | Edge Function verifies requesting user owns target record |
-| Key caching | N/A | Volatile memory on device, cleared on logout |
-| Web key exposure | Keys sent to browser | Server-side decryption via `resolve-applicant-names`; keys never touch browser |
-| `encryption_version` in DB | `1` | `2` (enforced standard) |
+The application derives protection keys through the `derive-field-key` Edge Function and stores the resulting ciphertext metadata in the row alongside the encrypted value.
 
 ### 2.3 Transport Session Layer: `form_submission`
 
@@ -78,6 +68,8 @@ The form metadata stack consists of:
 
 This stack defines storage semantics (field IDs, canonical keys, validation rules) used by both mobile and web channels.
 
+For web analytics presentation, `dashboard_widget_configs` and `dashboard_card_settings` store per-template chart type, field, color, and card-elevation preferences so dashboard rendering can remain metadata-driven rather than hard-coded.
+
 ### 2.6 Access and Verification Layer
 
 `staff_accounts` and `staff_profiles` implement dashboard identity governance with schema-level role and status constraints:
@@ -90,7 +82,6 @@ This stack defines storage semantics (field IDs, canonical keys, validation rule
 Complementary verification tables:
 
 1. `phone_otp` for time-bounded mobile OTP.
-2. `staff_password_reset_otp` for staff credential recovery.
 
 ### 2.7 Audit Domain
 
@@ -122,7 +113,7 @@ When transmission is initiated:
 
 This creates three distinct encryption/security boundaries:
 
-1. **At Rest (User Level):** Client-side AES encryption of PII in `user_field_values`.
+1. **At Rest (User Level):** Derived-key AES-GCM protection of PII in `user_field_values`.
 2. **In Transit:** Hybrid AES/RSA encrypted payload in `form_submission` transport columns.
 3. **At Rest (Finalized Record):** Server-side AES encryption of finalized applicant records in `client_submissions.data`.
 
@@ -133,7 +124,7 @@ These layered protections ensure that sensitive data remains protected across th
 The schema supports chain-of-custody reconstruction:
 
 1. `user_accounts.user_id` -> `user_field_values.user_id` (user PII ownership).
-2. `form_submission.user_id` and `form_submission.cswd_id` (user-to-staff session linkage).
+2. `form_submission.user_id` (user-to-session linkage).
 3. `submission_field_values.submission_id` -> `form_submission.id` (session field evidence).
 4. `client_submissions.session_id` (final-record linkage to scanned session).
 5. `audit_logs` records actor and action context for privileged operations.
