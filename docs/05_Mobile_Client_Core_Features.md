@@ -134,6 +134,16 @@ The mobile interface includes:
 
 These functions improve user transparency regarding what has been submitted and what profile state remains active.
 
+### 2.10 Read-Only and Computed Field Visual Cues
+
+Dynamic form rendering now distinguishes immutable or computed values from editable fields:
+
+1. Read-only fields use lock icons and distinct color treatment.
+2. Computed fields receive stronger visual emphasis so users can see which values are system-derived.
+3. Form state logic only applies the strongest visual indicator to computed fields after the latest refinement.
+
+This keeps the mobile intake UI legible while preserving the difference between user-input fields and calculated outputs.
+
 ## 3. Mobile Architecture: Separation of Concerns
 
 The mobile tier implements a layered architecture that cleanly separates business logic from UI rendering:
@@ -203,7 +213,7 @@ The mobile tier contributes the following controls:
 2. Hybrid crypto payload generation for secure transit.
 3. QR handshake participation as the mobile transmitter endpoint.
 
-### 5.2 Added Mobile Enhancements Beyond Initial Prompt
+### 5.2 Added Mobile Enhancements
 
 1. InfoScanner OCR-assisted profile capture.
 2. Extended OTP and password recovery workflows.
@@ -211,7 +221,8 @@ The mobile tier contributes the following controls:
 4. Unsaved changes detection with form-fingerprint tracking and explicit discard workflow.
 5. Real-time template notifications for field and template lifecycle events, enabling mobile users to be aware of form infrastructure changes.
 6. **Mobile Notification Center**: Dedicated NotificationScreen with expandable notification details, read state management, and pull-to-refresh.
-7. Layered architecture with clean separation of concerns: Controllers (business logic), Screens (UI rendering), Widgets (reusable components), Utilities (shared helpers).
+7. Read-only and computed field visualization with lock-style affordances and distinct colors.
+8. Layered architecture with clean separation of concerns: Controllers (business logic), Screens (UI rendering), Widgets (reusable components), Utilities (shared helpers).
 
 ## 6. Primary Data Touchpoints
 
