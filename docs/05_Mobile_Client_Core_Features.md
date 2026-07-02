@@ -48,13 +48,17 @@ This feature reduces manual encoding effort and improves intake throughput while
 
 The mobile app performs session-targeted data transmission by:
 
-1. Scanning staff-generated session QR identifiers.
-2. Building a filtered payload from user-selected fields.
-3. Packaging encrypted envelope artifacts (`encrypted_payload`, `payload_iv`, `encrypted_aes_key`).
-4. Updating `form_submission` with transport metadata and scanned status.
-5. **Zero-Knowledge Staging:** Encrypted envelope persists in database; decryption occurs in-memory on staff request via `serve-submission-for-review` Edge Function, ensuring no plaintext persistence in `form_submission`.
+1. Scanning staff-generated session QR identifiers (now JSON-encoded with `sessionId` + `templateId`).
+2. **Validating form template match** between the scanned QR's `templateId` and the mobile user's currently selected template:
+   - If templates match, proceed with transmission.
+   - If templates mismatch, display a warning dialog and block transmission, re-activating the camera for re-scanning.
+   - Legacy plain-text UUID QR codes are accepted for backward compatibility.
+3. Building a filtered payload from user-selected fields.
+4. Packaging encrypted envelope artifacts (`encrypted_payload`, `payload_iv`, `encrypted_aes_key`).
+5. Updating `form_submission` with transport metadata and scanned status.
+6. **Zero-Knowledge Staging:** Encrypted envelope persists in database; decryption occurs in-memory on staff request via `serve-submission-for-review` Edge Function, ensuring no plaintext persistence in `form_submission`.
 
-This is the client-side entry point of the hybrid cryptosystem handshake.
+This is the client-side entry point of the hybrid cryptosystem handshake, now including a pre-transmission template guard to prevent cross-template data corruption.
 
 ### 2.6 Unsaved Changes Detection and Discard Workflow
 
@@ -145,7 +149,7 @@ Controllers (`lib/mobile/controllers/`) encapsulate application logic and state:
 - **`ChangePasswordController`**: Password update flows, validation, OTP-assisted reset.
 - **`InfoScannerController`**: OCR coordination, ID field extraction and mapping.
 - **`ProfileController`**: User profile data retrieval and editing.
-- **`QRScannerController`**: Session QR scanning and ID extraction.
+- **`QRScannerController`**: Session QR scanning, template validation, and encrypted payload transmission.
 
 Controllers extend `ChangeNotifier` for reactive state management and coordinate service interactions.
 

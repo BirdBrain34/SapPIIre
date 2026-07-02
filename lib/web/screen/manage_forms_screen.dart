@@ -11,6 +11,7 @@
 // Uses Supabase Realtime to listen for incoming data from mobile.
 
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -1070,7 +1071,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                       borderRadius: BorderRadius.circular(18),
                     ),
                     child: QrImageView(
-                      data: _currentSessionId,
+                      data: jsonEncode({
+                        'sessionId': _currentSessionId,
+                        'templateId': _selectedTemplate!.templateId,
+                      }),
                       version: QrVersions.auto,
                       size: 184.0,
                     ),

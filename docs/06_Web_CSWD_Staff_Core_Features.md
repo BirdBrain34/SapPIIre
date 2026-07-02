@@ -34,11 +34,13 @@ This capability directly supports institutional staffing realities and reduces m
 The Manage Forms workflow orchestrates secure intake sessions:
 
 1. Template selection and session creation in `form_submission`.
-2. QR generation for client pairing.
+2. QR generation for client pairing — the QR code now encodes a JSON payload (`{"sessionId": "...", "templateId": "..."}`) binding the session to the selected form template.
 3. Realtime ingestion of mobile-transmitted payload state.
 4. **Zero-Knowledge Staging:** On-demand decryption of encrypted envelope via `serve-submission-for-review` Edge Function, delivering plaintext in-memory to dashboard without database persistence.
 5. Autofilled form review and controlled finalization.
 6. Session closure and display reset behaviors.
+
+**Form Template Mismatch Prevention:** The QR's embedded `templateId` enables the mobile client to validate that the client's selected form matches the staff's active session template before any data is transmitted. If a mismatch is detected, transmission is blocked with a user-facing warning, and the camera is re-activated for re-scanning. Legacy single-UUID QR codes continue to work for backward compatibility.
 
 This is the operational heart of CSWD intake execution.
 
@@ -164,7 +166,7 @@ The web tier implements a layered architecture that cleanly separates business l
 
 Controllers (`lib/web/controllers/`) encapsulate application logic and state coordination:
 
-- **`ManageFormsController`**: Session orchestration, payload fingerprinting, intake reference formatting, session state coordination.
+- **`ManageFormsController`**: Session orchestration, payload fingerprinting, intake reference formatting, session state coordination, QR template binding validation.
 - **`FormBuilderController`**: Utility functions for form template construction (UUID generation, code sanitization, reference formatting, token/separator management).
 - **`FormBuilderScreenController`**: Complete form builder state management (template loading, field/section/condition editing, publication workflow, unsaved changes tracking).
 - **`DashboardController`**: Analytics data loading, chart generation, client search, workload distribution coordination.
