@@ -6,6 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const SEMAPHORE_API_KEY = Deno.env.get('SEMAPHORE_API_KEY') ?? '';
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -19,6 +21,15 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    // Fail fast if the API key is missing
+    if (!SEMAPHORE_API_KEY) {
+      console.error('SEMAPHORE_API_KEY is not set in Supabase secrets!');
+      return new Response(
+        JSON.stringify({ success: false, message: 'SMS service not configured. Contact support.' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const { phone } = await req.json();
 
     if (!phone) {
@@ -28,36 +39,82 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Generate OTP
+    const otp = (100000 + (Date.now() % 900000)).toString();
+
+    // Call Semaphore API from the cloud (faster than from mobile)
+    const semaphoreRes = await fetch('https://api.semaphore.co/api/v4/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        apikey: SEMAPHORE_API_KEY,
+        number: phone,
+        message: `Your SapPIIre verification code is ${otp}. Do not share this with anyone.`,
+      }),
+    });
+
+    // Always read the Semaphore response body for debugging
+    const semaphoreBody = await semaphoreRes.text();
+    console.log(`Semaphore response [${semaphoreRes.status}]: ${semaphoreBody}`);
+
+    if (!semaphoreRes.ok) {
+      return new Response(
+        JSON.stringify({ success: false, message: `SMS send failed: ${semaphoreBody}` }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Parse the Semaphore response to verify the SMS was actually queued.
+    // Semaphore returns a JSON array on success, e.g. [{"message_id":...,"status":"Pending"}]
+    // If the body is not a valid array or is an error object, treat it as a failure.
+    try {
+      const parsed = JSON.parse(semaphoreBody);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        console.log(`SMS queued: message_id=${parsed[0]?.message_id}, status=${parsed[0]?.status}`);
+      } else if (parsed?.error || parsed?.message) {
+        // Semaphore returned 200 but with an error payload
+        console.error('Semaphore returned error payload:', semaphoreBody);
+        return new Response(
+          JSON.stringify({ success: false, message: `SMS service error: ${parsed.error || parsed.message}` }),
+          { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    } catch {
+      console.warn('Could not parse Semaphore response as JSON:', semaphoreBody);
+    }
+
+    // Save OTP to database
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
 
-    // Generate OTP
-    const otp = (100000 + (Date.now() % 900000)).toString();
-
-    // Upsert OTP record
-    const { error } = await supabase
+    // Delete old OTP for this phone, then insert new one
+    const { error: delError } = await supabase
       .from('phone_otp')
-      .upsert(
-        {
-          phone,
-          otp,
-          expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-          created_at: new Date().toISOString(),
-        },
-        { onConflict: 'phone' }
-      );
+      .delete()
+      .eq('phone', phone);
 
-    if (error) {
+    if (delError) {
+      console.error('Failed to delete old OTP:', delError);
+    }
+
+    const { error: insertError } = await supabase
+      .from('phone_otp')
+      .insert({
+        phone,
+        otp,
+        expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+        created_at: new Date().toISOString(),
+      });
+
+    if (insertError) {
       return new Response(
         JSON.stringify({ success: false, message: 'Failed to save OTP' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // TODO: Send OTP via SMS service (Semaphore, etc.)
-    
     return new Response(
       JSON.stringify({ success: true, message: 'OTP sent successfully' }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

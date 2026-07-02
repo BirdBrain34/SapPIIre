@@ -365,6 +365,8 @@ class ProfileController extends ChangeNotifier {
       initialDate: initial,
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
+      initialEntryMode: DatePickerEntryMode.calendar,
+      keyboardType: TextInputType.text,
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
           colorScheme: const ColorScheme.light(

@@ -13,8 +13,10 @@ The mobile identity flow includes:
 1. Username-password sign-in for returning users.
 2. Multi-step signup with profile completion.
 3. Email OTP verification through Supabase Auth pathways.
-4. Phone OTP verification persisted in `phone_otp` with expiration windows.
-5. Password reset services with email and phone-assisted recovery flows.
+4. Phone OTP verification via the `send-phone-otp` Edge Function, which calls the Semaphore SMS API from cloud infrastructure (faster than mobile-initiated calls), verifies the SMS was queued by parsing the Semaphore response, and refreshes the `phone_otp` record with a delete-then-insert to prevent stale code collisions. OTP expiry window is 10 minutes; the mobile countdown timer is 120 seconds.
+5. Incomplete signup retry support: if a previous signup attempt left an orphaned `user_accounts` record with no `user_field_values`, `checkDuplicateSignup` returns `incomplete: true` with the existing `user_id`, allowing the user to resume without contacting support.
+6. Phone-only signup defers Supabase Auth user creation to the credentials step, using a deterministic synthetic email (`<digits>@sappiire.phone`) so no real email is required.
+7. Password reset services with email and phone-assisted recovery flows.
 
 This layered entry process aligns user convenience with risk-reduction for account misuse.
 

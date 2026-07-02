@@ -232,6 +232,20 @@ class SignupController extends ChangeNotifier {
       SnackbarUtils.showError(context, dupCheck['message']);
       return;
     }
+
+    // If this is an incomplete signup retry, reuse the existing user_id
+    if (dupCheck['incomplete'] == true && dupCheck['user_id'] != null) {
+      verifiedUserId = dupCheck['user_id'];
+      // Send OTP to the existing incomplete account
+      await _supabaseService.signInWithOtp(email: emailCtrl.text.trim());
+      isLoading = false;
+      notifyListeners();
+      emailOtpSent = true;
+      startEmailCountdown();
+      SnackbarUtils.showSuccess(context, 'Code sent to ${emailCtrl.text.trim()}');
+      return;
+    }
+
     final result = await _supabaseService.signUpWithEmail(
       email: emailCtrl.text.trim(),
     );
@@ -490,6 +504,8 @@ class SignupController extends ChangeNotifier {
       initialDate: DateTime(2000),
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
+      initialEntryMode: DatePickerEntryMode.calendar,
+      keyboardType: TextInputType.text,
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
           colorScheme: const ColorScheme.light(
