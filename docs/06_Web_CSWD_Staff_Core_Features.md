@@ -25,7 +25,7 @@ The staff governance pipeline includes:
 2. Approval and rejection workflows for elevated access.
 3. Superadmin-level direct creation of admin accounts.
 4. Account activation, deactivation, reactivation, and role-update controls.
-5. OTP-assisted new staff setup and reset flows.
+5. OTP-assisted new staff setup and account recovery flows.
 
 This capability directly supports institutional staffing realities and reduces manual account-administration overhead.
 
@@ -98,6 +98,7 @@ The `FormTemplateNotificationService` broadcasts these events via Supabase Realt
 - Mobile users are notified in near-real-time when forms they are viewing or about to use are modified.
 - Web editors receive notifications confirming their publishing and push actions.
 - Clients can choose to reload the form manifest immediately via a RELOAD button on the notification.
+- The online notification path is stable end-to-end, so live clients receive updates without stale builder state.
 
 ### 2.7 Conditional Logic and Computed Runtime
 
@@ -119,9 +120,15 @@ The dashboard includes workload and intake analytics modules (counts, trends, di
 
 5. **Batch Data Processing**: Dashboard analytics now use `batchDecryptSubmissions()` for efficient bulk record loading.
 
+6. **Chart Simplification**: The dashboard keeps only line, horizontal bar, and bar chart types, removing unused chart widgets for a cleaner analytics surface.
+
+7. **Dashboard Configuration Tables**: Per-template chart and card settings are stored in `dashboard_widget_configs` and `dashboard_card_settings`, keeping analytics presentation metadata-driven.
+
 ### 2.9 Display Session Management (Extended Feature)
 
 The web tier controls station-linked display synchronization through `display_sessions`, enabling customer-facing monitor updates and queue/session status projection.
+
+The customer display screen now also includes an applicant mirror form so the public-facing view can mirror the active intake session state.
 
 ### 2.10 Client Submissions Encryption (Extended Feature)
 
@@ -224,7 +231,7 @@ The web tier contributes the following controls:
 2. Secured autofill consumption after backend decryption.
 3. Basic role-based access for decrypted applicant records.
 
-### 5.2 Added Web Enhancements Beyond Initial Prompt
+### 5.2 Added Web Enhancements
 
 1. Dedicated admin creation and staff lifecycle governance.
 2. Dynamic form builder with publication pipeline.
@@ -234,7 +241,7 @@ The web tier contributes the following controls:
 6. Client submissions server-side AES-256-GCM encryption for finalized applicant records.
 7. **Batch decryption optimization**: 5-10x faster applicants screen loading via `decrypt-submission-batch` Edge Function.
 8. Audit log observability with submission decryption tracking and action type filtering.
-9. **Enhanced dashboard analytics**: Worker drill-down, client search, configurable chart elevation, time-frame filtering, and batch data processing.
+9. **Enhanced dashboard analytics**: Worker drill-down, client search, configurable chart elevation, time-frame filtering, batch data processing, and chart simplification.
 10. Layered architecture with clean separation of concerns: Controllers (business logic), Screens (UI rendering), Components (analytics/chart), Widgets (reusable UI), Utilities (shared helpers).
 
 ## 6. Primary Data Touchpoints
@@ -252,6 +259,5 @@ Web workflows interact primarily with:
 9. `form_field_conditions`
 10. `display_sessions`
 11. `audit_logs`
-12. `staff_password_reset_otp`
 
 This table footprint reflects the web role as intake adjudicator, governance surface, and system configuration authority.

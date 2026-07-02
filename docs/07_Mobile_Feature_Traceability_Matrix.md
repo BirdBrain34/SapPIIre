@@ -30,7 +30,8 @@ This architecture ensures reusability, testability, and maintainability across t
 | Hybrid encrypted payload packaging | Protect payload confidentiality in transit | Service: `HybridCryptoService.encryptForTransmission` → Screen: `manage_info_screen.dart` → Service: `SupabaseService.sendDataToWebSession` | `form_submission` (`encrypted_payload`, `payload_iv`, `encrypted_aes_key`, `transmission_version`) | AES/RSA protected transport envelope; Zero-Knowledge Staging ensures encrypted envelope persists while decryption occurs in-memory on staff request |
 | Client submission history | Review prior finalized submissions | Controller: `HistoryController` → Screen: `HistoryScreen.dart` → Widget: `HistoryCard` → Service: `SupabaseService.fetchClientSubmissionHistoryByUser` | `client_submissions`, `form_submission` | User transparency for historical submissions |
 | Profile transparency and consent controls | Review and modify stored profile values | Controller: `ProfileController` → Screen: `ProfileScreen.dart` → Service: save/load via `FieldValueService` | `user_field_values`, `user_accounts` | Supports informed user control over stored PII |
-| Mobile notification center | View and manage form template change notifications | Screen: `NotificationScreen.dart` → Service: `SupabaseService.fetchAppNotifications`, `markNotificationsRead` | `app_notifications`, `app_notification_reads` | Centralized notification history with expandable details, read state tracking, and pull-to-refresh |
+| Read-only and computed field visualization | Distinguish immutable and calculated form values | Controller: `FormStateController` → Widget: `dynamic_field_widgets.dart` → Renderer: `dynamic_form_renderer.dart` | `form_fields` | Reduces accidental edits to locked or computed outputs while preserving field intent |
+| Mobile notification center | View and manage form template change notifications | Screen: `NotificationScreen.dart` → Service: `SupabaseService.fetchAppNotifications`, `markNotificationsRead` | `form_template_notifications`, `user_notification_reads` | Centralized notification history with expandable details, read state tracking, and pull-to-refresh |
 
 ## 3. Validation Notes
 
@@ -38,3 +39,4 @@ This architecture ensures reusability, testability, and maintainability across t
 2. Evidence should include encrypted envelope presence in `form_submission`, encrypted row indicators in `user_field_values`, and form-state fingerprinting in unsaved changes detection.
 3. OCR output should be validated as user-confirmed rather than blind auto-commit.
 4. Template notifications should be verified as Realtime events received by mobile client with appropriate icons and colors for different change types.
+5. Read-only and computed field indicators should be verified during dynamic form rendering so only computed values receive the strongest lock-style emphasis.

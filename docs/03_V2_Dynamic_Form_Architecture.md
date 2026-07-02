@@ -58,6 +58,8 @@ This shared renderer architecture enforces cross-channel consistency of data sem
 3. Computed-field recalculation.
 4. JSON import/export fidelity for `form_submission` and `client_submissions` workflows.
 
+Read-only and computed fields are rendered with distinct visual cues at runtime, including lock icons and stronger color emphasis, so users can distinguish immutable values from editable inputs.
+
 ### 3.3 Conditional and Computed Intelligence
 
 V2 supports conditional branching and computed formulas, including table aggregate functions (for example, `SUM_COLUMN`). Formula normalization bridges legacy human labels to machine-safe keys, preserving backward compatibility for older templates.
@@ -89,11 +91,12 @@ This coupling ensures that template-driven UI evolution remains compatible with 
 1. Dynamic form template builder (`form_templates`, `form_sections`, `form_fields`).
 2. Dynamic form rendering across mobile and web channels.
 3. Conditional logic engine (`form_field_conditions`).
-4. OCR information scanner using camera + ML Kit text recognition.
-5. OTP verification (`phone_otp`, email OTP and staff reset flows).
-6. Advanced staff governance (`requested_role`, `account_status`, activation lifecycle).
-7. Display session synchronization (`display_sessions`) for station-linked monitors.
-8. Audit observability (`audit_logs`) for sensitive operational events.
+4. Read-only and computed field visual differentiation during runtime rendering.
+5. OCR information scanner using camera + ML Kit text recognition.
+6. OTP verification (`phone_otp`, email OTP and staff reset flows).
+7. Advanced staff governance (`requested_role`, `account_status`, activation lifecycle).
+8. Display session synchronization (`display_sessions`) for station-linked monitors.
+9. Audit observability (`audit_logs`) for sensitive operational events.
 
 ## 6. Scalability Implications for CSWD
 

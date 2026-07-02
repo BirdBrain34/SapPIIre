@@ -161,6 +161,9 @@ class SupabaseService {
           if (isCivilStatusKey) {
             mappedValue = _resolveCivilStatusForField(field, mappedValue);
           }
+          // Strip stray square brackets that may have been introduced
+          // during address formatting or other legacy data flows.
+          mappedValue = mappedValue.replaceAll(RegExp(r'[\[\]]'), '').trim();
           if (mappedValue.isEmpty) continue;
 
           final templateData = formDataByTemplate.putIfAbsent(
@@ -815,6 +818,8 @@ class SupabaseService {
               entry.key == 'marital_status') {
             mappedValue = _resolveCivilStatusForField(field, mappedValue);
           }
+          mappedValue = mappedValue.replaceAll(RegExp(r'[\[\]]'), '').trim();
+          if (mappedValue.isEmpty) continue;
 
           final templateData = formDataByTemplate.putIfAbsent(
             field.templateId,

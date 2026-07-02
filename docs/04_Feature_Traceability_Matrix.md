@@ -9,8 +9,8 @@ This document now serves as the executive summary of implemented capabilities. I
 | Domain | Primary User | Core Objective | Representative Tables |
 | --- | --- | --- | --- |
 | Mobile Client Layer | Citizen/client user | Capture, protect, and selectively transmit PII for intake | `user_accounts`, `user_field_values`, `form_submission`, `phone_otp` |
-| Web Staff Layer | CSWD staff and administrators | Receive secure payloads, manage sessions, finalize records, govern forms and staff | `staff_accounts`, `staff_profiles`, `form_submission`, `client_submissions`, `form_templates` |
-| Security Layer | System-wide | Enforce data-at-rest, data-in-transit, access, verification, and audit controls | `app_rsa_keypairs`, `form_submission`, `phone_otp`, `staff_password_reset_otp`, `audit_logs` |
+| Web Staff Layer | CSWD staff and administrators | Receive secure payloads, manage sessions, finalize records, govern forms and staff | `staff_accounts`, `staff_profiles`, `form_submission`, `client_submissions`, `form_templates`, `dashboard_widget_configs`, `dashboard_card_settings` |
+| Security Layer | System-wide | Enforce data-at-rest, data-in-transit, access, verification, and audit controls | `app_rsa_keypairs`, `form_submission`, `phone_otp`, `audit_logs` |
 
 ## 3. Manuscript-Core Feature Coverage
 
@@ -21,18 +21,19 @@ This document now serves as the executive summary of implemented capabilities. I
 5. CSWD dashboard operations for intake records.
 6. Basic role-based access for protected staff workflows.
 
-## 4. Extended Feature Coverage (Post-Prompt Enhancements)
+## 4. Extended Feature Coverage
 
 1. Dynamic form template builder and runtime rendering.
-2. Conditional logic engine and computed-field behavior.
+2. Conditional logic engine and computed-field behavior, including distinct read-only/computed field visuals.
 3. InfoScanner OCR-assisted ID extraction.
 4. OTP-enabled user and staff security workflows with dedicated Edge Functions.
 5. Admin creation, pending approval, and staff lifecycle governance.
-6. Display session broadcasting for station-linked screens.
+6. Display session broadcasting for station-linked screens and customer mirror view rendering.
 7. Audit logging and analytics extensions with submission decryption tracking.
 8. **Batch decryption optimization**: Applicants screen loads 5-10x faster using `decrypt-submission-batch` Edge Function.
 9. **Mobile notification center**: Dedicated NotificationScreen for real-time form template change awareness.
-10. **Enhanced dashboard analytics**: Worker drill-down, client search, configurable chart elevation, and time-frame filtering.
+10. **Enhanced dashboard analytics**: Worker drill-down, client search, configurable chart elevation, time-frame filtering, and streamlined chart types.
+11. **Read-only field styling**: lock icons and distinct colors now identify immutable or computed fields in dynamic forms.
 
 ## 5. Detailed Documentation Map
 

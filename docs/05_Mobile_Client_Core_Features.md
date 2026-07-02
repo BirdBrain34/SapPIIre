@@ -31,21 +31,7 @@ Persistent PII values are mapped into `user_field_values` by `field_id`, support
 
 ### 2.3 Encrypted Data-at-Rest Semantics
 
-For protected rows, user field values are persisted with encryption metadata (`iv`, `encryption_version`).
-
-The v2 security upgrade ensures AES keys are no longer derived locally using client-side secrets. Instead, the mobile app retrieves AES keys by invoking the `derive-field-key` Edge Function, which validates the caller's JWT, derives the key using `FIELD_KEY_HMAC_SECRET_V2` (stored in Edge Secrets), and prevents IDOR by verifying record ownership. The derived key is cached in volatile memory on the device and destroyed upon logout. This provides an at-rest protection layer for sensitive user attributes while eliminating the client-side hardcoded secret attack surface.
-
-**v1 vs v2 Key Derivation Comparison:**
-
-| Aspect | v1 (deprecated) | v2 (current) |
-|--------|-----------------|--------------|
-| Key origin | Client-side hardcoded HMAC secret (`_appHmacSecret`) | Server-side derivation via `derive-field-key` Edge Function |
-| Secret location | Embedded in mobile binary (reverse-engineerable) | Edge Secrets (`FIELD_KEY_HMAC_SECRET_V2`) |
-| Authentication | Implicit via app identity | JWT validation per request |
-| IDOR prevention | None | Edge Function verifies requesting user owns target record |
-| Key caching | N/A | Volatile memory on device, cleared on logout |
-| Web key exposure | Keys sent to browser | Server-side decryption via `resolve-applicant-names`; keys never touch browser |
-| `encryption_version` in DB | `1` | `2` (enforced standard) |
+For protected rows, user field values are persisted with encryption metadata (`iv`, `encryption_version`). The mobile app now retrieves AES keys through the `derive-field-key` Edge Function, which validates the caller's JWT, derives the key using `FIELD_KEY_HMAC_SECRET_V2` in Edge Secrets, and prevents IDOR by verifying record ownership. The derived key is cached only in volatile memory on the device and destroyed upon logout. See [docs/01_QR_Handshake_and_Cryptography.md](docs/01_QR_Handshake_and_Cryptography.md) for the v1-to-v2 comparison.
 
 ### 2.4 InfoScanner OCR Workflow (Extended Feature)
 
@@ -119,7 +105,7 @@ The **NotificationScreen** provides a centralized view of all form template noti
 
 4. **Pull-to-Refresh**: Swipe down to reload notifications from server.
 
-5. **Service Integration**: Powered by `SupabaseService.fetchAppNotifications()` and `markNotificationsRead()` methods, which query `app_notifications` and `app_notification_reads` tables.
+5. **Service Integration**: Powered by `SupabaseService.fetchAppNotifications()` and `markNotificationsRead()` methods, which query `form_template_notifications` and `user_notification_reads` tables.
 
 This enables mobile users to stay informed of form infrastructure changes in near-real-time and provides full notification history with granular detail visibility.
 
@@ -133,6 +119,16 @@ The mobile interface includes:
 4. **Notification Center**: Dedicated NotificationScreen accessible from main navigation, providing centralized view of all form template changes with expandable details.
 
 These functions improve user transparency regarding what has been submitted and what profile state remains active.
+
+### 2.10 Read-Only and Computed Field Visual Cues
+
+Dynamic form rendering now distinguishes immutable or computed values from editable fields:
+
+1. Read-only fields use lock icons and distinct color treatment.
+2. Computed fields receive stronger visual emphasis so users can see which values are system-derived.
+3. Form state logic only applies the strongest visual indicator to computed fields after the latest refinement.
+
+This keeps the mobile intake UI legible while preserving the difference between user-input fields and calculated outputs.
 
 ## 3. Mobile Architecture: Separation of Concerns
 
@@ -203,7 +199,7 @@ The mobile tier contributes the following controls:
 2. Hybrid crypto payload generation for secure transit.
 3. QR handshake participation as the mobile transmitter endpoint.
 
-### 5.2 Added Mobile Enhancements Beyond Initial Prompt
+### 5.2 Added Mobile Enhancements
 
 1. InfoScanner OCR-assisted profile capture.
 2. Extended OTP and password recovery workflows.
@@ -211,7 +207,8 @@ The mobile tier contributes the following controls:
 4. Unsaved changes detection with form-fingerprint tracking and explicit discard workflow.
 5. Real-time template notifications for field and template lifecycle events, enabling mobile users to be aware of form infrastructure changes.
 6. **Mobile Notification Center**: Dedicated NotificationScreen with expandable notification details, read state management, and pull-to-refresh.
-7. Layered architecture with clean separation of concerns: Controllers (business logic), Screens (UI rendering), Widgets (reusable components), Utilities (shared helpers).
+7. Read-only and computed field visualization with lock-style affordances and distinct colors.
+8. Layered architecture with clean separation of concerns: Controllers (business logic), Screens (UI rendering), Widgets (reusable components), Utilities (shared helpers).
 
 ## 6. Primary Data Touchpoints
 
