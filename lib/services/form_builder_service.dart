@@ -101,10 +101,6 @@ class FormBuilderService {
           .inFilter('field_id', fieldIds);
       if (includeValues) {
         await _supabase
-            .from('submission_field_values')
-            .delete()
-            .inFilter('field_id', fieldIds);
-        await _supabase
             .from('user_field_values')
             .delete()
             .inFilter('field_id', fieldIds);

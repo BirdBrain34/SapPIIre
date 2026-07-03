@@ -223,7 +223,6 @@ Mobile workflows interact primarily with:
 1. `user_accounts`
 2. `user_field_values`
 3. `form_submission`
-4. `submission_field_values`
-5. `phone_otp`
+4. `phone_otp`
 
 This table footprint reflects the mobile role as secure data producer and controlled transmitter, not final record adjudicator.

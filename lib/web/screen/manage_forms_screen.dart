@@ -471,11 +471,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       await _embedApplicantName(formData);
       formData['__session_id'] = _currentSessionId;
 
-      // pushToSubmission is removed — plaintext is no longer written to
-      // submission_field_values. The encrypted path via
-      // upsertClientSubmissionSecure is used instead (below).
-
-      // Audit copy (JSONB keeps full submitted data for record)
+      // Idempotent save keyed by session_id — encrypted via Edge Function.
       // Idempotent save keyed by session_id so repeated submits update one row.
       final created = await _submissionService.upsertClientSubmissionSecure(
         sessionId: _currentSessionId,

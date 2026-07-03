@@ -69,9 +69,7 @@ V2 supports conditional branching and computed formulas, including table aggrega
 The dynamic metadata domain is coupled to storage layers through stable foreign keys:
 
 1. `user_field_values.field_id` -> `form_fields.field_id`
-2. `submission_field_values.field_id` -> `form_fields.field_id`
-3. `submission_field_values.submission_id` -> `form_submission.id`
-4. `client_submissions.template_id` -> `form_templates.template_id`
+2. `client_submissions.template_id` -> `form_templates.template_id`
 
 This coupling ensures that template-driven UI evolution remains compatible with both user-owned reusable values and session-specific submissions.
 

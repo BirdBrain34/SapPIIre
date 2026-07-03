@@ -6,7 +6,7 @@ The Supabase schema separates data into distinct security domains to reduce expo
 
 1. Cryptographic key registry domain (`app_rsa_keypairs`).
 2. User-owned PII value domain (`user_field_values`).
-3. Live session transport domain (`form_submission`, `submission_field_values`, `display_sessions`).
+3. Live session transport domain (`form_submission`, `display_sessions`).
 4. Finalized applicant archive domain (`client_submissions`).
 5. Identity and access governance domain (`staff_accounts`, `staff_profiles`, OTP tables, `audit_logs`).
 
@@ -101,9 +101,8 @@ Mobile form values are transformed into field-level records keyed by `field_id` 
 
 When transmission is initiated:
 
-1. Normalized rows are written to `submission_field_values` (session-level per-field trace).
-2. Encrypted envelope data is written to `form_submission` transport columns.
-3. Session status transitions to `scanned` for dashboard pickup.
+1. Encrypted envelope data is written to `form_submission` transport columns.
+2. Session status transitions to `scanned` for dashboard pickup.
 
 ### 3.4 Zero-Knowledge Staging and Finalization
 
@@ -125,9 +124,8 @@ The schema supports chain-of-custody reconstruction:
 
 1. `user_accounts.user_id` -> `user_field_values.user_id` (user PII ownership).
 2. `form_submission.user_id` (user-to-session linkage).
-3. `submission_field_values.submission_id` -> `form_submission.id` (session field evidence).
-4. `client_submissions.session_id` (final-record linkage to scanned session).
-5. `audit_logs` records actor and action context for privileged operations.
+3. `client_submissions.session_id` (final-record linkage to scanned session).
+4. `audit_logs` records actor and action context for privileged operations.
 
 ## 5. Core Feature Conformance
 
@@ -140,7 +138,7 @@ The schema supports manuscript-required features:
 
 ## 6. Hardening Notes from Current Schema Context
 
-1. Add or verify unique constraints for (`user_id`, `field_id`) in `user_field_values` and (`submission_id`, `field_id`) in `submission_field_values` to align with deterministic upsert expectations.
+1. Add or verify unique constraints for (`user_id`, `field_id`) in `user_field_values` to align with deterministic upsert expectations.
 2. Maintain strict RLS policies to confine decrypted payload visibility.
 3. Monitor `encryption_version` distribution and missing-IV anomalies.
 4. Keep `app_rsa_keypairs` activation and rotation governance auditable through `audit_logs`.
