@@ -110,13 +110,19 @@ Deno.serve(async (req: Request) => {
     // --- Step 3: Fetch the encrypted envelope ---
     const { data: row, error: fetchError } = await supabase
       .from('form_submission')
-      .select('id, encrypted_payload, payload_iv, encrypted_aes_key, transmission_version, status')
+      .select('id, encrypted_payload, payload_iv, encrypted_aes_key, transmission_version, status, expires_at')
       .eq('id', sessionId)
       .maybeSingle();
 
     if (fetchError || !row) {
       console.log(`[serve-submission-for-review] Session not found: sessionId=${sessionId}`);
       return json({ success: false, reason: 'session_not_found' }, 404);
+    }
+
+    // --- Step 3a: Expiry check ---
+    if (row.expires_at && new Date(row.expires_at) < new Date()) {
+      console.log(`[serve-submission-for-review] Session expired: sessionId=${sessionId} expires_at=${row.expires_at}`);
+      return json({ success: false, reason: 'session_expired' }, 410);
     }
 
     if (row.transmission_version !== 1) {

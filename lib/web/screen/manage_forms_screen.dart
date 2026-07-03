@@ -74,6 +74,12 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   bool _isFinalizing = false;
   bool _isSubmitting = false;
   String _lastSavedReference = '';
+
+  // Session expiry countdown
+  DateTime? _sessionExpiresAt;
+  Timer? _countdownTimer;
+  Duration _timeRemaining = Duration.zero;
+  bool _sessionExpired = false;
   
   /// Derive a stable station ID from the worker's cswd_id.
   String get _stationId => 'desk_${widget.cswd_id}';
@@ -186,6 +192,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       }
 
       // Reset form state
+      _stopCountdown();
       _formCtrl?.clearAll();
       _formSubscription?.cancel();
 
@@ -198,7 +205,16 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         _sessionStarted = true;
         _isStartingSession = false;
         _lastSavedReference = '';
+        _sessionExpired = false;
       });
+
+      // Fetch and start the expiry countdown
+      final expiresAt = await _submissionService.fetchSessionExpiresAt(
+        _currentSessionId,
+      );
+      if (expiresAt != null && mounted) {
+        _startCountdown(expiresAt);
+      }
 
       await AuditLogService().log(
         actionType: kAuditSessionStarted,
@@ -229,6 +245,52 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       debugPrint('[ManageFormsScreen/_createNewSession] Error: $e');
       _setStatePreserveScroll(() => _isStartingSession = false);
     }
+  }
+
+  void _startCountdown(DateTime expiresAt) {
+    _countdownTimer?.cancel();
+    _setStatePreserveScroll(() {
+      _sessionExpiresAt = expiresAt;
+      _timeRemaining = expiresAt.difference(DateTime.now());
+      _sessionExpired = _timeRemaining.isNegative;
+    });
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) { timer.cancel(); return; }
+      final remaining = expiresAt.difference(DateTime.now());
+      if (remaining.isNegative || remaining == Duration.zero) {
+        timer.cancel();
+        _setStatePreserveScroll(() {
+          _timeRemaining = Duration.zero;
+          _sessionExpired = true;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('QR session expired. Start a new session for the next client.'),
+              backgroundColor: Colors.orange,
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 6),
+            ),
+          );
+        }
+      } else {
+        _setStatePreserveScroll(() => _timeRemaining = remaining);
+      }
+    });
+  }
+
+  void _stopCountdown() {
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
+    _sessionExpiresAt = null;
+    _timeRemaining = Duration.zero;
+    _sessionExpired = false;
+  }
+
+  String _formatCountdown(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
   }
 
   // Listen for mobile QR data via Supabase Realtime
@@ -315,36 +377,50 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   Future<void> _hydrateDecrypted() async {
     if (_manageFormsController.isDecrypting) return;
 
-    final decrypted = await _manageFormsController.decryptStagingSubmission(
-      sessionId: _currentSessionId,
-      staffId: widget.cswd_id,
-    );
+    try {
+      final decrypted = await _manageFormsController.decryptStagingSubmission(
+        sessionId: _currentSessionId,
+        staffId: widget.cswd_id,
+      );
 
-    if (decrypted == null || decrypted.isEmpty) {
-      debugPrint('[ManageFormsScreen/_hydrateDecrypted] Decryption returned null or empty');
-      return;
+      if (decrypted == null || decrypted.isEmpty) {
+        debugPrint('[ManageFormsScreen/_hydrateDecrypted] Decryption returned null or empty');
+        return;
+      }
+
+      debugPrint(
+        '[ManageFormsScreen/_hydrateDecrypted] Decrypted keys: ${decrypted.keys.toList()}',
+      );
+
+      if (!mounted) return;
+      final currentFormOffset = _formScrollController.hasClients
+          ? _formScrollController.offset
+          : 0.0;
+
+      _formCtrl?.loadFromJson(decrypted);
+      _setStatePreserveScroll(() {});
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_formScrollController.hasClients) return;
+        final max = _formScrollController.position.maxScrollExtent;
+        final target = currentFormOffset.clamp(0.0, max);
+        _formScrollController.jumpTo(target);
+      });
+      debugPrint(
+        '[ManageFormsScreen/_hydrateDecrypted] Form updated successfully Count: ${decrypted.length}',
+      );
+    } catch (e) {
+      if (e.toString().contains('session_expired') && mounted) {
+        _setStatePreserveScroll(() => _sessionExpired = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('QR session expired. Please start a new session.'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 6),
+          ),
+        );
+      }
     }
-
-    debugPrint(
-      '[ManageFormsScreen/_hydrateDecrypted] Decrypted keys: ${decrypted.keys.toList()}',
-    );
-
-    if (!mounted) return;
-    final currentFormOffset = _formScrollController.hasClients
-        ? _formScrollController.offset
-        : 0.0;
-
-    _formCtrl?.loadFromJson(decrypted);
-    _setStatePreserveScroll(() {});
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_formScrollController.hasClients) return;
-      final max = _formScrollController.position.maxScrollExtent;
-      final target = currentFormOffset.clamp(0.0, max);
-      _formScrollController.jumpTo(target);
-    });
-    debugPrint(
-      '[ManageFormsScreen/_hydrateDecrypted] Form updated successfully Count: ${decrypted.length}',
-    );
   }
 
   Future<void> _hydrateFromSessionSnapshot(String sessionId) async {
@@ -523,6 +599,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       }
 
       // Reset for next client
+      _stopCountdown();
       _setStatePreserveScroll(() {
         _sessionStarted = false;
         _currentSessionId = 'WAITING-FOR-SESSION';
@@ -626,7 +703,9 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         activePath: 'Forms',
         pageTitle: 'Forms Management',
         pageSubtitle: _sessionStarted
-            ? 'Session active client can scan the QR code'
+            ? (_sessionExpired
+                ? 'Session expired — start a new session'
+                : 'Session active · client can scan the QR code')
             : 'Start a session to generate a QR code',
         role: widget.role,
         cswd_id: widget.cswd_id,
@@ -876,24 +955,32 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE9F9F1),
+                    color: _sessionExpired
+                        ? Colors.red.withValues(alpha: 0.15)
+                        : const Color(0xFFE9F9F1),
                     borderRadius: BorderRadius.circular(999),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        Icons.fiber_manual_record,
+                        _sessionExpired
+                            ? Icons.timer_off
+                            : Icons.fiber_manual_record,
                         size: 10,
-                        color: Color(0xFF1B9E63),
+                        color: _sessionExpired
+                            ? Colors.red
+                            : const Color(0xFF1B9E63),
                       ),
-                      SizedBox(width: 6),
+                      const SizedBox(width: 6),
                       Text(
-                        'Session Live',
+                        _sessionExpired ? 'Session Expired' : 'Session Live',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF156D45),
+                          color: _sessionExpired
+                              ? Colors.red
+                              : const Color(0xFF156D45),
                         ),
                       ),
                     ],
@@ -985,23 +1072,82 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                         color: const Color(0xFFF4F7FE),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: SingleChildScrollView(
-                        key: const PageStorageKey<String>(
-                          'manage_forms_form_scroll',
-                        ),
-                        controller: _formScrollController,
-                        padding: const EdgeInsets.all(16),
-                        child: DynamicFormRenderer(
-                          template: _selectedTemplate!,
-                          controller: _formCtrl!,
-                          mode: 'web',
-                          isReadOnly: kIsWeb,
-                          showCheckboxes: false,
-                        ),
-                      ),
+                      child: _sessionExpired && !_hasMeaningfulFormData(_selectedTemplate!, _formCtrl!.toJson())
+                          ? _buildExpiredOverlay()
+                          : SingleChildScrollView(
+                              key: const PageStorageKey<String>(
+                                'manage_forms_form_scroll',
+                              ),
+                              controller: _formScrollController,
+                              padding: const EdgeInsets.all(16),
+                              child: DynamicFormRenderer(
+                                template: _selectedTemplate!,
+                                controller: _formCtrl!,
+                                mode: 'web',
+                                isReadOnly: kIsWeb,
+                                showCheckboxes: false,
+                              ),
+                            ),
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExpiredOverlay() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.red.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.timer_off_rounded,
+              size: 56,
+              color: Colors.red,
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'QR Session Expired',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF1A1A2E),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'This session has expired and the QR code is no longer valid.\nThe client will need to scan a new QR code.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.shade600,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 28),
+          ElevatedButton.icon(
+            onPressed: _createNewSession,
+            icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+            label: const Text(
+              'Start New Session',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryBlue,
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
           ),
@@ -1080,7 +1226,56 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                     'Session: ${_currentSessionId.split('-').first}...',
                     style: const TextStyle(color: Colors.white70, fontSize: 11),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
+                  // Expiry countdown
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _sessionExpired
+                          ? Colors.red.withValues(alpha: 0.2)
+                          : _timeRemaining.inMinutes < 2
+                              ? Colors.orange.withValues(alpha: 0.2)
+                              : Colors.white.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: _sessionExpired
+                            ? Colors.red.withValues(alpha: 0.5)
+                            : _timeRemaining.inMinutes < 2
+                                ? Colors.orange.withValues(alpha: 0.5)
+                                : Colors.white.withValues(alpha: 0.2),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _sessionExpired ? Icons.timer_off : Icons.timer,
+                          size: 13,
+                          color: _sessionExpired
+                              ? Colors.red
+                              : _timeRemaining.inMinutes < 2
+                                  ? Colors.orange
+                                  : Colors.white70,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          _sessionExpired
+                              ? 'Expired'
+                              : _formatCountdown(_timeRemaining),
+                          style: TextStyle(
+                            color: _sessionExpired
+                                ? Colors.red
+                                : _timeRemaining.inMinutes < 2
+                                    ? Colors.orange
+                                    : Colors.white70,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(10),
@@ -1213,6 +1408,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   void dispose() {
     _formSubscription?.cancel();
     _pollTimer?.cancel();
+    _countdownTimer?.cancel();
     _formCtrl?.dispose();
     _formScrollController.dispose();
     _qrSidebarScrollController.dispose();

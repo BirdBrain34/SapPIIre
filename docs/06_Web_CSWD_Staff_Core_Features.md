@@ -22,6 +22,7 @@ Role and state controls are anchored in `staff_accounts` and profile enrichment 
 The staff governance pipeline includes:
 
 1. Pending account registration with `requested_role` intake.
+2. Staff approval and activation/deactivation in Manage Staff, with role display handled as a fixed badge rather than an editable dropdown.
 2. Approval and rejection workflows for elevated access.
 3. Superadmin-level direct creation of admin accounts.
 4. Account activation, deactivation, reactivation, and role-update controls.
@@ -42,6 +43,8 @@ The Manage Forms workflow orchestrates secure intake sessions:
 
 **Form Template Mismatch Prevention:** The QR's embedded `templateId` enables the mobile client to validate that the client's selected form matches the staff's active session template before any data is transmitted. If a mismatch is detected, transmission is blocked with a user-facing warning, and the camera is re-activated for re-scanning. Legacy single-UUID QR codes continue to work for backward compatibility.
 
+**Session Expiry Handling:** The backend now returns HTTP 410 with `reason = 'session_expired'` when `expires_at` has elapsed, so staff workflows and diagnostics can distinguish stale sessions from generic decryption failures.
+
 This is the operational heart of CSWD intake execution.
 
 ### 2.4 Secured Autofill Engine Consumption
@@ -49,7 +52,7 @@ This is the operational heart of CSWD intake execution.
 The web layer consumes backend-decrypted payload data through the Zero-Knowledge Staging architecture:
 
 1. When a session with `status='scanned'` and empty `form_data` is detected, the dashboard controller (`ManageFormsController`) invokes on-demand decryption.
-2. The `serve-submission-for-review` Edge Function unwraps the RSA-encrypted AES key, decrypts the payload in-memory, and returns plaintext JSON in the HTTP response.
+2. The `serve-submission-for-review` Edge Function unwraps the RSA-encrypted AES key, decrypts the payload in-memory, and returns plaintext JSON in the HTTP response, or returns HTTP 410 `session_expired` when the session lifetime has elapsed.
 3. Staff perform quality review and final record commitment into `client_submissions`.
 
 Critical security guarantee: Plaintext is never written back to `form_submission`. The encrypted envelope remains the authoritative storage form until finalization.
@@ -171,7 +174,7 @@ Controllers (`lib/web/controllers/`) encapsulate application logic and state coo
 - **`FormBuilderScreenController`**: Complete form builder state management (template loading, field/section/condition editing, publication workflow, unsaved changes tracking).
 - **`DashboardController`**: Analytics data loading, chart generation, client search, workload distribution coordination.
 - **`ApplicantsController`**: Finalized submission retrieval, record editing, applicant history navigation.
-- **`ManageStaffController`**: Staff account lifecycle (pending approvals, role updates, activation/deactivation).
+- **`ManageStaffController`**: Staff account lifecycle (pending approvals, activation/deactivation, and role display only in Manage Staff).
 
 Controllers extend `ChangeNotifier` for reactive state management and coordinate service interactions.
 

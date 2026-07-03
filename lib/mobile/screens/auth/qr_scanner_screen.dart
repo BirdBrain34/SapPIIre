@@ -352,9 +352,15 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                     Icon(
                       _controller.transmitSuccess
                           ? Icons.check_circle_outline
-                          : Icons.error_outline,
+                          : _controller.sessionExpired
+                              ? Icons.timer_off_outlined
+                              : Icons.error_outline,
                       size: 80,
-                      color: _controller.transmitSuccess ? Colors.green : Colors.red,
+                      color: _controller.transmitSuccess
+                          ? Colors.green
+                          : _controller.sessionExpired
+                              ? Colors.orange
+                              : Colors.red,
                     )
                   else
                     const SizedBox(
@@ -366,9 +372,11 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                   const SizedBox(height: 28),
                   Text(
                     _controller.transmitDone
-                        ? (_controller.transmitSuccess
-                            ? 'Transmission Complete!'
-                            : 'Transmission Failed')
+                      ? (_controller.transmitSuccess
+                        ? 'Transmission Complete!'
+                        : _controller.sessionExpired
+                          ? 'QR Session Expired'
+                          : 'Transmission Failed')
                         : 'Transmitting...',
                     style: const TextStyle(
                         color: Colors.white,
@@ -408,7 +416,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                           ),
                         ),
                       ),
-                                            if (!_controller.isFinalized) ...[
+                        if (!_controller.isFinalized) ...[
                         const SizedBox(height: 12),
                         Container(
                           width: double.infinity,
@@ -431,6 +439,25 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                           ),
                         ),
                       ],
+                    ] else if (_controller.sessionExpired) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: AppColors.primaryBlue,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: const Text(
+                            'Go Back',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                        ),
+                      ),
                     ] else ...[
                       SizedBox(
                         width: double.infinity,

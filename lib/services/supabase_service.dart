@@ -1116,8 +1116,8 @@ class SupabaseService {
   }
 
   /// Send the selected fields to the matching web session.
-  /// The user chooses which fields to transmit via checkboxes.
-  Future<bool> sendDataToWebSession(
+  /// Returns 'ok', 'expired', or 'error'.
+  Future<String> sendDataToWebSession(
     String sessionId,
     Map<String, dynamic> data, {
     String? userId,
@@ -1133,16 +1133,32 @@ class SupabaseService {
       }
 
       if (publicKey.trim().isEmpty) {
-        // Fallback: transmit unencrypted (transmission_version = 0)
-        // Note: form_data column was removed — plaintext is never written to DB
         debugPrint('[SupabaseService/sendDataToWebSession] Action: No RSA key, falling back to unencrypted');
-        return false;
+        return 'error';
       }
 
       final envelope = await HybridCryptoService.encryptForTransmission(
         data,
         publicKey,
       );
+
+      // Check expiry before writing — avoids a wasted crypto round-trip.
+      final sessionRow = await _supabase
+          .from('form_submission')
+          .select('expires_at, status')
+          .eq('id', sessionId)
+          .maybeSingle();
+
+      if (sessionRow != null) {
+        final expiresRaw = sessionRow['expires_at'];
+        if (expiresRaw != null) {
+          final expiresAt = DateTime.tryParse(expiresRaw.toString())?.toLocal();
+          if (expiresAt != null && DateTime.now().isAfter(expiresAt)) {
+            debugPrint('[SupabaseService/sendDataToWebSession] Session expired: $sessionId');
+            return 'expired';
+          }
+        }
+      }
 
       final response = await _supabase
           .from('form_submission')
@@ -1161,7 +1177,6 @@ class SupabaseService {
           .maybeSingle();
 
       if (response == null) {
-        // Session may no longer be active, so try without the status filter.
         debugPrint('[SupabaseService/sendDataToWebSession] Action: Status filter returned null, retrying without filter');
         final retryResponse = await _supabase
             .from('form_submission')
@@ -1178,13 +1193,13 @@ class SupabaseService {
             .select()
             .maybeSingle();
 
-        if (retryResponse == null) return false;
+        if (retryResponse == null) return 'error';
       }
 
-      return true;
+      return 'ok';
     } catch (e) {
       debugPrint('[SupabaseService/sendDataToWebSession] Error for session $sessionId: $e');
-      return false;
+      return 'error';
     }
   }
 

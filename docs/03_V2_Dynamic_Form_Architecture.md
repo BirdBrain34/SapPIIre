@@ -92,7 +92,7 @@ This coupling ensures that template-driven UI evolution remains compatible with 
 4. Read-only and computed field visual differentiation during runtime rendering.
 5. OCR information scanner using camera + ML Kit text recognition.
 6. OTP verification (`phone_otp`, email OTP and staff reset flows).
-7. Advanced staff governance (`requested_role`, `account_status`, activation lifecycle).
+7. Advanced staff governance (`requested_role`, `account_status`, activation lifecycle) with approval and activation/deactivation controls, not inline role editing in Manage Staff.
 8. Display session synchronization (`display_sessions`) for station-linked monitors.
 9. Audit observability (`audit_logs`) for sensitive operational events.
 

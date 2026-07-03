@@ -125,6 +125,7 @@ Important auth setting:
 3. From mobile, send selected fields to web session
 4. Confirm row in `form_submission` moves to `status = scanned` with `transmission_version = 1`
 5. Staff invokes `serve-submission-for-review` Edge Function to decrypt in-memory (plaintext never written to database)
+6. If the session has expired, confirm the function returns HTTP 410 with `reason = 'session_expired'` and the mobile client shows the expired-session state instead of a generic failure
 
 ## 8) Verification queries (copy-paste)
 
@@ -197,7 +198,7 @@ from form_submission fs
 join target t on fs.id = t.submission_id;
 ```
 
-Note: Decryption happens in-memory via `serve-submission-for-review` Edge Function. To verify decryption, invoke the function directly with `sessionId` and `staffId` parameters.
+Note: Decryption happens in-memory via `serve-submission-for-review` Edge Function. To verify decryption, invoke the function directly with `sessionId` and `staffId` parameters. Stale sessions should return HTTP 410 `session_expired`.
 
 ### 8.5 Completion rate for encrypted transmissions
 ```sql
@@ -228,6 +229,9 @@ A healthy run should show:
 
 - `rsa_decrypt_failed`:
   - Public/private key mismatch
+
+- `session_expired`:
+  - The session passed `expires_at`; generate a new QR/session and retry
   - Re-upload matching pair and re-test
 
 - `aes_gcm_decrypt_failed`:

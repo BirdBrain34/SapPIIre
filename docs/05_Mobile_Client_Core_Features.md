@@ -60,6 +60,8 @@ The mobile app performs session-targeted data transmission by:
 5. Updating `form_submission` with transport metadata and scanned status.
 6. **Zero-Knowledge Staging:** Encrypted envelope persists in database; decryption occurs in-memory on staff request via `serve-submission-for-review` Edge Function, ensuring no plaintext persistence in `form_submission`.
 
+If the session is already expired, the mobile QR controller now treats the transmission result as `expired`, shows an expired-session UI state, and prompts the user to scan again instead of presenting a generic failure.
+
 This is the client-side entry point of the hybrid cryptosystem handshake, now including a pre-transmission template guard to prevent cross-template data corruption.
 
 ### 2.6 Unsaved Changes Detection and Discard Workflow
@@ -151,7 +153,7 @@ Controllers (`lib/mobile/controllers/`) encapsulate application logic and state:
 - **`ChangePasswordController`**: Password update flows, validation, OTP-assisted reset.
 - **`InfoScannerController`**: OCR coordination, ID field extraction and mapping.
 - **`ProfileController`**: User profile data retrieval and editing.
-- **`QRScannerController`**: Session QR scanning, template validation, and encrypted payload transmission.
+- **`QRScannerController`**: Session QR scanning, template validation, and encrypted payload transmission with explicit expired-session handling.
 
 Controllers extend `ChangeNotifier` for reactive state management and coordinate service interactions.
 

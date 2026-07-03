@@ -36,7 +36,7 @@ The application derives protection keys through the `derive-field-key` Edge Func
 `form_submission` is the system's QR handshake anchor and enforces lifecycle constraints:
 
 1. `status` domain is constrained to `active`, `scanned`, `completed`, `closed`, `expired`.
-2. `expires_at` defaults to 30-minute session validity.
+2. `expires_at` defaults to 10-minute session validity.
 3. Hybrid transport columns include `encrypted_payload`, `payload_iv`, `encrypted_aes_key`, and `transmission_version`.
 4. Staff linkage is modeled through optional `user_id` foreign key (not enforced in schema).
 5. **Zero-Knowledge Staging:** Decryption occurs strictly in-memory via the `serve-submission-for-review` Edge Function during the request lifecycle, delivering plaintext ephemerally to the dashboard without any database persistence.
@@ -107,6 +107,8 @@ When transmission is initiated:
 ### 3.4 Zero-Knowledge Staging and Finalization
 
 **In-Memory Decryption:** When staff open a session with `status='scanned'` and `transmission_version=1`, the `serve-submission-for-review` Edge Function decrypts the encrypted envelope on-demand and returns plaintext JSON ephemerally in the HTTP response. Staff review the decrypted payload directly in the dashboard UI.
+
+If the session has passed `expires_at`, the same function returns HTTP 410 with `reason = 'session_expired'`, which the client can surface as an expired-session state instead of retrying the decryption path.
 
 **Server-Side Finalization:** Upon review completion, staff finalize the record via the `encrypt-and-save-submission` Edge Function, which performs server-side AES-256-GCM encryption before persisting to `client_submissions`.
 

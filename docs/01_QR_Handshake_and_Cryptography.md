@@ -66,7 +66,7 @@ This keeps the comparison in one security-focused location while the rest of the
 The web tier creates an active session row in `form_submission` with default lifecycle values:
 
 1. `status = active`
-2. `expires_at = now() + 30 minutes`
+2. `expires_at = now() + 10 minutes`
 3. `transmission_version = 0` (default)
 
 ### 3.2 QR Content Structure
@@ -144,6 +144,8 @@ The system implements "Zero-Knowledge Staging" where decryption occurs strictly 
 9. Return plaintext JSON ephemerally in HTTP response body.
 10. Write audit log entry for decryption event.
 
+If the session has expired, the function returns HTTP 410 with `reason = 'session_expired'` instead of plaintext. The mobile client now treats that as a distinct expired-session outcome rather than a generic transmission failure.
+
 Critical security guarantee: Plaintext is never written back to the database. The encrypted envelope remains the authoritative storage form.
 
 ### 3.8 Web Autofill Activation
@@ -180,7 +182,7 @@ Staff-session governance is handled through the authenticated staff account cont
 1. Confidentiality in transit: only the backend with private key access can decrypt the payload.
 2. Integrity-aware payload recovery: AES-GCM decryption failure blocks payload acceptance on modified ciphertext.
 3. Bounded session lifetime: default `expires_at` reduces exposure window for abandoned active sessions.
-4. Failure observability: reason-coded function responses (`missing_env_vars`, `rsa_decrypt_failed`, `aes_gcm_decrypt_failed`, and others) support diagnostic forensics.
+4. Failure observability: reason-coded function responses (`missing_env_vars`, `session_expired`, `rsa_decrypt_failed`, `aes_gcm_decrypt_failed`, and others) support diagnostic forensics.
 
 ## 7. Core Feature Mapping
 
