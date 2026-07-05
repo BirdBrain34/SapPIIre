@@ -69,6 +69,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   Timer? _pollTimer;
 
   bool _sessionStarted = false;
+
+  // Prevent repeated re-hydration/re-animation of scanned PII for the same
+  // QR session when periodic timer/polling triggers rebuilds/listeners.
+  String? _hydratedSessionId;
   bool _isStartingSession = false;
   bool _isLoading = true;
   bool _isFinalizing = false;
@@ -80,6 +84,12 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   Timer? _countdownTimer;
   Duration _timeRemaining = Duration.zero;
   bool _sessionExpired = false;
+
+  /// Only used to rebuild the countdown widget without rebuilding the form.
+  final ValueNotifier<Duration> _timeRemainingNotifier =
+      ValueNotifier<Duration>(Duration.zero);
+  final ValueNotifier<bool> _sessionExpiredNotifier =
+      ValueNotifier<bool>(false);
   
   /// Derive a stable station ID from the worker's cswd_id.
   String get _stationId => 'desk_${widget.cswd_id}';
@@ -196,6 +206,9 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       _formCtrl?.clearAll();
       _formSubscription?.cancel();
 
+      // Ensure next QR scan can hydrate once.
+      _hydratedSessionId = null;
+
       final response = await _submissionService.createSession(
         _selectedTemplate!.formName,
       );
@@ -249,32 +262,44 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
 
   void _startCountdown(DateTime expiresAt) {
     _countdownTimer?.cancel();
-    _setStatePreserveScroll(() {
-      _sessionExpiresAt = expiresAt;
-      _timeRemaining = expiresAt.difference(DateTime.now());
-      _sessionExpired = _timeRemaining.isNegative;
-    });
+
+    _sessionExpiresAt = expiresAt;
+    _timeRemaining = expiresAt.difference(DateTime.now());
+    _sessionExpired = _timeRemaining.isNegative;
+
+    _timeRemainingNotifier.value = _timeRemaining;
+    _sessionExpiredNotifier.value = _sessionExpired;
+
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) { timer.cancel(); return; }
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
       final remaining = expiresAt.difference(DateTime.now());
+
       if (remaining.isNegative || remaining == Duration.zero) {
         timer.cancel();
-        _setStatePreserveScroll(() {
-          _timeRemaining = Duration.zero;
-          _sessionExpired = true;
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('QR session expired. Start a new session for the next client.'),
-              backgroundColor: Colors.orange,
-              behavior: SnackBarBehavior.floating,
-              duration: Duration(seconds: 6),
+        _timeRemaining = Duration.zero;
+        _sessionExpired = true;
+
+        _timeRemainingNotifier.value = _timeRemaining;
+        _sessionExpiredNotifier.value = _sessionExpired;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'QR session expired. Start a new session for the next client.',
             ),
-          );
-        }
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 6),
+          ),
+        );
       } else {
-        _setStatePreserveScroll(() => _timeRemaining = remaining);
+        _timeRemaining = remaining;
+        _timeRemainingNotifier.value = _timeRemaining;
+        // keep sessionExpiredNotifier as-is (false)
       }
     });
   }
@@ -285,6 +310,12 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     _sessionExpiresAt = null;
     _timeRemaining = Duration.zero;
     _sessionExpired = false;
+
+    _timeRemainingNotifier.value = Duration.zero;
+    _sessionExpiredNotifier.value = false;
+
+    // Reset hydration guard for the next QR session.
+    _hydratedSessionId = null;
   }
 
   String _formatCountdown(Duration d) {
@@ -377,6 +408,14 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   Future<void> _hydrateDecrypted() async {
     if (_manageFormsController.isDecrypting) return;
 
+    // Idempotency: only hydrate the scanned payload once per session.
+    if (_hydratedSessionId == _currentSessionId) {
+      debugPrint(
+        '[ManageFormsScreen/_hydrateDecrypted] Skipping re-hydration; already hydrated for session=$_currentSessionId',
+      );
+      return;
+    }
+
     try {
       final decrypted = await _manageFormsController.decryptStagingSubmission(
         sessionId: _currentSessionId,
@@ -399,6 +438,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
 
       _formCtrl?.loadFromJson(decrypted);
       _setStatePreserveScroll(() {});
+
+      // Mark hydrated only after successful loadFromJson.
+      _hydratedSessionId = _currentSessionId;
+
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_formScrollController.hasClients) return;
         final max = _formScrollController.position.maxScrollExtent;
@@ -607,6 +650,9 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         _isSubmitting = false;
         _lastSavedReference = intakeReference;
       });
+
+      // Ensure next QR scan (new session) re-hydrates.
+      _hydratedSessionId = null;
       _formSubscription?.cancel();
 
       // Return the customer display to standby after finalizing.
@@ -1166,239 +1212,255 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           return SingleChildScrollView(
             controller: _qrSidebarScrollController,
             padding: const EdgeInsets.only(right: 6),
-              child: Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.2),
                     ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.2),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.qr_code_scanner_rounded,
+                        color: Colors.white,
+                        size: 14,
                       ),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.qr_code_scanner_rounded,
+                      SizedBox(width: 6),
+                      Text(
+                        'Live Form QR',
+                        style: TextStyle(
                           color: Colors.white,
-                          size: 14,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
                         ),
-                        SizedBox(width: 6),
-                        Text(
-                          'Live Form QR',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Scan with SapPIIre Mobile',
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                  const SizedBox(height: 14),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: QrImageView(
-                      data: jsonEncode({
-                        'sessionId': _currentSessionId,
-                        'templateId': _selectedTemplate!.templateId,
-                      }),
-                      version: QrVersions.auto,
-                      size: 184.0,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Session: ${_currentSessionId.split('-').first}...',
-                    style: const TextStyle(color: Colors.white70, fontSize: 11),
-                  ),
-                  const SizedBox(height: 8),
-                  // Expiry countdown
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: _sessionExpired
-                          ? Colors.red.withValues(alpha: 0.2)
-                          : _timeRemaining.inMinutes < 2
-                              ? Colors.orange.withValues(alpha: 0.2)
-                              : Colors.white.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: _sessionExpired
-                            ? Colors.red.withValues(alpha: 0.5)
-                            : _timeRemaining.inMinutes < 2
-                                ? Colors.orange.withValues(alpha: 0.5)
-                                : Colors.white.withValues(alpha: 0.2),
                       ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _sessionExpired ? Icons.timer_off : Icons.timer,
-                          size: 13,
-                          color: _sessionExpired
-                              ? Colors.red
-                              : _timeRemaining.inMinutes < 2
-                                  ? Colors.orange
-                                  : Colors.white70,
-                        ),
-                        const SizedBox(width: 5),
-                        Text(
-                          _sessionExpired
-                              ? 'Expired'
-                              : _formatCountdown(_timeRemaining),
-                          style: TextStyle(
-                            color: _sessionExpired
-                                ? Colors.red
-                                : _timeRemaining.inMinutes < 2
-                                    ? Colors.orange
-                                    : Colors.white70,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            fontFamily: 'monospace',
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Scan with SapPIIre Mobile',
+                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: QrImageView(
+                    data: jsonEncode({
+                      'sessionId': _currentSessionId,
+                      'templateId': _selectedTemplate!.templateId,
+                    }),
+                    version: QrVersions.auto,
+                    size: 184.0,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Session: ${_currentSessionId.split('-').first}...',
+                  style: const TextStyle(color: Colors.white70, fontSize: 11),
+                ),
+                const SizedBox(height: 8),
+
+                // Expiry countdown (NOT rebuild the whole screen; only this widget)
+                ValueListenableBuilder<bool>(
+                  valueListenable: _sessionExpiredNotifier,
+                  builder: (context, expired, _) {
+                    return ValueListenableBuilder<Duration>(
+                      valueListenable: _timeRemainingNotifier,
+                      builder: (context, remaining, __) {
+                        final isLow = remaining.inMinutes < 2;
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
                           ),
-                        ),
-                      ],
+                          decoration: BoxDecoration(
+                            color: expired
+                                ? Colors.red.withValues(alpha: 0.2)
+                                : isLow
+                                    ? Colors.orange.withValues(alpha: 0.2)
+                                    : Colors.white.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: expired
+                                  ? Colors.red.withValues(alpha: 0.5)
+                                  : isLow
+                                      ? Colors.orange.withValues(alpha: 0.5)
+                                      : Colors.white.withValues(alpha: 0.2),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                expired ? Icons.timer_off : Icons.timer,
+                                size: 13,
+                                color: expired
+                                    ? Colors.red
+                                    : isLow
+                                        ? Colors.orange
+                                        : Colors.white70,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                expired ? 'Expired' : _formatCountdown(remaining),
+                                style: TextStyle(
+                                  color: expired
+                                      ? Colors.red
+                                      : isLow
+                                          ? Colors.orange
+                                          : Colors.white70,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  fontFamily: 'monospace',
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: Colors.amber.withValues(alpha: 0.4),
                     ),
                   ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Temporary Reference',
+                        style: TextStyle(
+                          color: Colors.amber,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        tempReference,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontFamily: 'monospace',
+                          fontWeight: FontWeight.w700,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 3),
+                      const Text(
+                        'Final value is generated when saved',
+                        style: TextStyle(color: Colors.white60, fontSize: 10),
+                      ),
+                    ],
+                  ),
+                ),
+
+                if (_lastSavedReference.isNotEmpty) ...[
+                  const SizedBox(height: 10),
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Colors.amber.withValues(alpha: 0.12),
+                      color: Colors.green.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: Colors.amber.withValues(alpha: 0.4),
+                        color: Colors.green.withValues(alpha: 0.45),
                       ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Temporary Reference',
+                          'Last Saved Reference',
                           style: TextStyle(
-                            color: Colors.amber,
+                            color: Colors.greenAccent,
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          tempReference,
+                          _lastSavedReference,
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 13,
                             fontFamily: 'monospace',
                             fontWeight: FontWeight.w700,
                           ),
-                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 3),
-                        const Text(
-                          'Final value is generated when saved',
-                          style: TextStyle(color: Colors.white60, fontSize: 10),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (_lastSavedReference.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: Colors.green.withValues(alpha: 0.45),
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Last Saved Reference',
-                            style: TextStyle(
-                              color: Colors.greenAccent,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _lastSavedReference,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontFamily: 'monospace',
-                              fontWeight: FontWeight.w700,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 14),
-
-                  // Instructions
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'How it works:',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-                        SizedBox(height: 6),
-                        Text(
-                          '1. Client opens SapPIIre app',
-                          style: TextStyle(color: Colors.white70, fontSize: 11),
-                        ),
-                        Text(
-                          '2. Selects fields to share',
-                          style: TextStyle(color: Colors.white70, fontSize: 11),
-                        ),
-                        Text(
-                          '3. Scans this QR code',
-                          style: TextStyle(color: Colors.white70, fontSize: 11),
-                        ),
-                        Text(
-                          '4. Form autofills instantly',
-                          style: TextStyle(color: Colors.white70, fontSize: 11),
                         ),
                       ],
                     ),
                   ),
                 ],
-              ),
-            );
+
+                const SizedBox(height: 14),
+
+                // Instructions
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'How it works:',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        '1. Client opens SapPIIre app',
+                        style: TextStyle(color: Colors.white70, fontSize: 11),
+                      ),
+                      Text(
+                        '2. Selects fields to share',
+                        style: TextStyle(color: Colors.white70, fontSize: 11),
+                      ),
+                      Text(
+                        '3. Scans this QR code',
+                        style: TextStyle(color: Colors.white70, fontSize: 11),
+                      ),
+                      Text(
+                        '4. Form autofills instantly',
+                        style: TextStyle(color: Colors.white70, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
         },
       ),
     );
@@ -1412,6 +1474,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     _formCtrl?.dispose();
     _formScrollController.dispose();
     _qrSidebarScrollController.dispose();
+
+    _timeRemainingNotifier.dispose();
+    _sessionExpiredNotifier.dispose();
+
     super.dispose();
   }
 }
