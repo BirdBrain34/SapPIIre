@@ -151,6 +151,19 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     _isLoadingSubmission = false;
   }
 
+  void _handleSearchChanged(String v) {
+    if (v == _searchQuery) return;
+
+    // Prevent focus-stealing quirks on Flutter Web by letting the
+    // TextField update happen before rebuilding the list.
+    _searchQuery = v;
+    Future.microtask(() {
+      if (!mounted) return;
+      setState(() {});
+    });
+  }
+
+
   Future<void> _hydrateApplicantMetadata(
     List<Map<String, dynamic>> submissions,
   ) async {
@@ -536,11 +549,14 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.all(16),
-            child: TextField(
-              controller: _searchController,
-              onChanged: (v) => setState(() => _searchQuery = v),
-              style: const TextStyle(color: Colors.white, fontSize: 13),
-              decoration: InputDecoration(
+              child: TextField(
+                controller: _searchController,
+                autofocus: true,
+                onChanged: _handleSearchChanged,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+
+                decoration: InputDecoration(
+
                 hintText: 'Search applicants...',
                 hintStyle: const TextStyle(color: Colors.white54),
                 prefixIcon: const Icon(Icons.search, color: Colors.white54),

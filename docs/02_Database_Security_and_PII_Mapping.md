@@ -178,9 +178,7 @@ The anon key shipped with the client can no longer read or write any staff table
 | `fetch_staff_batch` | Bulk account/profile fetch by ID list |
 | `fetch_display` | SELECT from staff_display_view |
 
-### 6.4 Migration Reference
 
-File: `supabase/migrations/20240001000000_staff_rls.sql`
 
 ## 7. Hardening Notes from Current Schema Context
 

@@ -230,7 +230,9 @@ The web tier contributes the following controls:
 
 ### 4.1 Staff Table RLS Architecture
 
-`staff_accounts`, `staff_profiles`, and `staff_display_view` are protected by RESTRICTIVE RLS policies that deny all access to `anon` and `authenticated` roles. All operations on these tables route through the `manage-staff-account` Edge Function using `SUPABASE_SERVICE_ROLE_KEY`:
+`staff_accounts`, `staff_profiles`, and `staff_display_view` are protected by restrictive RLS policies. Direct table access from `anon` and `authenticated` is denied, and all staff data operations are mediated through the `manage-staff-account` Edge Function using `SUPABASE_SERVICE_ROLE_KEY`.
+
+
 
 | Dart File | Edge Function Actions Used |
 |---|---|
@@ -242,10 +244,12 @@ The web tier contributes the following controls:
 
 **Key security properties:**
 - The anon key shipped with the client cannot read or write any staff table directly
+
 - Password hashes are still validated client-side (SHA-256), but the hash is only retrievable via the Edge Function's `login` action
 - Account creation includes automatic rollback if profile insertion fails
-- The migration file is `supabase/migrations/20240001000000_staff_rls.sql`
-- `staff_display_view` has SELECT revoked from both `anon` and `authenticated`
+- `staff_accounts`, `staff_profiles`, and `staff_display_view` are protected by restrictive RLS policies
+- All access to staff tables is mediated through the `manage-staff-account` Edge Function using `SUPABASE_SERVICE_ROLE_KEY`
+
 
 ## 5. Manuscript Alignment and Added Capabilities
 
