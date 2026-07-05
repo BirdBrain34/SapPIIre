@@ -228,6 +228,25 @@ The web tier contributes the following controls:
 4. Session lifecycle containment through `form_submission` status and expiry controls.
 5. Audit logging for sensitive administrative actions.
 
+### 4.1 Staff Table RLS Architecture
+
+`staff_accounts`, `staff_profiles`, and `staff_display_view` are protected by RESTRICTIVE RLS policies that deny all access to `anon` and `authenticated` roles. All operations on these tables route through the `manage-staff-account` Edge Function using `SUPABASE_SERVICE_ROLE_KEY`:
+
+| Dart File | Edge Function Actions Used |
+|---|---|
+| `web_auth_service.dart` | `login`, `update_last_login`, `fetch_profile`, `fetch_password_hash`, `update_account` |
+| `web_signup_service.dart` | `check_username`, `create_pending` |
+| `staff_admin_service.dart` | `check_username_unique`, `fetch_accounts`, `update_account`, `create_admin` |
+| `staff_email_service.dart` | `fetch_account` |
+| `web_shell.dart` | `fetch_account`, `fetch_profile` |
+
+**Key security properties:**
+- The anon key shipped with the client cannot read or write any staff table directly
+- Password hashes are still validated client-side (SHA-256), but the hash is only retrievable via the Edge Function's `login` action
+- Account creation includes automatic rollback if profile insertion fails
+- The migration file is `supabase/migrations/20240001000000_staff_rls.sql`
+- `staff_display_view` has SELECT revoked from both `anon` and `authenticated`
+
 ## 5. Manuscript Alignment and Added Capabilities
 
 ### 5.1 Manuscript-Aligned Web Core

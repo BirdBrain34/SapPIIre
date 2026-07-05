@@ -138,9 +138,53 @@ The schema supports manuscript-required features:
 3. Secured autofill through decrypt-to-session and staff completion workflows.
 4. CSWD dashboard governance through role/status-constrained staff identity tables.
 
-## 6. Hardening Notes from Current Schema Context
+## 6. Row Level Security (RLS) — Staff Tables
+
+### 6.1 RLS Architecture
+
+Staff identity tables (`staff_accounts`, `staff_profiles`, `staff_display_view`) are locked down with restrictive RLS policies. Since the application uses **custom authentication** (not Supabase Auth), `auth.uid()` is always null and cannot be used for policy gating.
+
+The protection strategy is:
+
+1. **RLS enabled** on `staff_accounts` and `staff_profiles`.
+2. **RESTRICTIVE deny-all policies** applied to `anon` and `authenticated` roles on both tables — blocking all SELECT, INSERT, UPDATE, and DELETE.
+3. **SELECT revoked** on `staff_display_view` from `anon` and `authenticated` roles.
+
+### 6.2 Access Control Flow
+
+All staff table operations route through the `manage-staff-account` Edge Function, which uses `SUPABASE_SERVICE_ROLE_KEY` (bypasses RLS):
+
+```
+Flutter Client → Edge Function (service role key) → staff_accounts/staff_profiles/staff_display_view
+```
+
+The anon key shipped with the client can no longer read or write any staff table directly.
+
+### 6.3 Edge Function Actions
+
+| Action | Purpose |
+|---|---|
+| `login` | Superadmin lookup by username, staff lookup by email |
+| `update_last_login` | Set `last_login = now()` |
+| `fetch_profile` | Get profile fields by cswd_id |
+| `fetch_account` | Get account (email/username/role/status) by email or cswd_id |
+| `fetch_password_hash` | Get password_hash by cswd_id |
+| `check_username` | Case-insensitive username existence check |
+| `check_username_unique` | Exact-match uniqueness check |
+| `create_pending` | Insert into both tables with rollback on profile failure |
+| `create_admin` | Insert admin account + profile with rollback |
+| `update_account` | Generic UPDATE with dynamic fields |
+| `fetch_accounts` | Pending + active account lists |
+| `fetch_staff_batch` | Bulk account/profile fetch by ID list |
+| `fetch_display` | SELECT from staff_display_view |
+
+### 6.4 Migration Reference
+
+File: `supabase/migrations/20240001000000_staff_rls.sql`
+
+## 7. Hardening Notes from Current Schema Context
 
 1. Add or verify unique constraints for (`user_id`, `field_id`) in `user_field_values` to align with deterministic upsert expectations.
-2. Maintain strict RLS policies to confine decrypted payload visibility.
-3. Monitor `encryption_version` distribution and missing-IV anomalies.
-4. Keep `app_rsa_keypairs` activation and rotation governance auditable through `audit_logs`.
+2. Monitor `encryption_version` distribution and missing-IV anomalies.
+3. Keep `app_rsa_keypairs` activation and rotation governance auditable through `audit_logs`.
+4. Remaining dashboard and mobile features (`dashboard_analytics_service.dart`, `supabase_service.dart`, `history_controller.dart`) still query staff tables directly with anon key — they silently return empty under RLS. Migrate these to Edge Function actions if dashboard functionality is needed.
