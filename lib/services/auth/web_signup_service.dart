@@ -1,6 +1,3 @@
-import 'dart:convert';
-
-import 'package:crypto/crypto.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class WebSignupService {
@@ -8,12 +5,6 @@ class WebSignupService {
     : _supabase = supabaseClient ?? Supabase.instance.client;
 
   final SupabaseClient _supabase;
-
-  String _hashPassword(String password) {
-    final bytes = utf8.encode(password);
-    final digest = sha256.convert(bytes);
-    return digest.toString();
-  }
 
   Future<Map<String, dynamic>> createPendingStaffAccount({
     required String firstName,
@@ -42,7 +33,7 @@ class WebSignupService {
         'action': 'create_pending',
         'email': email.trim(),
         'username': username.trim(),
-        'password_hash': _hashPassword(password),
+        'password': password, // Send raw password — server does bcrypt hash
         'requested_role': requestedRole,
         'first_name': firstName.trim(),
         'middle_name': middleName.trim().isEmpty ? null : middleName.trim(),

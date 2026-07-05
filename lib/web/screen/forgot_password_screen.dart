@@ -141,7 +141,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     });
 
     final result = await _authService.resetPasswordWithOtp(
-      cswd_id: _verifiedCswdId!,
+      cswdId: _verifiedCswdId!,
       newPassword: _newPasswordController.text,
     );
 

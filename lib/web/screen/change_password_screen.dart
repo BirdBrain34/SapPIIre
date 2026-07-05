@@ -76,7 +76,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     setState(() => _isLoading = true);
 
     final result = await _authService.changePassword(
-      cswd_id: widget.cswd_id,
+      cswdId: widget.cswd_id,
       currentPassword: _currentPasswordController.text,
       newPassword: _newPasswordController.text,
     );

@@ -142,7 +142,7 @@ Future<void> _handleContinueFromEmail() async {
     });
 
     final result = await _authService.resetPasswordWithOtp(
-      cswd_id: _verifiedCswdId!,
+      cswdId: _verifiedCswdId!,
       newPassword: _newPasswordController.text,
     );
 

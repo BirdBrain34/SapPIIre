@@ -54,6 +54,29 @@ Deno.serve(async (req: Request) => {
     return json({ success: false, reason: 'method_not_allowed' }, 405);
   }
 
+  // ── JWT Authentication ──────────────────────────────────────
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return json({ success: false, reason: 'unauthorized' }, 401);
+  }
+
+  const token = authHeader.replace('Bearer ', '').trim();
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    return json({ success: false, reason: 'server_config_error' }, 500);
+  }
+
+  const authClient = createClient(supabaseUrl, serviceRoleKey);
+  const { data: { user }, error: authError } = await authClient.auth.getUser(token);
+
+  if (authError || !user) {
+    return json({ success: false, reason: 'invalid_token' }, 401);
+  }
+
+  console.log(`[decrypt-qr-payload] Authenticated user: ${user.id}`);
+
   try {
     const body = await req.json().catch(() => ({}));
     const sessionId =
@@ -69,11 +92,9 @@ Deno.serve(async (req: Request) => {
       return json({ success: false, reason: 'missing_session_id' });
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const privateKeyPem = Deno.env.get('RSA_PRIVATE_KEY_PEM');
 
-    if (!supabaseUrl || !serviceRoleKey || !privateKeyPem) {
+    if (!privateKeyPem) {
       return json({ success: false, reason: 'missing_env_vars' });
     }
 

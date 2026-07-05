@@ -1,6 +1,3 @@
-import 'dart:convert';
-
-import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -10,24 +7,20 @@ import 'package:sappiire/services/crypto/hybrid_crypto_service.dart';
 class WebAuthService {
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  String _hashPassword(String password) {
-    final bytes = utf8.encode(password);
-    final digest = sha256.convert(bytes);
-    return digest.toString();
-  }
-
+  /// Send the raw password to the Edge Function which performs
+  /// bcrypt verification server-side. This avoids client-side hashing
+  /// and ensures bcrypt's random salt works correctly.
   Future<Map<String, dynamic>> login({
     required String loginIdentifier,
     required String password,
   }) async {
     try {
       final normalizedIdentifier = loginIdentifier.trim().toLowerCase();
-      final hashedPassword = _hashPassword(password);
 
       final loginResult = await _supabase.functions.invoke('manage-staff-account', body: {
         'action': 'login',
         'login_identifier': normalizedIdentifier,
-        'password_hash': hashedPassword,
+        'password': password, // Send raw password — server does bcrypt verify
       });
       final accountResponse = (loginResult.data as Map<String, dynamic>?)?['account'] as Map<String, dynamic>?;
 
@@ -42,8 +35,7 @@ class WebAuthService {
         return {'success': false, 'message': 'Invalid credentials'};
       }
 
-      final storedHash = accountResponse['password_hash'];
-      if (hashedPassword != storedHash) {
+      if (accountResponse['is_valid'] == false) {
         await AuditLogService().log(
           actionType: kAuditLoginFailed,
           category: kCategoryAuth,
@@ -112,27 +104,11 @@ class WebAuthService {
   }
 
   Future<Map<String, dynamic>> changePassword({
-    required String cswd_id,
+    required String cswdId,
     required String currentPassword,
     required String newPassword,
   }) async {
     try {
-      final pwResult = await _supabase.functions.invoke('manage-staff-account', body: {
-        'action': 'fetch_password_hash',
-        'cswd_id': cswd_id,
-      });
-      final pwData = (pwResult.data as Map<String, dynamic>?);
-      final account = pwData?['password_hash'] != null ? {'password_hash': pwData!['password_hash']} : null;
-
-      if (account == null) {
-        return {'success': false, 'message': 'Account not found.'};
-      }
-
-      final currentHash = _hashPassword(currentPassword);
-      if (currentHash != account['password_hash']) {
-        return {'success': false, 'message': 'Current password is incorrect.'};
-      }
-
       if (newPassword.length < 8) {
         return {
           'success': false,
@@ -140,42 +116,46 @@ class WebAuthService {
         };
       }
 
-      final newHash = _hashPassword(newPassword);
-      if (newHash == account['password_hash']) {
+      if (currentPassword == newPassword) {
         return {
           'success': false,
-          'message':
-              'New password must be different from your current password.',
+          'message': 'New password must be different from your current password.',
         };
       }
 
-      await _supabase.functions.invoke('manage-staff-account', body: {
-        'action': 'update_account',
-        'cswd_id': cswd_id,
-        'updates': {'password_hash': newHash},
+      // Server-side bcrypt verification and update
+      final result = await _supabase.functions.invoke('manage-staff-account', body: {
+        'action': 'change_password',
+        'cswd_id': cswdId,
+        'current_password': currentPassword,
+        'new_password': newPassword,
       });
 
-      await AuditLogService().log(
-        actionType: kAuditPasswordChanged,
-        category: kCategoryAuth,
-        severity: kSeverityWarning,
-        actorId: cswd_id,
-        targetType: 'staff_account',
-        targetId: cswd_id,
-        details: {'initiated_by': 'self'},
-      );
+      final data = result.data as Map<String, dynamic>? ?? {};
+      if (data['success'] == true) {
+        await AuditLogService().log(
+          actionType: kAuditPasswordChanged,
+          category: kCategoryAuth,
+          severity: kSeverityWarning,
+          actorId: cswdId,
+          targetType: 'staff_account',
+          targetId: cswdId,
+          details: {'initiated_by': 'self'},
+        );
+        return {'success': true, 'message': 'Password changed successfully.'};
+      }
 
-      return {'success': true, 'message': 'Password changed successfully.'};
+      return {'success': false, 'message': data['message'] ?? 'Current password is incorrect.'};
     } catch (e) {
       return {'success': false, 'message': 'Error: ${e.toString()}'};
     }
   }
 
-  Future<void> clearFirstLoginFlag(String cswd_id) async {
+  Future<void> clearFirstLoginFlag(String cswdId) async {
     try {
       await _supabase.functions.invoke('manage-staff-account', body: {
         'action': 'update_account',
-        'cswd_id': cswd_id,
+        'cswd_id': cswdId,
         'updates': {'is_first_login': false},
       });
     } catch (e) {
@@ -186,7 +166,7 @@ class WebAuthService {
   }
 
   Future<Map<String, dynamic>> resetPasswordWithOtp({
-    required String cswd_id,
+    required String cswdId,
     required String newPassword,
   }) async {
     try {
@@ -197,27 +177,31 @@ class WebAuthService {
         };
       }
 
-      await _supabase.functions.invoke('manage-staff-account', body: {
-        'action': 'update_account',
-        'cswd_id': cswd_id,
-        'updates': {
-          'password_hash': _hashPassword(newPassword),
-          'is_first_login': false,
-          'account_status': 'active',
-        },
+      // Server-side bcrypt hashing
+      final result = await _supabase.functions.invoke('manage-staff-account', body: {
+        'action': 'update_password',
+        'cswd_id': cswdId,
+        'new_password': newPassword,
+        'is_first_login': false,
+        'account_status': 'active',
       });
 
-      return {'success': true, 'message': 'Password reset successfully.'};
+      final data = result.data as Map<String, dynamic>? ?? {};
+      if (data['success'] == true) {
+        return {'success': true, 'message': 'Password reset successfully.'};
+      }
+
+      return {'success': false, 'message': data['message'] ?? 'Password reset failed.'};
     } catch (e) {
       return {'success': false, 'message': 'Error: ${e.toString()}'};
     }
   }
 
-  Future<Map<String, dynamic>> deactivateStaffAccount(String cswd_id) async {
+  Future<Map<String, dynamic>> deactivateStaffAccount(String cswdId) async {
     try {
       await _supabase.functions.invoke('manage-staff-account', body: {
         'action': 'update_account',
-        'cswd_id': cswd_id,
+        'cswd_id': cswdId,
         'updates': {'is_active': false, 'account_status': 'deactivated'},
       });
       return {'success': true, 'message': 'Account deactivated.'};
@@ -226,11 +210,11 @@ class WebAuthService {
     }
   }
 
-  Future<Map<String, dynamic>> reactivateStaffAccount(String cswd_id) async {
+  Future<Map<String, dynamic>> reactivateStaffAccount(String cswdId) async {
     try {
       await _supabase.functions.invoke('manage-staff-account', body: {
         'action': 'update_account',
-        'cswd_id': cswd_id,
+        'cswd_id': cswdId,
         'updates': {'is_active': true, 'account_status': 'active'},
       });
       return {'success': true, 'message': 'Account reactivated.'};

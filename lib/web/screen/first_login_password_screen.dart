@@ -73,7 +73,7 @@ class _FirstLoginPasswordScreenState extends State<FirstLoginPasswordScreen> {
     setState(() => _isLoading = true);
 
     final result = await _authService.resetPasswordWithOtp(
-      cswd_id: widget.cswd_id,
+      cswdId: widget.cswd_id,
       newPassword: _newPasswordController.text,
     );
 
