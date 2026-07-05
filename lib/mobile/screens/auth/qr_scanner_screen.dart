@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:sappiire/services/supabase_service.dart';
@@ -48,7 +49,61 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     super.dispose();
   }
 
-  Future<void> _handleScannedCode(String sessionId) async {
+  /// Attempts to parse the QR code content as JSON with sessionId + templateId.
+  /// Returns [true] if valid and template matches (or is legacy plain-text UUID).
+  /// Returns [false] if template mismatch is detected.
+  Future<bool> _validateQrCode(String rawCode) async {
+    try {
+      final decoded = jsonDecode(rawCode);
+      if (decoded is! Map) return true; // non-JSON fallback to legacy
+      final scannedSessionId = decoded['sessionId'] as String?;
+      final scannedTemplateId = decoded['templateId'] as String?;
+
+      if (scannedSessionId == null || scannedTemplateId == null) {
+        // Malformed JSON QR — treat as legacy and allow
+        return true;
+      }
+
+      // Template validation
+      if (widget.templateId != null && scannedTemplateId != widget.templateId) {
+        if (mounted) {
+          await _showTemplateMismatchDialog(scannedTemplateId);
+        }
+        return false;
+      }
+
+      return true; // Templates match
+    } catch (_) {
+      // Not valid JSON — assume legacy QR code (plain session UUID)
+      return true;
+    }
+  }
+
+  Future<void> _handleScannedCode(String rawCode) async {
+    // Validate template match from QR content
+    final isValid = await _validateQrCode(rawCode);
+    if (!isValid) {
+      // Template mismatch: re-enable scanner so user can try again
+      _controller.isPopping = false;
+      if (mounted) {
+        await _scannerController.start();
+      }
+      return;
+    }
+
+    // Extract sessionId (from JSON or raw UUID)
+    String sessionId;
+    try {
+      final decoded = jsonDecode(rawCode);
+      if (decoded is Map && decoded.containsKey('sessionId')) {
+        sessionId = decoded['sessionId'] as String;
+      } else {
+        sessionId = rawCode; // legacy plain-text UUID
+      }
+    } catch (_) {
+      sessionId = rawCode; // legacy plain-text UUID
+    }
+
     final row = await _controller.fetchPopupConfig();
     if (row != null) {
       final popupEnabled = (row['popup_enabled'] as bool?) ?? false;
@@ -70,6 +125,70 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       }
     }
     await _controller.performTransmission(sessionId);
+  }
+
+  /// Shows a dialog alerting the user that the scanned QR is for a different form template.
+  Future<void> _showTemplateMismatchDialog(String scannedTemplateId) async {
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.warning_amber_rounded,
+                    size: 32, color: Colors.red),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Form Template Mismatch',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1A1A2E),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'This QR code belongs to a different form template than what you currently have selected. Please inform the CSWD staff to switch to the correct form template, then scan again.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.black87,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryBlue,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                    elevation: 0,
+                  ),
+                  child: const Text('Scan Again',
+                      style: TextStyle(color: Colors.white)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<bool> _showFormIntroDialog({
@@ -233,9 +352,15 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                     Icon(
                       _controller.transmitSuccess
                           ? Icons.check_circle_outline
-                          : Icons.error_outline,
+                          : _controller.sessionExpired
+                              ? Icons.timer_off_outlined
+                              : Icons.error_outline,
                       size: 80,
-                      color: _controller.transmitSuccess ? Colors.green : Colors.red,
+                      color: _controller.transmitSuccess
+                          ? Colors.green
+                          : _controller.sessionExpired
+                              ? Colors.orange
+                              : Colors.red,
                     )
                   else
                     const SizedBox(
@@ -247,9 +372,11 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                   const SizedBox(height: 28),
                   Text(
                     _controller.transmitDone
-                        ? (_controller.transmitSuccess
-                            ? 'Transmission Complete!'
-                            : 'Transmission Failed')
+                      ? (_controller.transmitSuccess
+                        ? 'Transmission Complete!'
+                        : _controller.sessionExpired
+                          ? 'QR Session Expired'
+                          : 'Transmission Failed')
                         : 'Transmitting...',
                     style: const TextStyle(
                         color: Colors.white,
@@ -289,7 +416,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                           ),
                         ),
                       ),
-                                            if (!_controller.isFinalized) ...[
+                        if (!_controller.isFinalized) ...[
                         const SizedBox(height: 12),
                         Container(
                           width: double.infinity,
@@ -312,6 +439,25 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                           ),
                         ),
                       ],
+                    ] else if (_controller.sessionExpired) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: AppColors.primaryBlue,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: const Text(
+                            'Go Back',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                        ),
+                      ),
                     ] else ...[
                       SizedBox(
                         width: double.infinity,

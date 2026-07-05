@@ -50,16 +50,6 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
     );
   }
 
-  Future<void> _updateRole(String cswd_id, String newRole) async {
-    await _controller.updateRole(
-      cswdId: cswd_id,
-      newRole: newRole,
-      actorId: widget.cswd_id,
-      actorName: widget.displayName,
-      actorRole: widget.role,
-    );
-  }
-
   Future<void> _deactivateAccount(String cswd_id, String username) async {
     final confirmed = await showConfirmDialog(
       context,
@@ -89,6 +79,75 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
       actorId: widget.cswd_id,
       actorName: widget.displayName,
       actorRole: widget.role,
+    );
+  }
+
+  /// Distinct accent color per role so staff are visually differentiated.
+  Color _roleColor(String role) {
+    switch (role) {
+      case 'superadmin':
+        return AppColors.highlight;
+      case 'admin':
+        return AppColors.successGreen;
+      default:
+        return AppColors.textMuted;
+    }
+  }
+
+  /// Rounded, color-coded role pill with a leading status dot.
+  Widget _roleBadge(String role) {
+    final color = _roleColor(role);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 7),
+          Text(
+            role,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Tonal action button used for Deactivate / Reactivate.
+  Widget _actionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onPressed,
+  }) {
+    return TextButton.icon(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        foregroundColor: color,
+        backgroundColor: color.withValues(alpha: 0.08),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+      ),
+      icon: Icon(icon, size: 16),
+      label: Text(
+        label,
+        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+      ),
     );
   }
 
@@ -314,19 +373,19 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                                                     vertical: 2,
                                                   ),
                                               decoration: BoxDecoration(
-                                                color: Colors.orange
+                                                color: AppColors.warningAmber
                                                     .withValues(alpha: 0.15),
                                                 borderRadius:
                                                     BorderRadius.circular(4),
                                                 border: Border.all(
-                                                  color: Colors.orange
+                                                  color: AppColors.warningAmber
                                                       .withValues(alpha: 0.4),
                                                 ),
                                               ),
                                               child: const Text(
                                                 'DEACTIVATED',
                                                 style: TextStyle(
-                                                  color: Colors.orange,
+                                                  color: AppColors.warningAmber,
                                                   fontSize: 10,
                                                   fontWeight: FontWeight.bold,
                                                 ),
@@ -344,89 +403,48 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                                     ],
                                   ),
                                 ),
-                                acc['role'] == 'superadmin'
-                                    ? Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 8,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: AppColors.highlight
-                                              .withValues(alpha: 0.1),
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                        ),
-                                        child: const Text(
-                                          'superadmin',
-                                          style: TextStyle(
-                                            color: AppColors.highlight,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 13,
-                                          ),
-                                        ),
-                                      )
-                                    : DropdownButton<String>(
-                                        value: acc['role'] ?? 'viewer',
-                                        items:
-                                            ['viewer', 'form_editor', 'admin']
-                                                .map(
-                                                  (r) => DropdownMenuItem(
-                                                    value: r,
-                                                    child: Text(r),
-                                                  ),
+                                // Role pill — fixed-width slot so badges align
+                                // in a column across every row.
+                                SizedBox(
+                                  width: 130,
+                                  child: Align(
+                                    alignment: Alignment.centerRight,
+                                    child: _roleBadge(acc['role'] ?? 'admin'),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                // Action slot — reserved even for superadmin so
+                                // the pills above stay aligned.
+                                SizedBox(
+                                  width: 150,
+                                  child: acc['role'] == 'superadmin'
+                                      ? const SizedBox.shrink()
+                                      : Align(
+                                          alignment: Alignment.centerRight,
+                                          child: acc['is_active'] == true
+                                              ? _actionButton(
+                                                  icon: Icons.block,
+                                                  label: 'Deactivate',
+                                                  color: AppColors.warningAmber,
+                                                  onPressed: () =>
+                                                      _deactivateAccount(
+                                                        acc['cswd_id'],
+                                                        acc['username'] ?? '',
+                                                      ),
                                                 )
-                                                .toList(),
-                                        onChanged: (newRole) {
-                                          if (newRole != null) {
-                                            _updateRole(
-                                              acc['cswd_id'],
-                                              newRole,
-                                            );
-                                          }
-                                        },
-                                      ),
-                                if (acc['role'] != 'superadmin') ...[
-                                  const SizedBox(width: 12),
-                                  if (acc['is_active'] == true)
-                                    TextButton.icon(
-                                      onPressed: () => _deactivateAccount(
-                                        acc['cswd_id'],
-                                        acc['username'] ?? '',
-                                      ),
-                                      icon: const Icon(
-                                        Icons.block,
-                                        size: 16,
-                                        color: Colors.orange,
-                                      ),
-                                      label: const Text(
-                                        'Deactivate',
-                                        style: TextStyle(
-                                          color: Colors.orange,
-                                          fontSize: 12,
+                                              : _actionButton(
+                                                  icon:
+                                                      Icons.check_circle_outline,
+                                                  label: 'Reactivate',
+                                                  color: AppColors.successGreen,
+                                                  onPressed: () =>
+                                                      _reactivateAccount(
+                                                        acc['cswd_id'],
+                                                        acc['username'] ?? '',
+                                                      ),
+                                                ),
                                         ),
-                                      ),
-                                    )
-                                  else
-                                    TextButton.icon(
-                                      onPressed: () => _reactivateAccount(
-                                        acc['cswd_id'],
-                                        acc['username'] ?? '',
-                                      ),
-                                      icon: const Icon(
-                                        Icons.check_circle_outline,
-                                        size: 16,
-                                        color: AppColors.successGreen,
-                                      ),
-                                      label: const Text(
-                                        'Reactivate',
-                                        style: TextStyle(
-                                          color: AppColors.successGreen,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ),
-                                ],
+                                ),
                               ],
                             ),
                           );

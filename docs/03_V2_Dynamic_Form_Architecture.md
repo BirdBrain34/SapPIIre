@@ -69,9 +69,7 @@ V2 supports conditional branching and computed formulas, including table aggrega
 The dynamic metadata domain is coupled to storage layers through stable foreign keys:
 
 1. `user_field_values.field_id` -> `form_fields.field_id`
-2. `submission_field_values.field_id` -> `form_fields.field_id`
-3. `submission_field_values.submission_id` -> `form_submission.id`
-4. `client_submissions.template_id` -> `form_templates.template_id`
+2. `client_submissions.template_id` -> `form_templates.template_id`
 
 This coupling ensures that template-driven UI evolution remains compatible with both user-owned reusable values and session-specific submissions.
 
@@ -94,7 +92,7 @@ This coupling ensures that template-driven UI evolution remains compatible with 
 4. Read-only and computed field visual differentiation during runtime rendering.
 5. OCR information scanner using camera + ML Kit text recognition.
 6. OTP verification (`phone_otp`, email OTP and staff reset flows).
-7. Advanced staff governance (`requested_role`, `account_status`, activation lifecycle).
+7. Advanced staff governance (`requested_role`, `account_status`, activation lifecycle) with approval and activation/deactivation controls, not inline role editing in Manage Staff.
 8. Display session synchronization (`display_sessions`) for station-linked monitors.
 9. Audit observability (`audit_logs`) for sensitive operational events.
 

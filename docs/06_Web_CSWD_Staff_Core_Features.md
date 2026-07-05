@@ -22,6 +22,7 @@ Role and state controls are anchored in `staff_accounts` and profile enrichment 
 The staff governance pipeline includes:
 
 1. Pending account registration with `requested_role` intake.
+2. Staff approval and activation/deactivation in Manage Staff, with role display handled as a fixed badge rather than an editable dropdown.
 2. Approval and rejection workflows for elevated access.
 3. Superadmin-level direct creation of admin accounts.
 4. Account activation, deactivation, reactivation, and role-update controls.
@@ -34,11 +35,15 @@ This capability directly supports institutional staffing realities and reduces m
 The Manage Forms workflow orchestrates secure intake sessions:
 
 1. Template selection and session creation in `form_submission`.
-2. QR generation for client pairing.
+2. QR generation for client pairing — the QR code now encodes a JSON payload (`{"sessionId": "...", "templateId": "..."}`) binding the session to the selected form template.
 3. Realtime ingestion of mobile-transmitted payload state.
 4. **Zero-Knowledge Staging:** On-demand decryption of encrypted envelope via `serve-submission-for-review` Edge Function, delivering plaintext in-memory to dashboard without database persistence.
 5. Autofilled form review and controlled finalization.
 6. Session closure and display reset behaviors.
+
+**Form Template Mismatch Prevention:** The QR's embedded `templateId` enables the mobile client to validate that the client's selected form matches the staff's active session template before any data is transmitted. If a mismatch is detected, transmission is blocked with a user-facing warning, and the camera is re-activated for re-scanning. Legacy single-UUID QR codes continue to work for backward compatibility.
+
+**Session Expiry Handling:** The backend now returns HTTP 410 with `reason = 'session_expired'` when `expires_at` has elapsed, so staff workflows and diagnostics can distinguish stale sessions from generic decryption failures.
 
 This is the operational heart of CSWD intake execution.
 
@@ -47,7 +52,7 @@ This is the operational heart of CSWD intake execution.
 The web layer consumes backend-decrypted payload data through the Zero-Knowledge Staging architecture:
 
 1. When a session with `status='scanned'` and empty `form_data` is detected, the dashboard controller (`ManageFormsController`) invokes on-demand decryption.
-2. The `serve-submission-for-review` Edge Function unwraps the RSA-encrypted AES key, decrypts the payload in-memory, and returns plaintext JSON in the HTTP response.
+2. The `serve-submission-for-review` Edge Function unwraps the RSA-encrypted AES key, decrypts the payload in-memory, and returns plaintext JSON in the HTTP response, or returns HTTP 410 `session_expired` when the session lifetime has elapsed.
 3. Staff perform quality review and final record commitment into `client_submissions`.
 
 Critical security guarantee: Plaintext is never written back to `form_submission`. The encrypted envelope remains the authoritative storage form until finalization.
@@ -164,12 +169,12 @@ The web tier implements a layered architecture that cleanly separates business l
 
 Controllers (`lib/web/controllers/`) encapsulate application logic and state coordination:
 
-- **`ManageFormsController`**: Session orchestration, payload fingerprinting, intake reference formatting, session state coordination.
+- **`ManageFormsController`**: Session orchestration, payload fingerprinting, intake reference formatting, session state coordination, QR template binding validation.
 - **`FormBuilderController`**: Utility functions for form template construction (UUID generation, code sanitization, reference formatting, token/separator management).
 - **`FormBuilderScreenController`**: Complete form builder state management (template loading, field/section/condition editing, publication workflow, unsaved changes tracking).
 - **`DashboardController`**: Analytics data loading, chart generation, client search, workload distribution coordination.
 - **`ApplicantsController`**: Finalized submission retrieval, record editing, applicant history navigation.
-- **`ManageStaffController`**: Staff account lifecycle (pending approvals, role updates, activation/deactivation).
+- **`ManageStaffController`**: Staff account lifecycle (pending approvals, activation/deactivation, and role display only in Manage Staff).
 
 Controllers extend `ChangeNotifier` for reactive state management and coordinate service interactions.
 
@@ -222,6 +227,29 @@ The web tier contributes the following controls:
 3. OTP-assisted staff setup and reset mechanisms.
 4. Session lifecycle containment through `form_submission` status and expiry controls.
 5. Audit logging for sensitive administrative actions.
+
+### 4.1 Staff Table RLS Architecture
+
+`staff_accounts`, `staff_profiles`, and `staff_display_view` are protected by restrictive RLS policies. Direct table access from `anon` and `authenticated` is denied, and all staff data operations are mediated through the `manage-staff-account` Edge Function using `SUPABASE_SERVICE_ROLE_KEY`.
+
+
+
+| Dart File | Edge Function Actions Used |
+|---|---|
+| `web_auth_service.dart` | `login`, `update_last_login`, `fetch_profile`, `fetch_password_hash`, `update_account` |
+| `web_signup_service.dart` | `check_username`, `create_pending` |
+| `staff_admin_service.dart` | `check_username_unique`, `fetch_accounts`, `update_account`, `create_admin` |
+| `staff_email_service.dart` | `fetch_account` |
+| `web_shell.dart` | `fetch_account`, `fetch_profile` |
+
+**Key security properties:**
+- The anon key shipped with the client cannot read or write any staff table directly
+
+- Password hashes are still validated client-side (SHA-256), but the hash is only retrievable via the Edge Function's `login` action
+- Account creation includes automatic rollback if profile insertion fails
+- `staff_accounts`, `staff_profiles`, and `staff_display_view` are protected by restrictive RLS policies
+- All access to staff tables is mediated through the `manage-staff-account` Edge Function using `SUPABASE_SERVICE_ROLE_KEY`
+
 
 ## 5. Manuscript Alignment and Added Capabilities
 

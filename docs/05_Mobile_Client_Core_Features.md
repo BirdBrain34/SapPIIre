@@ -13,8 +13,10 @@ The mobile identity flow includes:
 1. Username-password sign-in for returning users.
 2. Multi-step signup with profile completion.
 3. Email OTP verification through Supabase Auth pathways.
-4. Phone OTP verification persisted in `phone_otp` with expiration windows.
-5. Password reset services with email and phone-assisted recovery flows.
+4. Phone OTP verification via the `send-phone-otp` Edge Function, which calls the Semaphore SMS API from cloud infrastructure (faster than mobile-initiated calls), verifies the SMS was queued by parsing the Semaphore response, and refreshes the `phone_otp` record with a delete-then-insert to prevent stale code collisions. OTP expiry window is 10 minutes; the mobile countdown timer is 120 seconds.
+5. Incomplete signup retry support: if a previous signup attempt left an orphaned `user_accounts` record with no `user_field_values`, `checkDuplicateSignup` returns `incomplete: true` with the existing `user_id`, allowing the user to resume without contacting support.
+6. Phone-only signup defers Supabase Auth user creation to the credentials step, using a deterministic synthetic email (`<digits>@sappiire.phone`) so no real email is required.
+7. Password reset services with email and phone-assisted recovery flows.
 
 This layered entry process aligns user convenience with risk-reduction for account misuse.
 
@@ -48,13 +50,19 @@ This feature reduces manual encoding effort and improves intake throughput while
 
 The mobile app performs session-targeted data transmission by:
 
-1. Scanning staff-generated session QR identifiers.
-2. Building a filtered payload from user-selected fields.
-3. Packaging encrypted envelope artifacts (`encrypted_payload`, `payload_iv`, `encrypted_aes_key`).
-4. Updating `form_submission` with transport metadata and scanned status.
-5. **Zero-Knowledge Staging:** Encrypted envelope persists in database; decryption occurs in-memory on staff request via `serve-submission-for-review` Edge Function, ensuring no plaintext persistence in `form_submission`.
+1. Scanning staff-generated session QR identifiers (now JSON-encoded with `sessionId` + `templateId`).
+2. **Validating form template match** between the scanned QR's `templateId` and the mobile user's currently selected template:
+   - If templates match, proceed with transmission.
+   - If templates mismatch, display a warning dialog and block transmission, re-activating the camera for re-scanning.
+   - Legacy plain-text UUID QR codes are accepted for backward compatibility.
+3. Building a filtered payload from user-selected fields.
+4. Packaging encrypted envelope artifacts (`encrypted_payload`, `payload_iv`, `encrypted_aes_key`).
+5. Updating `form_submission` with transport metadata and scanned status.
+6. **Zero-Knowledge Staging:** Encrypted envelope persists in database; decryption occurs in-memory on staff request via `serve-submission-for-review` Edge Function, ensuring no plaintext persistence in `form_submission`.
 
-This is the client-side entry point of the hybrid cryptosystem handshake.
+If the session is already expired, the mobile QR controller now treats the transmission result as `expired`, shows an expired-session UI state, and prompts the user to scan again instead of presenting a generic failure.
+
+This is the client-side entry point of the hybrid cryptosystem handshake, now including a pre-transmission template guard to prevent cross-template data corruption.
 
 ### 2.6 Unsaved Changes Detection and Discard Workflow
 
@@ -145,7 +153,7 @@ Controllers (`lib/mobile/controllers/`) encapsulate application logic and state:
 - **`ChangePasswordController`**: Password update flows, validation, OTP-assisted reset.
 - **`InfoScannerController`**: OCR coordination, ID field extraction and mapping.
 - **`ProfileController`**: User profile data retrieval and editing.
-- **`QRScannerController`**: Session QR scanning and ID extraction.
+- **`QRScannerController`**: Session QR scanning, template validation, and encrypted payload transmission with explicit expired-session handling.
 
 Controllers extend `ChangeNotifier` for reactive state management and coordinate service interactions.
 
@@ -217,7 +225,6 @@ Mobile workflows interact primarily with:
 1. `user_accounts`
 2. `user_field_values`
 3. `form_submission`
-4. `submission_field_values`
-5. `phone_otp`
+4. `phone_otp`
 
 This table footprint reflects the mobile role as secure data producer and controlled transmitter, not final record adjudicator.

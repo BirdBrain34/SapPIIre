@@ -26,7 +26,7 @@ This document now serves as the executive summary of implemented capabilities. I
 1. Dynamic form template builder and runtime rendering.
 2. Conditional logic engine and computed-field behavior, including distinct read-only/computed field visuals.
 3. InfoScanner OCR-assisted ID extraction.
-4. OTP-enabled user and staff security workflows with dedicated Edge Functions.
+4. OTP-enabled user and staff security workflows with dedicated Edge Functions; phone OTP dispatched from cloud via `send-phone-otp` Edge Function (Semaphore SMS API) for faster delivery and response validation; incomplete signup retry support prevents orphaned-record lockout.
 5. Admin creation, pending approval, and staff lifecycle governance.
 6. Display session broadcasting for station-linked screens and customer mirror view rendering.
 7. Audit logging and analytics extensions with submission decryption tracking.

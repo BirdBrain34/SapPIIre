@@ -66,14 +66,43 @@ This keeps the comparison in one security-focused location while the rest of the
 The web tier creates an active session row in `form_submission` with default lifecycle values:
 
 1. `status = active`
-2. `expires_at = now() + 30 minutes`
+2. `expires_at = now() + 10 minutes`
 3. `transmission_version = 0` (default)
 
-### 3.2 Mobile Payload Packaging
+### 3.2 QR Content Structure
+
+The QR code displayed on the web dashboard no longer contains a raw session UUID. Instead, it encodes a JSON object that binds the session to the currently selected form template:
+
+```json
+{
+  "sessionId": "uuid-of-form-submission-row",
+  "templateId": "uuid-of-selected-form-template"
+}
+```
+
+This structure enables the mobile client to validate that the scanned QR corresponds to the same form template the mobile user has selected before any data transmission occurs. Legacy QR codes containing only a plain-text UUID continue to be accepted for backward compatibility.
+
+### 3.3 Form Template Validation (Pre-Transmission Guard)
+
+Before any data transmission occurs, the mobile client performs a template match check:
+
+1. Parse the scanned QR content as JSON.
+2. Extract the `sessionId` and `templateId` values.
+3. Compare the scanned `templateId` against the mobile user's currently selected form template.
+4. **If templates match**: proceed with payload encryption and transmission.
+5. **If templates mismatch**:
+   - Display a warning dialog: *"Form Template Mismatch — This QR code belongs to a different form template than what you currently have selected. Please inform the CSWD staff to switch to the correct form template, then scan again."*
+   - Block all data transmission.
+   - Re-activate the camera for re-scanning.
+6. **Legacy fallback**: If the QR content is not valid JSON (plain-text UUID), the validation passes by default, preserving compatibility with pre-existing QR codes.
+
+This guard prevents the scenario where a mobile user with Form Template A scans a QR generated for Form Template B, which would otherwise result in incorrect field mapping and data corruption in the autofill.
+
+### 3.4 Mobile Payload Packaging
 
 The mobile app assembles user-selected PII payload entries from dynamic form state and canonical mappings, then serializes into JSON.
 
-### 3.3 Envelope Generation
+### 3.5 Envelope Generation
 
 For each transmission event:
 
@@ -88,7 +117,7 @@ The resulting QR transport envelope semantics are represented by:
 2. `payload_iv`
 3. `encrypted_aes_key`
 
-### 3.4 Envelope Persistence in `form_submission`
+### 3.6 Envelope Persistence in `form_submission`
 
 The mobile client updates the targeted active session row with:
 
@@ -100,7 +129,7 @@ The mobile client updates the targeted active session row with:
 6. `scanned_at` (UTC timestamp)
 7. `user_id` (when available)
 
-### 3.5 Zero-Knowledge Staging: On-Demand Edge Decryption
+### 3.7 Zero-Knowledge Staging: On-Demand Edge Decryption
 
 The system implements "Zero-Knowledge Staging" where decryption occurs strictly in-memory during the request lifecycle. The `serve-submission-for-review` Edge Function executes the following sequence:
 
@@ -115,9 +144,11 @@ The system implements "Zero-Knowledge Staging" where decryption occurs strictly 
 9. Return plaintext JSON ephemerally in HTTP response body.
 10. Write audit log entry for decryption event.
 
+If the session has expired, the function returns HTTP 410 with `reason = 'session_expired'` instead of plaintext. The mobile client now treats that as a distinct expired-session outcome rather than a generic transmission failure.
+
 Critical security guarantee: Plaintext is never written back to the database. The encrypted envelope remains the authoritative storage form.
 
-### 3.6 Web Autofill Activation
+### 3.8 Web Autofill Activation
 
 The dashboard controller (`ManageFormsController`) invokes on-demand decryption when a session with `status='scanned'` and `transmission_version=1` is detected (indicating an encrypted envelope). The `serve-submission-for-review` Edge Function returns decrypted payload in-memory, which the dashboard hydrates directly into dynamic form controllers, enabling CSWD staff-assisted review and completion. This ephemeral delivery model ensures no plaintext persistence in the database.
 
@@ -151,7 +182,7 @@ Staff-session governance is handled through the authenticated staff account cont
 1. Confidentiality in transit: only the backend with private key access can decrypt the payload.
 2. Integrity-aware payload recovery: AES-GCM decryption failure blocks payload acceptance on modified ciphertext.
 3. Bounded session lifetime: default `expires_at` reduces exposure window for abandoned active sessions.
-4. Failure observability: reason-coded function responses (`missing_env_vars`, `rsa_decrypt_failed`, `aes_gcm_decrypt_failed`, and others) support diagnostic forensics.
+4. Failure observability: reason-coded function responses (`missing_env_vars`, `session_expired`, `rsa_decrypt_failed`, `aes_gcm_decrypt_failed`, and others) support diagnostic forensics.
 
 ## 7. Core Feature Mapping
 
@@ -161,3 +192,4 @@ The handshake implements manuscript core requirements:
 2. QR/session handshake for secure data-in-transit exchange.
 3. Secured autofill decryption path through backend function logic.
 4. Controlled transition from encrypted session envelope to dashboard-usable form data.
+5. **Form template mismatch guard**: Pre-transmission validation on mobile prevents data from being sent to the wrong form template.

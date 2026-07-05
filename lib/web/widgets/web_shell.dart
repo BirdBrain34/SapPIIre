@@ -107,19 +107,17 @@ class WebShell extends StatelessWidget {
     try {
       final client = Supabase.instance.client;
 
-      final accountResponse = await client
-          .from('staff_accounts')
-          .select('email, username')
-          .eq('cswd_id', cswd_id)
-          .maybeSingle();
+      final accountResult = await client.functions.invoke('manage-staff-account', body: {
+        'action': 'fetch_account',
+        'cswd_id': cswd_id,
+      });
+      final accountResponse = (accountResult.data as Map<String, dynamic>?)?['account'] as Map<String, dynamic>?;
 
-      final profileResponse = await client
-          .from('staff_profiles')
-          .select(
-            'first_name, middle_name, last_name, name_suffix, department, position, phone_number',
-          )
-          .eq('cswd_id', cswd_id)
-          .maybeSingle();
+      final profileResult = await client.functions.invoke('manage-staff-account', body: {
+        'action': 'fetch_profile',
+        'cswd_id': cswd_id,
+      });
+      final profileResponse = (profileResult.data as Map<String, dynamic>?)?['profile'] as Map<String, dynamic>?;
 
       final account = _asStringDynamicMap(accountResponse);
       final profile = _asStringDynamicMap(profileResponse);

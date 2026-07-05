@@ -9,20 +9,6 @@ class WebSignupService {
 
   final SupabaseClient _supabase;
 
-  Future<void> _cleanupProvisionedAccount(String cswdId) async {
-    try {
-      await _supabase.from('staff_profiles').delete().eq('cswd_id', cswdId);
-    } catch (_) {
-      // Best-effort cleanup only.
-    }
-
-    try {
-      await _supabase.from('staff_accounts').delete().eq('cswd_id', cswdId);
-    } catch (_) {
-      // Best-effort cleanup only.
-    }
-  }
-
   String _hashPassword(String password) {
     final bytes = utf8.encode(password);
     final digest = sha256.convert(bytes);
@@ -43,88 +29,49 @@ class WebSignupService {
     required String requestedRole,
   }) async {
     try {
-      final existing = await _supabase
-          .from('staff_accounts')
-          .select('username')
-          .eq('username', username.trim())
-          .maybeSingle();
-
-      if (existing != null) {
+      final checkResult = await _supabase.functions.invoke('manage-staff-account', body: {
+        'action': 'check_username',
+        'username': username.trim(),
+      });
+      final checkData = checkResult.data as Map<String, dynamic>?;
+      if (checkData?['exists'] == true) {
         return {'success': false, 'message': 'Username already exists.'};
       }
 
-      final accountResponse = await _supabase
-          .from('staff_accounts')
-          .insert({
-            'email': email.trim(),
-            'username': username.trim(),
-            'password_hash': _hashPassword(password),
-            'role': 'viewer',
-            'requested_role': requestedRole,
-            'account_status': 'pending',
-            'is_active': false,
-          })
-          .select('cswd_id')
-          .single();
+      final result = await _supabase.functions.invoke('manage-staff-account', body: {
+        'action': 'create_pending',
+        'email': email.trim(),
+        'username': username.trim(),
+        'password_hash': _hashPassword(password),
+        'requested_role': requestedRole,
+        'first_name': firstName.trim(),
+        'middle_name': middleName.trim().isEmpty ? null : middleName.trim(),
+        'last_name': lastName.trim(),
+        'name_suffix': nameSuffix.trim().isEmpty ? null : nameSuffix.trim(),
+        'position': position.trim(),
+        'department': department.trim(),
+        'phone_number': phoneNumber.trim().isEmpty ? null : phoneNumber.trim(),
+      });
 
-      final String? cswdId = accountResponse['cswd_id']?.toString();
+      final data = result.data as Map<String, dynamic>?;
+
+      if (data?['error'] != null) {
+        final code = data?['code']?.toString();
+        if (code == '42501') {
+          return {'success': false, 'message': 'Database policy blocked profile creation. Apply the latest staff_profiles RLS migration, then try again.'};
+        }
+        if (code == '23502') {
+          return {'success': false, 'message': 'Position and department are required by the database. Please fill them in and try again.'};
+        }
+        return {'success': false, 'message': 'Failed to create staff profile: ${data!['error']}'};
+      }
+
+      final cswdId = data?['cswd_id']?.toString();
       if (cswdId == null || cswdId.isEmpty) {
-        return {
-          'success': false,
-          'message': 'Account created but failed to get ID. Contact developer.',
-        };
+        return {'success': false, 'message': 'Account created but failed to get ID. Contact developer.'};
       }
 
-      try {
-        await _supabase.from('staff_profiles').insert({
-          'cswd_id': cswdId,
-          'first_name': firstName.trim(),
-          'middle_name': middleName.trim().isEmpty ? null : middleName.trim(),
-          'last_name': lastName.trim(),
-          'name_suffix': nameSuffix.trim().isEmpty ? null : nameSuffix.trim(),
-          'position': position.trim(),
-          'department': department.trim(),
-          'phone_number': phoneNumber.trim().isEmpty
-              ? null
-              : phoneNumber.trim(),
-        });
-      } on PostgrestException catch (e) {
-        await _cleanupProvisionedAccount(cswdId);
-
-        if (e.code == '42501') {
-          return {
-            'success': false,
-            'message':
-                'Database policy blocked profile creation. Apply the latest staff_profiles RLS migration, then try again.',
-          };
-        }
-
-        if (e.code == '23502') {
-          return {
-            'success': false,
-            'message':
-                'Position and department are required by the database. Please fill them in and try again.',
-          };
-        }
-
-        return {
-          'success': false,
-          'message':
-              'Failed to create staff profile: ${e.message}${e.details == null || e.details!.toString().isEmpty ? '' : ' (${e.details})'}',
-        };
-      } catch (_) {
-        await _cleanupProvisionedAccount(cswdId);
-        return {
-          'success': false,
-          'message': 'Failed to create staff profile. Please try again.',
-        };
-      }
-
-      return {
-        'success': true,
-        'message': 'Account created successfully!',
-        'cswd_id': cswdId,
-      };
+      return {'success': true, 'message': 'Account created successfully!', 'cswd_id': cswdId};
     } catch (e) {
       return {'success': false, 'message': 'Error: ${e.toString()}'};
     }

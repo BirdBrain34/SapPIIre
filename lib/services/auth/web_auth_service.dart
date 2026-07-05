@@ -24,25 +24,12 @@ class WebAuthService {
       final normalizedIdentifier = loginIdentifier.trim().toLowerCase();
       final hashedPassword = _hashPassword(password);
 
-      Map<String, dynamic>? accountResponse = await _supabase
-          .from('staff_accounts')
-          .select(
-            'cswd_id, username, email, is_active, role, '
-            'account_status, password_hash, is_first_login',
-          )
-          .ilike('username', normalizedIdentifier)
-          .eq('role', 'superadmin')
-          .maybeSingle();
-
-      accountResponse ??= await _supabase
-          .from('staff_accounts')
-          .select(
-            'cswd_id, username, email, is_active, role, '
-            'account_status, password_hash, is_first_login',
-          )
-          .ilike('email', normalizedIdentifier)
-          .neq('role', 'superadmin')
-          .maybeSingle();
+      final loginResult = await _supabase.functions.invoke('manage-staff-account', body: {
+        'action': 'login',
+        'login_identifier': normalizedIdentifier,
+        'password_hash': hashedPassword,
+      });
+      final accountResponse = (loginResult.data as Map<String, dynamic>?)?['account'] as Map<String, dynamic>?;
 
       if (accountResponse == null) {
         await AuditLogService().log(
@@ -76,19 +63,16 @@ class WebAuthService {
 
       final String cswdId = accountResponse['cswd_id'];
 
-      await _supabase
-          .from('staff_accounts')
-          .update({'last_login': DateTime.now().toIso8601String()})
-          .eq('cswd_id', cswdId);
+      await _supabase.functions.invoke('manage-staff-account', body: {
+        'action': 'update_last_login',
+        'cswd_id': cswdId,
+      });
 
-      final profileResponse = await _supabase
-          .from('staff_profiles')
-          .select(
-            'first_name, middle_name, last_name, '
-            'position, department, phone_number',
-          )
-          .eq('cswd_id', cswdId)
-          .maybeSingle();
+      final profileResult = await _supabase.functions.invoke('manage-staff-account', body: {
+        'action': 'fetch_profile',
+        'cswd_id': cswdId,
+      });
+      final profileResponse = (profileResult.data as Map<String, dynamic>?)?['profile'] as Map<String, dynamic>?;
 
       String displayName = accountResponse['username'] as String;
       if (profileResponse != null) {
@@ -133,11 +117,12 @@ class WebAuthService {
     required String newPassword,
   }) async {
     try {
-      final account = await _supabase
-          .from('staff_accounts')
-          .select('password_hash')
-          .eq('cswd_id', cswd_id)
-          .maybeSingle();
+      final pwResult = await _supabase.functions.invoke('manage-staff-account', body: {
+        'action': 'fetch_password_hash',
+        'cswd_id': cswd_id,
+      });
+      final pwData = (pwResult.data as Map<String, dynamic>?);
+      final account = pwData?['password_hash'] != null ? {'password_hash': pwData!['password_hash']} : null;
 
       if (account == null) {
         return {'success': false, 'message': 'Account not found.'};
@@ -164,10 +149,11 @@ class WebAuthService {
         };
       }
 
-      await _supabase
-          .from('staff_accounts')
-          .update({'password_hash': newHash})
-          .eq('cswd_id', cswd_id);
+      await _supabase.functions.invoke('manage-staff-account', body: {
+        'action': 'update_account',
+        'cswd_id': cswd_id,
+        'updates': {'password_hash': newHash},
+      });
 
       await AuditLogService().log(
         actionType: kAuditPasswordChanged,
@@ -187,10 +173,11 @@ class WebAuthService {
 
   Future<void> clearFirstLoginFlag(String cswd_id) async {
     try {
-      await _supabase
-          .from('staff_accounts')
-          .update({'is_first_login': false})
-          .eq('cswd_id', cswd_id);
+      await _supabase.functions.invoke('manage-staff-account', body: {
+        'action': 'update_account',
+        'cswd_id': cswd_id,
+        'updates': {'is_first_login': false},
+      });
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[WebAuthService/clearFirstLoginFlag] Error: $e');
@@ -210,14 +197,15 @@ class WebAuthService {
         };
       }
 
-      await _supabase
-          .from('staff_accounts')
-          .update({
-            'password_hash': _hashPassword(newPassword),
-            'is_first_login': false,
-            'account_status': 'active',
-          })
-          .eq('cswd_id', cswd_id);
+      await _supabase.functions.invoke('manage-staff-account', body: {
+        'action': 'update_account',
+        'cswd_id': cswd_id,
+        'updates': {
+          'password_hash': _hashPassword(newPassword),
+          'is_first_login': false,
+          'account_status': 'active',
+        },
+      });
 
       return {'success': true, 'message': 'Password reset successfully.'};
     } catch (e) {
@@ -227,10 +215,11 @@ class WebAuthService {
 
   Future<Map<String, dynamic>> deactivateStaffAccount(String cswd_id) async {
     try {
-      await _supabase
-          .from('staff_accounts')
-          .update({'is_active': false, 'account_status': 'deactivated'})
-          .eq('cswd_id', cswd_id);
+      await _supabase.functions.invoke('manage-staff-account', body: {
+        'action': 'update_account',
+        'cswd_id': cswd_id,
+        'updates': {'is_active': false, 'account_status': 'deactivated'},
+      });
       return {'success': true, 'message': 'Account deactivated.'};
     } catch (e) {
       return {'success': false, 'message': 'Error: ${e.toString()}'};
@@ -239,10 +228,11 @@ class WebAuthService {
 
   Future<Map<String, dynamic>> reactivateStaffAccount(String cswd_id) async {
     try {
-      await _supabase
-          .from('staff_accounts')
-          .update({'is_active': true, 'account_status': 'active'})
-          .eq('cswd_id', cswd_id);
+      await _supabase.functions.invoke('manage-staff-account', body: {
+        'action': 'update_account',
+        'cswd_id': cswd_id,
+        'updates': {'is_active': true, 'account_status': 'active'},
+      });
       return {'success': true, 'message': 'Account reactivated.'};
     } catch (e) {
       return {'success': false, 'message': 'Error: ${e.toString()}'};

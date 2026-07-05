@@ -425,6 +425,8 @@ class _DateField extends StatelessWidget {
                     initialDate: initial,
                     firstDate: DateTime(1900),
                     lastDate: DateTime.now(),
+                    initialEntryMode: DatePickerEntryMode.calendar,
+                  keyboardType: TextInputType.text,
                     builder: (ctx, child) => Theme(
                       data: Theme.of(ctx).copyWith(
                         colorScheme: const ColorScheme.light(
@@ -1163,6 +1165,8 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
               initialDate: initial,
               firstDate: DateTime(1900),
               lastDate: DateTime.now(),
+              initialEntryMode: DatePickerEntryMode.calendar,
+              keyboardType: TextInputType.text,
               builder: (ctx, child) => Theme(
                 data: Theme.of(ctx).copyWith(
                   colorScheme: const ColorScheme.light(
@@ -2079,6 +2083,8 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
               initialDate: initial,
               firstDate: DateTime(1900),
               lastDate: DateTime(2100),
+              initialEntryMode: DatePickerEntryMode.calendar,
+              keyboardType: TextInputType.text,
               builder: DatePickerHelper.themedBuilder,
             );
             if (picked != null) {
