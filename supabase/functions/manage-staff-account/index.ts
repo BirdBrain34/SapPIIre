@@ -391,8 +391,11 @@ Deno.serve(async (req: Request) => {
         const accountResult = await supabase
           .from('staff_accounts')
           .insert({
+            // Pending accounts are stored as 'admin' to satisfy the
+            // role CHECK constraint, but stay inactive/pending until a
+            // superadmin approves — login is blocked while is_active=false.
             email, username, password_hash: passwordHash,
-            role: 'viewer', requested_role: requestedRole,
+            role: 'admin', requested_role: requestedRole,
             account_status: 'pending', is_active: false,
           })
           .select('cswd_id')
@@ -484,6 +487,17 @@ Deno.serve(async (req: Request) => {
         if (!cswdId) return json({ error: 'missing_cswd_id' });
         if (!updates || typeof updates !== 'object' || Object.keys(updates).length === 0) {
           return json({ error: 'missing_or_empty_updates' });
+        }
+
+        // Only admin/superadmin are valid roles — reject any other value.
+        const ALLOWED_ROLES = ['admin', 'superadmin'];
+        if ('role' in updates && !ALLOWED_ROLES.includes(updates.role)) {
+          return json({ error: `invalid_role: ${updates.role}` });
+        }
+        if ('requested_role' in updates &&
+            updates.requested_role != null &&
+            !ALLOWED_ROLES.includes(updates.requested_role)) {
+          return json({ error: `invalid_requested_role: ${updates.requested_role}` });
         }
 
         const { error: updateError } = await supabase

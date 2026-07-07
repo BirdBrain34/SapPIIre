@@ -53,7 +53,7 @@ The application derives protection keys through the `derive-field-key` Edge Func
    - A random 12-byte IV is generated per record and stored in `data_iv`.
    - The encryption algorithm is AES-256-GCM, with symmetric key (`SERVER_AES_KEY`) stored in Supabase Edge Secrets.
    - `data_encryption_version` is set to 1 to indicate encryption status and enable future versioning.
-5. **Decryption Access Control:** The `decrypt-submission-data` Edge Function authorizes decryption requests based on staff role (`admin`, `form_editor`, `superadmin`), preventing `viewer` role access to plaintext records.
+5. **Decryption Access Control:** The `decrypt-submission-data` Edge Function authorizes decryption requests based on staff role (`admin`, `superadmin`).
 6. This architecture provides a defense-in-depth layer protecting finalized applicant records at rest, complementing client-side field encryption in `user_field_values` and hybrid transport encryption in `form_submission`.
 
 ### 2.5 Dynamic Metadata Layer
@@ -74,8 +74,8 @@ For web analytics presentation, `dashboard_widget_configs` and `dashboard_card_s
 
 `staff_accounts` and `staff_profiles` implement dashboard identity governance with schema-level role and status constraints:
 
-1. `role` in {viewer, form_editor, admin, superadmin}
-2. `requested_role` in {viewer, form_editor, admin}
+1. `role` in {admin, superadmin}
+2. `requested_role` in {admin, superadmin}
 3. `account_status` in {pending, active, deactivated}
 4. `is_active` and `is_first_login` for operational gatekeeping
 

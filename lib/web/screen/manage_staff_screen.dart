@@ -246,7 +246,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                                 ),
                                 onPressed: () => _approveAccount(
                                   acc['cswd_id'],
-                                  acc['requested_role'] ?? 'viewer',
+                                  acc['requested_role'] ?? 'admin',
                                 ),
                                 child: const Text(
                                   "Approve",

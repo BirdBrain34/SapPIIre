@@ -134,7 +134,7 @@ The mobile client updates the targeted active session row with:
 The system implements "Zero-Knowledge Staging" where decryption occurs strictly in-memory during the request lifecycle. The `serve-submission-for-review` Edge Function executes the following sequence:
 
 1. Validate request method, `sessionId`, and `staffId`.
-2. Verify staff authorization (role-based access control, blocking `viewer` role).
+2. Verify staff authorization (role-based access control; only `admin` and `superadmin` roles exist).
 3. Fetch the encrypted envelope from `form_submission` where `transmission_version = 1`.
 4. Decode private key PEM from Edge secrets (`RSA_PRIVATE_KEY_PEM`).
 5. Unwrap AES key via RSA-OAEP (attempts SHA-1 then SHA-256 for compatibility).

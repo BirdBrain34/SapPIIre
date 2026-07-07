@@ -2,7 +2,7 @@
 
 ## 1. Audience and Operational Objective
 
-The web platform is designed for CSWD personnel, including viewers, form editors, administrators, and superadministrators. Its primary objective is to receive secure client payloads, manage intake workflows, govern staff access, and evolve form infrastructure for institutional continuity.
+The web platform is designed for CSWD personnel, specifically administrators and superadministrators. Its primary objective is to receive secure client payloads, manage intake workflows, govern staff access, and evolve form infrastructure for institutional continuity.
 
 ## 2. Core Functional Domains
 

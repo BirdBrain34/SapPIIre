@@ -52,7 +52,7 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
           ContentFadeRoute(
             page: FirstLoginPasswordScreen(
               cswd_id: result['cswd_id'] ?? '',
-              role: result['role'] ?? 'viewer',
+              role: result['role'] ?? 'admin',
               displayName: result['display_name'] ?? result['username'] ?? '',
               username: result['username'] ?? '',
             ),
@@ -64,7 +64,7 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
           ContentFadeRoute(
             page: ManageFormsScreen(
               cswd_id: result['cswd_id'] ?? '',
-              role: result['role'] ?? 'viewer',
+              role: result['role'] ?? 'admin',
               displayName: result['display_name'] ?? result['username'] ?? '',
             ),
           ),

@@ -40,10 +40,6 @@ class WebShell extends StatelessWidget {
         return 'Super Administrator';
       case 'admin':
         return 'Administrator';
-      case 'form_editor':
-        return 'Form Editor';
-      case 'viewer':
-        return 'Staff';
       default:
         return role;
     }
