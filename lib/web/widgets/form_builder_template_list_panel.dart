@@ -20,7 +20,10 @@ class FormBuilderTemplateListPanel extends StatelessWidget {
     final visibleTemplates = controller.templates.where((template) {
       final status = (template['status'] as String?) ?? 'draft';
       final isArchived = status == 'archived';
-      final isActive = (template['is_active'] as bool?) == true;
+      final rawIsActive = template['is_active'];
+      final isActive = rawIsActive is bool
+          ? rawIsActive
+          : (rawIsActive is int ? rawIsActive == 1 : false);
 
       return switch (controller.templateListFilter) {
         TemplateListFilter.archived => isArchived,

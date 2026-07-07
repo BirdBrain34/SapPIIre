@@ -3,6 +3,13 @@
 /// These classes mirror the Supabase schema for form templates, sections,
 /// fields, options, and conditional rules.
 
+/// Safely converts a dynamic value (bool, int, or null) to bool.
+bool _toBool(dynamic value) {
+  if (value is bool) return value;
+  if (value is int) return value == 1;
+  return false;
+}
+
 /// Field types supported by the dynamic form system.
 enum FormFieldType {
   text,
@@ -210,7 +217,7 @@ class FormFieldModel {
     fieldName: m['field_name'] as String,
     fieldLabel: m['field_label'] as String,
     fieldType: FormFieldType.fromString(m['field_type'] as String? ?? ''),
-    isRequired: (m['is_required'] as bool?) ?? false,
+    isRequired: _toBool(m['is_required']),
     validationRules: m['validation_rules'] as Map<String, dynamic>?,
     fieldOrder: (m['field_order'] as int?) ?? 0,
     canonicalFieldKey: m['canonical_field_key'] as String?,

@@ -25,6 +25,19 @@ class IssueTrendItem {
   int get delta => currentCount - previousCount;
 }
 
+/// Holds a staff summary for Level 1 display.
+class StaffSummary {
+  final String staffId;
+  final String displayName;
+  final int submissionCount;
+
+  const StaffSummary({
+    required this.staffId,
+    required this.displayName,
+    required this.submissionCount,
+  });
+}
+
 class DashboardAnalyticsService {
   static final DashboardAnalyticsService _instance =
       DashboardAnalyticsService._internal();
@@ -201,6 +214,172 @@ class DashboardAnalyticsService {
     }
   }
 
+  // ============================================================================
+  // Staff Submission Activity — 3-Level Drill-Down
+  // ============================================================================
+
+  /// Level 1: Fetch all staff members with their total submission counts.
+  /// Returns a list of StaffSummary (id, display name, count),
+  /// sorted by count descending (most active first).
+  Future<List<StaffSummary>> fetchStaffSubmissionCounts({
+    DateTimeRange? timeRange,
+  }) async {
+    try {
+      final rows = await _clientSubmissionsQuery(
+        select: 'created_by',
+        timeRange: timeRange,
+      );
+
+      // Count submissions per staff ID
+      final countsById = <String, int>{};
+      for (final row in List<Map<String, dynamic>>.from(rows)) {
+        final createdBy = row['created_by']?.toString().trim() ?? '';
+        if (createdBy.isEmpty) continue;
+        countsById[createdBy] = (countsById[createdBy] ?? 0) + 1;
+      }
+
+      if (countsById.isEmpty) return [];
+
+      // Resolve display names
+      final labelMap = await _fetchStaffDisplayNames(countsById.keys.toList());
+
+      // Build sorted list
+      final sorted = countsById.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+
+      return sorted.map((entry) {
+        final name = labelMap[entry.key]?.trim();
+        return StaffSummary(
+          staffId: entry.key,
+          displayName: (name != null && name.isNotEmpty) ? name : entry.key,
+          submissionCount: entry.value,
+        );
+      }).toList();
+    } catch (e) {
+      debugPrint(
+        '[DashboardAnalyticsService/fetchStaffSubmissionCounts] Error: $e',
+      );
+      return [];
+    }
+  }
+
+  /// Level 2: Fetch form type breakdown for a specific staff member by ID.
+  /// Returns a map of form type name → submission count.
+  Future<Map<String, int>> fetchStaffFormTypeBreakdown(
+    String staffId, {
+    DateTimeRange? timeRange,
+  }) async {
+    try {
+      final rows = await _clientSubmissionsQuery(
+        select: 'form_type, created_by',
+        timeRange: timeRange,
+      );
+
+      final counts = <String, int>{};
+      for (final row in List<Map<String, dynamic>>.from(rows)) {
+        final createdBy = row['created_by']?.toString().trim() ?? '';
+        if (createdBy != staffId) continue;
+
+        final formType = row['form_type']?.toString().trim() ?? 'Unknown';
+        counts[formType] = (counts[formType] ?? 0) + 1;
+      }
+
+      // Sort by count descending
+      final sorted = counts.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      return {for (final entry in sorted) entry.key: entry.value};
+    } catch (e) {
+      debugPrint(
+        '[DashboardAnalyticsService/fetchStaffFormTypeBreakdown] Error: $e',
+      );
+      return {};
+    }
+  }
+
+  /// Level 3: Fetch individual submission records for a specific staff member
+  /// and form type. Returns rows with client name, date/time, reference number.
+  Future<List<Map<String, dynamic>>> fetchStaffFormSubmissions(
+    String staffId,
+    String formType, {
+    DateTimeRange? timeRange,
+  }) async {
+    try {
+      // Get the raw rows with session_id (the session that links to the client)
+      final rows = await _clientSubmissionsQuery(
+        select: 'id, session_id, created_at, intake_reference',
+        formType: formType,
+        timeRange: timeRange,
+      ).eq('created_by', staffId).order('created_at', ascending: false);
+
+      final results = List<Map<String, dynamic>>.from(rows);
+
+      // Get session IDs to look up client user_ids
+      final sessionIds = results
+          .map((row) => row['session_id']?.toString().trim() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toList();
+
+      // Map session_id → user_id via form_submission
+      Map<String, String> sessionToUserId = {};
+      if (sessionIds.isNotEmpty) {
+        sessionToUserId = await _submissionService.fetchSessionUserMap(sessionIds);
+      }
+
+      // Collect distinct client user_ids
+      final clientIds = sessionToUserId.values
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList();
+
+      // Resolve client names via Edge Function (server-side decryption)
+      Map<String, String> clientNames = {};
+      if (clientIds.isNotEmpty && _staffId != null) {
+        final namesMap = await _submissionService.resolveNamesViaEdgeFunction(
+          userIds: clientIds,
+          staffId: _staffId!,
+        );
+        for (final entry in namesMap.entries) {
+          final uid = entry.key;
+          final names = entry.value;
+          final last = names['last']?.toString().trim() ?? '';
+          final first = names['first']?.toString().trim() ?? '';
+          final middle = names['middle']?.toString().trim() ?? '';
+          final middleInitial = middle.isNotEmpty ? ' ${middle[0]}.' : '';
+          final fullName = '$first$middleInitial $last'.trim();
+          if (fullName.isNotEmpty) {
+            clientNames[uid] = fullName;
+          }
+        }
+      }
+
+      return results.map((row) {
+        final sessionId = row['session_id']?.toString().trim() ?? '';
+        final clientId = sessionToUserId[sessionId] ?? '';
+        // Try resolved client name, fall back to ID
+        var clientName = clientNames[clientId] ?? '';
+        if (clientName.isEmpty && clientId.isNotEmpty) {
+          clientName = 'Client #${clientId.substring(0, 8)}';
+        } else if (clientName.isEmpty) {
+          clientName = '—';
+        }
+        return {
+          'submitter': clientName,
+          'submitted_at': row['created_at']?.toString() ?? '',
+          'reference_number': row['intake_reference']?.toString() ?? '—',
+        };
+      }).toList();
+    } catch (e) {
+      debugPrint(
+        '[DashboardAnalyticsService/fetchStaffFormSubmissions] Error: $e',
+      );
+      return [];
+    }
+  }
+
+  // ============================================================================
+  // End of Staff Submission Activity methods
+  // ============================================================================
+
   Future<int> fetchUniqueClientCount({DateTimeRange? timeRange}) async {
     try {
       final rows = await _clientSubmissionsQuery(
@@ -227,8 +406,17 @@ class DashboardAnalyticsService {
 
   Future<int> fetchStaffAccountCount() async {
     try {
-      final rows = await _supabase.from('staff_accounts').select('cswd_id');
-      return List<Map<String, dynamic>>.from(rows).length;
+      // Use Edge Function to bypass RLS on staff_accounts
+      final result = await _supabase.functions.invoke('manage-staff-account', body: {
+        'action': 'fetch_accounts',
+      });
+      final data = result.data as Map<String, dynamic>?;
+      if (data == null) return 0;
+
+      final active = List<Map<String, dynamic>>.from(data['active'] as List? ?? []);
+      final pending = List<Map<String, dynamic>>.from(data['pending'] as List? ?? []);
+      
+      return active.length + pending.length;
     } catch (e) {
       debugPrint(
         '[DashboardAnalyticsService/fetchStaffAccountCount] Error: $e',
@@ -388,6 +576,8 @@ class DashboardAnalyticsService {
     }
   }
 
+  /// Resolves staff display names for a set of staff IDs.
+  /// Uses Edge Function (bypasses RLS).
   Future<Map<String, String>> _fetchStaffDisplayNames(
     List<String> actorIds,
   ) async {
@@ -396,55 +586,104 @@ class DashboardAnalyticsService {
     }
 
     try {
-      final accounts = await _supabase
-          .from('staff_accounts')
-          .select('cswd_id, username, email')
-          .inFilter('cswd_id', actorIds);
-      final profiles = await _supabase
-          .from('staff_profiles')
-          .select('cswd_id, first_name, middle_name, last_name')
-          .inFilter('cswd_id', actorIds);
+      // Step 1: Try fetch_staff_batch for full names + profiles
+      try {
+        final result = await _supabase.functions.invoke('manage-staff-account', body: {
+          'action': 'fetch_staff_batch',
+          'ids': actorIds,
+        });
 
-      final profileById = <String, Map<String, dynamic>>{};
-      for (final row in List<Map<String, dynamic>>.from(profiles)) {
-        final id = row['cswd_id']?.toString().trim() ?? '';
-        if (id.isEmpty) {
-          continue;
+        final data = result.data as Map<String, dynamic>?;
+        if (data != null) {
+          final accounts = List<Map<String, dynamic>>.from(data['accounts'] as List? ?? []);
+          final profiles = List<Map<String, dynamic>>.from(data['profiles'] as List? ?? []);
+
+          if (accounts.isNotEmpty) {
+            final profileById = <String, Map<String, dynamic>>{};
+            for (final row in profiles) {
+              final id = row['cswd_id']?.toString().trim() ?? '';
+              if (id.isEmpty) continue;
+              profileById[id] = row;
+            }
+
+            final displayNames = <String, String>{};
+            for (final row in accounts) {
+              final id = row['cswd_id']?.toString().trim() ?? '';
+              if (id.isEmpty) continue;
+
+              final profile = profileById[id];
+              if (profile != null) {
+                final first = (profile['first_name']?.toString() ?? '').trim();
+                final middle = (profile['middle_name']?.toString() ?? '').trim();
+                final last = (profile['last_name']?.toString() ?? '').trim();
+                final middleInitial = middle.isNotEmpty ? ' ${middle[0]}.' : '';
+                final fullName = '$first$middleInitial $last'.trim();
+                if (fullName.isNotEmpty) {
+                  displayNames[id] = fullName;
+                  continue;
+                }
+              }
+
+              final username = (row['username']?.toString() ?? '').trim();
+              if (username.isNotEmpty) {
+                displayNames[id] = username;
+                continue;
+              }
+
+              final email = (row['email']?.toString() ?? '').trim();
+              if (email.isNotEmpty) {
+                final localPart = email.split('@').first.trim();
+                if (localPart.isNotEmpty) displayNames[id] = localPart;
+              }
+            }
+
+            if (displayNames.isNotEmpty) return displayNames;
+          }
         }
-        profileById[id] = row;
+      } catch (e) {
+        debugPrint('[DashboardAnalyticsService] fetch_staff_batch failed (non-critical): $e');
       }
 
-      final displayNames = <String, String>{};
-      for (final row in List<Map<String, dynamic>>.from(accounts)) {
-        final id = row['cswd_id']?.toString().trim() ?? '';
-        if (id.isEmpty) {
-          continue;
+      // Step 2: Fallback to fetch_accounts (definitely deployed, returns usernames)
+      try {
+        final accountsResult = await _supabase.functions.invoke('manage-staff-account', body: {
+          'action': 'fetch_accounts',
+        });
+
+        final accountsData = accountsResult.data as Map<String, dynamic>?;
+        if (accountsData == null) return {};
+
+        final allAccounts = <Map<String, dynamic>>[
+          ...List<Map<String, dynamic>>.from(accountsData['active'] as List? ?? []),
+          ...List<Map<String, dynamic>>.from(accountsData['pending'] as List? ?? []),
+        ];
+
+        // Build a username lookup by ID
+        final usernameById = <String, String>{};
+        for (final row in allAccounts) {
+          final id = row['cswd_id']?.toString().trim() ?? '';
+          if (id.isEmpty) continue;
+          final username = (row['username']?.toString() ?? '').trim();
+          if (username.isNotEmpty) {
+            usernameById[id] = username;
+          }
         }
 
-        final profile = profileById[id] ?? const <String, dynamic>{};
-        final first = profile['first_name']?.toString().trim() ?? '';
-        final middle = profile['middle_name']?.toString().trim() ?? '';
-        final last = profile['last_name']?.toString().trim() ?? '';
-
-        final middleInitial = middle.isNotEmpty ? ' ${middle[0]}.' : '';
-        final fullName = '$first$middleInitial $last'.trim();
-        final username = row['username']?.toString().trim() ?? '';
-        final email = row['email']?.toString().trim() ?? '';
-
-        var label = fullName;
-        if (label.isEmpty) {
-          label = _sanitizeActorLabel(username);
-        }
-        if (label.isEmpty) {
-          label = _sanitizeActorLabel(email);
+        // Return only the ones we asked for
+        final resolved = <String, String>{};
+        for (final id in actorIds) {
+          final username = usernameById[id];
+          if (username != null && username.isNotEmpty) {
+            resolved[id] = username;
+          }
         }
 
-        if (label.isNotEmpty) {
-          displayNames[id] = label;
-        }
+        if (resolved.isNotEmpty) return resolved;
+      } catch (e) {
+        debugPrint('[DashboardAnalyticsService] fetch_accounts also failed: $e');
       }
 
-      return displayNames;
+      return {};
     } catch (e) {
       debugPrint(
         '[DashboardAnalyticsService/_fetchStaffDisplayNames] Error: $e',
@@ -490,6 +729,21 @@ class DashboardAnalyticsService {
       r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
     );
     return uuid.hasMatch(value);
+  }
+
+  /// Resolves staff display names for a set of submission rows.
+  Future<Map<String, String>> _resolveStaffNamesForRows(
+    List<Map<String, dynamic>> rows,
+  ) async {
+    final staffIds = rows
+        .map((row) => row['created_by']?.toString().trim() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+
+    if (staffIds.isEmpty) return {};
+
+    return _fetchStaffDisplayNames(staffIds);
   }
 
   Future<Map<String, int>> fetchGenderRatio({
@@ -794,6 +1048,72 @@ class DashboardAnalyticsService {
     }
   }
 
+  // Cache for option value → label mappings from form_field_options
+  Map<String, Map<String, String>>? _optionLabelCache;
+
+  /// Builds a cache of field_name → {option_value: option_label} mappings.
+  Future<Map<String, Map<String, String>>> _getOptionLabelMappings() async {
+    if (_optionLabelCache != null) return _optionLabelCache!;
+
+    try {
+      final rows = await _supabase
+          .from('form_field_options')
+          .select('field_id, option_value, option_label');
+      
+      // Also need field_name → field_id mapping
+      final fieldRows = await _supabase
+          .from('form_fields')
+          .select('field_id, field_name');
+
+      final fieldIdToName = <String, String>{};
+      for (final row in List<Map<String, dynamic>>.from(fieldRows)) {
+        final fid = row['field_id']?.toString().trim() ?? '';
+        final fname = row['field_name']?.toString().trim() ?? '';
+        if (fid.isNotEmpty && fname.isNotEmpty) {
+          fieldIdToName[fid] = fname;
+        }
+      }
+
+      final mappings = <String, Map<String, String>>{};
+      for (final row in List<Map<String, dynamic>>.from(rows)) {
+        final fid = row['field_id']?.toString().trim() ?? '';
+        final fieldName = fieldIdToName[fid];
+        if (fieldName == null || fieldName.isEmpty) continue;
+
+        final optValue = (row['option_value']?.toString() ?? '').trim();
+        final optLabel = (row['option_label']?.toString() ?? '').trim();
+        if (optValue.isEmpty || optLabel.isEmpty) continue;
+
+        mappings.putIfAbsent(fieldName, () => {});
+        mappings[fieldName]![optValue] = optLabel;
+      }
+
+      _optionLabelCache = mappings;
+      return mappings;
+    } catch (e) {
+      debugPrint(
+        '[DashboardAnalyticsService/_getOptionLabelMappings] Error: $e',
+      );
+      _optionLabelCache = {};
+      return _optionLabelCache!;
+    }
+  }
+
+  /// Resolves a raw value to its display label using option mappings.
+  /// Falls back to the raw value if no mapping exists.
+  Future<String> _resolveValueLabel(
+    String fieldName,
+    String rawValue,
+  ) async {
+    final mappings = await _getOptionLabelMappings();
+    final fieldMappings = mappings[fieldName];
+    if (fieldMappings != null) {
+      final label = fieldMappings[rawValue];
+      if (label != null && label.isNotEmpty) return label;
+    }
+    return rawValue;
+  }
+
   Future<Map<String, int>> fetchFieldDistribution({
     required String formType,
     required String fieldName,
@@ -812,6 +1132,9 @@ class DashboardAnalyticsService {
     try {
       final rows = await _getDecryptedRows(formType, timeRange);
 
+      // Pre-fetch option label mappings for this field
+      final optionMappings = (await _getOptionLabelMappings())[fieldName] ?? {};
+
       final dist = <String, int>{};
 
       for (final row in rows) {
@@ -826,31 +1149,38 @@ class DashboardAnalyticsService {
 
         if (isMultiSelect && raw is List) {
           for (final item in raw) {
-            final value = item.toString().trim();
-            if (value.isEmpty) {
-              continue;
-            }
-            dist[value] = (dist[value] ?? 0) + 1;
+            var value = item.toString().trim();
+            if (value.isEmpty) continue;
+            // Resolve label from option mapping
+            final label = optionMappings[value] ?? value;
+            // Normalize casing for free-text values (no option mapping)
+            final key = optionMappings.containsKey(value)
+                ? label
+                : label.toLowerCase().trim();
+            dist[key] = (dist[key] ?? 0) + 1;
           }
           continue;
         }
 
         if (isNumeric) {
           final parsed = double.tryParse(raw.toString().trim());
-          if (parsed == null) {
-            continue;
-          }
+          if (parsed == null) continue;
 
           final bucket = _numericBucket(parsed);
           dist[bucket] = (dist[bucket] ?? 0) + 1;
           continue;
         }
 
-        final value = raw.toString().trim();
-        if (value.isEmpty) {
-          continue;
-        }
-        dist[value] = (dist[value] ?? 0) + 1;
+        var value = raw.toString().trim();
+        if (value.isEmpty) continue;
+
+        // Resolve label from option mapping
+        final label = optionMappings[value] ?? value;
+        // Normalize casing for free-text values (no option mapping)
+        final key = optionMappings.containsKey(value)
+            ? label
+            : label.toLowerCase().trim();
+        dist[key] = (dist[key] ?? 0) + 1;
       }
 
       if (dist.length > topN) {
@@ -928,6 +1258,9 @@ class DashboardAnalyticsService {
     try {
       final rows = await _getDecryptedRows(formType, timeRange);
 
+      // Pre-fetch option label mappings for this field
+      final optionMappings = (await _getOptionLabelMappings())[fieldKey] ?? {};
+
       final distribution = <String, int>{};
 
       for (final row in rows) {
@@ -952,12 +1285,18 @@ class DashboardAnalyticsService {
           continue;
         }
 
-        final value = _extractFieldValue(data, fieldKey);
-        if (value.isEmpty) {
+        final rawValue = _extractFieldValue(data, fieldKey);
+        if (rawValue.isEmpty) {
           continue;
         }
 
-        distribution[value] = (distribution[value] ?? 0) + 1;
+        // Resolve label from option mapping
+        final label = optionMappings[rawValue] ?? rawValue;
+        // Normalize casing for free-text values (no option mapping)
+        final key = optionMappings.containsKey(rawValue)
+            ? label
+            : label.toLowerCase().trim();
+        distribution[key] = (distribution[key] ?? 0) + 1;
       }
 
       return distribution;

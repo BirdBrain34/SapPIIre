@@ -12,12 +12,6 @@ const systemBlocks =
       FormFieldType,
       ({String label, String fieldName, String desc, IconData icon})
     >{
-      FormFieldType.membershipGroup: (
-        label: 'Membership Group',
-        fieldName: 'membership_group',
-        desc: 'Solo Parent, PWD, 4Ps, PHIC checkboxes',
-        icon: Icons.group_outlined,
-      ),
       FormFieldType.computed: (
         label: 'Computed Field',
         fieldName: 'computed_field',
@@ -471,7 +465,11 @@ class FormBuilderScreenController extends ChangeNotifier {
             type: FormFieldType.fromString(
               field['field_type'] as String? ?? 'text',
             ),
-            isRequired: (field['is_required'] as bool?) ?? false,
+            isRequired: (field['is_required'] is bool
+                ? field['is_required'] as bool
+                : (field['is_required'] is int
+                    ? (field['is_required'] as int) == 1
+                    : false)),
             canonicalFieldKey: field['field_type'] == 'signature'
                 ? 'signature'
                 : field['canonical_field_key'] as String?,
@@ -891,10 +889,7 @@ class FormBuilderScreenController extends ChangeNotifier {
     final section = sections[sectionIndex];
 
     final allFields = sections.expand((section) => section.fields);
-    if (const {
-          FormFieldType.membershipGroup,
-          FormFieldType.signature,
-        }.contains(type) &&
+    if (const {FormFieldType.signature}.contains(type) &&
         allFields.any((field) => field.type == type)) {
       showSnackBar?.call(
         'A "${block.label}" block already exists in this form.',

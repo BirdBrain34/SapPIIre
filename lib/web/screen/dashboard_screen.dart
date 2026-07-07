@@ -6,6 +6,7 @@ import 'package:sappiire/services/dashboard_config_service.dart';
 import 'package:sappiire/services/form_template_service.dart';
 import 'package:sappiire/web/components/intake_chart_widgets.dart';
 import 'package:sappiire/web/components/enhanced_chart_widgets.dart';
+import 'package:sappiire/web/components/staff_submission_activity.dart';
 import 'package:sappiire/web/controllers/dashboard_controller.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
 import 'package:sappiire/web/utils/web_session.dart';
@@ -988,22 +989,14 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ),
                   ),
 
-                // Staff workload - Interactive with drill-down
-                if (_staffWorkload.isNotEmpty)
-                  SizedBox(
-                    width: chartWidth,
-                    child: InteractiveBarChart(
-                      title: 'Staff Workload Distribution',
-                      data: _staffWorkload,
-                      primaryColor: AppColors.successGreen,
-                      onDrillDown: (account) async {
-                        return _analyticsService.fetchSubmissionsByFormTypeForWorker(
-                          account,
-                          timeRange: _selectedDateRange,
-                        );
-                      },
-                    ),
+                // Staff Submission Activity - 3-Level Drill-Down
+                SizedBox(
+                  width: chartWidth,
+                  child: StaffSubmissionActivity(
+                    analyticsService: _analyticsService,
+                    timeRange: _selectedDateRange,
                   ),
+                ),
               ],
             );
           },

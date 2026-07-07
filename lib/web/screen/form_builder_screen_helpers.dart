@@ -334,11 +334,14 @@ void showSystemBlockPicker(_FormBuilderScreenState state, int sectionIndex) {
             ...systemBlocks.entries.map((entry) {
               final block = entry.value;
               final exists = state._controller.sections.expand((section) => section.fields).any((field) => field.type == entry.key);
+              // Only Signature is single-use; Computed Field can be added multiple times
+              final isSingleUse = entry.key == FormFieldType.signature;
+              final isDisabled = isSingleUse && exists;
               return ListTile(
-                leading: Icon(block.icon, color: exists ? AppColors.textMuted : AppColors.highlight),
-                title: Text(block.label, style: TextStyle(fontSize: 14, color: exists ? AppColors.textMuted : AppColors.textDark)),
-                subtitle: entry.key == FormFieldType.signature ? Text(exists ? 'Already added' : block.desc, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)) : null,
-                enabled: !exists || entry.key == FormFieldType.computed,
+                leading: Icon(block.icon, color: isDisabled ? AppColors.textMuted : AppColors.highlight),
+                title: Text(block.label, style: TextStyle(fontSize: 14, color: isDisabled ? AppColors.textMuted : AppColors.textDark)),
+                subtitle: isSingleUse ? Text(exists ? 'Already added' : block.desc, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)) : null,
+                enabled: !isDisabled,
                 onTap: () {
                   Navigator.pop(ctx);
                   state._controller.addSystemField(sectionIndex, entry.key);
