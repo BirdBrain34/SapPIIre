@@ -14,10 +14,9 @@ import 'package:sappiire/services/forms/submission_service.dart';
 import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
+import 'package:sappiire/web/utils/web_session.dart';
 import 'package:sappiire/web/widgets/web_header_button.dart';
-import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
-import 'package:sappiire/web/screen/web_login_screen.dart';
 import 'package:sappiire/web/controllers/applicants_controller.dart';
 
 enum _RightPanelView { records, form }
@@ -443,15 +442,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       _applicantsController.formTypeBadgeColor(formType);
 
   // Logout / navigation
-  Future<void> _handleLogout() async {
-    await _submissionService.signOut();
-    if (mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
-        ContentFadeRoute(page: const WorkerLoginScreen()),
-        (route) => false,
-      );
-    }
-  }
+  Future<void> _handleLogout() => WebSession.logout(context);
 
   // Build
   @override
@@ -473,7 +464,6 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         cswdId: widget.cswd_id,
         role: widget.role,
         displayName: widget.displayName,
-        onLogout: _handleLogout,
       ),
       child: Padding(
         padding: const EdgeInsets.all(28),

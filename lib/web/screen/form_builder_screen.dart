@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/models/form_template_models.dart';
-import 'package:sappiire/services/auth/web_auth_service.dart';
 import 'package:sappiire/web/controllers/form_builder_screen_controller.dart';
-import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
 import 'package:sappiire/web/widgets/form_builder_field_card.dart';
 import 'package:sappiire/web/widgets/form_builder_section_header.dart';
@@ -12,7 +10,7 @@ import 'package:sappiire/web/widgets/form_builder_status_card.dart';
 import 'package:sappiire/web/widgets/form_builder_template_list_panel.dart';
 import 'package:sappiire/web/widgets/form_builder_title_card.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
-import 'package:sappiire/web/screen/web_login_screen.dart';
+import 'package:sappiire/web/utils/web_session.dart';
 
 part 'form_builder_screen_helpers.dart';
 
@@ -36,7 +34,6 @@ class FormBuilderScreen extends StatefulWidget {
 
 class _FormBuilderScreenState extends State<FormBuilderScreen> {
   late final FormBuilderScreenController _controller;
-  final _authService = WebAuthService();
   final _scrollCtrl = ScrollController();
   final PageStorageBucket _pageStorageBucket = PageStorageBucket();
 
@@ -239,12 +236,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
 
   Future<void> _handleLogout() async {
     if (!await _confirmLeave()) return;
-    await _authService.signOut();
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      ContentFadeRoute(page: const WorkerLoginScreen()),
-      (route) => false,
-    );
+    if (mounted) await WebSession.logout(context);
   }
 
   Future<bool?> _showConfirmDialog({

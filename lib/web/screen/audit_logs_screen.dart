@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/services/audit/audit_log_service.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
-import 'package:sappiire/web/utils/page_transitions.dart';
+import 'package:sappiire/web/utils/web_session.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
-import 'package:sappiire/web/screen/web_login_screen.dart';
 
 class AuditLogsScreen extends StatefulWidget {
   final String cswd_id;
@@ -26,7 +24,6 @@ class AuditLogsScreen extends StatefulWidget {
 
 class _AuditLogsScreenState extends State<AuditLogsScreen> {
   final _service = AuditLogService();
-  final _supabase = Supabase.instance.client;
   final _searchController = TextEditingController();
 
   List<Map<String, dynamic>> _logs = [];
@@ -408,7 +405,6 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         cswdId: widget.cswd_id,
         role: widget.role,
         displayName: widget.displayName,
-        onLogout: _handleLogout,
       ),
       child: Padding(
         padding: const EdgeInsets.all(28),
@@ -1228,14 +1224,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     );
   }
 
-  Future<void> _handleLogout() async {
-    await _supabase.auth.signOut();
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      ContentFadeRoute(page: const WorkerLoginScreen()),
-      (route) => false,
-    );
-  }
+  Future<void> _handleLogout() => WebSession.logout(context);
 
 }
 

@@ -4,6 +4,7 @@ import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
 import 'package:sappiire/web/widgets/confirm_dialog.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
+import 'package:sappiire/web/utils/web_session.dart';
 import 'package:sappiire/web/controllers/manage_staff_controller.dart';
 
 class ManageStaffScreen extends StatefulWidget {
@@ -166,14 +167,13 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
       role: widget.role,
       cswd_id: widget.cswd_id,
       displayName: widget.displayName,
-      onLogout: () => Navigator.pop(context),
+      onLogout: () => WebSession.logout(context),
       onNavigate: (screenPath) => WebNavigator.go(
         context,
         screenPath,
         cswdId: widget.cswd_id,
         role: widget.role,
         displayName: widget.displayName,
-        onLogout: () => Navigator.pop(context),
       ),
       child: AnimatedBuilder(
         animation: _controller,

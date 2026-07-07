@@ -8,6 +8,7 @@ import 'package:sappiire/web/components/intake_chart_widgets.dart';
 import 'package:sappiire/web/components/enhanced_chart_widgets.dart';
 import 'package:sappiire/web/controllers/dashboard_controller.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
+import 'package:sappiire/web/utils/web_session.dart';
 import 'package:sappiire/web/widgets/dashboard_config_dialog.dart';
 import 'package:sappiire/web/widgets/dashboard_form_card.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
@@ -16,14 +17,12 @@ class DashboardScreen extends StatefulWidget {
   final String cswd_id;
   final String role;
   final String displayName;
-  final VoidCallback onLogout;
 
   const DashboardScreen({
     super.key,
     required this.cswd_id,
     required this.role,
     this.displayName = '',
-    required this.onLogout,
   });
 
   @override
@@ -356,14 +355,13 @@ class _DashboardScreenState extends State<DashboardScreen>
       role: widget.role,
       cswd_id: widget.cswd_id,
       displayName: widget.displayName,
-      onLogout: widget.onLogout,
+      onLogout: () => WebSession.logout(context),
       onNavigate: (path) => WebNavigator.go(
         context,
         path,
         cswdId: widget.cswd_id,
         role: widget.role,
         displayName: widget.displayName,
-        onLogout: widget.onLogout,
       ),
       headerActions: _selectedFormId != 'all'
           ? [

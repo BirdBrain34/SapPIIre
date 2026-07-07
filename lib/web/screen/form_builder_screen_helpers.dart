@@ -10,7 +10,7 @@ Widget buildFormBuilderScreen(_FormBuilderScreenState state) {
     displayName: state.widget.displayName,
     onLogout: state._handleLogout,
     headerActions: buildHeaderActions(state),
-    onNavigate: (path) => WebNavigator.go(state.context, path, cswdId: state.widget.cswd_id, role: state.widget.role, displayName: state.widget.displayName, onLogout: state._handleLogout),
+    onNavigate: (path) => WebNavigator.go(state.context, path, cswdId: state.widget.cswd_id, role: state.widget.role, displayName: state.widget.displayName),
     child: AnimatedBuilder(
       animation: state._controller,
       builder: (context, _) {

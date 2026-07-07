@@ -26,11 +26,10 @@ import 'package:sappiire/services/forms/submission_service.dart';
 import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
+import 'package:sappiire/web/utils/web_session.dart';
 import 'package:sappiire/web/widgets/web_header_button.dart';
 import 'package:sappiire/web/widgets/confirm_dialog.dart';
-import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
-import 'package:sappiire/web/screen/web_login_screen.dart';
 import 'package:sappiire/services/audit/audit_log_service.dart';
 import 'package:sappiire/web/controllers/manage_forms_controller.dart';
 
@@ -731,13 +730,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     }
     // Reset display monitor on logout
     await _displayService.resetStation(_stationId);
-    await _submissionService.signOut();
-    if (mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
-        ContentFadeRoute(page: const WorkerLoginScreen()),
-        (route) => false,
-      );
-    }
+    if (mounted) await WebSession.logout(context);
   }
 
   // Build
@@ -810,7 +803,6 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           cswdId: widget.cswd_id,
           role: widget.role,
           displayName: widget.displayName,
-          onLogout: _handleLogout,
         ),
         child: _isLoading
             ? const Center(

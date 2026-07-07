@@ -8,6 +8,7 @@ import 'package:sappiire/services/audit/audit_log_service.dart';
 import 'package:sappiire/services/auth/staff_admin_service.dart';
 import 'package:sappiire/services/email/staff_email_service.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
+import 'package:sappiire/web/utils/web_session.dart';
 
 class CreateStaffScreen extends StatefulWidget {
   final String role;
@@ -219,14 +220,13 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
       role: widget.role,
       cswd_id: widget.cswd_id,
       displayName: widget.displayName,
-      onLogout: () => Navigator.pop(context),
+      onLogout: () => WebSession.logout(context),
       onNavigate: (screenPath) => WebNavigator.go(
         context,
         screenPath,
         cswdId: widget.cswd_id,
         role: widget.role,
         displayName: widget.displayName,
-        onLogout: () => Navigator.pop(context),
       ),
       child: Padding(
         padding: const EdgeInsets.all(28),

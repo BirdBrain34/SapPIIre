@@ -16,7 +16,6 @@ class WebNavigator {
     required String cswdId,
     required String role,
     required String displayName,
-    VoidCallback? onLogout,
   }) {
     Widget? nextScreen;
 
@@ -26,7 +25,6 @@ class WebNavigator {
           cswd_id: cswdId,
           role: role,
           displayName: displayName,
-          onLogout: onLogout ?? () {},
         );
         break;
       case 'Forms':

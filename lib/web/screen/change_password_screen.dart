@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/services/auth/web_auth_service.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
+import 'package:sappiire/web/utils/web_session.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
@@ -105,14 +106,13 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       role: widget.role,
       cswd_id: widget.cswd_id,
       displayName: widget.displayName,
-      onLogout: () => Navigator.pop(context),
+      onLogout: () => WebSession.logout(context),
       onNavigate: (path) => WebNavigator.go(
         context,
         path,
         cswdId: widget.cswd_id,
         role: widget.role,
         displayName: widget.displayName,
-        onLogout: () => Navigator.pop(context),
       ),
       child: Center(
         child: SingleChildScrollView(
