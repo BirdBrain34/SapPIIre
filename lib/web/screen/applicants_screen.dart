@@ -470,50 +470,40 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         child: Column(
           children: [
             Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.accentBlue,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 20,
-                    ),
-                  ],
-                ),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 280),
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeInCubic,
-                  transitionBuilder: (child, animation) {
-                    final fade = FadeTransition(
-                      opacity: animation,
-                      child: child,
-                    );
-                    final scale = Tween<double>(
-                      begin: 0.985,
-                      end: 1.0,
-                    ).animate(animation);
-                    return ScaleTransition(scale: scale, child: fade);
-                  },
-                  child: _isLoading
-                      ? Container(
-                          key: const ValueKey('applicants-loading'),
-                          color: Colors.transparent,
-                          child: _buildApplicantsLoadingState(),
-                        )
-                      : Row(
-                          key: const ValueKey('applicants-ready'),
-                          children: [
-                            _buildListPanel(),
-                            Expanded(
-                              child: _selectedApplicantGroup == null
-                                  ? _buildEmptyState()
-                                  : _buildApplicantRecordsPanel(),
-                            ),
-                          ],
-                        ),
-                ),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 280),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) {
+                  final fade = FadeTransition(
+                    opacity: animation,
+                    child: child,
+                  );
+                  final scale = Tween<double>(
+                    begin: 0.985,
+                    end: 1.0,
+                  ).animate(animation);
+                  return ScaleTransition(scale: scale, child: fade);
+                },
+                child: _isLoading
+                    ? Container(
+                        key: const ValueKey('applicants-loading'),
+                        color: Colors.transparent,
+                        child: _buildApplicantsLoadingState(),
+                      )
+                    : Row(
+                        key: const ValueKey('applicants-ready'),
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildListPanel(),
+                          const SizedBox(width: 20),
+                          Expanded(
+                            child: _selectedApplicantGroup == null
+                                ? _buildEmptyState()
+                                : _buildApplicantRecordsPanel(),
+                          ),
+                        ],
+                      ),
               ),
             ),
           ],
@@ -527,56 +517,94 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     final groups = _groupedApplicants;
 
     return Container(
-      width: 280,
+      width: 300,
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(24),
-          bottomLeft: Radius.circular(24),
-        ),
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.cardBorder),
       ),
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(16),
-              child: TextField(
-                controller: _searchController,
-                autofocus: true,
-                onChanged: _handleSearchChanged,
-                style: const TextStyle(color: Colors.white, fontSize: 13),
-
-                decoration: InputDecoration(
-
-                hintText: 'Search applicants...',
-                hintStyle: const TextStyle(color: Colors.white54),
-                prefixIcon: const Icon(Icons.search, color: Colors.white54),
-                filled: true,
-                fillColor: Colors.white.withValues(alpha: 0.1),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.people_outline,
+                      size: 18,
+                      color: AppColors.textDark,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Applicants',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                    const Spacer(),
+                    if (!_isLoading)
+                      Text(
+                        '${groups.length}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                  ],
                 ),
-                isDense: true,
-              ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _searchController,
+                  autofocus: true,
+                  onChanged: _handleSearchChanged,
+                  style: const TextStyle(color: AppColors.textDark, fontSize: 13),
+                  decoration: InputDecoration(
+                    hintText: 'Search applicants...',
+                    hintStyle: const TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 13,
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.search,
+                      size: 18,
+                      color: AppColors.textMuted,
+                    ),
+                    filled: true,
+                    fillColor: AppColors.pageBg,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                ),
+              ],
             ),
           ),
           Expanded(
             child: _isLoading
                 ? const Center(
-                    child: CircularProgressIndicator(color: Colors.white),
+                    child: CircularProgressIndicator(color: AppColors.highlight),
                   )
                 : groups.isEmpty
                 ? const Center(
                     child: Text(
                       'No applicants found.',
-                      style: TextStyle(color: Colors.white54),
+                      style: TextStyle(color: AppColors.textMuted, fontSize: 13),
                     ),
                   )
                 : ListView.separated(
                       itemCount: groups.length,
                       separatorBuilder: (_, _) => Divider(
                         height: 1,
-                        color: Colors.white.withValues(alpha: 0.10),
+                        color: AppColors.cardBorder,
                         indent: 14,
                         endIndent: 14,
                       ),
@@ -593,8 +621,8 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                         return Material(
                           color: Colors.transparent,
                           child: InkWell(
-                            hoverColor: Colors.white.withValues(alpha: 0.05),
-                            splashColor: Colors.white.withValues(alpha: 0.08),
+                            hoverColor: AppColors.pageBg,
+                            splashColor: AppColors.highlight.withValues(alpha: 0.08),
                             onTap: () {
                               setState(() {
                                 _cancelSubmissionLoad();
@@ -609,12 +637,12 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                             child: Container(
                               decoration: BoxDecoration(
                                 color: isSelected
-                                    ? Colors.white.withValues(alpha: 0.16)
+                                    ? AppColors.highlight.withValues(alpha: 0.10)
                                     : Colors.transparent,
                                 border: Border(
                                   left: BorderSide(
                                     color: isSelected
-                                        ? const Color(0xFF7CC3FF)
+                                        ? AppColors.highlight
                                         : Colors.transparent,
                                     width: 3,
                                   ),
@@ -632,25 +660,23 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                                     alignment: Alignment.center,
                                     decoration: BoxDecoration(
                                       color: isSelected
-                                          ? const Color(
-                                              0xFF7CC3FF,
-                                            ).withValues(alpha: 0.25)
-                                          : Colors.white.withValues(
-                                              alpha: 0.12,
-                                            ),
+                                          ? AppColors.highlight.withValues(
+                                              alpha: 0.15,
+                                            )
+                                          : AppColors.pageBg,
                                       shape: BoxShape.circle,
                                       border: Border.all(
                                         color: isSelected
-                                            ? const Color(0xFF7CC3FF)
-                                            : Colors.white24,
+                                            ? AppColors.highlight
+                                            : AppColors.cardBorder,
                                       ),
                                     ),
                                     child: Text(
                                       initials.isEmpty ? '?' : initials,
                                       style: TextStyle(
                                         color: isSelected
-                                            ? const Color(0xFFBFE3FF)
-                                            : Colors.white70,
+                                            ? AppColors.highlight
+                                            : AppColors.textMuted,
                                         fontSize: 10,
                                         fontWeight: FontWeight.w700,
                                       ),
@@ -661,7 +687,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                                     child: Text(
                                       group.displayName,
                                       style: TextStyle(
-                                        color: Colors.white,
+                                        color: AppColors.textDark,
                                         fontSize: 13,
                                         fontWeight: isSelected
                                             ? FontWeight.w700
@@ -674,8 +700,8 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                                     Icons.chevron_right,
                                     size: 18,
                                     color: isSelected
-                                        ? const Color(0xFFBFE3FF)
-                                        : Colors.white54,
+                                        ? AppColors.highlight
+                                        : AppColors.textMuted,
                                   ),
                                 ],
                               ),
@@ -692,24 +718,31 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
 
   // Right panel: empty
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.person_search_outlined,
-            size: 64,
-            color: Colors.white.withValues(alpha: 0.4),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Select an applicant to view records',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.7),
-              fontSize: 15,
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.person_search_outlined,
+              size: 64,
+              color: AppColors.textMuted.withValues(alpha: 0.4),
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+            const Text(
+              'Select an applicant to view records',
+              style: TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 15,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -731,14 +764,14 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
               height: 56,
               child: CircularProgressIndicator(
                 strokeWidth: 4,
-                color: Colors.white.withValues(alpha: 0.95),
+                color: AppColors.highlight,
               ),
             ),
             const SizedBox(height: 16),
             const Text(
               'Loading form...',
               style: TextStyle(
-                color: Colors.white70,
+                color: AppColors.textMuted,
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
               ),
@@ -766,14 +799,14 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
               height: 56,
               child: CircularProgressIndicator(
                 strokeWidth: 4,
-                color: Colors.white.withValues(alpha: 0.95),
+                color: AppColors.highlight,
               ),
             ),
             const SizedBox(height: 16),
             const Text(
               'Grouping applicants...',
               style: TextStyle(
-                color: Colors.white70,
+                color: AppColors.textMuted,
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
               ),
@@ -805,7 +838,12 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         },
         child: Container(
           key: const ValueKey('right-form-view'),
-          margin: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.cardBg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.cardBorder),
+          ),
+          padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -818,22 +856,26 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                         _rightPanelView = _RightPanelView.records;
                       });
                     },
-                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    icon: const Icon(
+                      Icons.arrow_back,
+                      size: 18,
+                      color: AppColors.textDark,
+                    ),
                     label: const Text(
                       'Back',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: AppColors.textDark,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     style: TextButton.styleFrom(
-                      backgroundColor: Colors.white.withValues(alpha: 0.10),
+                      backgroundColor: AppColors.pageBg,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 14,
                         vertical: 10,
                       ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                     ),
                   ),
@@ -842,7 +884,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                     child: Text(
                       group.displayName,
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: AppColors.textDark,
                         fontSize: 19,
                         fontWeight: FontWeight.bold,
                       ),
@@ -878,7 +920,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                               key: ValueKey('submission-empty'),
                               child: Text(
                                 'Select a record to view full form data.',
-                                style: TextStyle(color: Colors.white70),
+                                style: TextStyle(color: AppColors.textMuted),
                               ),
                             )
                           : Container(
@@ -917,26 +959,25 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       },
       child: Container(
         key: const ValueKey('right-records-view'),
-        margin: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.cardBg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.cardBorder),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.white24),
-              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
               child: Row(
                 children: [
                   Expanded(
                     child: Text(
                       group.displayName,
                       style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
+                        color: AppColors.textDark,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
                         letterSpacing: 0.2,
                       ),
                       overflow: TextOverflow.ellipsis,
@@ -961,14 +1002,14 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                                 children: [
                                   Icon(
                                     Icons.swap_vert,
-                                    color: Colors.white70,
+                                    color: AppColors.textMuted,
                                     size: 12,
                                   ),
                                   SizedBox(width: 4),
                                   Text(
                                     'Date',
                                     style: TextStyle(
-                                      color: Colors.white70,
+                                      color: AppColors.textMuted,
                                       fontSize: 10,
                                       fontWeight: FontWeight.w700,
                                     ),
@@ -987,27 +1028,27 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                               },
                               style: const TextStyle(
                                 fontSize: 12,
-                                color: Color(0xFF243047),
+                                color: AppColors.textDark,
                                 fontWeight: FontWeight.w600,
                               ),
                               decoration: InputDecoration(
                                 isDense: true,
                                 filled: true,
-                                fillColor: Colors.white,
+                                fillColor: AppColors.pageBg,
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 10,
                                   vertical: 9,
                                 ),
                                 enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(999),
-                                  borderSide: BorderSide(
-                                    color: Colors.white.withValues(alpha: 0.22),
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(
+                                    color: AppColors.cardBorder,
                                   ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(999),
+                                  borderRadius: BorderRadius.circular(8),
                                   borderSide: const BorderSide(
-                                    color: Colors.white,
+                                    color: AppColors.highlight,
                                   ),
                                 ),
                               ),
@@ -1038,14 +1079,14 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                                 children: [
                                   Icon(
                                     Icons.category,
-                                    color: Colors.white70,
+                                    color: AppColors.textMuted,
                                     size: 12,
                                   ),
                                   SizedBox(width: 4),
                                   Text(
                                     'Type',
                                     style: TextStyle(
-                                      color: Colors.white70,
+                                      color: AppColors.textMuted,
                                       fontSize: 10,
                                       fontWeight: FontWeight.w700,
                                     ),
@@ -1064,27 +1105,27 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                               },
                               style: const TextStyle(
                                 fontSize: 12,
-                                color: Color(0xFF243047),
+                                color: AppColors.textDark,
                                 fontWeight: FontWeight.w600,
                               ),
                               decoration: InputDecoration(
                                 isDense: true,
                                 filled: true,
-                                fillColor: Colors.white,
+                                fillColor: AppColors.pageBg,
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 10,
                                   vertical: 9,
                                 ),
                                 enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(999),
-                                  borderSide: BorderSide(
-                                    color: Colors.white.withValues(alpha: 0.22),
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(
+                                    color: AppColors.cardBorder,
                                   ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(999),
+                                  borderRadius: BorderRadius.circular(8),
                                   borderSide: const BorderSide(
-                                    color: Colors.white,
+                                    color: AppColors.highlight,
                                   ),
                                 ),
                               ),
@@ -1109,30 +1150,26 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 10),
+            Divider(height: 1, color: AppColors.cardBorder),
             if (records.isEmpty)
               const Expanded(
                 child: Center(
                   child: Text(
                     'No records available for this applicant.',
-                    style: TextStyle(color: Colors.white70),
+                    style: TextStyle(color: AppColors.textMuted),
                   ),
                 ),
               )
             else
               Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.white24),
-                  ),
-                  child: ListView.separated(
+                child: ListView.separated(
                       padding: const EdgeInsets.symmetric(vertical: 6),
                       itemCount: records.length,
                       separatorBuilder: (_, _) => Divider(
                         height: 1,
-                        color: Colors.white.withValues(alpha: 0.10),
+                        color: AppColors.cardBorder,
+                        indent: 12,
+                        endIndent: 12,
                       ),
                       itemBuilder: (_, idx) {
                         final record = records[idx];
@@ -1144,8 +1181,8 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                         return Material(
                           color: Colors.transparent,
                           child: InkWell(
-                            hoverColor: Colors.white.withValues(alpha: 0.06),
-                            splashColor: Colors.white.withValues(alpha: 0.08),
+                            hoverColor: AppColors.pageBg,
+                            splashColor: AppColors.highlight.withValues(alpha: 0.08),
                             onTap: () => _openSubmission(record),
                             child: SizedBox(
                               height: 78,
@@ -1162,10 +1199,10 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                                         vertical: 4,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: badgeColor.withValues(alpha: 0.18),
+                                        color: badgeColor.withValues(alpha: 0.12),
                                         borderRadius: BorderRadius.circular(999),
                                         border: Border.all(
-                                          color: badgeColor.withValues(alpha: 0.6),
+                                          color: badgeColor.withValues(alpha: 0.3),
                                         ),
                                       ),
                                       child: Text(
@@ -1189,7 +1226,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                                           Text(
                                             formType,
                                             style: const TextStyle(
-                                              color: Colors.white,
+                                              color: AppColors.textDark,
                                               fontWeight: FontWeight.w700,
                                               fontSize: 13,
                                             ),
@@ -1201,14 +1238,14 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                                               record['created_at']?.toString(),
                                             ),
                                             style: const TextStyle(
-                                              color: Colors.white70,
+                                              color: AppColors.textMuted,
                                               fontSize: 11,
                                             ),
                                           ),
                                           Text(
                                             'Ref: ${_getIntakeRefLabel(record)}',
                                             style: const TextStyle(
-                                              color: Colors.white60,
+                                              color: AppColors.textMuted,
                                               fontSize: 10,
                                             ),
                                             overflow: TextOverflow.ellipsis,
@@ -1218,7 +1255,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                                     ),
                                     const Icon(
                                       Icons.chevron_right,
-                                      color: Colors.white54,
+                                      color: AppColors.textMuted,
                                       size: 18,
                                     ),
                                   ],
@@ -1229,7 +1266,6 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                         );
                       },
                     ),
-                ),
               ),
           ],
         ),
@@ -1251,7 +1287,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Text(
                     '${e.key}: ${e.value}',
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                    style: const TextStyle(color: AppColors.textDark, fontSize: 12),
                   ),
                 ),
               )
