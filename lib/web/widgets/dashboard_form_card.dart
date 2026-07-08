@@ -260,7 +260,7 @@ class _DashboardFormCardState extends State<DashboardFormCard> {
           color: widget.isSelected
               ? cardBgColor.withValues(alpha: 0.95)
               : cardBgColor.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: widget.isSelected
                 ? cardBgColor
