@@ -28,7 +28,12 @@ class ManageStaffController extends ChangeNotifier {
     try {
       final data = await _staffAdminService.fetchAccounts();
       pendingAccounts = List<Map<String, dynamic>>.from(data['pending'] ?? []);
-      activeAccounts = List<Map<String, dynamic>>.from(data['active'] ?? []);
+      // Superadmin is the account already in use and manages the rest, so it is
+      // excluded from the All Staff list here — removing it at the source means
+      // it never renders or counts toward pagination.
+      activeAccounts = List<Map<String, dynamic>>.from(data['active'] ?? [])
+          .where((acc) => acc['role'] != 'superadmin')
+          .toList();
     } catch (e) {
       debugPrint('[ManageStaffController/loadAccounts] Error: $e');
     } finally {
