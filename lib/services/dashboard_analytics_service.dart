@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sappiire/services/forms/submission_service.dart';
@@ -1112,19 +1113,33 @@ class DashboardAnalyticsService {
         final data =
             row['data'] as Map<String, dynamic>? ?? <String, dynamic>{};
 
+        // Special handling for membership group field: read from __membership map
+        if (fieldName == '__membership' || fieldName == 'Membership Group') {
+          final membershipDist = _membershipDistributionForSubmission(data);
+          membershipDist.forEach((key, value) {
+            dist[key] = (dist[key] ?? 0) + value;
+          });
+          continue;
+        }
+
         final raw = data[fieldName];
 
         if (raw == null) {
           continue;
         }
 
-        if (isMultiSelect && raw is List) {
-          for (final item in raw) {
+        // Handle membership group / checkbox fields that may arrive as
+        // JSON-encoded arrays or nested lists due to multiple encode/decode passes.
+        final effectiveRaw = _normalizeFieldValue(raw);
+
+        // Auto-detect multi-select: if data is a List after normalization,
+        // treat it as multi-select regardless of the isMultiSelect flag.
+        if (effectiveRaw is List) {
+          for (final item in effectiveRaw) {
             var value = item.toString().trim();
             if (value.isEmpty) continue;
             // Resolve label from option mapping
             final label = optionMappings[value] ?? value;
-            // Normalize casing for free-text values (no option mapping)
             final key = optionMappings.containsKey(value)
                 ? label
                 : label.toLowerCase().trim();
@@ -1134,7 +1149,7 @@ class DashboardAnalyticsService {
         }
 
         if (isNumeric) {
-          final parsed = double.tryParse(raw.toString().trim());
+          final parsed = double.tryParse(effectiveRaw.toString().trim());
           if (parsed == null) continue;
 
           final bucket = _numericBucket(parsed);
@@ -1142,7 +1157,7 @@ class DashboardAnalyticsService {
           continue;
         }
 
-        var value = raw.toString().trim();
+        var value = effectiveRaw.toString().trim();
         if (value.isEmpty) continue;
 
         // Resolve label from option mapping
@@ -1488,6 +1503,54 @@ class DashboardAnalyticsService {
     }
 
     return output;
+  }
+
+  /// Normalizes a field value that may be a JSON-encoded array string,
+  /// a nested list, or a simple string. Returns a flattened list of strings
+  /// or the original value if it's already a simple type.
+  dynamic _normalizeFieldValue(dynamic raw) {
+    if (raw is List) {
+      // Already a list — flatten any nested JSON strings
+      final flattened = <String>[];
+      for (final item in raw) {
+        if (item is String) {
+          final parsed = _tryParseJsonArray(item);
+          if (parsed != null) {
+            flattened.addAll(parsed);
+          } else {
+            flattened.add(item);
+          }
+        } else {
+          flattened.add(item.toString());
+        }
+      }
+      return flattened;
+    }
+    if (raw is String) {
+      // Try to parse as JSON array
+      final parsed = _tryParseJsonArray(raw);
+      if (parsed != null) return parsed;
+    }
+    return raw;
+  }
+
+  /// Attempts to parse a string as a JSON array, recursively unwrapping
+  /// nested JSON strings (e.g. '"[\"solo_parent\"]"' → '"[\"solo_parent\"]"' → 
+  /// '["solo_parent"]' → ["solo_parent"]).
+  List<String>? _tryParseJsonArray(String value) {
+    try {
+      final decoded = jsonDecode(value);
+      // Recursively decode if the result is still a JSON string
+      if (decoded is String) {
+        return _tryParseJsonArray(decoded);
+      }
+      if (decoded is List) {
+        return decoded.map((e) => e.toString()).toList();
+      }
+    } catch (_) {
+      // Not JSON — return null
+    }
+    return null;
   }
 
   String _normalize(String value) {

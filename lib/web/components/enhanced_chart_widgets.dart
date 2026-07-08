@@ -271,17 +271,7 @@ class _EnhancedPiePainter extends CustomPainter {
       startAngle += sweepAngle;
     }
 
-    // Draw thin borders between slices
-    startAngle = -pi / 2;
-    final borderPaint = Paint()
-      ..color = Colors.white.withValues(alpha:  0.7)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-    for (int i = 0; i < entries.length; i++) {
-      final sweepAngle = (entries[i].value / total) * 2 * pi;
-      canvas.drawArc(rect, startAngle, sweepAngle, true, borderPaint);
-      startAngle += sweepAngle;
-    }
+    // No border drawn between slices (Issue 5 fix)
   }
 
   @override

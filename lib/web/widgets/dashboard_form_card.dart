@@ -255,8 +255,6 @@ class _DashboardFormCardState extends State<DashboardFormCard> {
       child: Container(
         constraints: const BoxConstraints(minWidth: 200, maxWidth: 280),
         decoration: BoxDecoration(
-          // Color now persists permanently — always visible, with opacity
-          // when not selected and full opacity when selected
           color: widget.isSelected
               ? cardBgColor.withValues(alpha: 0.95)
               : cardBgColor.withValues(alpha: 0.15),
@@ -282,100 +280,109 @@ class _DashboardFormCardState extends State<DashboardFormCard> {
               ),
           ],
         ),
-        child: Stack(
-          children: [
-            // Main content
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Form name
-                  Text(
-                    widget.formName,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+        child: SizedBox(
+          height: 120,
+          child: Stack(
+            children: [
+              // Main content — fixed height so all cards stay uniform
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Form name — uses FittedBox to shrink long titles
+                    // without growing the card height
+                    SizedBox(
+                      height: 24,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          widget.formName,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: widget.isSelected
+                                ? (isLight ? Colors.black87 : Colors.white)
+                                : AppColors.textDark,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Submission count — fixed size, never shrinks
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(
+                          widget.submissionCount.toString(),
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            color: widget.isSelected
+                                ? (isLight ? Colors.black87 : Colors.white)
+                                : AppColors.textDark,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'submissions',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: widget.isSelected
+                                ? (isLight
+                                    ? Colors.black54
+                                    : Colors.white70)
+                                : AppColors.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              // Color picker button (top-right)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: GestureDetector(
+                  onTap: () {
+                    _showColorPicker();
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: widget.isSelected
+                          ? (isLight ? Colors.white : Colors.black26)
+                          : AppColors.pageBg,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: widget.isSelected
+                            ? Colors.transparent
+                            : AppColors.cardBorder,
+                      ),
+                    ),
+                    child: Icon(
+                      Icons.palette,
+                      size: 16,
                       color: widget.isSelected
                           ? (isLight ? Colors.black87 : Colors.white)
-                          : AppColors.textDark,
+                          : AppColors.textMuted,
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 12),
-                  // Submission count
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Text(
-                        widget.submissionCount.toString(),
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: widget.isSelected
-                              ? (isLight ? Colors.black87 : Colors.white)
-                              : AppColors.textDark,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'submissions',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: widget.isSelected
-                              ? (isLight
-                                  ? Colors.black54
-                                  : Colors.white70)
-                              : AppColors.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            // Color picker button (top-right)
-            Positioned(
-              top: 8,
-              right: 8,
-              child: GestureDetector(
-                onTap: () {
-                  _showColorPicker();
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: widget.isSelected
-                        ? (isLight ? Colors.white : Colors.black26)
-                        : AppColors.pageBg,
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(
-                      color: widget.isSelected
-                          ? Colors.transparent
-                          : AppColors.cardBorder,
-                    ),
-                  ),
-                  child: Icon(
-                    Icons.palette,
-                    size: 16,
-                    color: widget.isSelected
-                        ? (isLight ? Colors.black87 : Colors.white)
-                        : AppColors.textMuted,
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
   bool _isLightColor(Color color) {
-    // Calculate luminance using modern API
     final luminance =
         (0.299 * (color.r * 255) + 0.587 * (color.g * 255) + 0.114 * (color.b * 255)) /
             255;

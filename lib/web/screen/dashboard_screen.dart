@@ -911,11 +911,83 @@ class _DashboardScreenState extends State<DashboardScreen>
           data: data,
         );
       case 'bar':
+        return SimpleVerticalBarChart(
+          title: config.fieldLabel,
+          data: data,
+        );
+      case 'histogram':
+        return _buildHistogramWidget(config, data);
       default:
         return SimpleBarChart(
           title: config.fieldLabel,
           data: data,
         );
+    }
+  }
+
+  Widget _buildHistogramWidget(DashboardWidgetConfig config, Map<String, int> data) {
+    // Compute stats from the raw data values
+    // For histogram, data keys are bucket labels and values are counts
+    // We compute average/median/min/max from the original field values
+    // by re-fetching with isNumeric=true
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _fetchHistogramStats(config),
+      builder: (context, snapshot) {
+        final stats = snapshot.data ?? {};
+        return HistogramChart(
+          title: config.fieldLabel,
+          buckets: data,
+          average: stats['average'] as double?,
+          median: stats['median'] as double?,
+          minVal: stats['min'] as double?,
+          maxVal: stats['max'] as double?,
+        );
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> _fetchHistogramStats(DashboardWidgetConfig config) async {
+    try {
+      // Fetch raw numeric values for stat computation
+      final rawData = await _analyticsService.fetchFieldDistribution(
+        formType: _selectedFormName,
+        fieldName: config.fieldName,
+        isNumeric: true,
+        topN: 50,
+        timeRange: _selectedDateRange,
+      );
+      
+      // Parse bucket labels to extract numeric values for stats
+      final values = <double>[];
+      for (final entry in rawData.entries) {
+        // Try to extract a representative value from bucket label
+        final numVal = double.tryParse(entry.key.replaceAll(RegExp(r'[^0-9.]'), ''));
+        if (numVal != null) {
+          // Repeat the value by its count for weighted stats
+          for (int i = 0; i < entry.value; i++) {
+            values.add(numVal);
+          }
+        }
+      }
+      
+      if (values.isEmpty) return {};
+      
+      values.sort();
+      final sum = values.fold<double>(0, (a, b) => a + b);
+      final avg = sum / values.length;
+      final median = values.length.isOdd
+          ? values[values.length ~/ 2]
+          : (values[values.length ~/ 2 - 1] + values[values.length ~/ 2]) / 2;
+      
+      return {
+        'average': avg,
+        'median': median,
+        'min': values.first,
+        'max': values.last,
+      };
+    } catch (e) {
+      debugPrint('[DashboardScreen/_fetchHistogramStats] Error: $e');
+      return {};
     }
   }
 
