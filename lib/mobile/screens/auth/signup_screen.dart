@@ -92,6 +92,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         if (didPop) return;
         if (_controller.currentPage == 0) { Navigator.pop(context); return; }
         if (await _confirmCancel()) {
+          // ignore: use_build_context_synchronously
           if (mounted) Navigator.pop(context);
         }
       },

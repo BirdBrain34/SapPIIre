@@ -16,13 +16,13 @@ import 'package:sappiire/web/widgets/web_header_button.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
 
 class DashboardScreen extends StatefulWidget {
-  final String cswd_id;
+  final String cswdId;
   final String role;
   final String displayName;
 
   const DashboardScreen({
     super.key,
-    required this.cswd_id,
+    required this.cswdId,
     required this.role,
     this.displayName = '',
   });
@@ -62,6 +62,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Map<String, int> get _countsByFormType => _controller.countsByFormType;
   int get _totalCount => _controller.totalCount;
+  // ignore: unused_element
   Map<String, int> get _staffWorkload => _controller.staffWorkload;
   Map<String, int> get _genderRatio => _controller.genderRatio;
   Map<String, int> get _ageBrackets => _controller.ageBrackets;
@@ -82,8 +83,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void initState() {
     super.initState();
-    _controller.setStaffId(widget.cswd_id);
-    _analyticsService.setStaffId(widget.cswd_id);
+    _controller.setStaffId(widget.cswdId);
+    _analyticsService.setStaffId(widget.cswdId);
     _loadDashboardData();
   }
 
@@ -313,7 +314,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           templateId: _selectedFormId,
           template: selectedTemplate,
           initialConfigs: _widgetConfigs,
-          staffId: widget.cswd_id,
+          staffId: widget.cswdId,
           onSave: () async {
             await _loadWidgetConfigs();
           },
@@ -445,13 +446,13 @@ class _DashboardScreenState extends State<DashboardScreen>
       pageTitle: pageTitle,
       pageSubtitle: pageSubtitle,
       role: widget.role,
-      cswd_id: widget.cswd_id,
+      cswdId: widget.cswdId,
       displayName: widget.displayName,
       onLogout: () => WebSession.logout(context),
       onNavigate: (path) => WebNavigator.go(
         context,
         path,
-        cswdId: widget.cswd_id,
+        cswdId: widget.cswdId,
         role: widget.role,
         displayName: widget.displayName,
       ),
@@ -629,7 +630,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       await _analyticsService.upsertCardSettings(
                         template.templateId,
                         color,
-                        widget.cswd_id,
+                        widget.cswdId,
                       );
                       setState(() {
                         _cardColors[template.templateId] = color;

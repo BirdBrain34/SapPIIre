@@ -9,13 +9,13 @@ import 'package:sappiire/web/controllers/manage_staff_controller.dart';
 
 class ManageStaffScreen extends StatefulWidget {
   final String role;
-  final String cswd_id;
+  final String cswdId;
   final String displayName;
 
   const ManageStaffScreen({
     super.key,
     required this.role,
-    required this.cswd_id,
+    required this.cswdId,
     this.displayName = '',
   });
 
@@ -52,26 +52,26 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
     super.dispose();
   }
 
-  Future<void> _approveAccount(String cswd_id, String requestedRole) async {
+  Future<void> _approveAccount(String cswdId, String requestedRole) async {
     await _controller.approveAccount(
-      cswdId: cswd_id,
+      cswdId: cswdId,
       requestedRole: requestedRole,
-      actorId: widget.cswd_id,
+      actorId: widget.cswdId,
       actorName: widget.displayName,
       actorRole: widget.role,
     );
   }
 
-  Future<void> _rejectAccount(String cswd_id) async {
+  Future<void> _rejectAccount(String cswdId) async {
     await _controller.rejectAccount(
-      cswdId: cswd_id,
-      actorId: widget.cswd_id,
+      cswdId: cswdId,
+      actorId: widget.cswdId,
       actorName: widget.displayName,
       actorRole: widget.role,
     );
   }
 
-  Future<void> _deactivateAccount(String cswd_id, String username) async {
+  Future<void> _deactivateAccount(String cswdId, String username) async {
     final confirmed = await showConfirmDialog(
       context,
       title: 'Deactivate Account',
@@ -85,19 +85,19 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
     if (!confirmed) return;
 
     await _controller.deactivateAccount(
-      cswdId: cswd_id,
+      cswdId: cswdId,
       username: username,
-      actorId: widget.cswd_id,
+      actorId: widget.cswdId,
       actorName: widget.displayName,
       actorRole: widget.role,
     );
   }
 
-  Future<void> _reactivateAccount(String cswd_id, String username) async {
+  Future<void> _reactivateAccount(String cswdId, String username) async {
     await _controller.reactivateAccount(
-      cswdId: cswd_id,
+      cswdId: cswdId,
       username: username,
-      actorId: widget.cswd_id,
+      actorId: widget.cswdId,
       actorName: widget.displayName,
       actorRole: widget.role,
     );
@@ -261,13 +261,13 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
       pageTitle: 'Manage Staff Accounts',
       pageSubtitle: 'Review and manage staff access',
       role: widget.role,
-      cswd_id: widget.cswd_id,
+      cswdId: widget.cswdId,
       displayName: widget.displayName,
       onLogout: () => WebSession.logout(context),
       onNavigate: (screenPath) => WebNavigator.go(
         context,
         screenPath,
-        cswdId: widget.cswd_id,
+        cswdId: widget.cswdId,
         role: widget.role,
         displayName: widget.displayName,
       ),
@@ -361,7 +361,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                                 backgroundColor: AppColors.successGreen,
                               ),
                               onPressed: () => _approveAccount(
-                                acc['cswd_id'],
+                                acc['cswdId'],
                                 acc['requested_role'] ?? 'admin',
                               ),
                               child: const Text(
@@ -377,7 +377,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                                   color: AppColors.dangerRed,
                                 ),
                               ),
-                              onPressed: () => _rejectAccount(acc['cswd_id']),
+                              onPressed: () => _rejectAccount(acc['cswdId']),
                               child: const Text("Reject"),
                             ),
                           ],
@@ -692,7 +692,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                       label: 'Deactivate',
                       color: AppColors.warningAmber,
                       onPressed: () => _deactivateAccount(
-                        acc['cswd_id'],
+                        acc['cswdId'],
                         username,
                       ),
                     )
@@ -701,7 +701,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                       label: 'Reactivate',
                       color: AppColors.successGreen,
                       onPressed: () => _reactivateAccount(
-                        acc['cswd_id'],
+                        acc['cswdId'],
                         username,
                       ),
                     ),

@@ -1,3 +1,4 @@
+// ignore_for_file: use_null_aware_elements
 // Form Builder Service
 // CRUD operations for building/editing form templates.
 // Handles the publishing workflow from draft to published to pushed_to_mobile.

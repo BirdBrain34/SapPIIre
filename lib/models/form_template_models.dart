@@ -2,6 +2,7 @@
 ///
 /// These classes mirror the Supabase schema for form templates, sections,
 /// fields, options, and conditional rules.
+library;
 
 /// Safely converts a dynamic value (bool, int, or null) to bool.
 bool _toBool(dynamic value) {

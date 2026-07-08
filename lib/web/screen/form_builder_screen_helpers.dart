@@ -1,3 +1,4 @@
+// ignore_for_file: library_private_types_in_public_api
 part of 'form_builder_screen.dart';
 
 Widget buildFormBuilderScreen(_FormBuilderScreenState state) {
@@ -6,11 +7,11 @@ Widget buildFormBuilderScreen(_FormBuilderScreenState state) {
     pageTitle: 'Form Builder',
     pageSubtitle: state._controller.activeTemplateId != null ? state._controller.formName : 'Create and manage form templates',
     role: state.widget.role,
-    cswd_id: state.widget.cswd_id,
+    cswdId: state.widget.cswdId,
     displayName: state.widget.displayName,
     onLogout: state._handleLogout,
     headerActions: const [],
-    onNavigate: (path) => WebNavigator.go(state.context, path, cswdId: state.widget.cswd_id, role: state.widget.role, displayName: state.widget.displayName),
+    onNavigate: (path) => WebNavigator.go(state.context, path, cswdId: state.widget.cswdId, role: state.widget.role, displayName: state.widget.displayName),
     child: AnimatedBuilder(
       animation: state._controller,
       builder: (context, _) {

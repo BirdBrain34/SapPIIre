@@ -54,7 +54,7 @@ Widget _cardHeader(String title, {Widget? trailing}) => Padding(
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          if (trailing != null) trailing,
+          ?trailing,
         ],
       ),
     );
@@ -791,7 +791,9 @@ class _LineChartPainter extends CustomPainter {
         ..color = AppColors.highlight.withValues(alpha:  0.12)
         ..style = PaintingStyle.fill;
       final path = Path()..moveTo(pts.first.dx, 10 + drawH);
-      for (final p in pts) path.lineTo(p.dx, p.dy);
+      for (final p in pts) {
+        path.lineTo(p.dx, p.dy);
+      }
       path.lineTo(pts.last.dx, 10 + drawH);
       path.close();
       canvas.drawPath(path, area);
@@ -908,7 +910,9 @@ class _AreaChartPainter extends CustomPainter {
         ],
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
     final path = Path()..moveTo(hPad, 10 + drawH);
-    for (final p in pts) path.lineTo(p.dx, p.dy);
+    for (final p in pts) {
+      path.lineTo(p.dx, p.dy);
+    }
     path.lineTo(hPad + drawW, 10 + drawH);
     path.close();
     canvas.drawPath(path, fill);
@@ -920,7 +924,9 @@ class _AreaChartPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
     final linePath = Path()..moveTo(pts.first.dx, pts.first.dy);
-    for (int i = 1; i < pts.length; i++) linePath.lineTo(pts[i].dx, pts[i].dy);
+    for (int i = 1; i < pts.length; i++) {
+      linePath.lineTo(pts[i].dx, pts[i].dy);
+    }
     canvas.drawPath(linePath, line);
 
     // Points

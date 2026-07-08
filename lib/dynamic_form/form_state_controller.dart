@@ -1274,7 +1274,7 @@ class FormStateController extends ChangeNotifier {
     signaturePoints = null;
     signatureIsProcessing = false;
     memberTableData.clear();
-    fieldChecks.updateAll((_, __) => false);
+    fieldChecks.updateAll((_, _) => false);
     selectAll = false;
     if (notify) notifyListeners();
   }

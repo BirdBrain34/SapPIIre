@@ -22,13 +22,13 @@ import 'package:sappiire/web/controllers/applicants_controller.dart';
 enum _RightPanelView { records, form }
 
 class ApplicantsScreen extends StatefulWidget {
-  final String cswd_id;
+  final String cswdId;
   final String role;
   final String displayName;
 
   const ApplicantsScreen({
     super.key,
-    required this.cswd_id,
+    required this.cswdId,
     required this.role,
     this.displayName = '',
   });
@@ -97,7 +97,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         try {
           final decryptedData = await _submissionService.batchDecryptSubmissions(
             encryptedSubmissionIds,
-            widget.cswd_id,
+            widget.cswdId,
             logAccess: false,
           );
 
@@ -140,8 +140,9 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     try {
       await _loadSubmission(submission, loadToken: loadToken);
     } finally {
-      if (!mounted || loadToken != _submissionLoadToken) return;
-      setState(() => _isLoadingSubmission = false);
+      if (mounted && loadToken == _submissionLoadToken) {
+        setState(() => _isLoadingSubmission = false);
+      }
     }
   }
 
@@ -387,7 +388,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       'decrypt-submission-data',
       body: {
         'submissionId': submissionId,
-        'staffId': widget.cswd_id,
+        'staffId': widget.cswdId,
         'logAccess': logAccess,
       },
     );
@@ -452,7 +453,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       pageTitle: 'Applicants',
       pageSubtitle: 'Review submitted client intake forms',
       role: widget.role,
-      cswd_id: widget.cswd_id,
+      cswdId: widget.cswdId,
       displayName: widget.displayName,
       onLogout: _handleLogout,
       headerActions: [
@@ -461,7 +462,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       onNavigate: (p) => WebNavigator.go(
         context,
         p,
-        cswdId: widget.cswd_id,
+        cswdId: widget.cswdId,
         role: widget.role,
         displayName: widget.displayName,
       ),

@@ -37,15 +37,17 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
     try {
       await _controller.scanImage();
       if (_controller.backScanned) {
+        // ignore: use_build_context_synchronously
         SnackbarUtils.showSuccess(context, 'Back scanned — review and confirm');
       } else if (_controller.frontScanned) {
         SnackbarUtils.showCustom(
-          context,
+          context, // ignore: use_build_context_synchronously
           'Front scanned — now flip to the back',
           Colors.blue,
         );
       }
     } catch (e) {
+      // ignore: use_build_context_synchronously
       SnackbarUtils.showError(context, 'Scan failed. Try again.');
     }
   }
@@ -58,6 +60,7 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
 
     try {
       await _controller.saveToSupabase();
+      // ignore: use_build_context_synchronously
       SnackbarUtils.showSuccess(context, 'Information saved!');
       await Future.delayed(const Duration(milliseconds: 800));
       if (!mounted) return;

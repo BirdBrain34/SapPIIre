@@ -280,6 +280,38 @@ Deno.serve(async (req: Request) => {
         return json({ success: true, message: 'Superadmin password reset successfully.' });
       }
 
+      case 'validate_session': {
+        const cswdId = typeof body?.cswd_id === 'string' ? body.cswd_id.trim() : '';
+        if (!cswdId) return json({ valid: false });
+
+        const account = await supabase
+          .from('staff_accounts')
+          .select('cswd_id, username, email, role, is_active, account_status')
+          .eq('cswd_id', cswdId)
+          .maybeSingle()
+          .then((r: { data: Record<string, unknown> | null }) => r.data);
+
+        if (!account) {
+          return json({ valid: false });
+        }
+
+        if (account.is_active !== true || account.account_status !== 'active') {
+          return json({ valid: false });
+        }
+
+        return json({
+          valid: true,
+          account: {
+            cswd_id: account.cswd_id,
+            username: account.username,
+            email: account.email,
+            role: account.role,
+            is_active: account.is_active,
+            account_status: account.account_status,
+          },
+        });
+      }
+
       case 'update_last_login': {
         const cswdId = typeof body?.cswd_id === 'string' ? body.cswd_id.trim() : '';
         if (!cswdId) return json({ error: 'missing_cswd_id' });

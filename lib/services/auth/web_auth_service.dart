@@ -1,8 +1,63 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:sappiire/services/audit/audit_log_service.dart';
 import 'package:sappiire/services/crypto/hybrid_crypto_service.dart';
+
+/// Keys used to persist the staff session in SharedPreferences (localStorage
+/// on web), so the session survives tab refreshes.
+const String _kPrefSession = 'staff_session';
+
+/// Lightweight session data stored in localStorage.
+class StaffSession {
+  final String cswdId;
+  final String username;
+  final String email;
+  final String role;
+  final String displayName;
+  final String lastRoute;
+
+  const StaffSession({
+    required this.cswdId,
+    required this.username,
+    required this.email,
+    required this.role,
+    this.displayName = '',
+    this.lastRoute = 'Forms',
+  });
+
+  StaffSession copyWith({String? lastRoute}) => StaffSession(
+    cswdId: cswdId,
+    username: username,
+    email: email,
+    role: role,
+    displayName: displayName,
+    lastRoute: lastRoute ?? this.lastRoute,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'cswd_id': cswdId,
+    'username': username,
+    'email': email,
+    'role': role,
+    'display_name': displayName,
+    'last_route': lastRoute,
+  };
+
+  factory StaffSession.fromJson(Map<String, dynamic> json) => StaffSession(
+    cswdId: (json['cswd_id'] ?? '').toString(),
+    username: (json['username'] ?? '').toString(),
+    email: (json['email'] ?? '').toString(),
+    role: (json['role'] ?? '').toString(),
+    displayName: (json['display_name'] ?? '').toString(),
+    lastRoute: (json['last_route'] ?? 'Forms').toString(),
+  );
+}
+
+/// Result of a server-side session validation check.
+enum SessionValidation { valid, deactivated, unreachable }
 
 class WebAuthService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -220,6 +275,103 @@ class WebAuthService {
       return {'success': true, 'message': 'Account reactivated.'};
     } catch (e) {
       return {'success': false, 'message': 'Error: ${e.toString()}'};
+    }
+  }
+
+  /// Persist the current session to SharedPreferences (localStorage on web).
+  Future<void> saveSession({
+    required String cswdId,
+    required String username,
+    required String email,
+    required String role,
+    String displayName = '',
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final session = StaffSession(
+        cswdId: cswdId,
+        username: username,
+        email: email,
+        role: role,
+        displayName: displayName,
+      );
+      await prefs.setString(_kPrefSession, jsonEncode(session.toJson()));
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[WebAuthService/saveSession] Error: $e');
+      }
+    }
+  }
+
+  /// Update the last active route in the persisted session.
+  Future<void> updateLastRoute(String route) async {
+    try {
+      final existing = await restoreSession();
+      if (existing == null) return;
+      final updated = existing.copyWith(lastRoute: route);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kPrefSession, jsonEncode(updated.toJson()));
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[WebAuthService/updateLastRoute] Error: $e');
+      }
+    }
+  }
+
+  /// Read a saved session from SharedPreferences, if one exists.
+  /// Returns `null` if no session was saved.
+  Future<StaffSession?> restoreSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kPrefSession);
+      if (raw == null || raw.isEmpty) return null;
+      final json = jsonDecode(raw) as Map<String, dynamic>;
+      return StaffSession.fromJson(json);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[WebAuthService/restoreSession] Error: $e');
+      }
+      return null;
+    }
+  }
+
+  /// Validate that a stored session's account is still active on the server.
+  ///
+  /// Returns:
+  ///   `SessionValidation.valid`       — account exists and is active
+  ///   `SessionValidation.deactivated` — account was deactivated (clear session)
+  ///   `SessionValidation.unreachable` — server could not be reached (keep session)
+  Future<SessionValidation> validateSession(String cswdId) async {
+    try {
+      final result = await _supabase.functions.invoke('manage-staff-account', body: {
+        'action': 'validate_session',
+        'cswd_id': cswdId,
+      });
+      final data = result.data as Map<String, dynamic>?;
+      if (data?['valid'] == true) {
+        return SessionValidation.valid;
+      }
+      // Server replied definitively — account is gone or deactivated.
+      return SessionValidation.deactivated;
+    } catch (e) {
+      // Network error, function not deployed, timeout, etc.
+      // Do NOT log the user out — assume the cached session is still good.
+      if (kDebugMode) {
+        debugPrint('[WebAuthService/validateSession] Unreachable: $e');
+      }
+      return SessionValidation.unreachable;
+    }
+  }
+
+  /// Remove the persisted session from SharedPreferences.
+  Future<void> clearSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kPrefSession);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[WebAuthService/clearSession] Error: $e');
+      }
     }
   }
 

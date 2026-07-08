@@ -119,7 +119,9 @@ class SignupController extends ChangeNotifier {
   void dispose() {
     emailOtpTimer?.cancel();
     phoneOtpTimer?.cancel();
-    for (final c in allControllers) c.dispose();
+    for (final c in allControllers) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -291,12 +293,16 @@ class SignupController extends ChangeNotifier {
     notifyListeners();
     if (result['success'] == true) {
       startEmailCountdown();
-      if (context.mounted) SnackbarUtils.showSuccess(context, 'Code resent!');
+      if (context.mounted) {
+        SnackbarUtils.showSuccess(context, 'Code resent!');
+      }
     } else {
-      if (context.mounted) SnackbarUtils.showError(
-        context,
-        result['message']?.toString() ?? 'Failed to resend.',
-      );
+      if (context.mounted) {
+        SnackbarUtils.showError(
+          context,
+          result['message']?.toString() ?? 'Failed to resend.',
+        );
+      }
     }
   }
 
@@ -402,10 +408,12 @@ class SignupController extends ChangeNotifier {
       notifyListeners();
 
       if (signupResult['success'] != true) {
-        if (context.mounted) SnackbarUtils.showError(
+      if (context.mounted) {
+        SnackbarUtils.showError(
           context,
           signupResult['message'] ?? 'Failed to create account. Try again.',
         );
+      }
         return false;
       }
       verifiedUserId = signupResult['user_id'];
@@ -488,11 +496,17 @@ class SignupController extends ChangeNotifier {
     }
     if (result.maritalStatus.isNotEmpty) {
       final l = result.maritalStatus.toLowerCase();
-      if (l.contains('single')) maritalStatus = 'Single';
-      else if (l.contains('married')) maritalStatus = 'Married';
-      else if (l.contains('widow')) maritalStatus = 'Widowed';
-      else if (l.contains('separated')) maritalStatus = 'Separated';
-      else if (l.contains('annul')) maritalStatus = 'Annulled';
+      if (l.contains('single')) {
+        maritalStatus = 'Single';
+      } else if (l.contains('married')) {
+        maritalStatus = 'Married';
+      } else if (l.contains('widow')) {
+        maritalStatus = 'Widowed';
+      } else if (l.contains('separated')) {
+        maritalStatus = 'Separated';
+      } else if (l.contains('annul')) {
+        maritalStatus = 'Annulled';
+      }
     }
     notifyListeners();
   }

@@ -39,7 +39,7 @@ class WebShell extends StatelessWidget {
   final String pageTitle;
   final String pageSubtitle;
   final String role;
-  final String cswd_id;
+  final String cswdId;
   final String displayName;
   final Widget child;
   final VoidCallback onLogout;
@@ -52,7 +52,7 @@ class WebShell extends StatelessWidget {
     required this.pageTitle,
     required this.pageSubtitle,
     required this.role,
-    required this.cswd_id,
+    required this.cswdId,
     this.displayName = '',
     required this.child,
     required this.onLogout,
@@ -70,7 +70,7 @@ class WebShell extends StatelessWidget {
           insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
           backgroundColor: Colors.transparent,
           child: _AccountPanel(
-            cswdId: cswd_id,
+            cswdId: cswdId,
             role: role,
             displayName: displayName,
             onClose: () => Navigator.of(dialogContext).pop(),
@@ -80,7 +80,7 @@ class WebShell extends StatelessWidget {
                 rootContext,
                 ContentFadeRoute(
                   page: ChangePasswordScreen(
-                    cswd_id: cswd_id,
+                    cswdId: cswdId,
                     role: role,
                     displayName: resolvedName,
                   ),
@@ -297,7 +297,7 @@ class _AccountPanelState extends State<_AccountPanel> {
 
       final accountResult = await client.functions.invoke('manage-staff-account', body: {
         'action': 'fetch_account',
-        'cswd_id': widget.cswdId,
+        'cswdId': widget.cswdId,
       });
       final account = _asStringDynamicMap(
         (accountResult.data as Map<String, dynamic>?)?['account'],
@@ -305,7 +305,7 @@ class _AccountPanelState extends State<_AccountPanel> {
 
       final profileResult = await client.functions.invoke('manage-staff-account', body: {
         'action': 'fetch_profile',
-        'cswd_id': widget.cswdId,
+        'cswdId': widget.cswdId,
       });
       final profile = _asStringDynamicMap(
         (profileResult.data as Map<String, dynamic>?)?['profile'],

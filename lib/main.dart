@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sappiire/mobile/screens/auth/login_screen.dart';
+import 'package:sappiire/services/auth/web_auth_service.dart';
 import 'package:sappiire/services/crypto/hybrid_crypto_service.dart';
 import 'package:sappiire/web/screen/web_login_screen.dart';
 import 'package:sappiire/web/screen/customer_display_screen.dart';
+import 'package:sappiire/web/utils/web_navigator.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,15 +19,39 @@ Future<void> main() async {
 
   await HybridCryptoService.fetchAndCacheRsaPublicKey();
 
-  runApp(const MyApp());
+  // On web, try to restore a saved staff session before the app mounts.
+  StaffSession? restored;
+  bool sessionValid = false;
+  if (kIsWeb) {
+    final authService = WebAuthService();
+    restored = await authService.restoreSession();
+    if (restored != null) {
+      final validation = await authService.validateSession(restored.cswdId);
+      switch (validation) {
+        case SessionValidation.valid:
+          sessionValid = true;
+          break;
+        case SessionValidation.deactivated:
+          await authService.clearSession();
+          sessionValid = false;
+          break;
+        case SessionValidation.unreachable:
+          sessionValid = true;
+          break;
+      }
+    }
+  }
+
+  runApp(MyApp(restoredSession: sessionValid ? restored : null));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final StaffSession? restoredSession;
+
+  const MyApp({super.key, this.restoredSession});
 
   @override
   Widget build(BuildContext context) {
-    // Mobile starts on the login screen because it does not use route URLs.
     if (!kIsWeb) {
       return MaterialApp(
         title: 'SapPIIre',
@@ -38,7 +64,6 @@ class MyApp extends StatelessWidget {
       );
     }
 
-    // Web uses route parsing so the customer display can open by station ID.
     return MaterialApp(
       title: 'SapPIIre',
       debugShowCheckedModeBanner: false,
@@ -49,7 +74,6 @@ class MyApp extends StatelessWidget {
       onGenerateRoute: (settings) {
         final uri = Uri.parse(settings.name ?? '/');
 
-        // Route the customer display screen by station ID.
         if (uri.path == '/display') {
           final stationId = uri.queryParameters['station'] ?? 'default';
           return MaterialPageRoute(
@@ -57,11 +81,56 @@ class MyApp extends StatelessWidget {
           );
         }
 
-        // Default to the staff login screen for unknown routes.
+        // If we have a restored valid session, route to the last active screen
+        // via a wrapper that navigates to the saved route after the first frame.
+        if (restoredSession != null) {
+          return MaterialPageRoute(
+            builder: (_) => _SessionRestoreWidget(
+              session: restoredSession!,
+            ),
+          );
+        }
+
         return MaterialPageRoute(
           builder: (_) => const WorkerLoginScreen(),
         );
       },
+    );
+  }
+}
+
+/// Wrapper that immediately navigates to the last saved route after the first
+/// frame, so the user lands on the exact screen they were on before refresh.
+class _SessionRestoreWidget extends StatefulWidget {
+  final StaffSession session;
+  const _SessionRestoreWidget({required this.session});
+
+  @override
+  State<_SessionRestoreWidget> createState() => _SessionRestoreWidgetState();
+}
+
+class _SessionRestoreWidgetState extends State<_SessionRestoreWidget> {
+  @override
+  void initState() {
+    super.initState();
+    // Navigate to the saved route after the first frame is built.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      WebNavigator.go(
+        context,
+        widget.session.lastRoute,
+        cswdId: widget.session.cswdId,
+        role: widget.session.role,
+        displayName: widget.session.displayName,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Show a brief loading indicator while we navigate to the saved route.
+    return const Scaffold(
+      body: Center(child: CircularProgressIndicator()),
     );
   }
 }

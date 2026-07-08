@@ -632,7 +632,7 @@ class _BouncingArrowState extends State<_BouncingArrow>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _anim,
-      builder: (_, __) => Transform.translate(
+      builder: (_, _) => Transform.translate(
         offset: Offset(0, _anim.value),
         child: Icon(
           Icons.keyboard_arrow_down_rounded,

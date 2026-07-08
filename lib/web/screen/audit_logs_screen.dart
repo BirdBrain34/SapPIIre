@@ -7,13 +7,13 @@ import 'package:sappiire/web/utils/web_session.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
 
 class AuditLogsScreen extends StatefulWidget {
-  final String cswd_id;
+  final String cswdId;
   final String role;
   final String displayName;
 
   const AuditLogsScreen({
     super.key,
-    required this.cswd_id,
+    required this.cswdId,
     required this.role,
     required this.displayName,
   });
@@ -396,13 +396,13 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
       pageTitle: 'Audit Logs',
       pageSubtitle: 'System-wide activity trail - superadmin view',
       role: widget.role,
-      cswd_id: widget.cswd_id,
+      cswdId: widget.cswdId,
       displayName: widget.displayName,
       onLogout: _handleLogout,
       onNavigate: (path) => WebNavigator.go(
         context,
         path,
-        cswdId: widget.cswd_id,
+        cswdId: widget.cswdId,
         role: widget.role,
         displayName: widget.displayName,
       ),

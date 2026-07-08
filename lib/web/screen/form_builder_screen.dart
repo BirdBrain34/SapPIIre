@@ -15,14 +15,14 @@ import 'package:sappiire/web/utils/web_session.dart';
 part 'form_builder_screen_helpers.dart';
 
 class FormBuilderScreen extends StatefulWidget {
-  final String cswd_id;
+  final String cswdId;
   final String role;
   final String displayName;
   final String? editTemplateId;
 
   const FormBuilderScreen({
     super.key,
-    required this.cswd_id,
+    required this.cswdId,
     required this.role,
     this.displayName = '',
     this.editTemplateId,
@@ -51,7 +51,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
   void initState() {
     super.initState();
     _controller = FormBuilderScreenController()
-      ..cswdId = widget.cswd_id
+      ..cswdId = widget.cswdId
       ..role = widget.role
       ..displayName = widget.displayName
       ..showSnackBar = _showSnackBar

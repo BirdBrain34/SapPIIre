@@ -12,13 +12,13 @@ import 'package:sappiire/web/utils/web_session.dart';
 
 class CreateStaffScreen extends StatefulWidget {
   final String role;
-  final String cswd_id;
+  final String cswdId;
   final String displayName;
 
   const CreateStaffScreen({
     super.key,
     required this.role,
-    required this.cswd_id,
+    required this.cswdId,
     this.displayName = '',
   });
 
@@ -135,7 +135,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
         return;
       }
 
-      final String? cswdId = createResult['cswd_id']?.toString();
+      final String? cswdId = createResult['cswdId']?.toString();
       final String? generatedUsername = createResult['username']?.toString();
 
       if (cswdId == null || cswdId.isEmpty) {
@@ -164,7 +164,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
         actionType: kAuditStaffCreated,
         category: kCategoryStaff,
         severity: kSeverityInfo,
-        actorId: widget.cswd_id,
+        actorId: widget.cswdId,
         actorName: widget.displayName,
         actorRole: widget.role,
         targetType: 'staff_account',
@@ -218,13 +218,13 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
       pageTitle: 'Create Staff Account',
       pageSubtitle: 'Add a new team member to the system',
       role: widget.role,
-      cswd_id: widget.cswd_id,
+      cswdId: widget.cswdId,
       displayName: widget.displayName,
       onLogout: () => WebSession.logout(context),
       onNavigate: (screenPath) => WebNavigator.go(
         context,
         screenPath,
-        cswdId: widget.cswd_id,
+        cswdId: widget.cswdId,
         role: widget.role,
         displayName: widget.displayName,
       ),

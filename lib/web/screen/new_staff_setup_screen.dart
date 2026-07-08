@@ -114,7 +114,7 @@ Future<void> _handleContinueFromEmail() async {
     setState(() => _isLoading = false);
 
     if (result['success'] == true) {
-      _verifiedCswdId = result['cswd_id']?.toString();
+      _verifiedCswdId = result['cswdId']?.toString();
       setState(() => _step = 3);
     } else {
       setState(() => _errorMessage = result['message']?.toString());

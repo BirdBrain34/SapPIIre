@@ -10,14 +10,14 @@ import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 
 class FirstLoginPasswordScreen extends StatefulWidget {
-  final String cswd_id;
+  final String cswdId;
   final String role;
   final String displayName;
   final String username;
 
   const FirstLoginPasswordScreen({
     super.key,
-    required this.cswd_id,
+    required this.cswdId,
     required this.role,
     required this.displayName,
     required this.username,
@@ -73,24 +73,24 @@ class _FirstLoginPasswordScreenState extends State<FirstLoginPasswordScreen> {
     setState(() => _isLoading = true);
 
     final result = await _authService.resetPasswordWithOtp(
-      cswdId: widget.cswd_id,
+      cswdId: widget.cswdId,
       newPassword: _newPasswordController.text,
     );
 
     if (!mounted) return;
 
     if (result['success'] == true) {
-      await _authService.clearFirstLoginFlag(widget.cswd_id);
+      await _authService.clearFirstLoginFlag(widget.cswdId);
 
       await AuditLogService().log(
         actionType: kAuditPasswordChanged,
         category: kCategoryAuth,
         severity: kSeverityInfo,
-        actorId: widget.cswd_id,
+        actorId: widget.cswdId,
         actorName: widget.displayName,
         actorRole: widget.role,
         targetType: 'staff_account',
-        targetId: widget.cswd_id,
+        targetId: widget.cswdId,
         details: {'initiated_by': 'first_login_forced_reset'},
       );
 
@@ -98,7 +98,7 @@ class _FirstLoginPasswordScreenState extends State<FirstLoginPasswordScreen> {
       Navigator.of(context).pushAndRemoveUntil(
         ContentFadeRoute(
           page: ManageFormsScreen(
-            cswd_id: widget.cswd_id,
+            cswdId: widget.cswdId,
             role: widget.role,
             displayName: widget.displayName,
           ),

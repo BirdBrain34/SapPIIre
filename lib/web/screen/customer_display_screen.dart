@@ -288,7 +288,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
     }
   }
 
-  /// Station ids are formatted as `desk_<cswd_id>`; the staff id is the suffix.
+  /// Station ids are formatted as `desk_<cswdId>`; the staff id is the suffix.
   String _staffIdFromStation(String stationId) {
     const prefix = 'desk_';
     return stationId.startsWith(prefix)

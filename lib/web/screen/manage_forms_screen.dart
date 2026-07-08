@@ -34,13 +34,13 @@ import 'package:sappiire/services/audit/audit_log_service.dart';
 import 'package:sappiire/web/controllers/manage_forms_controller.dart';
 
 class ManageFormsScreen extends StatefulWidget {
-  final String cswd_id;
+  final String cswdId;
   final String role;
   final String displayName;
 
   const ManageFormsScreen({
     super.key,
-    required this.cswd_id,
+    required this.cswdId,
     required this.role,
     this.displayName = '',
   });
@@ -92,8 +92,8 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   final ValueNotifier<bool> _sessionExpiredNotifier =
       ValueNotifier<bool>(false);
   
-  /// Derive a stable station ID from the worker's cswd_id.
-  String get _stationId => 'desk_${widget.cswd_id}';
+  /// Derive a stable station ID from the worker's cswdId.
+  String get _stationId => 'desk_${widget.cswdId}';
 
   void _setStatePreserveScroll(VoidCallback fn) {
     final formOffset = _formScrollController.hasClients
@@ -234,7 +234,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         actionType: kAuditSessionStarted,
         category: kCategorySession,
         severity: kSeverityInfo,
-        actorId: widget.cswd_id,
+        actorId: widget.cswdId,
         actorName: widget.displayName,
         actorRole: widget.role,
         targetType: 'form_session',
@@ -420,7 +420,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     try {
       final decrypted = await _manageFormsController.decryptStagingSubmission(
         sessionId: _currentSessionId,
-        staffId: widget.cswd_id,
+        staffId: widget.cswdId,
       );
 
       if (decrypted == null || decrypted.isEmpty) {
@@ -599,7 +599,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         formCode: _selectedTemplate!.formCode,
         formType: _selectedTemplate!.formName,
         data: formData,
-        createdBy: widget.cswd_id,
+        createdBy: widget.cswdId,
       );
 
       final intakeReference = (created['intake_reference'] as String?) ?? '';
@@ -608,7 +608,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         actionType: kAuditSubmissionCreated,
         category: kCategorySubmission,
         severity: kSeverityInfo,
-        actorId: widget.cswd_id,
+        actorId: widget.cswdId,
         actorName: widget.displayName,
         actorRole: widget.role,
         targetType: 'client_submission',
@@ -688,7 +688,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         currentSessionId: _currentSessionId,
         selectedTemplate: _selectedTemplate,
         formData: formData,
-        staffId: widget.cswd_id,
+        staffId: widget.cswdId,
       );
 
   /// Open the customer-facing display in a new browser window.
@@ -749,7 +749,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                 : 'Session active · client can scan the QR code')
             : 'Start a session to generate a QR code',
         role: widget.role,
-        cswd_id: widget.cswd_id,
+        cswdId: widget.cswdId,
         displayName: widget.displayName,
         onLogout: _handleLogout,
         headerActions: [
@@ -802,7 +802,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         onNavigate: (path) => WebNavigator.go(
           context,
           path,
-          cswdId: widget.cswd_id,
+          cswdId: widget.cswdId,
           role: widget.role,
           displayName: widget.displayName,
         ),
@@ -1274,7 +1274,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                   builder: (context, expired, _) {
                     return ValueListenableBuilder<Duration>(
                       valueListenable: _timeRemainingNotifier,
-                      builder: (context, remaining, __) {
+                      builder: (context, remaining, _) {
                         final isLow = remaining.inMinutes < 2;
                         return Container(
                           padding: const EdgeInsets.symmetric(

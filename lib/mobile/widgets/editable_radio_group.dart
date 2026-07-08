@@ -39,9 +39,12 @@ class EditableRadioGroup extends StatelessWidget {
             children: options.map((option) => Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // ignore: deprecated_member_use
                 Radio<String>(
                   value: option,
+                  // ignore: deprecated_member_use
                   groupValue: groupValue,
+                  // ignore: deprecated_member_use
                   onChanged: isEditing ? onChanged : null,
                   activeColor: AppColors.primaryBlue,
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,

@@ -6,13 +6,13 @@ import 'package:sappiire/web/utils/web_session.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
-  final String cswd_id;
+  final String cswdId;
   final String role;
   final String displayName;
 
   const ChangePasswordScreen({
     super.key,
-    required this.cswd_id,
+    required this.cswdId,
     required this.role,
     this.displayName = '',
   });
@@ -77,7 +77,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     setState(() => _isLoading = true);
 
     final result = await _authService.changePassword(
-      cswdId: widget.cswd_id,
+      cswdId: widget.cswdId,
       currentPassword: _currentPasswordController.text,
       newPassword: _newPasswordController.text,
     );
@@ -104,13 +104,13 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       pageTitle: 'Change Password',
       pageSubtitle: 'Update your account password',
       role: widget.role,
-      cswd_id: widget.cswd_id,
+      cswdId: widget.cswdId,
       displayName: widget.displayName,
       onLogout: () => WebSession.logout(context),
       onNavigate: (path) => WebNavigator.go(
         context,
         path,
-        cswdId: widget.cswd_id,
+        cswdId: widget.cswdId,
         role: widget.role,
         displayName: widget.displayName,
       ),

@@ -203,10 +203,12 @@ class InfoScannerController extends ChangeNotifier {
             if (_isLabel(next) || _isJunk(next)) break;
             if (next == 'PHL') break;
             final nl = next.toLowerCase();
-            if (nl == 'male' ||
-                nl == 'female' ||
-                nl == 'lalaki' ||
-                nl == 'babae') break;
+          if (nl == 'male' ||
+              nl == 'female' ||
+              nl == 'lalaki' ||
+              nl == 'babae') {
+            break;
+          }
             parts.add(next);
           }
           if (parts.isNotEmpty) {
@@ -256,12 +258,16 @@ class InfoScannerController extends ChangeNotifier {
           ll.contains('exclusively') ||
           ll.contains('distributed') ||
           ll.contains('property') ||
-          ll.contains('university')) continue;
+          ll.contains('university')) {
+        continue;
+      }
       if (ll == 'male' || ll == 'female' || ll == 'lalaki' || ll == 'babae') {
         break;
       }
       collected.add(l);
-      if (collected.length >= 3) break;
+      if (collected.length >= 3) {
+        break;
+      }
     }
     return collected.join(' ').trim();
   }

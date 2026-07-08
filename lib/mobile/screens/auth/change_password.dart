@@ -132,10 +132,15 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () async {
+              // ignore: use_build_context_synchronously
+              final navigator = Navigator.of(context);
               if (_controller.currentPage > 0) {
-                if (await _confirmCancel() && mounted) Navigator.pop(context);
+                final confirmed = await _confirmCancel();
+                if (confirmed && mounted) {
+                  navigator.pop();
+                }
               } else {
-                Navigator.pop(context);
+                navigator.pop();
               }
             },
           ),
