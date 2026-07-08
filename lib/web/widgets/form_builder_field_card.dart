@@ -27,13 +27,23 @@ class FormBuilderFieldCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 2),
+        margin: const EdgeInsets.only(bottom: 8),
         decoration: BoxDecoration(
           color: AppColors.cardBg,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isActive ? AppColors.highlight : AppColors.cardBorder,
+            width: isActive ? 1.5 : 1,
           ),
+          boxShadow: isActive
+              ? [
+                  BoxShadow(
+                    color: AppColors.highlight.withValues(alpha: 0.1),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
         ),
         child: IntrinsicHeight(
           child: Row(
@@ -45,7 +55,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                   decoration: const BoxDecoration(
                     color: AppColors.highlight,
                     borderRadius: BorderRadius.horizontal(
-                      left: Radius.circular(8),
+                      left: Radius.circular(12),
                     ),
                   ),
                 ),

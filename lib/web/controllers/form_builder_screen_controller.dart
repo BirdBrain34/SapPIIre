@@ -512,10 +512,10 @@ class FormBuilderScreenController extends ChangeNotifier {
         (data['reference_format'] as String?)?.trim().isNotEmpty == true
         ? data['reference_format'] as String
         : '{FORMCODE}-{YYYY}-{MM}-{####}';
-    requiresReference = (data['requires_reference'] as bool?) ?? true;
+    requiresReference = _coerceBool(data['requires_reference'], true);
     formStatus = data['status'] as String? ?? 'draft';
     sections = loadedSections;
-    popupEnabled = (data['popup_enabled'] as bool?) ?? false;
+    popupEnabled = _coerceBool(data['popup_enabled'], false);
     popupSubtitle = data['popup_subtitle'] as String? ?? '';
     popupDescription = data['popup_description'] as String? ?? '';
     activeSectionIdx = null;
@@ -523,6 +523,21 @@ class FormBuilderScreenController extends ChangeNotifier {
     hasUnsavedChanges = false;
     isLoadingTemplate = false;
     notifyListeners();
+  }
+
+  /// Coerce a DB value to a bool. Postgres booleans usually come back as
+  /// `bool`, but some rows/drivers store them as int (0/1) or string, which
+  /// would otherwise crash a hard `as bool?` cast (e.g. requires_reference,
+  /// popup_enabled). Falls back to [fallback] when the value is null/unknown.
+  static bool _coerceBool(dynamic value, bool fallback) {
+    if (value is bool) return value;
+    if (value is int) return value == 1;
+    if (value is String) {
+      final normalized = value.trim().toLowerCase();
+      if (normalized == 'true' || normalized == '1') return true;
+      if (normalized == 'false' || normalized == '0') return false;
+    }
+    return fallback;
   }
 
   Future<void> createNewTemplate() async {

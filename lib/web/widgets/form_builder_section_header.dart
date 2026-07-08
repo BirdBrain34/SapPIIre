@@ -24,12 +24,13 @@ class FormBuilderSectionHeader extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 2),
+        margin: const EdgeInsets.only(bottom: 8, top: 4),
         decoration: BoxDecoration(
           color: AppColors.cardBg,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isActive ? AppColors.highlight : AppColors.cardBorder,
+            width: isActive ? 1.5 : 1,
           ),
         ),
         child: Row(
@@ -41,7 +42,7 @@ class FormBuilderSectionHeader extends StatelessWidget {
                 decoration: const BoxDecoration(
                   color: AppColors.highlight,
                   borderRadius: BorderRadius.horizontal(
-                    left: Radius.circular(8),
+                    left: Radius.circular(12),
                   ),
                 ),
               ),

@@ -4,12 +4,12 @@ Widget buildFormBuilderScreen(_FormBuilderScreenState state) {
   return WebShell(
     activePath: 'FormBuilder',
     pageTitle: 'Form Builder',
-    pageSubtitle: state._controller.activeTemplateId != null ? '${state._controller.formName}${state._controller.hasUnsavedChanges ? '  -  unsaved changes' : ''}' : 'Create and manage form templates',
+    pageSubtitle: state._controller.activeTemplateId != null ? state._controller.formName : 'Create and manage form templates',
     role: state.widget.role,
     cswd_id: state.widget.cswd_id,
     displayName: state.widget.displayName,
     onLogout: state._handleLogout,
-    headerActions: buildHeaderActions(state),
+    headerActions: const [],
     onNavigate: (path) => WebNavigator.go(state.context, path, cswdId: state.widget.cswd_id, role: state.widget.role, displayName: state.widget.displayName),
     child: AnimatedBuilder(
       animation: state._controller,
@@ -56,7 +56,7 @@ Widget buildBuilderCanvas(_FormBuilderScreenState state) {
               padding: const EdgeInsets.symmetric(vertical: 24),
               child: Center(
                 child: SizedBox(
-                  width: 680,
+                  width: 720,
                   child: Column(
                     children: [
                       FormBuilderTitleCard(controller: state._controller, onChanged: () => state._controller.markChanged()),
@@ -64,19 +64,6 @@ Widget buildBuilderCanvas(_FormBuilderScreenState state) {
                       ...buildAllSections(state),
                       const SizedBox(height: 16),
                       buildAddSectionButton(state),
-                      const SizedBox(height: 16),
-                      FormBuilderStatusCard(
-                        formStatus: state._controller.formStatus,
-                        onArchive: () {
-                          state._archiveTemplateAndSnack();
-                        },
-                        onUnpublish: () {
-                          state._unpublishTemplateAndSnack();
-                        },
-                        onRestore: () {
-                          state._restoreTemplateAndSnack();
-                        },
-                      ),
                       const SizedBox(height: 48),
                     ],
                   ),
@@ -90,50 +77,220 @@ Widget buildBuilderCanvas(_FormBuilderScreenState state) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Canvas action bar
+//
+// One bar holds everything the user acts on: build actions on the left
+// (Add Question / Add Intake Module), and status + save/lifecycle actions on
+// the right. Save is the primary, right-pinned button. Secondary lifecycle
+// actions (Revert / Archive) live behind a "More" (⋮) menu to keep it tidy.
+// This replaces the old top-bar header actions AND the old bottom status card.
+// ---------------------------------------------------------------------------
 Widget buildCanvasToolbar(_FormBuilderScreenState state) {
-  final targetSectionIndex = state._controller.activeSectionIdx ?? (state._controller.sections.isNotEmpty ? state._controller.sections.length - 1 : null);
+  final ctrl = state._controller;
+  final targetSectionIndex = ctrl.activeSectionIdx ?? (ctrl.sections.isNotEmpty ? ctrl.sections.length - 1 : null);
 
   return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
     decoration: const BoxDecoration(
       color: AppColors.cardBg,
       border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
     ),
     child: Row(
       children: [
-        ElevatedButton.icon(
-          onPressed: targetSectionIndex != null
-              ? () {
-                  state._controller.addField(targetSectionIndex);
-                }
-              : null,
-          icon: const Icon(Icons.add_circle_outline, size: 18, color: Colors.white),
-          label: const Text('Add Question', style: TextStyle(color: Colors.white, fontSize: 13)),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.highlight,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            elevation: 0,
-          ),
+        // ---- Build cluster (left) ----
+        buildPrimaryAction(
+          'Add Question',
+          Icons.add_circle_outline,
+          onPressed: targetSectionIndex != null ? () => ctrl.addField(targetSectionIndex) : null,
         ),
         const SizedBox(width: 12),
-        OutlinedButton.icon(
-          onPressed: targetSectionIndex != null
-              ? () {
-                  showSystemBlockPicker(state, targetSectionIndex);
-                }
-              : null,
-          icon: const Icon(Icons.dashboard_customize_outlined, size: 18),
-          label: const Text('Add Intake Module', style: TextStyle(fontSize: 13)),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.highlight,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            side: const BorderSide(color: AppColors.highlight),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        buildOutlinedAction(
+          'Add Intake Module',
+          Icons.dashboard_customize_outlined,
+          onPressed: targetSectionIndex != null ? () => showSystemBlockPicker(state, targetSectionIndex) : null,
+        ),
+        if (ctrl.activeSectionIdx != null) ...[
+          const SizedBox(width: 12),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 160),
+            child: Text(
+              'into  ${ctrl.sections[ctrl.activeSectionIdx!].name}',
+              maxLines: 1,
+              style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+        const SizedBox(width: 16),
+        // ---- Status + save cluster (right) ----
+        // Right-pinned when it fits; scrolls horizontally (keeping the Save
+        // end visible via reverse) when the bar gets cramped on narrow screens.
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            reverse: true,
+            child: Row(
+              children: [
+                buildStatusPill(ctrl.formStatus),
+                if (ctrl.hasUnsavedChanges) ...[
+                  const SizedBox(width: 8),
+                  buildUnsavedChip(),
+                ],
+                const SizedBox(width: 16),
+                ...buildLifecycleActions(state),
+              ],
+            ),
           ),
         ),
-        const Spacer(),
-        if (state._controller.activeSectionIdx != null) Text('Active: ${state._controller.sections[state._controller.activeSectionIdx!].name}', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+      ],
+    ),
+  );
+}
+
+/// Status-driven Save + lifecycle actions for the right side of the action bar.
+/// Consolidates what used to be split between the WebShell header and the
+/// bottom status card. Keeps the exact status branching + state-method wiring.
+List<Widget> buildLifecycleActions(_FormBuilderScreenState state) {
+  final ctrl = state._controller;
+  final saving = ctrl.isSaving;
+
+  switch (ctrl.formStatus) {
+    case 'draft':
+      return [
+        buildOutlinedAction('Publish', Icons.publish, onPressed: () => state._publishTemplateAndSnack()),
+        const SizedBox(width: 8),
+        buildPrimaryAction('Save Draft', Icons.save_outlined, busy: saving, onPressed: saving ? null : () => state._saveTemplateAndSnack()),
+      ];
+    case 'published':
+      return [
+        buildOutlinedAction('Push to Mobile', Icons.phone_android, color: Colors.green, onPressed: () => state._pushToMobileAndSnack()),
+        const SizedBox(width: 8),
+        buildPrimaryAction('Save', Icons.save_outlined, busy: saving, onPressed: saving ? null : () => state._saveTemplateAndSnack()),
+        buildMoreMenu(state),
+      ];
+    case 'pushed_to_mobile':
+      return [
+        buildPrimaryAction('Save', Icons.save_outlined, busy: saving, onPressed: saving ? null : () => state._saveTemplateAndSnack()),
+        buildMoreMenu(state),
+      ];
+    case 'archived':
+      return [
+        buildPrimaryAction('Restore', Icons.restore, color: Colors.teal, onPressed: () => state._restoreTemplateAndSnack()),
+      ];
+    default:
+      return const [];
+  }
+}
+
+/// Filled primary button (Save / Add Question / Restore …).
+/// [busy] swaps the icon for a spinner (used by Save while [isSaving]).
+Widget buildPrimaryAction(String label, IconData icon, {required VoidCallback? onPressed, Color color = AppColors.highlight, bool busy = false}) {
+  return ElevatedButton.icon(
+    onPressed: onPressed,
+    icon: busy
+        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+        : Icon(icon, size: 18, color: Colors.white),
+    label: Text(label, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+    style: ElevatedButton.styleFrom(
+      backgroundColor: color,
+      foregroundColor: Colors.white,
+      elevation: 0,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    ),
+  );
+}
+
+/// Secondary outlined button (Add Intake Module / Publish / Push to Mobile).
+Widget buildOutlinedAction(String label, IconData icon, {required VoidCallback? onPressed, Color color = AppColors.highlight}) {
+  return OutlinedButton.icon(
+    onPressed: onPressed,
+    icon: Icon(icon, size: 18),
+    label: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+    style: OutlinedButton.styleFrom(
+      foregroundColor: color,
+      side: BorderSide(color: color),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    ),
+  );
+}
+
+/// Status pill (DRAFT / PUBLISHED / LIVE ON MOBILE / ARCHIVED).
+Widget buildStatusPill(String status) {
+  final descriptor = statusDescriptor(status);
+  return Tooltip(
+    message: descriptor.description,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: descriptor.color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: descriptor.color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(width: 6, height: 6, decoration: BoxDecoration(color: descriptor.color, shape: BoxShape.circle)),
+          const SizedBox(width: 6),
+          Text(
+            descriptor.label,
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5, color: descriptor.color),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Amber "Unsaved changes" chip, shown only when [hasUnsavedChanges].
+Widget buildUnsavedChip() {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+    decoration: BoxDecoration(
+      color: AppColors.warningAmber.withValues(alpha: 0.14),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: AppColors.warningAmber.withValues(alpha: 0.4)),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(width: 6, height: 6, decoration: const BoxDecoration(color: AppColors.warningAmber, shape: BoxShape.circle)),
+        const SizedBox(width: 6),
+        const Text('Unsaved changes', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textMuted)),
+      ],
+    ),
+  );
+}
+
+/// "More" (⋮) menu for the secondary lifecycle actions (Revert / Archive).
+Widget buildMoreMenu(_FormBuilderScreenState state) {
+  return Padding(
+    padding: const EdgeInsets.only(left: 4),
+    child: PopupMenuButton<String>(
+      tooltip: 'More actions',
+      icon: const Icon(Icons.more_vert, color: AppColors.textMuted),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      onSelected: (value) {
+        switch (value) {
+          case 'revert':
+            state._unpublishTemplateAndSnack();
+            break;
+          case 'archive':
+            state._archiveTemplateAndSnack();
+            break;
+        }
+      },
+      itemBuilder: (_) => const [
+        PopupMenuItem<String>(
+          value: 'revert',
+          child: Row(children: [Icon(Icons.undo, size: 18, color: AppColors.textMuted), SizedBox(width: 12), Text('Revert to Draft')]),
+        ),
+        PopupMenuItem<String>(
+          value: 'archive',
+          child: Row(children: [Icon(Icons.archive_outlined, size: 18, color: Colors.orange), SizedBox(width: 12), Text('Archive')]),
+        ),
       ],
     ),
   );
@@ -180,17 +337,21 @@ List<Widget> buildAllSections(_FormBuilderScreenState state) {
 }
 
 Widget buildAddSectionButton(_FormBuilderScreenState state) {
-  return OutlinedButton.icon(
-    onPressed: () {
-      state._controller.addSection();
-    },
-    icon: const Icon(Icons.playlist_add, size: 20),
-    label: const Text('Add Section'),
-    style: OutlinedButton.styleFrom(
-      foregroundColor: AppColors.highlight,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-      side: BorderSide(color: AppColors.highlight.withValues(alpha: 0.5)),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+  return SizedBox(
+    width: double.infinity,
+    child: OutlinedButton.icon(
+      onPressed: () {
+        state._controller.addSection();
+      },
+      icon: const Icon(Icons.playlist_add, size: 20),
+      label: const Text('Add Section', style: TextStyle(fontWeight: FontWeight.w600)),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.highlight,
+        backgroundColor: AppColors.cardBg,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        side: BorderSide(color: AppColors.highlight.withValues(alpha: 0.4)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
     ),
   );
 }
@@ -200,115 +361,40 @@ Widget buildEmptyState(_FormBuilderScreenState state) {
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.edit_note, size: 80, color: AppColors.highlight.withValues(alpha: 0.3)),
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: AppColors.highlight.withValues(alpha: 0.08),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(Icons.edit_note, size: 56, color: AppColors.highlight.withValues(alpha: 0.7)),
+        ),
         const SizedBox(height: 24),
         const Text(
           'Select a template or create a new one',
-          style: TextStyle(fontSize: 18, color: AppColors.textMuted, fontWeight: FontWeight.w500),
+          style: TextStyle(fontSize: 18, color: AppColors.textDark, fontWeight: FontWeight.w600),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
+        const Text(
+          'Pick a form from the list, or start from scratch.',
+          style: TextStyle(fontSize: 13, color: AppColors.textMuted),
+        ),
+        const SizedBox(height: 20),
         ElevatedButton.icon(
           onPressed: () {
             state._controller.createNewTemplate();
           },
-          icon: const Icon(Icons.add, color: Colors.white),
-          label: const Text('New Form', style: TextStyle(color: Colors.white)),
+          icon: const Icon(Icons.add, color: Colors.white, size: 18),
+          label: const Text('New Form', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.highlight,
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            foregroundColor: Colors.white,
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         ),
       ],
-    ),
-  );
-}
-
-List<Widget> buildHeaderActions(_FormBuilderScreenState state) {
-  if (state._controller.activeTemplateId == null) return [];
-  return [
-    if (state._controller.formStatus == 'draft') ...[
-      headerBtn(
-        state,
-        'Save Draft',
-        Icons.save_outlined,
-        onPressed: state._controller.isSaving
-            ? null
-            : () {
-                state._saveTemplateAndSnack();
-              },
-      ),
-      const SizedBox(width: 8),
-      headerBtn(
-        state,
-        'Publish',
-        Icons.publish,
-        color: AppColors.highlight,
-        onPressed: () {
-          state._publishTemplateAndSnack();
-        },
-      ),
-    ],
-    if (state._controller.formStatus == 'published') ...[
-      headerBtn(
-        state,
-        'Save',
-        Icons.save_outlined,
-        onPressed: state._controller.isSaving
-            ? null
-            : () {
-                state._saveTemplateAndSnack();
-              },
-      ),
-      const SizedBox(width: 8),
-      headerBtn(
-        state,
-        'Push to Mobile',
-        Icons.phone_android,
-        color: Colors.green,
-        onPressed: () {
-          state._pushToMobileAndSnack();
-        },
-      ),
-    ],
-    if (state._controller.formStatus == 'pushed_to_mobile') ...[
-      headerBtn(
-        state,
-        'Save',
-        Icons.save_outlined,
-        onPressed: state._controller.isSaving
-            ? null
-            : () {
-                state._saveTemplateAndSnack();
-              },
-      ),
-    ],
-    if (state._controller.formStatus == 'archived') ...[
-      headerBtn(
-        state,
-        'Restore',
-        Icons.restore,
-        color: Colors.teal,
-        onPressed: () {
-          state._restoreTemplateAndSnack();
-        },
-      ),
-    ],
-  ];
-}
-
-Widget headerBtn(_FormBuilderScreenState state, String label, IconData icon, {VoidCallback? onPressed, Color? color}) {
-  return ElevatedButton.icon(
-    onPressed: onPressed,
-    icon: state._controller.isSaving && icon == Icons.save_outlined ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : Icon(icon, color: Colors.white, size: 18),
-    label: Text(
-      label,
-      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-    ),
-    style: ElevatedButton.styleFrom(
-      backgroundColor: color ?? AppColors.primaryBlue,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ),
   );
 }
