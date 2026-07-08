@@ -8,6 +8,32 @@ import 'package:sappiire/web/screen/change_password_screen.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/web/widgets/side_menu.dart';
 
+String _roleLabel(String role) {
+  switch (role) {
+    case 'superadmin':
+      return 'Super Administrator';
+    case 'admin':
+      return 'Administrator';
+    default:
+      return role;
+  }
+}
+
+String _safeValue(dynamic value, {String fallback = 'Not set'}) {
+  final text = value?.toString().trim() ?? '';
+  return text.isEmpty ? fallback : text;
+}
+
+Map<String, dynamic> _asStringDynamicMap(dynamic source) {
+  if (source is Map<String, dynamic>) return source;
+  if (source is Map) {
+    return source.map<String, dynamic>(
+      (key, value) => MapEntry(key.toString(), value),
+    );
+  }
+  return <String, dynamic>{};
+}
+
 class WebShell extends StatelessWidget {
   final String activePath;
   final String pageTitle;
@@ -34,288 +60,33 @@ class WebShell extends StatelessWidget {
     this.onNavigate,
   });
 
-  String _roleLabel(String role) {
-    switch (role) {
-      case 'superadmin':
-        return 'Super Administrator';
-      case 'admin':
-        return 'Administrator';
-      default:
-        return role;
-    }
-  }
-
-  String _safeValue(dynamic value, {String fallback = 'Not set'}) {
-    final text = value?.toString().trim() ?? '';
-    return text.isEmpty ? fallback : text;
-  }
-
-  Map<String, dynamic> _asStringDynamicMap(dynamic source) {
-    if (source is Map<String, dynamic>) {
-      return source;
-    }
-
-    if (source is Map) {
-      return source.map<String, dynamic>(
-        (key, value) => MapEntry(key.toString(), value),
-      );
-    }
-
-    return <String, dynamic>{};
-  }
-
-  String _composeProfileName(Map<String, dynamic> profile) {
-    final first = _safeValue(profile['first_name'], fallback: '');
-    final middle = _safeValue(profile['middle_name'], fallback: '');
-    final last = _safeValue(profile['last_name'], fallback: '');
-    final suffix = _safeValue(profile['name_suffix'], fallback: '');
-
-    final parts = <String>[
-      if (first.isNotEmpty) first,
-      if (middle.isNotEmpty) middle,
-      if (last.isNotEmpty) last,
-    ];
-
-    var fullName = parts.join(' ').trim();
-    if (suffix.isNotEmpty) {
-      fullName = fullName.isEmpty ? suffix : '$fullName, $suffix';
-    }
-    return fullName;
-  }
-
-  Map<String, String> _fallbackAccountInfo() {
-    final name = displayName.trim().isEmpty ? 'My Account' : displayName.trim();
-
-    return {
-      'name': name,
-      'role': _roleLabel(role),
-      'email': 'Not set',
-      'department': 'Not set',
-      'position': 'Not set',
-      'phone': 'Not set',
-      'username': 'Not set',
-    };
-  }
-
-  Future<Map<String, String>> _loadAccountInfo() async {
-    final fallback = _fallbackAccountInfo();
-
-    try {
-      final client = Supabase.instance.client;
-
-      final accountResult = await client.functions.invoke('manage-staff-account', body: {
-        'action': 'fetch_account',
-        'cswd_id': cswd_id,
-      });
-      final accountResponse = (accountResult.data as Map<String, dynamic>?)?['account'] as Map<String, dynamic>?;
-
-      final profileResult = await client.functions.invoke('manage-staff-account', body: {
-        'action': 'fetch_profile',
-        'cswd_id': cswd_id,
-      });
-      final profileResponse = (profileResult.data as Map<String, dynamic>?)?['profile'] as Map<String, dynamic>?;
-
-      final account = _asStringDynamicMap(accountResponse);
-      final profile = _asStringDynamicMap(profileResponse);
-
-      final resolvedName = _composeProfileName(profile);
-
-      return {
-        'name': resolvedName.isEmpty ? fallback['name']! : resolvedName,
-        'role': fallback['role']!,
-        'email': _safeValue(account['email']),
-        'department': _safeValue(profile['department']),
-        'position': _safeValue(profile['position']),
-        'phone': _safeValue(profile['phone_number']),
-        'username': _safeValue(account['username']),
-      };
-    } catch (_) {
-      return fallback;
-    }
-  }
-
-  Widget _accountInfoRow({
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.pageBg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.cardBorder),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 17, color: AppColors.textMuted),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: AppColors.textMuted,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          Flexible(
-            flex: 2,
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: const TextStyle(
-                color: AppColors.textDark,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _showAccountPanel(BuildContext context) async {
-    final fallback = _fallbackAccountInfo();
     final rootContext = context;
 
     await showDialog<void>(
       context: context,
       builder: (dialogContext) {
         return Dialog(
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 24,
-            vertical: 24,
-          ),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
           backgroundColor: Colors.transparent,
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 460),
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: AppColors.cardBg,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.cardBorder),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x22000000),
-                  blurRadius: 20,
-                  offset: Offset(0, 6),
+          child: _AccountPanel(
+            cswdId: cswd_id,
+            role: role,
+            displayName: displayName,
+            onClose: () => Navigator.of(dialogContext).pop(),
+            onChangePassword: (resolvedName) {
+              Navigator.of(dialogContext).pop();
+              Navigator.push(
+                rootContext,
+                ContentFadeRoute(
+                  page: ChangePasswordScreen(
+                    cswd_id: cswd_id,
+                    role: role,
+                    displayName: resolvedName,
+                  ),
                 ),
-              ],
-            ),
-            child: FutureBuilder<Map<String, String>>(
-              future: _loadAccountInfo(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) {
-                  return const SizedBox(
-                    height: 240,
-                    child: Center(
-                      child: CircularProgressIndicator(strokeWidth: 2.5),
-                    ),
-                  );
-                }
-
-                final info = snapshot.data ?? fallback;
-
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'My Account',
-                      style: TextStyle(
-                        color: AppColors.textDark,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Staff account details and security settings',
-                      style: TextStyle(
-                        color: AppColors.textMuted,
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    _accountInfoRow(
-                      icon: Icons.person_outline,
-                      label: 'Name',
-                      value: info['name'] ?? fallback['name']!,
-                    ),
-                    _accountInfoRow(
-                      icon: Icons.verified_user_outlined,
-                      label: 'Role',
-                      value: info['role'] ?? fallback['role']!,
-                    ),
-                    _accountInfoRow(
-                      icon: Icons.email_outlined,
-                      label: 'Email',
-                      value: info['email'] ?? fallback['email']!,
-                    ),
-                    _accountInfoRow(
-                      icon: Icons.business_outlined,
-                      label: 'Department',
-                      value: info['department'] ?? fallback['department']!,
-                    ),
-                    _accountInfoRow(
-                      icon: Icons.work_outline,
-                      label: 'Position',
-                      value: info['position'] ?? fallback['position']!,
-                    ),
-                    _accountInfoRow(
-                      icon: Icons.phone_outlined,
-                      label: 'Phone Number',
-                      value: info['phone'] ?? fallback['phone']!,
-                    ),
-                    _accountInfoRow(
-                      icon: Icons.alternate_email,
-                      label: 'Username',
-                      value: info['username'] ?? fallback['username']!,
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: () => Navigator.of(dialogContext).pop(),
-                          child: const Text('Close'),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.highlight,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          onPressed: () {
-                            Navigator.of(dialogContext).pop();
-                            Navigator.push(
-                              rootContext,
-                              ContentFadeRoute(
-                                page: ChangePasswordScreen(
-                                  cswd_id: cswd_id,
-                                  role: role,
-                                  displayName:
-                                      info['name'] ?? fallback['name']!,
-                                ),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.lock_outline, size: 18),
-                          label: const Text('Change Password'),
-                        ),
-                      ],
-                    ),
-                  ],
-                );
-              },
-            ),
+              );
+            },
           ),
         );
       },
@@ -323,76 +94,11 @@ class WebShell extends StatelessWidget {
   }
 
   Widget _buildAccountButton(BuildContext context, {required bool isNarrow}) {
-    return Tooltip(
-      message: 'My Account',
-      child: GestureDetector(
-        onTap: () => _showAccountPanel(context),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: AppColors.highlight.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: AppColors.highlight.withValues(alpha: 0.2),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: AppColors.highlight.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.person_outline,
-                  color: AppColors.highlight,
-                  size: 18,
-                ),
-              ),
-              if (!isNarrow) ...[
-                const SizedBox(width: 10),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 180),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        displayName.isEmpty ? 'My Account' : displayName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textDark,
-                        ),
-                      ),
-                      Text(
-                        _roleLabel(role),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: AppColors.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                const Icon(
-                  Icons.expand_more,
-                  size: 16,
-                  color: AppColors.textMuted,
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
+    return _AccountButton(
+      displayName: displayName,
+      role: role,
+      isNarrow: isNarrow,
+      onTap: () => _showAccountPanel(context),
     );
   }
 
@@ -404,9 +110,7 @@ class WebShell extends StatelessWidget {
 
     void onMenuTap() {
       final scaffoldState = scaffoldKey.currentState;
-      if (scaffoldState == null) {
-        return;
-      }
+      if (scaffoldState == null) return;
 
       if (scaffoldState.isDrawerOpen) {
         Navigator.of(scaffoldState.context).pop();
@@ -535,6 +239,395 @@ class WebShell extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// My Account dialog: a clean profile card — tinted header with avatar + role,
+/// then full-width detail tiles (so long values like email never clip).
+class _AccountPanel extends StatefulWidget {
+  final String cswdId;
+  final String role;
+  final String displayName;
+  final VoidCallback onClose;
+  final void Function(String resolvedName) onChangePassword;
+
+  const _AccountPanel({
+    required this.cswdId,
+    required this.role,
+    required this.displayName,
+    required this.onClose,
+    required this.onChangePassword,
+  });
+
+  @override
+  State<_AccountPanel> createState() => _AccountPanelState();
+}
+
+class _AccountPanelState extends State<_AccountPanel> {
+  bool _loading = true;
+
+  String _email = 'Not set';
+  String _username = 'Not set';
+  String _department = 'Not set';
+  String _position = 'Not set';
+  String _first = '';
+  String _last = '';
+  String _phone = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  /// First + last only, so the panel header matches the top-bar button and
+  /// never balloons with a middle name.
+  String get _displayName {
+    final parts = [_first, _last].where((s) => s.trim().isNotEmpty).toList();
+    final name = parts.join(' ').trim();
+    if (name.isNotEmpty) return name;
+    return widget.displayName.trim().isEmpty ? 'My Account' : widget.displayName.trim();
+  }
+
+  Future<void> _load() async {
+    try {
+      final client = Supabase.instance.client;
+
+      final accountResult = await client.functions.invoke('manage-staff-account', body: {
+        'action': 'fetch_account',
+        'cswd_id': widget.cswdId,
+      });
+      final account = _asStringDynamicMap(
+        (accountResult.data as Map<String, dynamic>?)?['account'],
+      );
+
+      final profileResult = await client.functions.invoke('manage-staff-account', body: {
+        'action': 'fetch_profile',
+        'cswd_id': widget.cswdId,
+      });
+      final profile = _asStringDynamicMap(
+        (profileResult.data as Map<String, dynamic>?)?['profile'],
+      );
+
+      _first = (profile['first_name'] ?? '').toString().trim();
+      _last = (profile['last_name'] ?? '').toString().trim();
+      _phone = (profile['phone_number'] ?? '').toString().trim();
+      _email = _safeValue(account['email']);
+      _username = _safeValue(account['username']);
+      _department = _safeValue(profile['department']);
+      _position = _safeValue(profile['position']);
+    } catch (_) {
+      // Leave fallbacks in place.
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 380),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(color: Color(0x1F000000), blurRadius: 30, offset: Offset(0, 12)),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: _loading
+            ? const SizedBox(
+                height: 220,
+                child: Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
+              )
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildHeader(),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _detailTile(Icons.email_outlined, 'Email', _email),
+                        const SizedBox(height: 6),
+                        _detailTile(Icons.phone_outlined, 'Phone',
+                            _phone.isEmpty ? 'Not set' : _phone),
+                        const SizedBox(height: 6),
+                        _detailTile(Icons.business_outlined, 'Department', _department),
+                        const SizedBox(height: 6),
+                        _detailTile(Icons.work_outline, 'Position', _position),
+                        const SizedBox(height: 6),
+                        _detailTile(Icons.alternate_email, 'Username', _username),
+                        const SizedBox(height: 22),
+                        _buildFooter(),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(24, 30, 24, 24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.highlight.withValues(alpha: 0.16),
+            AppColors.highlight.withValues(alpha: 0.04),
+          ],
+        ),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 66,
+            height: 66,
+            decoration: BoxDecoration(
+              color: AppColors.cardBg,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.highlight.withValues(alpha: 0.25),
+                  blurRadius: 14,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: const Icon(Icons.person, color: AppColors.highlight, size: 32),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            _displayName,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.textDark,
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            decoration: BoxDecoration(
+              color: AppColors.highlight.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              _roleLabel(widget.role),
+              style: const TextStyle(
+                color: AppColors.highlight,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailTile(IconData icon, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: AppColors.pageBg,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 18, color: AppColors.textMuted),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label.toUpperCase(),
+                style: const TextStyle(
+                  color: AppColors.textMuted,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                softWrap: true,
+                style: const TextStyle(
+                  color: AppColors.textDark,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  height: 1.25,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFooter() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        TextButton(
+          onPressed: widget.onClose,
+          style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
+          child: const Text('Close'),
+        ),
+        const SizedBox(width: 8),
+        ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.highlight,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          onPressed: () => widget.onChangePassword(_displayName),
+          icon: const Icon(Icons.lock_outline, size: 18),
+          label: const Text('Change Password'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Top-bar account entry point. Hover-aware pill with a gradient avatar; fixed
+/// name width so it never resizes as the name length changes.
+class _AccountButton extends StatefulWidget {
+  final String displayName;
+  final String role;
+  final bool isNarrow;
+  final VoidCallback onTap;
+
+  const _AccountButton({
+    required this.displayName,
+    required this.role,
+    required this.isNarrow,
+    required this.onTap,
+  });
+
+  @override
+  State<_AccountButton> createState() => _AccountButtonState();
+}
+
+class _AccountButtonState extends State<_AccountButton> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = widget.displayName.isEmpty ? 'My Account' : widget.displayName;
+
+    return Tooltip(
+      message: 'My Account',
+      waitDuration: const Duration(milliseconds: 400),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+            decoration: BoxDecoration(
+              color: _hovered ? AppColors.highlight.withValues(alpha: 0.08) : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              // No resting border — only a faint one on hover for feedback.
+              border: Border.all(
+                color: _hovered
+                    ? AppColors.highlight.withValues(alpha: 0.30)
+                    : Colors.transparent,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [AppColors.highlight, AppColors.primaryBlue],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.highlight.withValues(alpha: 0.35),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.person, color: Colors.white, size: 19),
+                ),
+                if (!widget.isNarrow) ...[
+                  const SizedBox(width: 11),
+                  // Fixed width keeps the button from resizing as name length
+                  // changes (e.g. with/without a middle name).
+                  SizedBox(
+                    width: 150,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          _roleLabel(widget.role),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(
+                    Icons.expand_more,
+                    size: 18,
+                    color: _hovered ? AppColors.highlight : AppColors.textMuted,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
