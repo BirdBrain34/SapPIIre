@@ -302,7 +302,7 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
   Widget _buildOverlayCutout() {
     return ColorFiltered(
       colorFilter: ColorFilter.mode(
-        Colors.black.withOpacity(0.55),
+        Colors.black.withValues(alpha: 0.55),
         BlendMode.srcOut,
       ),
       child: Stack(
@@ -346,7 +346,7 @@ class _InfoScannerScreenState extends State<InfoScannerScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.65),
+        color: Colors.black.withValues(alpha: 0.65),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(

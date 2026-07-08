@@ -248,7 +248,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                       border: Border.all(color: AppColors.cardBorder),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.04),
+                          color: Colors.black.withValues(alpha:  0.04),
                           blurRadius: 16,
                           offset: const Offset(0, 4),
                         ),
@@ -263,7 +263,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                               width: 44,
                               height: 44,
                               decoration: BoxDecoration(
-                                color: AppColors.highlight.withValues(alpha: 0.12),
+                                color: AppColors.highlight.withValues(alpha:  0.12),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: const Icon(
@@ -304,10 +304,10 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                             vertical: 12,
                           ),
                           decoration: BoxDecoration(
-                            color: AppColors.highlight.withValues(alpha: 0.08),
+                            color: AppColors.highlight.withValues(alpha:  0.08),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: AppColors.highlight.withValues(alpha: 0.25),
+                              color: AppColors.highlight.withValues(alpha:  0.25),
                             ),
                           ),
                           child: const Row(

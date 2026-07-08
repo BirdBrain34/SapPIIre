@@ -6,7 +6,7 @@ import 'package:sappiire/mobile/controllers/signup_controller.dart';
 import 'package:sappiire/mobile/widgets/custom_button.dart';
 import 'package:sappiire/mobile/widgets/signup_text_field.dart';
 import 'package:sappiire/mobile/widgets/signup_success_screen.dart';
-import 'package:sappiire/mobile/screens/auth/InfoScannerScreen.dart';
+import 'package:sappiire/mobile/screens/auth/info_scanner_screen.dart';
 import 'package:sappiire/models/id_information.dart';
 
 class SignUpScreen extends StatefulWidget {
@@ -91,7 +91,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         if (_controller.currentPage == 0) { Navigator.pop(context); return; }
-        if (await _confirmCancel() && mounted) Navigator.pop(context);
+        if (await _confirmCancel()) {
+          if (mounted) Navigator.pop(context);
+        }
       },
       child: Scaffold(
         backgroundColor: AppColors.primaryBlue,
@@ -295,7 +297,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.06),
+                      color: Colors.white.withValues(alpha: 0.06),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: Colors.white12),
                     ),
@@ -341,11 +343,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: isSelected
-              ? Colors.white.withOpacity(0.12)
-              : Colors.white.withOpacity(0.05),
+              ? Colors.white.withValues(alpha: 0.12)
+              : Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isSelected ? Colors.white : Colors.white.withOpacity(0.15),
+            color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.15),
             width: isSelected ? 2 : 1,
           ),
         ),
@@ -358,7 +360,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
               decoration: BoxDecoration(
                 color: isSelected
                     ? AppColors.primaryBlue
-                    : Colors.white.withOpacity(0.08),
+                    : Colors.white.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
@@ -433,7 +435,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 Container(
                   width: 80,
                   height: 80,
-                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), shape: BoxShape.circle),
+                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.1), shape: BoxShape.circle),
                   child: const Icon(Icons.mark_email_read, size: 40, color: Colors.white),
                 ),
                 const SizedBox(height: 16),
@@ -477,7 +479,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 Container(
                   width: 80,
                   height: 80,
-                  decoration: BoxDecoration(color: Colors.green.withOpacity(0.15), shape: BoxShape.circle),
+                  decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.15), shape: BoxShape.circle),
                   child: const Icon(Icons.check_circle_outline, size: 44, color: Colors.greenAccent),
                 ),
                 const SizedBox(height: 16),
@@ -517,7 +519,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 Container(
                   width: 80,
                   height: 80,
-                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), shape: BoxShape.circle),
+                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.1), shape: BoxShape.circle),
                   child: const Icon(Icons.sms, size: 40, color: Colors.white),
                 ),
                 const SizedBox(height: 16),
@@ -560,7 +562,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 Container(
                   width: 80,
                   height: 80,
-                  decoration: BoxDecoration(color: Colors.green.withOpacity(0.15), shape: BoxShape.circle),
+                  decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.15), shape: BoxShape.circle),
                   child: const Icon(Icons.check_circle_outline, size: 44, color: Colors.greenAccent),
                 ),
                 const SizedBox(height: 16),
@@ -641,14 +643,22 @@ class _SignUpScreenState extends State<SignUpScreen> {
     String label;
     switch (_currentActualPage) {
       case 2:
-        if (!_controller.emailOtpSent) label = 'Send Code';
-        else if (!_controller.emailVerified) label = 'Verify Email';
-        else label = 'Continue';
+        if (!_controller.emailOtpSent) {
+          label = 'Send Code';
+        } else if (!_controller.emailVerified) {
+          label = 'Verify Email';
+        } else {
+          label = 'Continue';
+        }
         break;
       case 3:
-        if (!_controller.phoneOtpSent) label = 'Send Code';
-        else if (!_controller.phoneVerified) label = 'Verify Phone';
-        else label = 'Continue';
+        if (!_controller.phoneOtpSent) {
+          label = 'Send Code';
+        } else if (!_controller.phoneVerified) {
+          label = 'Verify Phone';
+        } else {
+          label = 'Continue';
+        }
         break;
       case 4:
         label = 'Create Account';
@@ -660,14 +670,22 @@ class _SignUpScreenState extends State<SignUpScreen> {
     bool canProceed;
     switch (_currentActualPage) {
       case 2:
-        if (!_controller.emailOtpSent) canProceed = _controller.emailCtrl.text.contains('@');
-        else if (!_controller.emailVerified) canProceed = _controller.emailOtpCtrl.text.length == 8;
-        else canProceed = true;
+        if (!_controller.emailOtpSent) {
+          canProceed = _controller.emailCtrl.text.contains('@');
+        } else if (!_controller.emailVerified) {
+          canProceed = _controller.emailOtpCtrl.text.length == 8;
+        } else {
+          canProceed = true;
+        }
         break;
       case 3:
-        if (!_controller.phoneOtpSent) canProceed = _controller.phoneCtrl.text.length >= 10;
-        else if (!_controller.phoneVerified) canProceed = _controller.phoneOtpCtrl.text.length == 6;
-        else canProceed = true;
+        if (!_controller.phoneOtpSent) {
+          canProceed = _controller.phoneCtrl.text.length >= 10;
+        } else if (!_controller.phoneVerified) {
+          canProceed = _controller.phoneOtpCtrl.text.length == 6;
+        } else {
+          canProceed = true;
+        }
         break;
       default:
         canProceed = _controller.currentPageValid;

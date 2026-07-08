@@ -384,8 +384,8 @@ class _AccountPanelState extends State<_AccountPanel> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            AppColors.highlight.withValues(alpha: 0.16),
-            AppColors.highlight.withValues(alpha: 0.04),
+            AppColors.highlight.withValues(alpha:  0.16),
+            AppColors.highlight.withValues(alpha:  0.04),
           ],
         ),
       ),
@@ -399,7 +399,7 @@ class _AccountPanelState extends State<_AccountPanel> {
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.highlight.withValues(alpha: 0.25),
+                  color: AppColors.highlight.withValues(alpha:  0.25),
                   blurRadius: 14,
                   offset: const Offset(0, 4),
                 ),
@@ -423,7 +423,7 @@ class _AccountPanelState extends State<_AccountPanel> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
             decoration: BoxDecoration(
-              color: AppColors.highlight.withValues(alpha: 0.14),
+              color: AppColors.highlight.withValues(alpha:  0.14),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
@@ -552,12 +552,12 @@ class _AccountButtonState extends State<_AccountButton> {
             duration: const Duration(milliseconds: 150),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
             decoration: BoxDecoration(
-              color: _hovered ? AppColors.highlight.withValues(alpha: 0.08) : Colors.transparent,
+              color: _hovered ? AppColors.highlight.withValues(alpha:  0.08) : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
               // No resting border — only a faint one on hover for feedback.
               border: Border.all(
                 color: _hovered
-                    ? AppColors.highlight.withValues(alpha: 0.30)
+                    ? AppColors.highlight.withValues(alpha:  0.30)
                     : Colors.transparent,
               ),
             ),
@@ -576,7 +576,7 @@ class _AccountButtonState extends State<_AccountButton> {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.highlight.withValues(alpha: 0.35),
+                        color: AppColors.highlight.withValues(alpha:  0.35),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),

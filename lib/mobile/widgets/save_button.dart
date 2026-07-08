@@ -33,7 +33,7 @@ class SaveButton extends StatelessWidget {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.18),
+                    color: Colors.black.withValues(alpha: 0.18),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -51,7 +51,7 @@ class SaveButton extends StatelessWidget {
           Container(
             width: 1,
             height: 24,
-            color: Colors.white.withOpacity(0.25),
+            color: Colors.white.withValues(alpha: 0.25),
           ),
 
           // ── Save side ─────────────────────────────────────────────
@@ -62,7 +62,7 @@ class SaveButton extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 14),
               decoration: BoxDecoration(
                 color: isSaving
-                    ? Colors.green.shade700.withOpacity(0.75)
+                    ? Colors.green.shade700.withValues(alpha: 0.75)
                     : Colors.green.shade700,
                 borderRadius: const BorderRadius.only(
                   topRight: Radius.circular(20),
@@ -70,7 +70,7 @@ class SaveButton extends StatelessWidget {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.18),
+                    color: Colors.black.withValues(alpha: 0.18),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),

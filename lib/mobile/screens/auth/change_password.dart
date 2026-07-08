@@ -195,7 +195,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           // Toggle: Email / Phone
           Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: AppColors.buttonOutlineBlue, width: 2),
             ),
@@ -264,7 +264,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
             color: selected
-                ? Colors.white.withOpacity(0.2)
+                ? Colors.white.withValues(alpha: 0.2)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
           ),

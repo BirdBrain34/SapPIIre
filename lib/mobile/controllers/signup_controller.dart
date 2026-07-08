@@ -229,7 +229,7 @@ class SignupController extends ChangeNotifier {
     if (!dupCheck['success']) {
       isLoading = false;
       notifyListeners();
-      SnackbarUtils.showError(context, dupCheck['message']);
+      if (context.mounted) SnackbarUtils.showError(context, dupCheck['message']);
       return;
     }
 
@@ -242,7 +242,7 @@ class SignupController extends ChangeNotifier {
       notifyListeners();
       emailOtpSent = true;
       startEmailCountdown();
-      SnackbarUtils.showSuccess(context, 'Code sent to ${emailCtrl.text.trim()}');
+      if (context.mounted) SnackbarUtils.showSuccess(context, 'Code sent to ${emailCtrl.text.trim()}');
       return;
     }
 
@@ -255,9 +255,9 @@ class SignupController extends ChangeNotifier {
       verifiedUserId = result['user_id'];
       emailOtpSent = true;
       startEmailCountdown();
-      SnackbarUtils.showSuccess(context, 'Code sent to ${emailCtrl.text.trim()}');
+      if (context.mounted) SnackbarUtils.showSuccess(context, 'Code sent to ${emailCtrl.text.trim()}');
     } else {
-      SnackbarUtils.showError(context, result['message']);
+      if (context.mounted) SnackbarUtils.showError(context, result['message']);
     }
   }
 
@@ -276,10 +276,10 @@ class SignupController extends ChangeNotifier {
     if (result['success']) {
       verifiedUserId = result['user_id'];
       emailVerified = true;
-      SnackbarUtils.showSuccess(context, 'Email verified!');
+      if (context.mounted) SnackbarUtils.showSuccess(context, 'Email verified!');
       goNextPage(pageController);
     } else {
-      SnackbarUtils.showError(context, result['message']);
+      if (context.mounted) SnackbarUtils.showError(context, result['message']);
     }
   }
 
@@ -291,9 +291,9 @@ class SignupController extends ChangeNotifier {
     notifyListeners();
     if (result['success'] == true) {
       startEmailCountdown();
-      SnackbarUtils.showSuccess(context, 'Code resent!');
+      if (context.mounted) SnackbarUtils.showSuccess(context, 'Code resent!');
     } else {
-      SnackbarUtils.showError(
+      if (context.mounted) SnackbarUtils.showError(
         context,
         result['message']?.toString() ?? 'Failed to resend.',
       );
@@ -316,7 +316,7 @@ class SignupController extends ChangeNotifier {
     if (!dupCheck['success']) {
       isLoading = false;
       notifyListeners();
-      SnackbarUtils.showError(context, dupCheck['message']);
+      if (context.mounted) SnackbarUtils.showError(context, dupCheck['message']);
       return;
     }
     final result = await _supabaseService.sendPhoneOtp(phoneCtrl.text.trim());
@@ -325,9 +325,9 @@ class SignupController extends ChangeNotifier {
     if (result['success']) {
       phoneOtpSent = true;
       startPhoneCountdown();
-      SnackbarUtils.showSuccess(context, 'Code sent to your phone!');
+      if (context.mounted) SnackbarUtils.showSuccess(context, 'Code sent to your phone!');
     } else {
-      SnackbarUtils.showError(context, result['message']);
+      if (context.mounted) SnackbarUtils.showError(context, result['message']);
     }
   }
 
@@ -348,10 +348,10 @@ class SignupController extends ChangeNotifier {
       // We don't have the real password yet — that's entered on the next page.
       // The Auth user is created in handleCreateAccount with the actual password.
       phoneVerified = true;
-      SnackbarUtils.showSuccess(context, 'Phone verified!');
+      if (context.mounted) SnackbarUtils.showSuccess(context, 'Phone verified!');
       goNextPage(pageController);
     } else {
-      SnackbarUtils.showError(context, result['message']);
+      if (context.mounted) SnackbarUtils.showError(context, result['message']);
     }
   }
 
@@ -363,9 +363,9 @@ class SignupController extends ChangeNotifier {
     notifyListeners();
     if (result['success']) {
       startPhoneCountdown();
-      SnackbarUtils.showSuccess(context, 'Code resent!');
+      if (context.mounted) SnackbarUtils.showSuccess(context, 'Code resent!');
     } else {
-      SnackbarUtils.showError(context, result['message']);
+      if (context.mounted) SnackbarUtils.showError(context, result['message']);
     }
   }
 
@@ -381,7 +381,7 @@ class SignupController extends ChangeNotifier {
       username: usernameCtrl.text.trim(),
     );
     if (!dupCheck['success']) {
-      SnackbarUtils.showError(context, dupCheck['message']);
+      if (context.mounted) SnackbarUtils.showError(context, dupCheck['message']);
       return false;
     }
 
@@ -402,7 +402,7 @@ class SignupController extends ChangeNotifier {
       notifyListeners();
 
       if (signupResult['success'] != true) {
-        SnackbarUtils.showError(
+        if (context.mounted) SnackbarUtils.showError(
           context,
           signupResult['message'] ?? 'Failed to create account. Try again.',
         );
@@ -412,7 +412,7 @@ class SignupController extends ChangeNotifier {
     }
 
     if (verifiedUserId == null) {
-      SnackbarUtils.showError(context, 'Session expired. Please start over.');
+      if (context.mounted) SnackbarUtils.showError(context, 'Session expired. Please start over.');
       return false;
     }
 
@@ -459,7 +459,7 @@ class SignupController extends ChangeNotifier {
       verifiedUserId = result['user_id'];
       return true;
     } else {
-      SnackbarUtils.showError(context, result['message']);
+      if (context.mounted) SnackbarUtils.showError(context, result['message']);
       return false;
     }
   }

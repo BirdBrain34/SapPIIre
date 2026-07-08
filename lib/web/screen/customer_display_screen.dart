@@ -352,7 +352,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
               width: 120,
               height: 120,
               decoration: BoxDecoration(
-                color: AppColors.highlight.withValues(alpha: 0.15),
+                color: AppColors.highlight.withValues(alpha:  0.15),
                 borderRadius: BorderRadius.circular(30),
               ),
               child: const Icon(
@@ -376,7 +376,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
           Text(
             'Please wait for the staff to start your session.',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.6),
+              color: Colors.white.withValues(alpha:  0.6),
               fontSize: 20,
               fontWeight: FontWeight.w300,
             ),
@@ -386,14 +386,14 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.08),
+              color: Colors.white.withValues(alpha:  0.08),
               borderRadius: BorderRadius.circular(30),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+              border: Border.all(color: Colors.white.withValues(alpha:  0.12)),
             ),
             child: Text(
               'Station: ${widget.stationId}',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.5),
+                color: Colors.white.withValues(alpha:  0.5),
                 fontSize: 14,
                 letterSpacing: 1.0,
               ),
@@ -414,7 +414,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             decoration: BoxDecoration(
-              color: AppColors.successGreen.withValues(alpha: 0.2),
+              color: AppColors.successGreen.withValues(alpha:  0.2),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Row(
@@ -457,7 +457,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
           Text(
             'Scan the QR code below with the SapPIIre app',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.6),
+              color: Colors.white.withValues(alpha:  0.6),
               fontSize: 16,
             ),
           ),
@@ -471,7 +471,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
               borderRadius: BorderRadius.circular(28),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.highlight.withValues(alpha: 0.25),
+                  color: AppColors.highlight.withValues(alpha:  0.25),
                   blurRadius: 60,
                   spreadRadius: 5,
                 ),
@@ -497,7 +497,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
           Text(
             'Session: ${_sessionId!.split('-').first}...',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.35),
+              color: Colors.white.withValues(alpha:  0.35),
               fontSize: 13,
             ),
           ),
@@ -508,17 +508,17 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             decoration: BoxDecoration(
               color: _sessionExpired
-                  ? Colors.red.withValues(alpha: 0.15)
+                  ? Colors.red.withValues(alpha:  0.15)
                   : _timeRemaining.inMinutes < 5
-                      ? Colors.orange.withValues(alpha: 0.15)
-                      : Colors.white.withValues(alpha: 0.08),
+                      ? Colors.orange.withValues(alpha:  0.15)
+                      : Colors.white.withValues(alpha:  0.08),
               borderRadius: BorderRadius.circular(30),
               border: Border.all(
                 color: _sessionExpired
-                    ? Colors.red.withValues(alpha: 0.4)
+                    ? Colors.red.withValues(alpha:  0.4)
                     : _timeRemaining.inMinutes < 5
-                        ? Colors.orange.withValues(alpha: 0.4)
-                        : Colors.white.withValues(alpha: 0.15),
+                        ? Colors.orange.withValues(alpha:  0.4)
+                        : Colors.white.withValues(alpha:  0.15),
               ),
             ),
             child: Row(
@@ -611,7 +611,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
           Text(
             'Check that the information below is correct.',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.6),
+              color: Colors.white.withValues(alpha:  0.6),
               fontSize: 18,
               fontWeight: FontWeight.w300,
             ),
@@ -621,7 +621,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
               decoration: BoxDecoration(
-                color: AppColors.highlight.withValues(alpha: 0.15),
+                color: AppColors.highlight.withValues(alpha:  0.15),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
@@ -665,7 +665,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
           width: 28,
           height: 28,
           decoration: BoxDecoration(
-            color: AppColors.highlight.withValues(alpha: 0.2),
+            color: AppColors.highlight.withValues(alpha:  0.2),
             shape: BoxShape.circle,
           ),
           alignment: Alignment.center,
@@ -682,7 +682,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
         Text(
           text,
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.5),
+            color: Colors.white.withValues(alpha:  0.5),
             fontSize: 14,
           ),
         ),

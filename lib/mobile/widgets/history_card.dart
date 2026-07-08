@@ -28,7 +28,7 @@ class HistoryCard extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: const Color(0xFFEEEEF5)),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))],
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2))],
         ),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -39,7 +39,7 @@ class HistoryCard extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: AppColors.primaryBlue.withOpacity(0.1),
+                  color: AppColors.primaryBlue.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(Icons.qr_code_scanner, color: AppColors.primaryBlue, size: 22),
@@ -57,7 +57,7 @@ class HistoryCard extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.1),
+                            color: Colors.green.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: const Text('Submitted', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.green)),
@@ -89,12 +89,12 @@ class HistoryCard extends StatelessWidget {
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          Icon(Icons.person_outline, size: 12, color: AppColors.primaryBlue.withOpacity(0.7)),
+                          Icon(Icons.person_outline, size: 12, color: AppColors.primaryBlue.withValues(alpha: 0.7)),
                           const SizedBox(width: 5),
                           Expanded(
                             child: Text(
                               'Assisted by: $workerName',
-                              style: TextStyle(fontSize: 12, color: AppColors.primaryBlue.withOpacity(0.85), fontWeight: FontWeight.w500),
+                              style: TextStyle(fontSize: 12, color: AppColors.primaryBlue.withValues(alpha: 0.85), fontWeight: FontWeight.w500),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),

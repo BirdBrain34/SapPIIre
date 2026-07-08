@@ -570,9 +570,9 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
+        color: Colors.white.withValues(alpha:  0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.lightBlue.withValues(alpha: 0.3)),
+        border: Border.all(color: AppColors.lightBlue.withValues(alpha:  0.3)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,

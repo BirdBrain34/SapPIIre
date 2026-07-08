@@ -731,20 +731,6 @@ class DashboardAnalyticsService {
     return uuid.hasMatch(value);
   }
 
-  /// Resolves staff display names for a set of submission rows.
-  Future<Map<String, String>> _resolveStaffNamesForRows(
-    List<Map<String, dynamic>> rows,
-  ) async {
-    final staffIds = rows
-        .map((row) => row['created_by']?.toString().trim() ?? '')
-        .where((id) => id.isNotEmpty)
-        .toSet()
-        .toList();
-
-    if (staffIds.isEmpty) return {};
-
-    return _fetchStaffDisplayNames(staffIds);
-  }
 
   Future<Map<String, int>> fetchGenderRatio({
     String formType = 'All',
@@ -1097,21 +1083,6 @@ class DashboardAnalyticsService {
       _optionLabelCache = {};
       return _optionLabelCache!;
     }
-  }
-
-  /// Resolves a raw value to its display label using option mappings.
-  /// Falls back to the raw value if no mapping exists.
-  Future<String> _resolveValueLabel(
-    String fieldName,
-    String rawValue,
-  ) async {
-    final mappings = await _getOptionLabelMappings();
-    final fieldMappings = mappings[fieldName];
-    if (fieldMappings != null) {
-      final label = fieldMappings[rawValue];
-      if (label != null && label.isNotEmpty) return label;
-    }
-    return rawValue;
   }
 
   Future<Map<String, int>> fetchFieldDistribution({

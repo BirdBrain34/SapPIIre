@@ -135,7 +135,7 @@ class MetricCard extends StatelessWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
+              color: Colors.black.withValues(alpha:  0.06),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -151,7 +151,7 @@ class MetricCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.15),
+                    color: color.withValues(alpha:  0.15),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(icon, color: color, size: 24),
@@ -161,7 +161,7 @@ class MetricCard extends StatelessWidget {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.15),
+                      color: color.withValues(alpha:  0.15),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
@@ -250,7 +250,7 @@ class SimplePieChart extends StatelessWidget {
           trailing: Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: AppColors.highlight.withValues(alpha: 0.1),
+              color: AppColors.highlight.withValues(alpha:  0.1),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text('Total: $total',
@@ -400,7 +400,7 @@ class DonutChart extends StatelessWidget {
           trailing: Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: AppColors.highlight.withValues(alpha: 0.1),
+              color: AppColors.highlight.withValues(alpha:  0.1),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text('Total: $total',
@@ -565,7 +565,7 @@ class SimpleBarChart extends StatelessWidget {
           trailing: Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
+              color: color.withValues(alpha:  0.1),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text('${data.length} categories',
@@ -656,7 +656,7 @@ class SimpleDataTable extends StatelessWidget {
           trailing: Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: AppColors.highlight.withValues(alpha: 0.1),
+              color: AppColors.highlight.withValues(alpha:  0.1),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text('${rows.length} rows',
@@ -671,7 +671,7 @@ class SimpleDataTable extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             child: DataTable(
               headingRowColor:
-                  WidgetStatePropertyAll(AppColors.highlight.withValues(alpha: 0.08)),
+                  WidgetStatePropertyAll(AppColors.highlight.withValues(alpha:  0.08)),
               columnSpacing: 32,
               columns: const [
                 DataColumn(label: Text('Label')),
@@ -770,7 +770,7 @@ class _LineChartPainter extends CustomPainter {
 
     // Grid lines
     final gridPaint = Paint()
-      ..color = Colors.grey.withValues(alpha: 0.15)
+      ..color = Colors.grey.withValues(alpha:  0.15)
       ..strokeWidth = 0.5;
     for (int i = 0; i <= 4; i++) {
       final y = 10 + (drawH / 4) * i;
@@ -788,7 +788,7 @@ class _LineChartPainter extends CustomPainter {
     // Area fill
     if (pts.length >= 2) {
       final area = Paint()
-        ..color = AppColors.highlight.withValues(alpha: 0.12)
+        ..color = AppColors.highlight.withValues(alpha:  0.12)
         ..style = PaintingStyle.fill;
       final path = Path()..moveTo(pts.first.dx, 10 + drawH);
       for (final p in pts) path.lineTo(p.dx, p.dy);
@@ -903,8 +903,8 @@ class _AreaChartPainter extends CustomPainter {
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          AppColors.highlight.withValues(alpha: 0.35),
-          AppColors.highlight.withValues(alpha: 0.02),
+          AppColors.highlight.withValues(alpha:  0.35),
+          AppColors.highlight.withValues(alpha:  0.02),
         ],
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
     final path = Path()..moveTo(hPad, 10 + drawH);
@@ -1074,7 +1074,7 @@ class FunnelChart extends StatelessWidget {
                   child: Container(
                     height: 18,
                     decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.12),
+                      color: color.withValues(alpha:  0.12),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: FractionallySizedBox(

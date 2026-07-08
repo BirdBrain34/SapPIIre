@@ -20,7 +20,7 @@ class SignUpSuccessScreen extends StatelessWidget {
               Container(
                 width: 100,
                 height: 100,
-                decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), shape: BoxShape.circle),
+                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.1), shape: BoxShape.circle),
                 child: const Icon(Icons.check_circle_outline, color: Colors.white, size: 56),
               ),
               const SizedBox(height: 24),

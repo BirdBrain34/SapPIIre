@@ -157,9 +157,9 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
+        color: color.withValues(alpha:  0.1),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
+        border: Border.all(color: color.withValues(alpha:  0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -190,9 +190,9 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
+        color: color.withValues(alpha:  0.12),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
+        border: Border.all(color: color.withValues(alpha:  0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -227,7 +227,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
       onPressed: onPressed,
       style: TextButton.styleFrom(
         foregroundColor: color,
-        backgroundColor: color.withValues(alpha: 0.08),
+        backgroundColor: color.withValues(alpha:  0.08),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
@@ -634,7 +634,7 @@ class _ManageStaffScreenState extends State<ManageStaffScreen> {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: AppColors.highlight.withValues(alpha: 0.15),
+                    color: AppColors.highlight.withValues(alpha:  0.15),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: const Icon(

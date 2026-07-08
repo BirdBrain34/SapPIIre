@@ -622,7 +622,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                           color: Colors.transparent,
                           child: InkWell(
                             hoverColor: AppColors.pageBg,
-                            splashColor: AppColors.highlight.withValues(alpha: 0.08),
+                            splashColor: AppColors.highlight.withValues(alpha:  0.08),
                             onTap: () {
                               setState(() {
                                 _cancelSubmissionLoad();
@@ -637,7 +637,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                             child: Container(
                               decoration: BoxDecoration(
                                 color: isSelected
-                                    ? AppColors.highlight.withValues(alpha: 0.10)
+                                    ? AppColors.highlight.withValues(alpha:  0.10)
                                     : Colors.transparent,
                                 border: Border(
                                   left: BorderSide(
@@ -731,7 +731,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
             Icon(
               Icons.person_search_outlined,
               size: 64,
-              color: AppColors.textMuted.withValues(alpha: 0.4),
+              color: AppColors.textMuted.withValues(alpha:  0.4),
             ),
             const SizedBox(height: 16),
             const Text(
@@ -1182,7 +1182,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                           color: Colors.transparent,
                           child: InkWell(
                             hoverColor: AppColors.pageBg,
-                            splashColor: AppColors.highlight.withValues(alpha: 0.08),
+                            splashColor: AppColors.highlight.withValues(alpha:  0.08),
                             onTap: () => _openSubmission(record),
                             child: SizedBox(
                               height: 78,
@@ -1199,10 +1199,10 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                                         vertical: 4,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: badgeColor.withValues(alpha: 0.12),
+                                        color: badgeColor.withValues(alpha:  0.12),
                                         borderRadius: BorderRadius.circular(999),
                                         border: Border.all(
-                                          color: badgeColor.withValues(alpha: 0.3),
+                                          color: badgeColor.withValues(alpha:  0.3),
                                         ),
                                       ),
                                       child: Text(

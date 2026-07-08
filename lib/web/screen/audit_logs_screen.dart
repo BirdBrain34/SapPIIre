@@ -485,9 +485,9 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
       constraints: const BoxConstraints(minHeight: 90),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
+        color: color.withValues(alpha:  0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
+        border: Border.all(color: color.withValues(alpha:  0.25)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -727,7 +727,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
             Icon(
               Icons.history_toggle_off_outlined,
               size: 64,
-              color: AppColors.textMuted.withValues(alpha: 0.4),
+              color: AppColors.textMuted.withValues(alpha:  0.4),
             ),
             const SizedBox(height: 16),
             const Text(
@@ -832,7 +832,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: catColor.withValues(alpha: 0.1),
+                  color: catColor.withValues(alpha:  0.1),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Row(
@@ -876,7 +876,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: AppColors.highlight.withValues(alpha: 0.12),
+                        color: AppColors.highlight.withValues(alpha:  0.12),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
@@ -947,7 +947,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: severityColor.withValues(alpha: 0.1),
+                  color: severityColor.withValues(alpha:  0.1),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
@@ -989,7 +989,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: _categoryColor(log['category']).withValues(alpha: 0.1),
+                color: _categoryColor(log['category']).withValues(alpha:  0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
@@ -1072,7 +1072,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: _categoryColor(log['category']).withValues(alpha: 0.1),
+                color: _categoryColor(log['category']).withValues(alpha:  0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(

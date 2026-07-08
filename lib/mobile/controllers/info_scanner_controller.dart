@@ -147,13 +147,16 @@ class InfoScannerController extends ChangeNotifier {
         }
       } else if (lower.contains('sibil') || lower.contains('marital')) {
         if (data.bloodType.isEmpty) {
-          final beforeLabel = lower.indexOf('sbil') != -1
-              ? lines[i].substring(0, lower.indexOf('sbil')).trim()
-              : lower.indexOf('sibil') != -1
-              ? lines[i].substring(0, lower.indexOf('sibil')).trim()
-              : '';
-          if (beforeLabel.isNotEmpty && !_isJunk(beforeLabel)) {
-            data.bloodType = beforeLabel;
+          if (lower.contains('sbil')) {
+            final before = lines[i].substring(0, lower.indexOf('sbil')).trim();
+            if (before.isNotEmpty && !_isJunk(before)) {
+              data.bloodType = before;
+            }
+          } else if (lower.contains('sibil')) {
+            final before = lines[i].substring(0, lower.indexOf('sibil')).trim();
+            if (before.isNotEmpty && !_isJunk(before)) {
+              data.bloodType = before;
+            }
           }
         }
         if (i + 1 < lines.length) {

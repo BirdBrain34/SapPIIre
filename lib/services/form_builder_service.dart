@@ -601,6 +601,7 @@ class FormBuilderService {
           .select('form_name')
           .eq('template_id', templateId)
           .maybeSingle();
+      // ignore: unused_local_variable
       final formName = templateData?['form_name'] as String? ?? 'Untitled Form';
 
       await _supabase
@@ -630,6 +631,7 @@ class FormBuilderService {
           .select('form_name')
           .eq('template_id', templateId)
           .maybeSingle();
+      // ignore: unused_local_variable
       final formName = templateData?['form_name'] as String? ?? 'Untitled Form';
 
       await _supabase
@@ -682,6 +684,23 @@ class FormBuilderService {
 
       return true;
     } catch (e) {
+      if (_isStatusCheckConstraintError(e)) {
+        try {
+          await _setLegacyArchiveFlag(
+            templateId,
+            archived: false,
+            setInactive: true,
+            statusOverride: 'draft',
+          );
+          return true;
+        } catch (fallbackError) {
+          lastActionError = fallbackError.toString();
+          debugPrint(
+            'FormBuilderService.restoreTemplate fallback error: $fallbackError',
+          );
+          return false;
+        }
+      }
       lastActionError = e.toString();
       debugPrint('[FormBuilderService/unpublishTemplate] Error: $e');
       return false;
@@ -754,13 +773,6 @@ class FormBuilderService {
   Future<bool> restoreTemplate(String templateId) async {
     lastActionError = null;
     try {
-      final templateData = await _supabase
-          .from('form_templates')
-          .select('form_name')
-          .eq('template_id', templateId)
-          .maybeSingle();
-      final formName = templateData?['form_name'] as String? ?? 'Untitled Form';
-
       await _supabase
           .from('form_templates')
           .update({'status': 'draft', 'is_active': false})
@@ -818,4 +830,3 @@ class FormBuilderService {
     }
   }
 }
-

@@ -75,13 +75,13 @@ class ChangePasswordController extends ChangeNotifier {
     try {
       final result = await _passwordResetService.sendEmailOtp(emailCtrl.text);
       if (result['success'] != true) {
-        SnackbarUtils.showError(context, result['message']?.toString() ?? 'Failed to send OTP.');
+        if (context.mounted) SnackbarUtils.showError(context, result['message']?.toString() ?? 'Failed to send OTP.');
         return false;
       }
       resolvedEmail = result['email']?.toString();
       return true;
     } catch (e) {
-      SnackbarUtils.showError(context, 'Failed to send OTP: ${e.toString()}');
+      if (context.mounted) SnackbarUtils.showError(context, 'Failed to send OTP: ${e.toString()}');
       return false;
     } finally {
       isLoading = false;
@@ -96,9 +96,9 @@ class ChangePasswordController extends ChangeNotifier {
     try {
       final result = await _passwordResetService.resendEmailOtp(emailCtrl.text);
       if (result['success'] == true) {
-        SnackbarUtils.showSuccess(context, result['message']?.toString() ?? 'Code resent! Check your email.');
+        if (context.mounted) SnackbarUtils.showSuccess(context, result['message']?.toString() ?? 'Code resent! Check your email.');
       } else {
-        SnackbarUtils.showError(context, result['message']?.toString() ?? 'Failed to resend OTP.');
+        if (context.mounted) SnackbarUtils.showError(context, result['message']?.toString() ?? 'Failed to resend OTP.');
       }
       return result['success'] == true;
     } finally {
@@ -117,12 +117,12 @@ class ChangePasswordController extends ChangeNotifier {
         otp: otpCtrl.text,
       );
       if (result['success'] != true) {
-        SnackbarUtils.showError(context, result['message']?.toString() ?? 'Invalid or expired code.');
+        if (context.mounted) SnackbarUtils.showError(context, result['message']?.toString() ?? 'Invalid or expired code.');
         return false;
       }
       return true;
     } catch (e) {
-      SnackbarUtils.showError(context, 'Verification error: ${e.toString()}');
+      if (context.mounted) SnackbarUtils.showError(context, 'Verification error: ${e.toString()}');
       return false;
     } finally {
       isLoading = false;
@@ -140,11 +140,11 @@ class ChangePasswordController extends ChangeNotifier {
         resolvedEmail = result['email']?.toString();
         return true;
       } else {
-        SnackbarUtils.showError(context, result['message']?.toString() ?? 'Failed to send OTP.');
+        if (context.mounted) SnackbarUtils.showError(context, result['message']?.toString() ?? 'Failed to send OTP.');
         return false;
       }
     } catch (e) {
-      SnackbarUtils.showError(context, 'Error: ${e.toString()}');
+      if (context.mounted) SnackbarUtils.showError(context, 'Error: ${e.toString()}');
       return false;
     } finally {
       isLoading = false;
@@ -159,9 +159,9 @@ class ChangePasswordController extends ChangeNotifier {
     try {
       final result = await _passwordResetService.resendPhoneOtp(phoneCtrl.text);
       if (result['success'] == true) {
-        SnackbarUtils.showSuccess(context, result['message']?.toString() ?? 'Code resent!');
+        if (context.mounted) SnackbarUtils.showSuccess(context, result['message']?.toString() ?? 'Code resent!');
       } else {
-        SnackbarUtils.showError(context, result['message']?.toString() ?? 'Failed to resend OTP.');
+        if (context.mounted) SnackbarUtils.showError(context, result['message']?.toString() ?? 'Failed to resend OTP.');
       }
       return result['success'] == true;
     } finally {
@@ -187,11 +187,11 @@ class ChangePasswordController extends ChangeNotifier {
         }
         return true;
       } else {
-        SnackbarUtils.showError(context, result['message']?.toString() ?? 'Invalid or expired code.');
+        if (context.mounted) SnackbarUtils.showError(context, result['message']?.toString() ?? 'Invalid or expired code.');
         return false;
       }
     } catch (e) {
-      SnackbarUtils.showError(context, 'Verification error: ${e.toString()}');
+      if (context.mounted) SnackbarUtils.showError(context, 'Verification error: ${e.toString()}');
       return false;
     } finally {
       isLoading = false;
@@ -209,18 +209,18 @@ class ChangePasswordController extends ChangeNotifier {
       );
 
       if (result['success'] != true) {
-        SnackbarUtils.showError(context, result['message']?.toString() ?? 'Failed to update password. Please try again.');
+        if (context.mounted) SnackbarUtils.showError(context, result['message']?.toString() ?? 'Failed to update password. Please try again.');
         return false;
       }
 
       if (fromProfile) {
-        SnackbarUtils.showSuccess(context, 'Password updated successfully!');
+        if (context.mounted) SnackbarUtils.showSuccess(context, 'Password updated successfully!');
       } else {
         await Supabase.instance.client.auth.signOut();
       }
       return true;
     } catch (e) {
-      SnackbarUtils.showError(context, 'Error: ${e.toString()}');
+      if (context.mounted) SnackbarUtils.showError(context, 'Error: ${e.toString()}');
       return false;
     } finally {
       isLoading = false;

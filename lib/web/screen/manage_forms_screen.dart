@@ -52,6 +52,7 @@ class ManageFormsScreen extends StatefulWidget {
 class _ManageFormsScreenState extends State<ManageFormsScreen> {
   final _templateService = FormTemplateService();
   final _displayService = DisplaySessionService();
+  // ignore: unused_field
   final _fieldValueService = FieldValueService();
   final _submissionService = SubmissionService();
   final _manageFormsController = ManageFormsController();
@@ -79,6 +80,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   String _lastSavedReference = '';
 
   // Session expiry countdown
+  // ignore: unused_field
   DateTime? _sessionExpiresAt;
   Timer? _countdownTimer;
   Duration _timeRemaining = Duration.zero;
@@ -828,7 +830,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           border: Border.all(color: const Color(0xFFE6EBF8)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.07),
+              color: Colors.black.withValues(alpha:  0.07),
               blurRadius: 34,
               offset: const Offset(0, 10),
             ),
@@ -900,7 +902,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                 color: const Color(0xFFF4F7FE),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: AppColors.buttonOutlineBlue.withValues(alpha: 0.35),
+                  color: AppColors.buttonOutlineBlue.withValues(alpha:  0.35),
                 ),
               ),
               child: DropdownButtonHideUnderline(
@@ -994,7 +996,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                   ),
                   decoration: BoxDecoration(
                     color: _sessionExpired
-                        ? Colors.red.withValues(alpha: 0.15)
+                        ? Colors.red.withValues(alpha:  0.15)
                         : const Color(0xFFE9F9F1),
                     borderRadius: BorderRadius.circular(999),
                   ),
@@ -1092,7 +1094,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
+                    color: Colors.black.withValues(alpha:  0.1),
                     blurRadius: 20,
                   ),
                 ],
@@ -1145,7 +1147,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: Colors.red.withValues(alpha: 0.1),
+              color: Colors.red.withValues(alpha:  0.1),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -1212,10 +1214,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.12),
+                    color: Colors.white.withValues(alpha:  0.12),
                     borderRadius: BorderRadius.circular(999),
                     border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.2),
+                      color: Colors.white.withValues(alpha:  0.2),
                     ),
                   ),
                   child: const Row(
@@ -1281,17 +1283,17 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                           ),
                           decoration: BoxDecoration(
                             color: expired
-                                ? Colors.red.withValues(alpha: 0.2)
+                                ? Colors.red.withValues(alpha:  0.2)
                                 : isLow
-                                    ? Colors.orange.withValues(alpha: 0.2)
-                                    : Colors.white.withValues(alpha: 0.1),
+                                    ? Colors.orange.withValues(alpha:  0.2)
+                                    : Colors.white.withValues(alpha:  0.1),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
                               color: expired
-                                  ? Colors.red.withValues(alpha: 0.5)
+                                  ? Colors.red.withValues(alpha:  0.5)
                                   : isLow
-                                      ? Colors.orange.withValues(alpha: 0.5)
-                                      : Colors.white.withValues(alpha: 0.2),
+                                      ? Colors.orange.withValues(alpha:  0.5)
+                                      : Colors.white.withValues(alpha:  0.2),
                             ),
                           ),
                           child: Row(
@@ -1332,10 +1334,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.amber.withValues(alpha: 0.12),
+                    color: Colors.amber.withValues(alpha:  0.12),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: Colors.amber.withValues(alpha: 0.4),
+                      color: Colors.amber.withValues(alpha:  0.4),
                     ),
                   ),
                   child: Column(
@@ -1376,10 +1378,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Colors.green.withValues(alpha: 0.12),
+                      color: Colors.green.withValues(alpha:  0.12),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: Colors.green.withValues(alpha: 0.45),
+                        color: Colors.green.withValues(alpha:  0.45),
                       ),
                     ),
                     child: Column(
@@ -1416,7 +1418,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
+                    color: Colors.white.withValues(alpha:  0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Column(

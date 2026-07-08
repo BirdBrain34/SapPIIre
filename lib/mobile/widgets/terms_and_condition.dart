@@ -1,4 +1,3 @@
-// lib/mobile/widgets/terms_and_conditions_dialog.dart
 //
 // Two modes:
 //  • showForAcceptance() — new-account flow (non-dismissible)
@@ -146,7 +145,7 @@ class _TermsAndConditionsDialogState extends State<TermsAndConditionsDialog> {
               Container(
                 padding: const EdgeInsets.all(7),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.15),
+                  color: Colors.white.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(
@@ -173,7 +172,7 @@ class _TermsAndConditionsDialogState extends State<TermsAndConditionsDialog> {
           Text(
             'Republic Act No. 10173 — Data Privacy Act of 2012',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.85),
+              color: Colors.white.withValues(alpha: 0.85),
               fontSize: 11,
               fontWeight: FontWeight.w500,
             ),
@@ -220,8 +219,8 @@ class _TermsAndConditionsDialogState extends State<TermsAndConditionsDialog> {
         margin: const EdgeInsets.symmetric(horizontal: 4),
         decoration: BoxDecoration(
           color: done
-              ? Colors.greenAccent.withOpacity(0.8)
-              : Colors.white.withOpacity(0.25),
+              ? Colors.greenAccent.withValues(alpha: 0.8)
+              : Colors.white.withValues(alpha: 0.25),
           borderRadius: BorderRadius.circular(2),
         ),
       ),
@@ -340,7 +339,7 @@ class _TermsAndConditionsDialogState extends State<TermsAndConditionsDialog> {
                       'Please scroll down and read all terms before continuing.',
                       style: TextStyle(
                           fontSize: 11,
-                          color: AppColors.primaryBlue.withOpacity(0.8),
+                          color: AppColors.primaryBlue.withValues(alpha: 0.8),
                           fontWeight: FontWeight.w500),
                     ),
                   ),
@@ -638,7 +637,7 @@ class _BouncingArrowState extends State<_BouncingArrow>
         child: Icon(
           Icons.keyboard_arrow_down_rounded,
           size: 18,
-          color: AppColors.primaryBlue.withOpacity(0.7),
+          color: AppColors.primaryBlue.withValues(alpha: 0.7),
         ),
       ),
     );
@@ -669,19 +668,19 @@ class _ProgressStep extends StatelessWidget {
           height: 28,
           decoration: BoxDecoration(
             color: done
-                ? Colors.greenAccent.withOpacity(0.25)
-                : Colors.white.withOpacity(0.12),
+                ? Colors.greenAccent.withValues(alpha: 0.25)
+                : Colors.white.withValues(alpha: 0.12),
             shape: BoxShape.circle,
             border: Border.all(
               color: done
-                  ? Colors.greenAccent.withOpacity(0.8)
-                  : Colors.white.withOpacity(0.3),
+                  ? Colors.greenAccent.withValues(alpha: 0.8)
+                  : Colors.white.withValues(alpha: 0.3),
               width: 1.5,
             ),
           ),
           child: Icon(
             done ? Icons.check_rounded : icon,
-            color: done ? Colors.greenAccent : Colors.white.withOpacity(0.6),
+            color: done ? Colors.greenAccent : Colors.white.withValues(alpha: 0.6),
             size: 14,
           ),
         ),
@@ -691,8 +690,8 @@ class _ProgressStep extends StatelessWidget {
           style: TextStyle(
             fontSize: 9,
             color: done
-                ? Colors.greenAccent.withOpacity(0.9)
-                : Colors.white.withOpacity(0.55),
+                ? Colors.greenAccent.withValues(alpha: 0.9)
+                : Colors.white.withValues(alpha: 0.55),
             fontWeight: FontWeight.w600,
             letterSpacing: 0.3,
           ),

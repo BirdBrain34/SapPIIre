@@ -303,7 +303,7 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.25),
+              color: Colors.black.withValues(alpha:  0.25),
               blurRadius: 40,
               offset: const Offset(0, 12),
             ),
@@ -344,7 +344,7 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: AppColors.highlight.withValues(alpha: 0.12),
+                  color: AppColors.highlight.withValues(alpha:  0.12),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(
@@ -370,7 +370,7 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
                     'Select fields and assign chart types for ${widget.template.formName}',
                     style: TextStyle(
                       fontSize: 12,
-                      color: AppColors.textMuted.withValues(alpha: 0.8),
+                      color: AppColors.textMuted.withValues(alpha:  0.8),
                     ),
                   ),
                 ],
@@ -494,7 +494,7 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: AppColors.highlight.withValues(alpha: 0.1),
+                  color: AppColors.highlight.withValues(alpha:  0.1),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
@@ -518,7 +518,7 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
                       vertical: 5,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.dangerRed.withValues(alpha: 0.08),
+                      color: AppColors.dangerRed.withValues(alpha:  0.08),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: const Row(
@@ -545,7 +545,7 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
             'Tap a field to add it to the dashboard',
             style: TextStyle(
               fontSize: 11,
-              color: AppColors.textMuted.withValues(alpha: 0.7),
+              color: AppColors.textMuted.withValues(alpha:  0.7),
             ),
           ),
           const SizedBox(height: 14),
@@ -592,19 +592,19 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppColors.highlight.withValues(alpha: 0.07)
+              ? AppColors.highlight.withValues(alpha:  0.07)
               : AppColors.cardBg,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isSelected
-                ? AppColors.highlight.withValues(alpha: 0.5)
+                ? AppColors.highlight.withValues(alpha:  0.5)
                 : AppColors.cardBorder,
             width: isSelected ? 1.5 : 1,
           ),
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: AppColors.highlight.withValues(alpha: 0.08),
+                    color: AppColors.highlight.withValues(alpha:  0.08),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -617,7 +617,7 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: fieldColor.withValues(alpha: 0.12),
+                color: fieldColor.withValues(alpha:  0.12),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
@@ -650,7 +650,7 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
                     field.fieldType.toString().split('.').last,
                     style: TextStyle(
                       fontSize: 11,
-                      color: AppColors.textMuted.withValues(alpha: 0.7),
+                      color: AppColors.textMuted.withValues(alpha:  0.7),
                     ),
                   ),
                 ],
@@ -682,7 +682,7 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
                 child: Icon(
                   Icons.add_rounded,
                   size: 16,
-                  color: AppColors.textMuted.withValues(alpha: 0.4),
+                  color: AppColors.textMuted.withValues(alpha:  0.4),
                 ),
               ),
           ],
@@ -715,7 +715,7 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: AppColors.successGreen.withValues(alpha: 0.1),
+                  color: AppColors.successGreen.withValues(alpha:  0.1),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
@@ -734,7 +734,7 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
             'Drag to reorder, tap the X to remove',
             style: TextStyle(
               fontSize: 11,
-              color: AppColors.textMuted.withValues(alpha: 0.7),
+              color: AppColors.textMuted.withValues(alpha:  0.7),
             ),
           ),
           const SizedBox(height: 14),
@@ -795,7 +795,7 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
         border: Border.all(color: AppColors.cardBorder),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: Colors.black.withValues(alpha:  0.03),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -815,12 +815,12 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
                   child: Container(
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: AppColors.textMuted.withValues(alpha: 0.06),
+                      color: AppColors.textMuted.withValues(alpha:  0.06),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Icon(
                       Icons.drag_indicator_rounded,
-                      color: AppColors.textMuted.withValues(alpha: 0.5),
+                      color: AppColors.textMuted.withValues(alpha:  0.5),
                       size: 20,
                     ),
                   ),
@@ -831,7 +831,7 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
                 width: 30,
                 height: 30,
                 decoration: BoxDecoration(
-                  color: _chartTypeColor(config.chartType).withValues(alpha: 0.12),
+                  color: _chartTypeColor(config.chartType).withValues(alpha:  0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
@@ -858,7 +858,7 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
                 child: Container(
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
-                    color: AppColors.dangerRed.withValues(alpha: 0.08),
+                    color: AppColors.dangerRed.withValues(alpha:  0.08),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: const Icon(
@@ -891,7 +891,7 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
                     icon: Icon(
                       Icons.expand_more_rounded,
                       size: 16,
-                      color: AppColors.textMuted.withValues(alpha: 0.6),
+                      color: AppColors.textMuted.withValues(alpha:  0.6),
                     ),
                     style: const TextStyle(
                       fontSize: 11,
@@ -1057,7 +1057,7 @@ class _DragProxy extends AnimatedWidget {
     return Material(
       elevation: 4.0 * anim.value,
       borderRadius: BorderRadius.circular(10),
-      shadowColor: AppColors.highlight.withValues(alpha: 0.2 * anim.value),
+      shadowColor: AppColors.highlight.withValues(alpha:  0.2 * anim.value),
       color: Colors.transparent,
       child: child,
     );

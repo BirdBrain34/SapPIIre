@@ -206,7 +206,7 @@ class _StaffSubmissionActivityState extends State<StaffSubmissionActivity> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                color: AppColors.highlight.withValues(alpha: 0.1),
+                color: AppColors.highlight.withValues(alpha:  0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
@@ -270,7 +270,7 @@ class _StaffSubmissionActivityState extends State<StaffSubmissionActivity> {
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
             color: isActive
-                ? AppColors.highlight.withValues(alpha: 0.1)
+                ? AppColors.highlight.withValues(alpha:  0.1)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(4),
           ),
@@ -282,7 +282,7 @@ class _StaffSubmissionActivityState extends State<StaffSubmissionActivity> {
               color: isActive
                   ? AppColors.highlight
                   : isClickable
-                      ? AppColors.highlight.withValues(alpha: 0.8)
+                      ? AppColors.highlight.withValues(alpha:  0.8)
                       : AppColors.textMuted,
               decoration:
                   isClickable ? TextDecoration.underline : TextDecoration.none,
@@ -300,7 +300,7 @@ class _StaffSubmissionActivityState extends State<StaffSubmissionActivity> {
       child: Icon(
         Icons.chevron_right,
         size: 14,
-        color: AppColors.textMuted.withValues(alpha: 0.5),
+        color: AppColors.textMuted.withValues(alpha:  0.5),
       ),
     );
   }
@@ -395,7 +395,7 @@ class _StaffSubmissionActivityState extends State<StaffSubmissionActivity> {
                                       margin: const EdgeInsets.only(right: 8),
                                       decoration: BoxDecoration(
                                         color: _rankColor(index)
-                                            .withValues(alpha: 0.15),
+                                            .withValues(alpha:  0.15),
                                         borderRadius:
                                             BorderRadius.circular(6),
                                       ),
@@ -432,7 +432,7 @@ class _StaffSubmissionActivityState extends State<StaffSubmissionActivity> {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: AppColors.highlight.withValues(alpha: 0.1),
+                                color: AppColors.highlight.withValues(alpha:  0.1),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
@@ -466,7 +466,7 @@ class _StaffSubmissionActivityState extends State<StaffSubmissionActivity> {
                                     borderRadius: BorderRadius.circular(3),
                                     gradient: LinearGradient(
                                       colors: [
-                                        AppColors.highlight.withValues(alpha: 0.7),
+                                        AppColors.highlight.withValues(alpha:  0.7),
                                         AppColors.highlight,
                                       ],
                                     ),
@@ -569,7 +569,7 @@ class _StaffSubmissionActivityState extends State<StaffSubmissionActivity> {
                               vertical: 3,
                             ),
                             decoration: BoxDecoration(
-                              color: AppColors.successGreen.withValues(alpha: 0.1),
+                              color: AppColors.successGreen.withValues(alpha:  0.1),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
@@ -599,7 +599,7 @@ class _StaffSubmissionActivityState extends State<StaffSubmissionActivity> {
                             Icon(
                               Icons.arrow_forward_ios,
                               size: 10,
-                              color: AppColors.textMuted.withValues(alpha: 0.4),
+                              color: AppColors.textMuted.withValues(alpha:  0.4),
                             ),
                           ],
                         ),
@@ -625,7 +625,7 @@ class _StaffSubmissionActivityState extends State<StaffSubmissionActivity> {
                                 borderRadius: BorderRadius.circular(3),
                                 gradient: LinearGradient(
                                   colors: [
-                                    AppColors.successGreen.withValues(alpha: 0.7),
+                                    AppColors.successGreen.withValues(alpha:  0.7),
                                     AppColors.successGreen,
                                   ],
                                 ),
@@ -684,7 +684,7 @@ class _StaffSubmissionActivityState extends State<StaffSubmissionActivity> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: AppColors.highlight.withValues(alpha: 0.06),
+            color: AppColors.highlight.withValues(alpha:  0.06),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
@@ -709,7 +709,7 @@ class _StaffSubmissionActivityState extends State<StaffSubmissionActivity> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: AppColors.textDark.withValues(alpha: 0.04),
+            color: AppColors.textDark.withValues(alpha:  0.04),
             borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(8),
               topRight: Radius.circular(8),
@@ -773,7 +773,7 @@ class _StaffSubmissionActivityState extends State<StaffSubmissionActivity> {
                   color: isEven ? Colors.white : Colors.grey.shade50,
                   border: Border(
                     bottom: BorderSide(
-                      color: AppColors.cardBorder.withValues(alpha: 0.5),
+                      color: AppColors.cardBorder.withValues(alpha:  0.5),
                     ),
                   ),
                 ),
