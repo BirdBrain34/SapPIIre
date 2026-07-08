@@ -153,7 +153,6 @@ class FormBuilderTitleCard extends StatelessWidget {
             ),
             // ---- Collapsible: reference number format ----
             _collapsibleSection(
-              context,
               title: 'Reference number format',
               icon: Icons.tag,
               initiallyExpanded: controller.requiresReference,
@@ -366,7 +365,6 @@ class FormBuilderTitleCard extends StatelessWidget {
             ),
             // ---- Collapsible: mobile intro popup ----
             _collapsibleSection(
-              context,
               title: 'Mobile intro popup',
               icon: Icons.info_outline_rounded,
               initiallyExpanded: controller.popupEnabled,
@@ -575,13 +573,50 @@ class FormBuilderTitleCard extends StatelessWidget {
   /// reference-format and mobile-popup config so the title card reads as
   /// just Name / Description / Code by default. Pure chrome — the children
   /// keep their existing controllers and callbacks.
-  Widget _collapsibleSection(
-    BuildContext context, {
+  ///
+  /// Uses a self-contained [_CollapsibleSection] instead of [ExpansionTile]
+  /// on purpose: ExpansionTile persists its expand state via PageStorage, and
+  /// inside the form-builder canvas (which shares a PageStorage bucket for
+  /// scroll preservation) that read collided with the scroll offset and threw
+  /// `type 'int' is not a subtype of type 'bool?'`.
+  Widget _collapsibleSection({
     required String title,
     required IconData icon,
     required bool initiallyExpanded,
     required List<Widget> children,
   }) {
+    return _CollapsibleSection(
+      title: title,
+      icon: icon,
+      initiallyExpanded: initiallyExpanded,
+      children: children,
+    );
+  }
+}
+
+/// Self-managed collapsible panel (no ExpansionTile / no PageStorage).
+class _CollapsibleSection extends StatefulWidget {
+  const _CollapsibleSection({
+    required this.title,
+    required this.icon,
+    required this.initiallyExpanded,
+    required this.children,
+  });
+
+  final String title;
+  final IconData icon;
+  final bool initiallyExpanded;
+  final List<Widget> children;
+
+  @override
+  State<_CollapsibleSection> createState() => _CollapsibleSectionState();
+}
+
+class _CollapsibleSectionState extends State<_CollapsibleSection> {
+  late bool _expanded = widget.initiallyExpanded;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(top: 12),
       decoration: BoxDecoration(
@@ -589,29 +624,49 @@ class FormBuilderTitleCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.cardBorder),
       ),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          // Unique key so ExpansionTile's PageStorage-persisted expand state
-          // does NOT collide with the canvas scroll offset stored in the same
-          // PageStorage bucket (that collision made it read an int as bool?).
-          key: PageStorageKey<String>('fb_collapsible_$title'),
-          initiallyExpanded: initiallyExpanded,
-          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          expandedCrossAxisAlignment: CrossAxisAlignment.start,
-          shape: const Border(),
-          leading: Icon(icon, size: 18, color: AppColors.textMuted),
-          title: Text(
-            title,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textDark,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Row(
+                children: [
+                  Icon(widget.icon, size: 18, color: AppColors.textMuted),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                  ),
+                  AnimatedRotation(
+                    turns: _expanded ? 0.5 : 0.0,
+                    duration: const Duration(milliseconds: 180),
+                    child: const Icon(
+                      Icons.keyboard_arrow_down,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          children: children,
-        ),
+          if (_expanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: widget.children,
+              ),
+            ),
+        ],
       ),
     );
   }
