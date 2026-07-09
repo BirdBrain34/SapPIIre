@@ -46,7 +46,7 @@ class SupabaseService {
       // Fetch all notifications, newest first.
       final rows = await _supabase
           .from('form_template_notifications')
-          .select('id, template_id, template_name, change_type, change_summary, created_at')
+          .select('id, template_id, template_name, change_type, change_summary, created_at, details')
           .order('created_at', ascending: false)
           .limit(100);
  
@@ -95,10 +95,12 @@ class SupabaseService {
   /// Returns the count of unread notifications for the bell badge.
   Future<int> fetchUnreadNotificationCount(String userId) async {
     try {
-      // Total notifications
+      // Total notifications (same 100-window as fetchAppNotifications)
       final allRows = await _supabase
           .from('form_template_notifications')
-          .select('id');
+          .select('id')
+          .order('created_at', ascending: false)
+          .limit(100);
  
       final allIds = (allRows as List)
           .map((r) => r['id']?.toString() ?? '')

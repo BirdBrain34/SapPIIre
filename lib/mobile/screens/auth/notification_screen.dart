@@ -59,7 +59,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     if (mounted) setState(() => _readIds.add(id));
   }
 
-  void _toggleExpanded(String id) {
+  Future<void> _toggleExpanded(String id) async {
     setState(() {
       if (_expandedIds.contains(id)) {
         _expandedIds.remove(id);
@@ -67,7 +67,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
         _expandedIds.add(id);
       }
     });
-    _markOneRead(id);
+    await _markOneRead(id);
   }
 
   int get _unreadCount =>
@@ -258,7 +258,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
     final label        = _changeTypeLabel(changeType);
 
     return GestureDetector(
-      onTap: () => canExpand ? _toggleExpanded(id) : _markOneRead(id),
+      onTap: () async {
+        if (canExpand) {
+          await _toggleExpanded(id);
+        } else {
+          await _markOneRead(id);
+        }
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         margin: const EdgeInsets.only(bottom: 10),
