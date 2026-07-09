@@ -1,9 +1,8 @@
 // lib/web/screen/web_login_screen.dart
 
 import 'dart:async';
-import 'dart:js_interop';
 import 'package:flutter/material.dart';
-import 'package:web/web.dart' as web;
+import 'package:flutter/services.dart';
 import 'package:sappiire/web/screen/first_login_password_screen.dart';
 import 'package:sappiire/web/screen/forgot_password_screen.dart';
 import 'package:sappiire/web/screen/new_staff_setup_screen.dart';
@@ -31,15 +30,10 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
   void initState() {
     super.initState();
     _passwordFocus.addListener(_onPasswordFocusChange);
-    // Listen to native browser keydown events to detect CapsLock toggles.
-    // This is 100% reliable because every CapsLock press generates a keydown
-    // with a reliable getModifierState('CapsLock') value.
-    web.document.addEventListener('keydown', _onNativeKeyEvent.toJS);
   }
 
   @override
   void dispose() {
-    web.document.removeEventListener('keydown', _onNativeKeyEvent.toJS);
     _passwordFocus.removeListener(_onPasswordFocusChange);
     _passwordFocus.dispose();
     _identifierController.dispose();
@@ -47,10 +41,12 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
     super.dispose();
   }
 
-  void _onNativeKeyEvent(JSAny event) {
-    if (!_passwordFocus.hasFocus) return;
-    final ke = event as web.KeyboardEvent;
-    _setCapsLock(ke.getModifierState('CapsLock'));
+  KeyEventResult _onHardwareKey(KeyEvent event) {
+    if (!_passwordFocus.hasFocus) return KeyEventResult.ignored;
+    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.capsLock) {
+      _setCapsLock(!_capsLockOn);
+    }
+    return KeyEventResult.ignored;
   }
 
   void _onPasswordFocusChange() {
@@ -85,7 +81,7 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
 
       // Persist the session so it survives tab refreshes.
       await _authService.saveSession(
-        cswdId: result['cswdId'] ?? '',
+        cswdId: result['cswd_id'] ?? '',
         username: result['username'] ?? '',
         email: result['email'] ?? '',
         role: result['role'] ?? 'admin',
@@ -98,7 +94,7 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
           context,
           ContentFadeRoute(
             page: FirstLoginPasswordScreen(
-              cswdId: result['cswdId'] ?? '',
+              cswdId: result['cswd_id'] ?? '',
               role: result['role'] ?? 'admin',
               displayName: result['display_name'] ?? result['username'] ?? '',
               username: result['username'] ?? '',
@@ -111,7 +107,7 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
           context,
           ContentFadeRoute(
             page: ManageFormsScreen(
-              cswdId: result['cswdId'] ?? '',
+              cswdId: result['cswd_id'] ?? '',
               role: result['role'] ?? 'admin',
               displayName: result['display_name'] ?? result['username'] ?? '',
             ),
@@ -270,6 +266,7 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
             hint: 'Email',
             icon: Icons.badge_outlined,
             textInputAction: TextInputAction.next,
+            onSubmitted: (_) => FocusScope.of(context).requestFocus(_passwordFocus),
           ),
           const SizedBox(height: 20),
           _fieldLabel('Password'),
@@ -277,7 +274,14 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildPasswordField(),
+              Focus(
+                onFocusChange: (hasFocus) {
+                  if (!hasFocus) {
+                    _setCapsLock(false);
+                  }
+                },
+                child: _buildPasswordField(),
+              ),
               if (_capsLockOn)
                 const Padding(
                   padding: EdgeInsets.only(top: 6),
@@ -382,37 +386,41 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
 
   /// Password field with eye toggle suffix icon.
   Widget _buildPasswordField() {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF0D1B4E),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF2A3F7A), width: 1.5),
-      ),
-      child: TextField(
-        controller: _passwordController,
-        focusNode: _passwordFocus,
-        obscureText: _obscurePassword,
-        textInputAction: TextInputAction.done,
-        onSubmitted: (_) => _isLoading ? null : _handleLogin(),
-        style: const TextStyle(color: Colors.white, fontSize: 15),
-        decoration: InputDecoration(
-          hintText: 'Enter your password',
-          hintStyle: const TextStyle(color: Color(0xFF4A6499), fontSize: 14),
-          prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF6EA8FE), size: 20),
-          suffixIcon: GestureDetector(
-            onTapDown: (_) => setState(() => _obscurePassword = false),
-            onTapUp: (_) => setState(() => _obscurePassword = true),
-            onTapCancel: () => setState(() => _obscurePassword = true),
-            child: Icon(
-              _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-              color: const Color(0xFF6EA8FE),
-              size: 20,
+    return KeyboardListener(
+      focusNode: FocusNode(),
+      onKeyEvent: _onHardwareKey,
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF0D1B4E),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF2A3F7A), width: 1.5),
+        ),
+        child: TextField(
+          controller: _passwordController,
+          focusNode: _passwordFocus,
+          obscureText: _obscurePassword,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _isLoading ? null : _handleLogin(),
+          style: const TextStyle(color: Colors.white, fontSize: 15),
+          decoration: InputDecoration(
+            hintText: 'Enter your password',
+            hintStyle: const TextStyle(color: Color(0xFF4A6499), fontSize: 14),
+            prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF6EA8FE), size: 20),
+            suffixIcon: GestureDetector(
+              onTapDown: (_) => setState(() => _obscurePassword = false),
+              onTapUp: (_) => setState(() => _obscurePassword = true),
+              onTapCancel: () => setState(() => _obscurePassword = true),
+              child: Icon(
+                _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                color: const Color(0xFF6EA8FE),
+                size: 20,
+              ),
             ),
-          ),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 16,
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 16,
+            ),
           ),
         ),
       ),
@@ -448,6 +456,11 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
         controller: controller,
         textInputAction: textInputAction,
         onSubmitted: onSubmitted,
+        onEditingComplete: () {
+          if (controller == _identifierController) {
+            FocusScope.of(context).requestFocus(_passwordFocus);
+          }
+        },
         style: const TextStyle(color: Colors.white, fontSize: 15),
         decoration: InputDecoration(
           hintText: hint,
