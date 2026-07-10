@@ -695,7 +695,12 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   void _openCustomerDisplay() {
     if (kIsWeb) {
       final url = '/#/display?station=${Uri.encodeComponent(_stationId)}';
-      launchUrl(Uri.parse(url));
+      unawaited(
+        launchUrl(
+          Uri.parse(url),
+          webOnlyWindowName: 'customer_display',
+        ),
+      );
     }
   }
 

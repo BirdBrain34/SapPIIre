@@ -20,9 +20,15 @@ Future<void> main() async {
   await HybridCryptoService.fetchAndCacheRsaPublicKey();
 
   // On web, try to restore a saved staff session before the app mounts.
+  // BUT: skip restoration when the display screen is opened in a new tab,
+  // otherwise the restored staff session will redirect it away from /display.
+  // The URL is /#/display?station=... so the route is in the hash fragment.
+  final bool isDisplayRoute =
+      kIsWeb && (Uri.base.fragment.contains('/display') || Uri.base.path.contains('/display'));
+
   StaffSession? restored;
   bool sessionValid = false;
-  if (kIsWeb) {
+  if (kIsWeb && !isDisplayRoute) {
     final authService = WebAuthService();
     restored = await authService.restoreSession();
     if (restored != null) {
