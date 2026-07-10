@@ -8,6 +8,34 @@ const corsHeaders = {
 
 const SEMAPHORE_API_KEY = Deno.env.get('SEMAPHORE_API_KEY') ?? '';
 
+// ── Rate limiting ──────────────────────────────────────────────
+const OTP_RATE_LIMIT_WINDOW_MS = 600_000; // 10 minutes
+const MAX_OTP_REQUESTS = 3;
+const otpRateLimitStore = new Map<string, { count: number; windowStart: number }>();
+
+function canRequestOtp(phone: string): boolean {
+  const now = Date.now();
+  const record = otpRateLimitStore.get(phone);
+  if (!record || now - record.windowStart > OTP_RATE_LIMIT_WINDOW_MS) {
+    otpRateLimitStore.set(phone, { count: 1, windowStart: now });
+    return true;
+  }
+  if (record.count >= MAX_OTP_REQUESTS) {
+    return false;
+  }
+  record.count++;
+  return true;
+}
+
+// ── Cryptographically secure OTP generation ───────────────────
+function generateSecureOtp(): string {
+  // Use crypto.getRandomValues for true randomness (not time-based)
+  const array = new Uint32Array(1);
+  crypto.getRandomValues(array);
+  const otp = (100000 + (array[0] % 900000)).toString();
+  return otp;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -39,8 +67,16 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Generate OTP
-    const otp = (100000 + (Date.now() % 900000)).toString();
+    // Rate limiting: max 3 OTP requests per 10 minutes per phone
+    if (!canRequestOtp(phone)) {
+      return new Response(
+        JSON.stringify({ success: false, message: 'Too many OTP requests. Please wait 10 minutes.' }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Generate cryptographically secure OTP
+    const otp = generateSecureOtp();
 
     // Call Semaphore API from the cloud (faster than from mobile)
     const semaphoreRes = await fetch('https://api.semaphore.co/api/v4/messages', {
@@ -65,14 +101,11 @@ Deno.serve(async (req: Request) => {
     }
 
     // Parse the Semaphore response to verify the SMS was actually queued.
-    // Semaphore returns a JSON array on success, e.g. [{"message_id":...,"status":"Pending"}]
-    // If the body is not a valid array or is an error object, treat it as a failure.
     try {
       const parsed = JSON.parse(semaphoreBody);
       if (Array.isArray(parsed) && parsed.length > 0) {
         console.log(`SMS queued: message_id=${parsed[0]?.message_id}, status=${parsed[0]?.status}`);
       } else if (parsed?.error || parsed?.message) {
-        // Semaphore returned 200 but with an error payload
         console.error('Semaphore returned error payload:', semaphoreBody);
         return new Response(
           JSON.stringify({ success: false, message: `SMS service error: ${parsed.error || parsed.message}` }),

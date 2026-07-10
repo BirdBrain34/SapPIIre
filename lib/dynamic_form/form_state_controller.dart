@@ -37,7 +37,6 @@ class FormStateController extends ChangeNotifier {
   Map<String, List<Map<String, dynamic>>> memberTableData = {};
 
   // Track which fields are selected for sharing on mobile.
-   // Track which fields are selected for sharing on mobile.
   final Map<String, bool> fieldChecks = {};
   bool selectAll = false;
 
@@ -1248,14 +1247,16 @@ class FormStateController extends ChangeNotifier {
   // Toggle sharing for every field.
   void setSelectAll(bool val) {
     selectAll = val;
-    fieldChecks.updateAll((_, __) => val);
+    fieldChecks.updateAll((_, _) => val);
     notifyListeners();
   }
 
   // Clear all form state.
   void clearAll({bool notify = true}) {
     _values.clear();
-    for (final ctrl in textControllers.values) ctrl.clear();
+    for (final ctrl in textControllers.values) {
+      ctrl.clear();
+    }
     for (final notifier in _fieldNotifiers.values) {
       notifier.value = null;
     }
@@ -1273,7 +1274,7 @@ class FormStateController extends ChangeNotifier {
     signaturePoints = null;
     signatureIsProcessing = false;
     memberTableData.clear();
-    fieldChecks.updateAll((_, __) => false);
+    fieldChecks.updateAll((_, _) => false);
     selectAll = false;
     if (notify) notifyListeners();
   }
@@ -1407,7 +1408,9 @@ class FormStateController extends ChangeNotifier {
   @override
   void dispose() {
     _recomputeDebounce?.cancel();
-    for (final ctrl in textControllers.values) ctrl.dispose();
+    for (final ctrl in textControllers.values) {
+      ctrl.dispose();
+    }
     for (final notifier in _fieldNotifiers.values) {
       notifier.dispose();
     }

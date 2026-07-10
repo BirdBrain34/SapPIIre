@@ -143,7 +143,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.08),
+                  color: Colors.red.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(Icons.warning_amber_rounded,
@@ -211,7 +211,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                 child: Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: AppColors.primaryBlue.withOpacity(0.08),
+                    color: AppColors.primaryBlue.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(Icons.info_outline_rounded,
@@ -423,7 +423,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 16, vertical: 12),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.10),
+                            color: Colors.white.withValues(alpha: 0.10),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: Colors.white24),
                           ),

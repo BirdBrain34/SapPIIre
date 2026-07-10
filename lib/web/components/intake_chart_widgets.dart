@@ -26,14 +26,28 @@ List<Color> _chartPalette(int count) {
   return result;
 }
 
+/// Shared tooltip text builder for chart hover tooltips.
+/// [delta] is optional and shown only for line/trend charts.
+String buildChartTooltipText(String label, int count, int total, {int? delta}) {
+  final pct = total > 0 ? (count / total * 100).toStringAsFixed(1) : '0.0';
+  final deltaStr = delta != null
+      ? '${delta >= 0 ? '+' : ''}$delta vs last period'
+      : '';
+  return deltaStr.isNotEmpty
+      ? '$label\n$count ($pct%)\n$deltaStr'
+      : '$label\n$count ($pct%)';
+}
+
+/// Card wrapper with consistent spacing and card styling.
 Widget _cardWrap({
   required Widget child,
   EdgeInsetsGeometry padding = const EdgeInsets.all(24),
+  int elevation = 1,
 }) =>
     Container(
       width: double.infinity,
       padding: padding,
-      decoration: AppColors.cardDecoration(),
+      decoration: AppColors.cardDecoration(elevation: elevation),
       child: child,
     );
 
@@ -54,7 +68,7 @@ Widget _cardHeader(String title, {Widget? trailing}) => Padding(
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          if (trailing != null) trailing,
+          ?trailing,
         ],
       ),
     );
@@ -135,7 +149,7 @@ class MetricCard extends StatelessWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
+              color: Colors.black.withValues(alpha:  0.06),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -151,7 +165,7 @@ class MetricCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.15),
+                    color: color.withValues(alpha:  0.15),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(icon, color: color, size: 24),
@@ -161,7 +175,7 @@ class MetricCard extends StatelessWidget {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.15),
+                      color: color.withValues(alpha:  0.15),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
@@ -222,9 +236,9 @@ class MetricCard extends StatelessWidget {
 }
 
 /// ============================================================================
-/// True custom painted pie chart
+/// True custom painted pie chart with hover tooltip showing percentage
 /// ============================================================================
-class SimplePieChart extends StatelessWidget {
+class SimplePieChart extends StatefulWidget {
   final String title;
   final Map<String, int> data;
   final bool showPercentage;
@@ -237,16 +251,23 @@ class SimplePieChart extends StatelessWidget {
   });
 
   @override
+  State<SimplePieChart> createState() => _SimplePieChartState();
+}
+
+class _SimplePieChartState extends State<SimplePieChart> {
+  int? _hoveredIndex;
+
+  @override
   Widget build(BuildContext context) {
-    if (data.isEmpty) return _emptyState(title);
-    final total = data.values.fold<int>(0, (a, b) => a + b);
-    final colors = _chartPalette(data.length);
-    final entries = data.entries.toList();
+    if (widget.data.isEmpty) return _emptyState(widget.title);
+    final total = widget.data.values.fold<int>(0, (a, b) => a + b);
+    final colors = _chartPalette(widget.data.length);
+    final entries = widget.data.entries.toList();
 
     return _cardWrap(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _cardHeader(
-          title,
+          widget.title,
           trailing: Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
@@ -268,29 +289,71 @@ class SimplePieChart extends StatelessWidget {
               SizedBox(
                 width: chartSize + 20,
                 height: chartSize + 20,
-                child: CustomPaint(
-                  painter: _PiePainter(entries, colors, total),
-                  size: const Size(180, 180),
+                child: Stack(
+                  children: [
+                    CustomPaint(
+                      painter: _PiePainter(entries, colors, total),
+                      size: const Size(180, 180),
+                    ),
+                    // Invisible hover zones over pie slices
+                    MouseRegion(
+                      onHover: (event) {
+                        final center = const Offset(90, 90);
+                        final dx = event.localPosition.dx - center.dx;
+                        final dy = event.localPosition.dy - center.dy;
+                        final dist = sqrt(dx * dx + dy * dy);
+                        if (dist > 80) {
+                          setState(() => _hoveredIndex = null);
+                          return;
+                        }
+                        var angle = atan2(dy, dx) + pi / 2;
+                        if (angle < 0) angle += 2 * pi;
+                        var cumulative = 0.0;
+                        for (int i = 0; i < entries.length; i++) {
+                          final sweep = (entries[i].value / total) * 2 * pi;
+                          cumulative += sweep;
+                          if (angle <= cumulative) {
+                            setState(() => _hoveredIndex = i);
+                            return;
+                          }
+                        }
+                        setState(() => _hoveredIndex = null);
+                      },
+                      onExit: (_) => setState(() => _hoveredIndex = null),
+                      child: SizedBox(
+                        width: chartSize + 20,
+                        height: chartSize + 20,
+                        child: const SizedBox.expand(),
+                      ),
+                    ),
+                    // Tooltip overlay
+                    if (_hoveredIndex != null && _hoveredIndex! < entries.length)
+                      Positioned(
+                        left: 10,
+                        top: 4,
+                        child: _TooltipCard(
+                          text: buildChartTooltipText(
+                            entries[_hoveredIndex!].key,
+                            entries[_hoveredIndex!].value,
+                            total,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
               const SizedBox(width: 16),
+              // Vertical legend
               Expanded(
                 child: SingleChildScrollView(
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: entries.asMap().entries.map((e) {
                       final idx = e.key;
                       final entry = e.value;
                       final pct = (entry.value / total) * 100;
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: Colors.grey.shade200),
-                        ),
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -303,12 +366,15 @@ class SimplePieChart extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 6),
-                            Text(
-                              showPercentage
-                                  ? '${entry.key} (${pct.toStringAsFixed(1)}%)'
-                                  : '${entry.key}: ${entry.value}',
-                              style: const TextStyle(
-                                  fontSize: 11, color: AppColors.textMuted),
+                            Flexible(
+                              child: Text(
+                                widget.showPercentage
+                                    ? '${entry.key} (${pct.toStringAsFixed(1)}%)'
+                                    : '${entry.key}: ${entry.value}',
+                                style: const TextStyle(
+                                    fontSize: 11, color: AppColors.textMuted),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           ],
                         ),
@@ -352,18 +418,6 @@ class _PiePainter extends CustomPainter {
       );
       startAngle += sweepAngle;
     }
-
-    // Draw border
-    startAngle = -pi / 2;
-    final borderPaint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-    for (int i = 0; i < entries.length; i++) {
-      final sweepAngle = (entries[i].value / total) * 2 * pi;
-      canvas.drawArc(rect, startAngle, sweepAngle, true, borderPaint);
-      startAngle += sweepAngle;
-    }
   }
 
   @override
@@ -400,7 +454,7 @@ class DonutChart extends StatelessWidget {
           trailing: Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: AppColors.highlight.withValues(alpha: 0.1),
+              color: AppColors.highlight.withValues(alpha:  0.1),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text('Total: $total',
@@ -441,21 +495,14 @@ class DonutChart extends StatelessWidget {
               const SizedBox(width: 16),
               Expanded(
                 child: SingleChildScrollView(
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: entries.asMap().entries.map((e) {
                       final idx = e.key;
                       final entry = e.value;
                       final pct = (entry.value / total) * 100;
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade50,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: Colors.grey.shade200),
-                        ),
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -468,12 +515,15 @@ class DonutChart extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 6),
-                            Text(
-                              showPercentage
-                                  ? '${entry.key} (${pct.toStringAsFixed(1)}%)'
-                                  : '${entry.key}: ${entry.value}',
-                              style: const TextStyle(
-                                  fontSize: 11, color: AppColors.textMuted),
+                            Flexible(
+                              child: Text(
+                                showPercentage
+                                    ? '${entry.key} (${pct.toStringAsFixed(1)}%)'
+                                    : '${entry.key}: ${entry.value}',
+                                style: const TextStyle(
+                                    fontSize: 11, color: AppColors.textMuted),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           ],
                         ),
@@ -505,7 +555,6 @@ class _DonutPainter extends CustomPainter {
     final rect = Rect.fromCircle(center: center, radius: outerRadius);
     double startAngle = -pi / 2;
 
-    // Draw filled arcs
     for (int i = 0; i < entries.length; i++) {
       final sweepAngle = (entries[i].value / total) * 2 * pi;
       canvas.drawArc(
@@ -520,7 +569,6 @@ class _DonutPainter extends CustomPainter {
       startAngle += sweepAngle;
     }
 
-    // Punch hole
     canvas.drawCircle(
         center,
         innerRadius,
@@ -535,7 +583,262 @@ class _DonutPainter extends CustomPainter {
 }
 
 /// ============================================================================
-/// Simple horizontal bar chart
+/// Simple vertical bar chart (column chart) with hover tooltips
+/// ============================================================================
+class SimpleVerticalBarChart extends StatefulWidget {
+  final String title;
+  final Map<String, int> data;
+  final Color? primaryColor;
+
+  const SimpleVerticalBarChart({
+    super.key,
+    required this.title,
+    required this.data,
+    this.primaryColor,
+  });
+
+  @override
+  State<SimpleVerticalBarChart> createState() => _SimpleVerticalBarChartState();
+}
+
+class _SimpleVerticalBarChartState extends State<SimpleVerticalBarChart> {
+  int? _hoveredIndex;
+  final GlobalKey _chartKey = GlobalKey();
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.data.isEmpty) return _emptyState(widget.title);
+
+    final total = widget.data.values.fold<int>(0, (a, b) => a + b);
+    final maxVal = widget.data.values.reduce((a, b) => a > b ? a : b).toDouble();
+    final color = widget.primaryColor ?? AppColors.highlight;
+    final colors = _chartPalette(widget.data.length);
+    final entries = widget.data.entries.toList();
+
+    return _cardWrap(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _cardHeader(
+          widget.title,
+          trailing: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text('${widget.data.length} categories',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: color,
+                    fontWeight: FontWeight.w600)),
+          ),
+        ),
+        SizedBox(
+          height: 220,
+          child: LayoutBuilder(builder: (context, constraints) {
+            final barCount = entries.length;
+            final drawW = constraints.maxWidth - 48;
+            final barWidth = (drawW / barCount) * 0.65;
+            final gap = (drawW / barCount) * 0.35;
+            final hPad = 24.0;
+
+            return Stack(
+              key: _chartKey,
+              children: [
+                CustomPaint(
+                  painter: _VerticalBarPainter(entries, maxVal, colors,
+                      hoveredIndex: _hoveredIndex),
+                  size: Size(constraints.maxWidth, 220),
+                ),
+                // Invisible hover zones over each bar
+                MouseRegion(
+                  onHover: (event) {
+                    final localX = event.localPosition.dx - hPad;
+                    final index = (localX / (barWidth + gap)).floor();
+                    if (index >= 0 && index < barCount) {
+                      setState(() => _hoveredIndex = index);
+                    } else {
+                      setState(() => _hoveredIndex = null);
+                    }
+                  },
+                  onExit: (_) => setState(() => _hoveredIndex = null),
+                  child: SizedBox(
+                    width: constraints.maxWidth,
+                    height: 220,
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+                // Tooltip overlay
+                if (_hoveredIndex != null && _hoveredIndex! < entries.length)
+                  Positioned(
+                    left: hPad +
+                        _hoveredIndex! * (barWidth + gap) +
+                        gap / 2 +
+                        barWidth / 2 -
+                        60,
+                    top: 4,
+                    child: _TooltipCard(
+                      text: buildChartTooltipText(
+                        entries[_hoveredIndex!].key,
+                        entries[_hoveredIndex!].value,
+                        total,
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          }),
+        ),
+        // Vertical legend for bar chart
+        Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: entries.asMap().entries.map((e) {
+              final idx = e.key;
+              final entry = e.value;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: colors[idx],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        '${entry.key}: ${entry.value}',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textMuted,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+/// Small tooltip card shown on chart hover.
+class _TooltipCard extends StatelessWidget {
+  final String text;
+  const _TooltipCard({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 120,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.textDark,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+          height: 1.4,
+        ),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+}
+
+class _VerticalBarPainter extends CustomPainter {
+  final List<MapEntry<String, int>> entries;
+  final double maxVal;
+  final List<Color> colors;
+  final int? hoveredIndex;
+  _VerticalBarPainter(this.entries, this.maxVal, this.colors, {this.hoveredIndex});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (entries.isEmpty || maxVal <= 0) return;
+    final hPad = 24.0;
+    final vPad = 16.0;
+    final drawW = size.width - hPad * 2;
+    final drawH = size.height - vPad * 2 - 20;
+    final barCount = entries.length;
+    if (barCount == 0) return;
+    final barWidth = (drawW / barCount) * 0.65;
+    final gap = (drawW / barCount) * 0.35;
+
+    final baselineY = vPad + drawH;
+    final baselinePaint = Paint()
+      ..color = Colors.grey.withValues(alpha:  0.2)
+      ..strokeWidth = 1;
+    canvas.drawLine(Offset(hPad, baselineY), Offset(hPad + drawW, baselineY), baselinePaint);
+
+    final gridPaint = Paint()
+      ..color = Colors.grey.withValues(alpha:  0.08)
+      ..strokeWidth = 0.5;
+    for (int i = 1; i <= 4; i++) {
+      final y = vPad + (drawH / 4) * i;
+      canvas.drawLine(Offset(hPad, y), Offset(hPad + drawW, y), gridPaint);
+    }
+
+    for (int i = 0; i < barCount; i++) {
+      final entry = entries[i];
+      final barH = (entry.value / maxVal) * drawH;
+      final x = hPad + i * (barWidth + gap) + gap / 2;
+      final y = baselineY - barH;
+      final rect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(x, y, barWidth, max(2.0, barH)),
+        const Radius.circular(4),
+      );
+      final color = colors[i % colors.length];
+      canvas.drawRRect(rect, Paint()
+        ..color = color
+        ..style = PaintingStyle.fill);
+
+      // Value label above bar
+      final valueText = entry.value.toString();
+      final textPainter = TextPainter(
+        text: TextSpan(
+          text: valueText,
+          style: const TextStyle(
+            color: AppColors.textDark,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: barWidth + 8);
+      final labelX = (x + barWidth / 2) - textPainter.width / 2;
+      final labelY = y - textPainter.height - 2;
+      textPainter.paint(canvas, Offset(labelX, labelY));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _VerticalBarPainter old) =>
+      old.entries != entries || old.maxVal != maxVal;
+}
+
+/// ============================================================================
+/// Simple horizontal bar chart (categorical list style)
 /// ============================================================================
 class SimpleBarChart extends StatelessWidget {
   final String title;
@@ -565,7 +868,7 @@ class SimpleBarChart extends StatelessWidget {
           trailing: Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
+              color: color.withValues(alpha:  0.1),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text('${data.length} categories',
@@ -634,6 +937,154 @@ class SimpleBarChart extends StatelessWidget {
 }
 
 /// ============================================================================
+/// Histogram chart for numeric fields (Issue 7.2)
+/// Buckets raw values into ranges and shows a horizontal bar per bucket
+/// with stat summary cards above.
+/// ============================================================================
+class HistogramChart extends StatelessWidget {
+  final String title;
+  final Map<String, int> buckets;
+  final double? average;
+  final double? median;
+  final double? minVal;
+  final double? maxVal;
+
+  const HistogramChart({
+    super.key,
+    required this.title,
+    required this.buckets,
+    this.average,
+    this.median,
+    this.minVal,
+    this.maxVal,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (buckets.isEmpty) return _emptyState(title);
+
+    final maxBucketCount = buckets.values.reduce((a, b) => a > b ? a : b);
+
+    return _cardWrap(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _cardHeader(title),
+        // Stat summary row
+        if (average != null || minVal != null || maxVal != null || median != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Row(
+              children: [
+                if (average != null)
+                  _statPill('Avg', average!.toStringAsFixed(1), AppColors.highlight),
+                if (median != null)
+                  _statPill('Med', median!.toStringAsFixed(1), AppColors.successGreen),
+                if (minVal != null)
+                  _statPill('Min', minVal!.toStringAsFixed(0), AppColors.textMuted),
+                if (maxVal != null)
+                  _statPill('Max', maxVal!.toStringAsFixed(0), AppColors.warningAmber),
+              ],
+            ),
+          ),
+        // Bucket bars
+        ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: max(buckets.length * 44.0 + 8, 80.0),
+          ),
+          child: ListView(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            children: buckets.entries.map((entry) {
+              final pct = maxBucketCount > 0 ? entry.value / maxBucketCount : 0.0;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            entry.key,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textMuted,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          entry.value.toString(),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: LinearProgressIndicator(
+                        value: pct,
+                        minHeight: 6,
+                        backgroundColor: Colors.grey.shade200,
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          Color(0xFF6366F1),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _statPill(String label, String value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// ============================================================================
 /// Simple data table
 /// ============================================================================
 class SimpleDataTable extends StatelessWidget {
@@ -656,7 +1107,7 @@ class SimpleDataTable extends StatelessWidget {
           trailing: Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: AppColors.highlight.withValues(alpha: 0.1),
+              color: AppColors.highlight.withValues(alpha:  0.1),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text('${rows.length} rows',
@@ -671,7 +1122,7 @@ class SimpleDataTable extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             child: DataTable(
               headingRowColor:
-                  WidgetStatePropertyAll(AppColors.highlight.withValues(alpha: 0.08)),
+                  WidgetStatePropertyAll(AppColors.highlight.withValues(alpha:  0.08)),
               columnSpacing: 32,
               columns: const [
                 DataColumn(label: Text('Label')),
@@ -699,9 +1150,9 @@ class SimpleDataTable extends StatelessWidget {
 }
 
 /// ============================================================================
-/// Line chart (CustomPaint)
+/// Line chart (CustomPaint) with hover tooltips showing delta
 /// ============================================================================
-class LineChart extends StatelessWidget {
+class LineChart extends StatefulWidget {
   final String title;
   final Map<String, int> data;
   final String xAxisLabel;
@@ -716,30 +1167,84 @@ class LineChart extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    if (data.isEmpty) return _emptyState(title);
+  State<LineChart> createState() => _LineChartState();
+}
 
-    final maxVal = data.values.reduce((a, b) => a > b ? a : b).toDouble();
-    final entries = data.entries.toList();
+class _LineChartState extends State<LineChart> {
+  int? _hoveredIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.data.isEmpty) return _emptyState(widget.title);
+
+    final total = widget.data.values.fold<int>(0, (a, b) => a + b);
+    final maxVal = widget.data.values.reduce((a, b) => a > b ? a : b).toDouble();
+    final sortedEntries = widget.data.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
 
     return _cardWrap(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _cardHeader(title),
+        _cardHeader(widget.title),
         SizedBox(
           height: 220,
-          child: CustomPaint(
-            painter: _LineChartPainter(entries, maxVal),
-            size: const Size(double.infinity, 220),
-          ),
+          child: LayoutBuilder(builder: (context, constraints) {
+            final barCount = sortedEntries.length;
+            final drawW = constraints.maxWidth - 32;
+            final hPad = 16.0;
+            final zoneWidth = barCount > 1 ? drawW / (barCount - 1) : drawW;
+
+            return Stack(
+              children: [
+                CustomPaint(
+                  painter: _LineChartPainter(sortedEntries, maxVal),
+                  size: Size(constraints.maxWidth, 220),
+                ),
+                // Invisible hover zones over each data point
+                MouseRegion(
+                  onHover: (event) {
+                    final localX = event.localPosition.dx - hPad;
+                    final index = barCount > 1
+                        ? (localX / zoneWidth).round().clamp(0, barCount - 1)
+                        : 0;
+                    setState(() => _hoveredIndex = index);
+                  },
+                  onExit: (_) => setState(() => _hoveredIndex = null),
+                  child: SizedBox(
+                    width: constraints.maxWidth,
+                    height: 220,
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+                // Tooltip overlay
+                if (_hoveredIndex != null && _hoveredIndex! < sortedEntries.length)
+                  Positioned(
+                    left: hPad +
+                        (_hoveredIndex! / max(1, barCount - 1)) * drawW -
+                        60,
+                    top: 4,
+                    child: _TooltipCard(
+                      text: buildChartTooltipText(
+                        sortedEntries[_hoveredIndex!].key,
+                        sortedEntries[_hoveredIndex!].value,
+                        total,
+                        delta: _hoveredIndex! > 0
+                            ? sortedEntries[_hoveredIndex!].value -
+                                sortedEntries[_hoveredIndex! - 1].value
+                            : null,
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          }),
         ),
         const SizedBox(height: 12),
-        // X-axis labels
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
-            children: entries.asMap().entries.map((e) {
-              final show = e.key % max<int>(1, entries.length ~/ 6) == 0 ||
-                  e.key == entries.length - 1;
+            children: sortedEntries.asMap().entries.map((e) {
+              final show = e.key % max<int>(1, sortedEntries.length ~/ 6) == 0 ||
+                  e.key == sortedEntries.length - 1;
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 10),
                 child: Text(
@@ -768,16 +1273,14 @@ class _LineChartPainter extends CustomPainter {
     final drawW = size.width - hPad * 2;
     final drawH = size.height - 20;
 
-    // Grid lines
     final gridPaint = Paint()
-      ..color = Colors.grey.withValues(alpha: 0.15)
+      ..color = Colors.grey.withValues(alpha:  0.15)
       ..strokeWidth = 0.5;
     for (int i = 0; i <= 4; i++) {
       final y = 10 + (drawH / 4) * i;
       canvas.drawLine(Offset(hPad, y), Offset(hPad + drawW, y), gridPaint);
     }
 
-    // Data points
     final pts = <Offset>[];
     for (int i = 0; i < entries.length; i++) {
       final x = hPad + (i / (entries.length - 1)) * drawW;
@@ -785,19 +1288,19 @@ class _LineChartPainter extends CustomPainter {
       pts.add(Offset(x, y));
     }
 
-    // Area fill
     if (pts.length >= 2) {
       final area = Paint()
-        ..color = AppColors.highlight.withValues(alpha: 0.12)
+        ..color = AppColors.highlight.withValues(alpha:  0.12)
         ..style = PaintingStyle.fill;
       final path = Path()..moveTo(pts.first.dx, 10 + drawH);
-      for (final p in pts) path.lineTo(p.dx, p.dy);
+      for (final p in pts) {
+        path.lineTo(p.dx, p.dy);
+      }
       path.lineTo(pts.last.dx, 10 + drawH);
       path.close();
       canvas.drawPath(path, area);
     }
 
-    // Line
     final line = Paint()
       ..color = AppColors.highlight
       ..strokeWidth = 2.5
@@ -809,7 +1312,6 @@ class _LineChartPainter extends CustomPainter {
     }
     canvas.drawPath(linePath, line);
 
-    // Points
     final dotPaint = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.fill;
@@ -855,7 +1357,6 @@ class AreaChart extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        // X-axis labels
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
@@ -897,33 +1398,34 @@ class _AreaChartPainter extends CustomPainter {
       pts.add(Offset(x, y));
     }
 
-    // Area fill
     final fill = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          AppColors.highlight.withValues(alpha: 0.35),
-          AppColors.highlight.withValues(alpha: 0.02),
+          AppColors.highlight.withValues(alpha:  0.35),
+          AppColors.highlight.withValues(alpha:  0.02),
         ],
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
     final path = Path()..moveTo(hPad, 10 + drawH);
-    for (final p in pts) path.lineTo(p.dx, p.dy);
+    for (final p in pts) {
+      path.lineTo(p.dx, p.dy);
+    }
     path.lineTo(hPad + drawW, 10 + drawH);
     path.close();
     canvas.drawPath(path, fill);
 
-    // Line
     final line = Paint()
       ..color = AppColors.highlight
       ..strokeWidth = 2.5
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
     final linePath = Path()..moveTo(pts.first.dx, pts.first.dy);
-    for (int i = 1; i < pts.length; i++) linePath.lineTo(pts[i].dx, pts[i].dy);
+    for (int i = 1; i < pts.length; i++) {
+      linePath.lineTo(pts[i].dx, pts[i].dy);
+    }
     canvas.drawPath(linePath, line);
 
-    // Points
     for (final p in pts) {
       canvas.drawCircle(
           p, 3, Paint()..color = Colors.white..style = PaintingStyle.fill);
@@ -1074,7 +1576,7 @@ class FunnelChart extends StatelessWidget {
                   child: Container(
                     height: 18,
                     decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.12),
+                      color: color.withValues(alpha:  0.12),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: FractionallySizedBox(

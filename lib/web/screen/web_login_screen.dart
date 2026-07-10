@@ -1,6 +1,8 @@
 // lib/web/screen/web_login_screen.dart
 
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:sappiire/web/screen/first_login_password_screen.dart';
 import 'package:sappiire/web/screen/forgot_password_screen.dart';
 import 'package:sappiire/web/screen/new_staff_setup_screen.dart';
@@ -18,14 +20,45 @@ class WorkerLoginScreen extends StatefulWidget {
 class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
   final TextEditingController _identifierController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final FocusNode _passwordFocus = FocusNode();
   final WebAuthService _authService = WebAuthService();
   bool _isLoading = false;
+  bool _obscurePassword = true;
+  bool _capsLockOn = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _passwordFocus.addListener(_onPasswordFocusChange);
+  }
 
   @override
   void dispose() {
+    _passwordFocus.removeListener(_onPasswordFocusChange);
+    _passwordFocus.dispose();
     _identifierController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  KeyEventResult _onHardwareKey(KeyEvent event) {
+    if (!_passwordFocus.hasFocus) return KeyEventResult.ignored;
+    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.capsLock) {
+      _setCapsLock(!_capsLockOn);
+    }
+    return KeyEventResult.ignored;
+  }
+
+  void _onPasswordFocusChange() {
+    if (!_passwordFocus.hasFocus) {
+      _setCapsLock(false);
+    }
+  }
+
+  void _setCapsLock(bool on) {
+    if (on != _capsLockOn) {
+      setState(() => _capsLockOn = on);
+    }
   }
 
   Future<void> _handleLogin() async {
@@ -46,25 +79,36 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
       _snack('Welcome, ${result['username']}!');
       final bool isFirstLogin = result['is_first_login'] == true;
 
+      // Persist the session so it survives tab refreshes.
+      await _authService.saveSession(
+        cswdId: result['cswd_id'] ?? '',
+        username: result['username'] ?? '',
+        email: result['email'] ?? '',
+        role: result['role'] ?? 'admin',
+        displayName: result['display_name'] ?? result['username'] ?? '',
+      );
+
       if (isFirstLogin) {
+        if (!mounted) return;
         Navigator.push(
           context,
           ContentFadeRoute(
             page: FirstLoginPasswordScreen(
-              cswd_id: result['cswd_id'] ?? '',
-              role: result['role'] ?? 'viewer',
+              cswdId: result['cswd_id'] ?? '',
+              role: result['role'] ?? 'admin',
               displayName: result['display_name'] ?? result['username'] ?? '',
               username: result['username'] ?? '',
             ),
           ),
         );
       } else {
+        if (!mounted) return;
         Navigator.push(
           context,
           ContentFadeRoute(
             page: ManageFormsScreen(
-              cswd_id: result['cswd_id'] ?? '',
-              role: result['role'] ?? 'viewer',
+              cswdId: result['cswd_id'] ?? '',
+              role: result['role'] ?? 'admin',
               displayName: result['display_name'] ?? result['username'] ?? '',
             ),
           ),
@@ -107,11 +151,9 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
     }
 
     return Scaffold(
-      // Deep navy — primary brand blue
       backgroundColor: const Color(0xFF0D1B4E),
       body: Row(
         children: [
-          // ── LEFT: branding panel ──────────────────────────────────
           Expanded(
             child: Container(
               decoration: const BoxDecoration(
@@ -119,8 +161,8 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    Color(0xFF0D1B4E), // deep navy
-                    Color(0xFF1A3A8F), // rich blue
+                    Color(0xFF0D1B4E),
+                    Color(0xFF1A3A8F),
                   ],
                 ),
               ),
@@ -131,7 +173,6 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Logo + app name
                       Image.asset('assets/Logo/sappiire_logo.png', height: 80),
                       const SizedBox(height: 28),
                       const Text(
@@ -147,14 +188,12 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
                       const Text(
                         'City Social Welfare &\nDevelopment Office Portal',
                         style: TextStyle(
-                          color: Color(0xFF8BAEE0), // muted light blue
+                          color: Color(0xFF8BAEE0),
                           fontSize: 16,
                           height: 1.5,
                         ),
                       ),
                       const SizedBox(height: 48),
-
-                      // Feature chips
                       _featureRow(
                         Icons.enhanced_encryption_outlined,
                         'Hybrid cryptosystem PII protection',
@@ -175,12 +214,9 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
               ),
             ),
           ),
-
-          // ── RIGHT: login card ─────────────────────────────────────
           Container(
             width: 460,
             decoration: const BoxDecoration(
-              // Slightly lighter blue-navy for contrast
               color: Color(0xFF152257),
               boxShadow: [
                 BoxShadow(
@@ -230,17 +266,45 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
             hint: 'Email',
             icon: Icons.badge_outlined,
             textInputAction: TextInputAction.next,
+            onSubmitted: (_) => FocusScope.of(context).requestFocus(_passwordFocus),
           ),
           const SizedBox(height: 20),
           _fieldLabel('Password'),
           const SizedBox(height: 8),
-          _styledField(
-            controller: _passwordController,
-            hint: 'Enter your password',
-            icon: Icons.lock_outline,
-            obscure: true,
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) => _isLoading ? null : _handleLogin(),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Focus(
+                onFocusChange: (hasFocus) {
+                  if (!hasFocus) {
+                    _setCapsLock(false);
+                  }
+                },
+                child: _buildPasswordField(),
+              ),
+              if (_capsLockOn)
+                const Padding(
+                  padding: EdgeInsets.only(top: 6),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        size: 16,
+                        color: Color(0xFFFFD54F),
+                      ),
+                      SizedBox(width: 6),
+                      Text(
+                        'Caps Lock is ON \u2014 passwords are case-sensitive',
+                        style: TextStyle(
+                          color: Color(0xFFFFD54F),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 10),
           Wrap(
@@ -320,7 +384,48 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
     );
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────
+  /// Password field with eye toggle suffix icon.
+  Widget _buildPasswordField() {
+    return KeyboardListener(
+      focusNode: FocusNode(),
+      onKeyEvent: _onHardwareKey,
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF0D1B4E),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF2A3F7A), width: 1.5),
+        ),
+        child: TextField(
+          controller: _passwordController,
+          focusNode: _passwordFocus,
+          obscureText: _obscurePassword,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _isLoading ? null : _handleLogin(),
+          style: const TextStyle(color: Colors.white, fontSize: 15),
+          decoration: InputDecoration(
+            hintText: 'Enter your password',
+            hintStyle: const TextStyle(color: Color(0xFF4A6499), fontSize: 14),
+            prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF6EA8FE), size: 20),
+            suffixIcon: GestureDetector(
+              onTapDown: (_) => setState(() => _obscurePassword = false),
+              onTapUp: (_) => setState(() => _obscurePassword = true),
+              onTapCancel: () => setState(() => _obscurePassword = true),
+              child: Icon(
+                _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                color: const Color(0xFF6EA8FE),
+                size: 20,
+              ),
+            ),
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 16,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _fieldLabel(String text) {
     return Text(
@@ -334,12 +439,10 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
     );
   }
 
-  /// Custom field styled for dark blue background — fully visible
   Widget _styledField({
     required TextEditingController controller,
     required String hint,
     required IconData icon,
-    bool obscure = false,
     TextInputAction? textInputAction,
     ValueChanged<String>? onSubmitted,
   }) {
@@ -351,9 +454,13 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
       ),
       child: TextField(
         controller: controller,
-        obscureText: obscure,
         textInputAction: textInputAction,
         onSubmitted: onSubmitted,
+        onEditingComplete: () {
+          if (controller == _identifierController) {
+            FocusScope.of(context).requestFocus(_passwordFocus);
+          }
+        },
         style: const TextStyle(color: Colors.white, fontSize: 15),
         decoration: InputDecoration(
           hintText: hint,

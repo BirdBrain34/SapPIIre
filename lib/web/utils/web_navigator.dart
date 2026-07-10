@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:sappiire/services/auth/web_auth_service.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/web/screen/applicants_screen.dart';
 import 'package:sappiire/web/screen/audit_logs_screen.dart';
@@ -16,22 +17,20 @@ class WebNavigator {
     required String cswdId,
     required String role,
     required String displayName,
-    VoidCallback? onLogout,
   }) {
     Widget? nextScreen;
 
     switch (screenPath) {
       case 'Dashboard':
         nextScreen = DashboardScreen(
-          cswd_id: cswdId,
+          cswdId: cswdId,
           role: role,
           displayName: displayName,
-          onLogout: onLogout ?? () {},
         );
         break;
       case 'Forms':
         nextScreen = ManageFormsScreen(
-          cswd_id: cswdId,
+          cswdId: cswdId,
           role: role,
           displayName: displayName,
         );
@@ -39,7 +38,7 @@ class WebNavigator {
       case 'Staff':
         if (role != 'superadmin') return;
         nextScreen = ManageStaffScreen(
-          cswd_id: cswdId,
+          cswdId: cswdId,
           role: role,
           displayName: displayName,
         );
@@ -47,14 +46,14 @@ class WebNavigator {
       case 'CreateStaff':
         if (role != 'superadmin') return;
         nextScreen = CreateStaffScreen(
-          cswd_id: cswdId,
+          cswdId: cswdId,
           role: role,
           displayName: displayName,
         );
         break;
       case 'Applicants':
         nextScreen = ApplicantsScreen(
-          cswd_id: cswdId,
+          cswdId: cswdId,
           role: role,
           displayName: displayName,
         );
@@ -62,7 +61,7 @@ class WebNavigator {
       case 'AuditLogs':
         if (role != 'superadmin') return;
         nextScreen = AuditLogsScreen(
-          cswd_id: cswdId,
+          cswdId: cswdId,
           role: role,
           displayName: displayName,
         );
@@ -70,7 +69,7 @@ class WebNavigator {
       case 'FormBuilder':
         if (role != 'superadmin') return;
         nextScreen = FormBuilderScreen(
-          cswd_id: cswdId,
+          cswdId: cswdId,
           role: role,
           displayName: displayName,
         );
@@ -78,6 +77,9 @@ class WebNavigator {
       default:
         return;
     }
+
+    // Persist the last active route so it survives tab refreshes.
+    WebAuthService().updateLastRoute(screenPath);
 
     Navigator.of(context).pushReplacement(
       ContentFadeRoute(page: nextScreen),

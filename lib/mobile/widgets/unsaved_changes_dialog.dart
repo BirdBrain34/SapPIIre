@@ -52,7 +52,7 @@ class _UnsavedChangesDialogState extends State<UnsavedChangesDialog> {
                     Container(
                       padding: const EdgeInsets.all(7),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
+                        color: Colors.white.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Icon(
@@ -87,7 +87,7 @@ class _UnsavedChangesDialogState extends State<UnsavedChangesDialog> {
                       width: 64,
                       height: 64,
                       decoration: BoxDecoration(
-                        color: Colors.amber.withOpacity(0.12),
+                        color: Colors.amber.withValues(alpha: 0.12),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
@@ -125,16 +125,16 @@ class _UnsavedChangesDialogState extends State<UnsavedChangesDialog> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
-                        color: AppColors.primaryBlue.withOpacity(0.06),
+                        color: AppColors.primaryBlue.withValues(alpha: 0.06),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                            color: AppColors.primaryBlue.withOpacity(0.15)),
+                            color: AppColors.primaryBlue.withValues(alpha: 0.15)),
                       ),
                       child: Row(
                         children: [
                           Icon(Icons.info_outline_rounded,
                               size: 14,
-                              color: AppColors.primaryBlue.withOpacity(0.7)),
+                              color: AppColors.primaryBlue.withValues(alpha: 0.7)),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
@@ -142,7 +142,7 @@ class _UnsavedChangesDialogState extends State<UnsavedChangesDialog> {
                               'Your previous saved data will be restored.',
                               style: TextStyle(
                                 fontSize: 11,
-                                color: AppColors.primaryBlue.withOpacity(0.75),
+                                color: AppColors.primaryBlue.withValues(alpha: 0.75),
                                 height: 1.4,
                               ),
                             ),
@@ -183,7 +183,7 @@ class _UnsavedChangesDialogState extends State<UnsavedChangesDialog> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primaryBlue,
                         disabledBackgroundColor:
-                            AppColors.primaryBlue.withOpacity(0.5),
+                            AppColors.primaryBlue.withValues(alpha: 0.5),
                         foregroundColor: Colors.white,
                         elevation: 0,
                         padding: const EdgeInsets.symmetric(vertical: 14),

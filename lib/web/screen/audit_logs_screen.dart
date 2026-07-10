@@ -1,21 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/services/audit/audit_log_service.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
-import 'package:sappiire/web/utils/page_transitions.dart';
+import 'package:sappiire/web/utils/web_session.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
-import 'package:sappiire/web/screen/web_login_screen.dart';
 
 class AuditLogsScreen extends StatefulWidget {
-  final String cswd_id;
+  final String cswdId;
   final String role;
   final String displayName;
 
   const AuditLogsScreen({
     super.key,
-    required this.cswd_id,
+    required this.cswdId,
     required this.role,
     required this.displayName,
   });
@@ -26,7 +24,6 @@ class AuditLogsScreen extends StatefulWidget {
 
 class _AuditLogsScreenState extends State<AuditLogsScreen> {
   final _service = AuditLogService();
-  final _supabase = Supabase.instance.client;
   final _searchController = TextEditingController();
 
   List<Map<String, dynamic>> _logs = [];
@@ -399,16 +396,15 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
       pageTitle: 'Audit Logs',
       pageSubtitle: 'System-wide activity trail - superadmin view',
       role: widget.role,
-      cswd_id: widget.cswd_id,
+      cswdId: widget.cswdId,
       displayName: widget.displayName,
       onLogout: _handleLogout,
       onNavigate: (path) => WebNavigator.go(
         context,
         path,
-        cswdId: widget.cswd_id,
+        cswdId: widget.cswdId,
         role: widget.role,
         displayName: widget.displayName,
-        onLogout: _handleLogout,
       ),
       child: Padding(
         padding: const EdgeInsets.all(28),
@@ -489,9 +485,9 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
       constraints: const BoxConstraints(minHeight: 90),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
+        color: color.withValues(alpha:  0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
+        border: Border.all(color: color.withValues(alpha:  0.25)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -731,7 +727,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
             Icon(
               Icons.history_toggle_off_outlined,
               size: 64,
-              color: AppColors.textMuted.withValues(alpha: 0.4),
+              color: AppColors.textMuted.withValues(alpha:  0.4),
             ),
             const SizedBox(height: 16),
             const Text(
@@ -836,7 +832,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: catColor.withValues(alpha: 0.1),
+                  color: catColor.withValues(alpha:  0.1),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Row(
@@ -880,7 +876,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: AppColors.highlight.withValues(alpha: 0.12),
+                        color: AppColors.highlight.withValues(alpha:  0.12),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
@@ -951,7 +947,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: severityColor.withValues(alpha: 0.1),
+                  color: severityColor.withValues(alpha:  0.1),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
@@ -993,7 +989,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: _categoryColor(log['category']).withValues(alpha: 0.1),
+                color: _categoryColor(log['category']).withValues(alpha:  0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
@@ -1076,7 +1072,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: _categoryColor(log['category']).withValues(alpha: 0.1),
+                color: _categoryColor(log['category']).withValues(alpha:  0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
@@ -1228,14 +1224,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     );
   }
 
-  Future<void> _handleLogout() async {
-    await _supabase.auth.signOut();
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      ContentFadeRoute(page: const WorkerLoginScreen()),
-      (route) => false,
-    );
-  }
+  Future<void> _handleLogout() => WebSession.logout(context);
 
 }
 

@@ -60,7 +60,7 @@ class CustomBottomNav extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: isActive
-                  ? Colors.white.withOpacity(0.15)
+                  ? Colors.white.withValues(alpha:  0.15)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(20),
             ),
@@ -104,7 +104,7 @@ class CustomBottomNav extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.25),
+                    color: Colors.black.withValues(alpha:  0.25),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),
@@ -112,7 +112,7 @@ class CustomBottomNav extends StatelessWidget {
                 border: isActive
                     ? Border.all(color: Colors.white, width: 2)
                     : Border.all(
-                        color: AppColors.borderNavy.withOpacity(0.2), width: 1),
+                        color: AppColors.borderNavy.withValues(alpha:  0.2), width: 1),
               ),
               child: HugeIcon(
                 icon: HugeIcons.strokeRoundedQrCode,

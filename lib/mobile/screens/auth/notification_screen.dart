@@ -16,7 +16,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   List<Map<String, dynamic>> _notifications = [];
   Set<String> _readIds = {};
-  Set<String> _expandedIds = {};
+  final Set<String> _expandedIds = {};
   bool _isLoading = true;
 
   @override
@@ -59,7 +59,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     if (mounted) setState(() => _readIds.add(id));
   }
 
-  void _toggleExpanded(String id) {
+  Future<void> _toggleExpanded(String id) async {
     setState(() {
       if (_expandedIds.contains(id)) {
         _expandedIds.remove(id);
@@ -67,7 +67,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
         _expandedIds.add(id);
       }
     });
-    _markOneRead(id);
+    await _markOneRead(id);
   }
 
   int get _unreadCount =>
@@ -80,12 +80,12 @@ class _NotificationScreenState extends State<NotificationScreen> {
   List<String> _getBullets(Map<String, dynamic> notification) {
     final raw = notification['details'];
     if (raw == null || raw is! Map) return [];
-    final details = Map<String, dynamic>.from(raw as Map);
+    final details = Map<String, dynamic>.from(raw);
     final changesRaw = details['changes'];
     if (changesRaw == null || changesRaw is! List) return [];
 
     final bullets = <String>[];
-    for (final item in changesRaw as List) {
+    for (final item in changesRaw) {
       if (item is! Map) continue;
       final action = item['action']?.toString() ?? '';
       final field  = item['field']?.toString()  ?? '';
@@ -258,26 +258,32 @@ class _NotificationScreenState extends State<NotificationScreen> {
     final label        = _changeTypeLabel(changeType);
 
     return GestureDetector(
-      onTap: () => canExpand ? _toggleExpanded(id) : _markOneRead(id),
+      onTap: () async {
+        if (canExpand) {
+          await _toggleExpanded(id);
+        } else {
+          await _markOneRead(id);
+        }
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         margin: const EdgeInsets.only(bottom: 10),
         decoration: BoxDecoration(
           color: isRead
               ? Colors.white
-              : AppColors.primaryBlue.withOpacity(0.04),
+              : AppColors.primaryBlue.withValues(alpha:  0.04),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: isExpanded
-                ? accentColor.withOpacity(0.4)
+                ? accentColor.withValues(alpha:  0.4)
                 : isRead
                     ? const Color(0xFFEEEEF5)
-                    : AppColors.primaryBlue.withOpacity(0.18),
+                    : AppColors.primaryBlue.withValues(alpha:  0.18),
             width: isExpanded ? 1.5 : 1.2,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(isRead ? 0.03 : 0.06),
+              color: Colors.black.withValues(alpha:  isRead ? 0.03 : 0.06),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -297,7 +303,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: accentColor.withOpacity(0.12),
+                      color: accentColor.withValues(alpha:  0.12),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(icon, color: accentColor, size: 20),
@@ -315,7 +321,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 7, vertical: 2),
                               decoration: BoxDecoration(
-                                color: accentColor.withOpacity(0.10),
+                                color: accentColor.withValues(alpha:  0.10),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
@@ -375,13 +381,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
                             children: [
                               Icon(Icons.keyboard_arrow_down_rounded,
                                   size: 14,
-                                  color: accentColor.withOpacity(0.6)),
+                                  color: accentColor.withValues(alpha:  0.6)),
                               const SizedBox(width: 2),
                               Text(
                                 'Tap to see what changed',
                                 style: TextStyle(
                                     fontSize: 11,
-                                    color: accentColor.withOpacity(0.7),
+                                    color: accentColor.withValues(alpha:  0.7),
                                     fontWeight: FontWeight.w500),
                               ),
                             ],
@@ -400,7 +406,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                       child: Icon(
                         Icons.keyboard_arrow_down_rounded,
                         size: 20,
-                        color: accentColor.withOpacity(0.6),
+                        color: accentColor.withValues(alpha:  0.6),
                       ),
                     ),
                   ],
@@ -418,7 +424,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                   children: [
                     Divider(
                       height: 1,
-                      color: accentColor.withOpacity(0.15),
+                      color: accentColor.withValues(alpha:  0.15),
                       indent: 14,
                       endIndent: 14,
                     ),
@@ -426,7 +432,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                       width: double.infinity,
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
                       decoration: BoxDecoration(
-                        color: accentColor.withOpacity(0.04),
+                        color: accentColor.withValues(alpha:  0.04),
                         borderRadius: const BorderRadius.only(
                           bottomLeft: Radius.circular(14),
                           bottomRight: Radius.circular(14),
@@ -464,12 +470,12 @@ class _NotificationScreenState extends State<NotificationScreen> {
             width: 80,
             height: 80,
             decoration: BoxDecoration(
-              color: AppColors.primaryBlue.withOpacity(0.07),
+              color: AppColors.primaryBlue.withValues(alpha:  0.07),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Icon(Icons.notifications_none_rounded,
                 size: 40,
-                color: AppColors.primaryBlue.withOpacity(0.5)),
+                color: AppColors.primaryBlue.withValues(alpha:  0.5)),
           ),
           const SizedBox(height: 16),
           const Text(

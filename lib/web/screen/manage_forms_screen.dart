@@ -26,22 +26,21 @@ import 'package:sappiire/services/forms/submission_service.dart';
 import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
+import 'package:sappiire/web/utils/web_session.dart';
 import 'package:sappiire/web/widgets/web_header_button.dart';
 import 'package:sappiire/web/widgets/confirm_dialog.dart';
-import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
-import 'package:sappiire/web/screen/web_login_screen.dart';
 import 'package:sappiire/services/audit/audit_log_service.dart';
 import 'package:sappiire/web/controllers/manage_forms_controller.dart';
 
 class ManageFormsScreen extends StatefulWidget {
-  final String cswd_id;
+  final String cswdId;
   final String role;
   final String displayName;
 
   const ManageFormsScreen({
     super.key,
-    required this.cswd_id,
+    required this.cswdId,
     required this.role,
     this.displayName = '',
   });
@@ -53,6 +52,7 @@ class ManageFormsScreen extends StatefulWidget {
 class _ManageFormsScreenState extends State<ManageFormsScreen> {
   final _templateService = FormTemplateService();
   final _displayService = DisplaySessionService();
+  // ignore: unused_field
   final _fieldValueService = FieldValueService();
   final _submissionService = SubmissionService();
   final _manageFormsController = ManageFormsController();
@@ -80,6 +80,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   String _lastSavedReference = '';
 
   // Session expiry countdown
+  // ignore: unused_field
   DateTime? _sessionExpiresAt;
   Timer? _countdownTimer;
   Duration _timeRemaining = Duration.zero;
@@ -91,8 +92,8 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
   final ValueNotifier<bool> _sessionExpiredNotifier =
       ValueNotifier<bool>(false);
   
-  /// Derive a stable station ID from the worker's cswd_id.
-  String get _stationId => 'desk_${widget.cswd_id}';
+  /// Derive a stable station ID from the worker's cswdId.
+  String get _stationId => 'desk_${widget.cswdId}';
 
   void _setStatePreserveScroll(VoidCallback fn) {
     final formOffset = _formScrollController.hasClients
@@ -233,7 +234,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         actionType: kAuditSessionStarted,
         category: kCategorySession,
         severity: kSeverityInfo,
-        actorId: widget.cswd_id,
+        actorId: widget.cswdId,
         actorName: widget.displayName,
         actorRole: widget.role,
         targetType: 'form_session',
@@ -419,7 +420,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     try {
       final decrypted = await _manageFormsController.decryptStagingSubmission(
         sessionId: _currentSessionId,
-        staffId: widget.cswd_id,
+        staffId: widget.cswdId,
       );
 
       if (decrypted == null || decrypted.isEmpty) {
@@ -598,7 +599,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         formCode: _selectedTemplate!.formCode,
         formType: _selectedTemplate!.formName,
         data: formData,
-        createdBy: widget.cswd_id,
+        createdBy: widget.cswdId,
       );
 
       final intakeReference = (created['intake_reference'] as String?) ?? '';
@@ -607,7 +608,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         actionType: kAuditSubmissionCreated,
         category: kCategorySubmission,
         severity: kSeverityInfo,
-        actorId: widget.cswd_id,
+        actorId: widget.cswdId,
         actorName: widget.displayName,
         actorRole: widget.role,
         targetType: 'client_submission',
@@ -687,14 +688,19 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         currentSessionId: _currentSessionId,
         selectedTemplate: _selectedTemplate,
         formData: formData,
-        staffId: widget.cswd_id,
+        staffId: widget.cswdId,
       );
 
   /// Open the customer-facing display in a new browser window.
   void _openCustomerDisplay() {
     if (kIsWeb) {
       final url = '/#/display?station=${Uri.encodeComponent(_stationId)}';
-      launchUrl(Uri.parse(url));
+      unawaited(
+        launchUrl(
+          Uri.parse(url),
+          webOnlyWindowName: 'customer_display',
+        ),
+      );
     }
   }
 
@@ -731,13 +737,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
     }
     // Reset display monitor on logout
     await _displayService.resetStation(_stationId);
-    await _submissionService.signOut();
-    if (mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
-        ContentFadeRoute(page: const WorkerLoginScreen()),
-        (route) => false,
-      );
-    }
+    if (mounted) await WebSession.logout(context);
   }
 
   // Build
@@ -754,7 +754,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                 : 'Session active · client can scan the QR code')
             : 'Start a session to generate a QR code',
         role: widget.role,
-        cswd_id: widget.cswd_id,
+        cswdId: widget.cswdId,
         displayName: widget.displayName,
         onLogout: _handleLogout,
         headerActions: [
@@ -807,10 +807,9 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         onNavigate: (path) => WebNavigator.go(
           context,
           path,
-          cswdId: widget.cswd_id,
+          cswdId: widget.cswdId,
           role: widget.role,
           displayName: widget.displayName,
-          onLogout: _handleLogout,
         ),
         child: _isLoading
             ? const Center(
@@ -836,7 +835,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           border: Border.all(color: const Color(0xFFE6EBF8)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.07),
+              color: Colors.black.withValues(alpha:  0.07),
               blurRadius: 34,
               offset: const Offset(0, 10),
             ),
@@ -908,7 +907,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                 color: const Color(0xFFF4F7FE),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: AppColors.buttonOutlineBlue.withValues(alpha: 0.35),
+                  color: AppColors.buttonOutlineBlue.withValues(alpha:  0.35),
                 ),
               ),
               child: DropdownButtonHideUnderline(
@@ -1002,7 +1001,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                   ),
                   decoration: BoxDecoration(
                     color: _sessionExpired
-                        ? Colors.red.withValues(alpha: 0.15)
+                        ? Colors.red.withValues(alpha:  0.15)
                         : const Color(0xFFE9F9F1),
                     borderRadius: BorderRadius.circular(999),
                   ),
@@ -1100,7 +1099,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
+                    color: Colors.black.withValues(alpha:  0.1),
                     blurRadius: 20,
                   ),
                 ],
@@ -1153,7 +1152,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: Colors.red.withValues(alpha: 0.1),
+              color: Colors.red.withValues(alpha:  0.1),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -1220,10 +1219,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.12),
+                    color: Colors.white.withValues(alpha:  0.12),
                     borderRadius: BorderRadius.circular(999),
                     border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.2),
+                      color: Colors.white.withValues(alpha:  0.2),
                     ),
                   ),
                   child: const Row(
@@ -1280,7 +1279,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                   builder: (context, expired, _) {
                     return ValueListenableBuilder<Duration>(
                       valueListenable: _timeRemainingNotifier,
-                      builder: (context, remaining, __) {
+                      builder: (context, remaining, _) {
                         final isLow = remaining.inMinutes < 2;
                         return Container(
                           padding: const EdgeInsets.symmetric(
@@ -1289,17 +1288,17 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                           ),
                           decoration: BoxDecoration(
                             color: expired
-                                ? Colors.red.withValues(alpha: 0.2)
+                                ? Colors.red.withValues(alpha:  0.2)
                                 : isLow
-                                    ? Colors.orange.withValues(alpha: 0.2)
-                                    : Colors.white.withValues(alpha: 0.1),
+                                    ? Colors.orange.withValues(alpha:  0.2)
+                                    : Colors.white.withValues(alpha:  0.1),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
                               color: expired
-                                  ? Colors.red.withValues(alpha: 0.5)
+                                  ? Colors.red.withValues(alpha:  0.5)
                                   : isLow
-                                      ? Colors.orange.withValues(alpha: 0.5)
-                                      : Colors.white.withValues(alpha: 0.2),
+                                      ? Colors.orange.withValues(alpha:  0.5)
+                                      : Colors.white.withValues(alpha:  0.2),
                             ),
                           ),
                           child: Row(
@@ -1340,10 +1339,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.amber.withValues(alpha: 0.12),
+                    color: Colors.amber.withValues(alpha:  0.12),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: Colors.amber.withValues(alpha: 0.4),
+                      color: Colors.amber.withValues(alpha:  0.4),
                     ),
                   ),
                   child: Column(
@@ -1384,10 +1383,10 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Colors.green.withValues(alpha: 0.12),
+                      color: Colors.green.withValues(alpha:  0.12),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: Colors.green.withValues(alpha: 0.45),
+                        color: Colors.green.withValues(alpha:  0.45),
                       ),
                     ),
                     child: Column(
@@ -1424,7 +1423,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
+                    color: Colors.white.withValues(alpha:  0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Column(

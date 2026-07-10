@@ -6,6 +6,25 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// ── Rate limiting ──────────────────────────────────────────────
+const VERIFY_RATE_LIMIT_WINDOW_MS = 900_000; // 15 minutes
+const MAX_VERIFY_ATTEMPTS = 10;
+const verifyRateLimitStore = new Map<string, { count: number; windowStart: number }>();
+
+function canVerifyOtp(phone: string): boolean {
+  const now = Date.now();
+  const record = verifyRateLimitStore.get(phone);
+  if (!record || now - record.windowStart > VERIFY_RATE_LIMIT_WINDOW_MS) {
+    verifyRateLimitStore.set(phone, { count: 1, windowStart: now });
+    return true;
+  }
+  if (record.count >= MAX_VERIFY_ATTEMPTS) {
+    return false;
+  }
+  record.count++;
+  return true;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -25,6 +44,14 @@ Deno.serve(async (req: Request) => {
       return new Response(
         JSON.stringify({ success: false, message: 'Phone and OTP required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Rate limiting: max 10 verify attempts per 15 minutes per phone
+    if (!canVerifyOtp(phone.trim())) {
+      return new Response(
+        JSON.stringify({ success: false, message: 'Too many verification attempts. Please wait 15 minutes.' }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 

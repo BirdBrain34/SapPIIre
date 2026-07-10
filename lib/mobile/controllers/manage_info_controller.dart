@@ -196,7 +196,9 @@ class ManageInfoController extends ChangeNotifier {
         // house_number_street_name_phase_purok / subdivison_ / barangay,
         // so the raw combined string would corrupt those fields.
         if (ck == 'house_number_street_name_phase_purok' ||
-            ck.contains('address_line')) continue;
+            ck.contains('address_line')) {
+          continue;
+        }
 
         canonicalValues[ck] = val;
       }

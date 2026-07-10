@@ -38,7 +38,7 @@ class ProfileCard extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFFEEEEF5)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2))],
       ),
       child: Column(children: children),
     );
@@ -258,7 +258,7 @@ class ProfileActionRow extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(color: color.withOpacity(0.08), borderRadius: BorderRadius.circular(8)),
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
               child: Icon(icon, size: 18, color: color),
             ),
             const SizedBox(width: 12),

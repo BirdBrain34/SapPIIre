@@ -65,11 +65,11 @@ class InfoInputField extends StatelessWidget {
             decoration: InputDecoration(
               isDense: true,
               filled: true,
-              fillColor: Colors.grey.withOpacity(0.05),
+              fillColor: Colors.grey.withValues(alpha: 0.05),
               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.grey.withOpacity(0.3), width: 1.2),
+                borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3), width: 1.2),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),

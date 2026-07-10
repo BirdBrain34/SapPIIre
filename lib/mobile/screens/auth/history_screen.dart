@@ -86,7 +86,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         children: [
           Container(
             padding: const EdgeInsets.all(7),
-            decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
             child: const Icon(Icons.history, color: Colors.white, size: 18),
           ),
           const SizedBox(width: 10),
@@ -147,8 +147,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
           Container(
             width: 80,
             height: 80,
-            decoration: BoxDecoration(color: AppColors.primaryBlue.withOpacity(0.08), shape: BoxShape.circle),
-            child: Icon(Icons.history_toggle_off_outlined, size: 40, color: AppColors.primaryBlue.withOpacity(0.4)),
+            decoration: BoxDecoration(color: AppColors.primaryBlue.withValues(alpha: 0.08), shape: BoxShape.circle),
+            child: Icon(Icons.history_toggle_off_outlined, size: 40, color: AppColors.primaryBlue.withValues(alpha: 0.4)),
           ),
           const SizedBox(height: 16),
           const Text('No submissions yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.black54)),

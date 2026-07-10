@@ -8,16 +8,17 @@ import 'package:sappiire/services/audit/audit_log_service.dart';
 import 'package:sappiire/services/auth/staff_admin_service.dart';
 import 'package:sappiire/services/email/staff_email_service.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
+import 'package:sappiire/web/utils/web_session.dart';
 
 class CreateStaffScreen extends StatefulWidget {
   final String role;
-  final String cswd_id;
+  final String cswdId;
   final String displayName;
 
   const CreateStaffScreen({
     super.key,
     required this.role,
-    required this.cswd_id,
+    required this.cswdId,
     this.displayName = '',
   });
 
@@ -134,7 +135,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
         return;
       }
 
-      final String? cswdId = createResult['cswd_id']?.toString();
+      final String? cswdId = createResult['cswdId']?.toString();
       final String? generatedUsername = createResult['username']?.toString();
 
       if (cswdId == null || cswdId.isEmpty) {
@@ -163,7 +164,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
         actionType: kAuditStaffCreated,
         category: kCategoryStaff,
         severity: kSeverityInfo,
-        actorId: widget.cswd_id,
+        actorId: widget.cswdId,
         actorName: widget.displayName,
         actorRole: widget.role,
         targetType: 'staff_account',
@@ -217,16 +218,15 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
       pageTitle: 'Create Staff Account',
       pageSubtitle: 'Add a new team member to the system',
       role: widget.role,
-      cswd_id: widget.cswd_id,
+      cswdId: widget.cswdId,
       displayName: widget.displayName,
-      onLogout: () => Navigator.pop(context),
+      onLogout: () => WebSession.logout(context),
       onNavigate: (screenPath) => WebNavigator.go(
         context,
         screenPath,
-        cswdId: widget.cswd_id,
+        cswdId: widget.cswdId,
         role: widget.role,
         displayName: widget.displayName,
-        onLogout: () => Navigator.pop(context),
       ),
       child: Padding(
         padding: const EdgeInsets.all(28),
@@ -248,7 +248,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                       border: Border.all(color: AppColors.cardBorder),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.04),
+                          color: Colors.black.withValues(alpha:  0.04),
                           blurRadius: 16,
                           offset: const Offset(0, 4),
                         ),
@@ -263,7 +263,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                               width: 44,
                               height: 44,
                               decoration: BoxDecoration(
-                                color: AppColors.highlight.withValues(alpha: 0.12),
+                                color: AppColors.highlight.withValues(alpha:  0.12),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: const Icon(
@@ -304,10 +304,10 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                             vertical: 12,
                           ),
                           decoration: BoxDecoration(
-                            color: AppColors.highlight.withValues(alpha: 0.08),
+                            color: AppColors.highlight.withValues(alpha:  0.08),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: AppColors.highlight.withValues(alpha: 0.25),
+                              color: AppColors.highlight.withValues(alpha:  0.25),
                             ),
                           ),
                           child: const Row(

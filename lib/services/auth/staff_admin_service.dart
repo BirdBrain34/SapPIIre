@@ -1,6 +1,3 @@
-import 'dart:convert';
-
-import 'package:crypto/crypto.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class StaffAdminService {
@@ -8,11 +5,6 @@ class StaffAdminService {
     : _supabase = supabaseClient ?? Supabase.instance.client;
 
   final SupabaseClient _supabase;
-
-  String _hashPassword(String password) {
-    final bytes = utf8.encode(password);
-    return sha256.convert(bytes).toString();
-  }
 
   String _sanitizeUsernamePart(String value) {
     return value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
@@ -101,15 +93,14 @@ class StaffAdminService {
       lastName,
     );
 
-    final placeholderPassword = _hashPassword(
-      'pending_setup_${DateTime.now().millisecondsSinceEpoch}',
-    );
+    // Generate a random placeholder password — server will bcrypt hash it
+    final placeholderPassword = 'pending_setup_${DateTime.now().millisecondsSinceEpoch}';
 
     final result = await _supabase.functions.invoke('manage-staff-account', body: {
       'action': 'create_admin',
       'email': email.trim().toLowerCase(),
       'username': generatedUsername,
-      'password_hash': placeholderPassword,
+      'password': placeholderPassword, // Send raw password — server does bcrypt hash
       'first_name': firstName.trim(),
       'middle_name': middleName?.trim().isEmpty == true ? null : middleName?.trim(),
       'last_name': lastName.trim(),
