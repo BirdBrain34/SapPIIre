@@ -632,99 +632,109 @@ class _SimpleVerticalBarChartState extends State<SimpleVerticalBarChart> {
                     fontWeight: FontWeight.w600)),
           ),
         ),
-        SizedBox(
-          height: 220,
-          child: LayoutBuilder(builder: (context, constraints) {
-            final barCount = entries.length;
-            final drawW = constraints.maxWidth - 48;
-            final barWidth = (drawW / barCount) * 0.65;
-            final gap = (drawW / barCount) * 0.35;
-            final hPad = 24.0;
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 3,
+              child: SizedBox(
+                height: 220,
+                child: LayoutBuilder(builder: (context, constraints) {
+                  final barCount = entries.length;
+                  final drawW = constraints.maxWidth - 48;
+                  final barWidth = min((drawW / barCount) * 0.35, 48.0);
+                  final gap = (drawW / barCount) * 0.65;
+                  final hPad = 24.0;
 
-            return Stack(
-              key: _chartKey,
-              children: [
-                CustomPaint(
-                  painter: _VerticalBarPainter(entries, maxVal, colors,
-                      hoveredIndex: _hoveredIndex),
-                  size: Size(constraints.maxWidth, 220),
-                ),
-                // Invisible hover zones over each bar
-                MouseRegion(
-                  onHover: (event) {
-                    final localX = event.localPosition.dx - hPad;
-                    final index = (localX / (barWidth + gap)).floor();
-                    if (index >= 0 && index < barCount) {
-                      setState(() => _hoveredIndex = index);
-                    } else {
-                      setState(() => _hoveredIndex = null);
-                    }
-                  },
-                  onExit: (_) => setState(() => _hoveredIndex = null),
-                  child: SizedBox(
-                    width: constraints.maxWidth,
-                    height: 220,
-                    child: const SizedBox.expand(),
-                  ),
-                ),
-                // Tooltip overlay
-                if (_hoveredIndex != null && _hoveredIndex! < entries.length)
-                  Positioned(
-                    left: hPad +
-                        _hoveredIndex! * (barWidth + gap) +
-                        gap / 2 +
-                        barWidth / 2 -
-                        60,
-                    top: 4,
-                    child: _TooltipCard(
-                      text: buildChartTooltipText(
-                        entries[_hoveredIndex!].key,
-                        entries[_hoveredIndex!].value,
-                        total,
+                  return Stack(
+                    key: _chartKey,
+                    children: [
+                      CustomPaint(
+                        painter: _VerticalBarPainter(entries, maxVal, colors,
+                            hoveredIndex: _hoveredIndex),
+                        size: Size(constraints.maxWidth, 220),
                       ),
-                    ),
-                  ),
-              ],
-            );
-          }),
-        ),
-        // Vertical legend for bar chart
-        Padding(
-          padding: const EdgeInsets.only(top: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: entries.asMap().entries.map((e) {
-              final idx = e.key;
-              final entry = e.value;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: colors[idx],
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        '${entry.key}: ${entry.value}',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: AppColors.textMuted,
+                      // Invisible hover zones over each bar
+                      MouseRegion(
+                        onHover: (event) {
+                          final localX = event.localPosition.dx - hPad;
+                          final index = (localX / (barWidth + gap)).floor();
+                          if (index >= 0 && index < barCount) {
+                            setState(() => _hoveredIndex = index);
+                          } else {
+                            setState(() => _hoveredIndex = null);
+                          }
+                        },
+                        onExit: (_) => setState(() => _hoveredIndex = null),
+                        child: SizedBox(
+                          width: constraints.maxWidth,
+                          height: 220,
+                          child: const SizedBox.expand(),
                         ),
-                        overflow: TextOverflow.ellipsis,
                       ),
+                      // Tooltip overlay
+                      if (_hoveredIndex != null && _hoveredIndex! < entries.length)
+                        Positioned(
+                          left: hPad +
+                              _hoveredIndex! * (barWidth + gap) +
+                              gap / 2 +
+                              barWidth / 2 -
+                              60,
+                          top: 4,
+                          child: _TooltipCard(
+                            text: buildChartTooltipText(
+                              entries[_hoveredIndex!].key,
+                              entries[_hoveredIndex!].value,
+                              total,
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                }),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Vertical legend on the right side, beside the rightmost bar
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 160),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: entries.asMap().entries.map((e) {
+                  final idx = e.key;
+                  final entry = e.value;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: colors[idx],
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            '${entry.key}: ${entry.value}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textMuted,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
         ),
       ]),
     );
@@ -782,8 +792,8 @@ class _VerticalBarPainter extends CustomPainter {
     final drawH = size.height - vPad * 2 - 20;
     final barCount = entries.length;
     if (barCount == 0) return;
-    final barWidth = (drawW / barCount) * 0.65;
-    final gap = (drawW / barCount) * 0.35;
+    final barWidth = min((drawW / barCount) * 0.35, 48.0);
+    final gap = (drawW / barCount) * 0.65;
 
     final baselineY = vPad + drawH;
     final baselinePaint = Paint()
