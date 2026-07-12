@@ -298,11 +298,12 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         ? Icons.mark_email_read
         : Icons.sms_outlined;
 
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          const SizedBox(height: 32),
           Icon(icon, size: 80, color: Colors.white),
           const SizedBox(height: 20),
           Text(
@@ -336,6 +337,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 style: TextStyle(
                     color: Colors.white60, fontSize: 13)),
           ),
+          const SizedBox(height: 16),
         ],
       ),
     );
