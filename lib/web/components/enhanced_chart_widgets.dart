@@ -92,7 +92,7 @@ class ColorSyncPieChart extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
-                  color: AppColors.highlight.withValues(alpha: 0.1),
+                  color: AppColors.highlight.withValues(alpha:  0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -138,10 +138,10 @@ class ColorSyncPieChart extends StatelessWidget {
                               vertical: 6,
                             ),
                             decoration: BoxDecoration(
-                              color: color.withValues(alpha: 0.08),
+                              color: color.withValues(alpha:  0.08),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: color.withValues(alpha: 0.25),
+                                color: color.withValues(alpha:  0.25),
                               ),
                             ),
                             child: Row(
@@ -155,7 +155,7 @@ class ColorSyncPieChart extends StatelessWidget {
                                     borderRadius: BorderRadius.circular(3),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: color.withValues(alpha: 0.4),
+                                        color: color.withValues(alpha:  0.4),
                                         blurRadius: 4,
                                         offset: const Offset(0, 2),
                                       ),
@@ -231,7 +231,7 @@ class _EnhancedPiePainter extends CustomPainter {
 
     // Shadow
     final shadowPaint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.08)
+      ..color = Colors.black.withValues(alpha:  0.08)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
     canvas.drawCircle(center, radius + 2, shadowPaint);
 
@@ -261,7 +261,7 @@ class _EnhancedPiePainter extends CustomPainter {
         Paint()
           ..shader = RadialGradient(
             colors: [
-              Colors.white.withValues(alpha: 0.2),
+              Colors.white.withValues(alpha:  0.2),
               Colors.transparent,
             ],
           ).createShader(gradientRect)
@@ -271,17 +271,7 @@ class _EnhancedPiePainter extends CustomPainter {
       startAngle += sweepAngle;
     }
 
-    // Draw thin borders between slices
-    startAngle = -pi / 2;
-    final borderPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.7)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-    for (int i = 0; i < entries.length; i++) {
-      final sweepAngle = (entries[i].value / total) * 2 * pi;
-      canvas.drawArc(rect, startAngle, sweepAngle, true, borderPaint);
-      startAngle += sweepAngle;
-    }
+    // No border drawn between slices (Issue 5 fix)
   }
 
   @override
@@ -435,7 +425,7 @@ class _InteractiveBarChartState extends State<InteractiveBarChart> {
                   child: Container(
                     padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
-                      color: AppColors.highlight.withValues(alpha: 0.1),
+                      color: AppColors.highlight.withValues(alpha:  0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Icon(
@@ -468,7 +458,7 @@ class _InteractiveBarChartState extends State<InteractiveBarChart> {
                         'Tap a form type bar to drill up',
                         style: TextStyle(
                           fontSize: 11,
-                          color: AppColors.textMuted.withValues(alpha: 0.8),
+                          color: AppColors.textMuted.withValues(alpha:  0.8),
                         ),
                       ),
                     ],
@@ -483,7 +473,7 @@ class _InteractiveBarChartState extends State<InteractiveBarChart> {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
               color: (widget.primaryColor ?? AppColors.highlight)
-                  .withValues(alpha: 0.1),
+                  .withValues(alpha:  0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
@@ -546,7 +536,7 @@ class _InteractiveBarChartState extends State<InteractiveBarChart> {
                                             : Icons.arrow_forward_ios,
                                         size: 10,
                                         color: AppColors.textMuted
-                                            .withValues(alpha: 0.6),
+                                            .withValues(alpha:  0.6),
                                       ),
                                     ),
                                   Flexible(
@@ -574,7 +564,7 @@ class _InteractiveBarChartState extends State<InteractiveBarChart> {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: color.withValues(alpha: isActive ? 0.2 : 0.1),
+                                color: color.withValues(alpha:  isActive ? 0.2 : 0.1),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
@@ -608,14 +598,14 @@ class _InteractiveBarChartState extends State<InteractiveBarChart> {
                                     borderRadius: BorderRadius.circular(4),
                                     gradient: LinearGradient(
                                       colors: [
-                                        color.withValues(alpha: 0.8),
+                                        color.withValues(alpha:  0.8),
                                         color,
                                       ],
                                     ),
                                     boxShadow: isActive
                                         ? [
                                             BoxShadow(
-                                              color: color.withValues(alpha: 0.4),
+                                              color: color.withValues(alpha:  0.4),
                                               blurRadius: 4,
                                               offset: const Offset(0, 2),
                                             ),
@@ -689,7 +679,7 @@ class _InteractiveBarChartState extends State<InteractiveBarChart> {
                           vertical: 3,
                         ),
                         decoration: BoxDecoration(
-                          color: AppColors.successGreen.withValues(alpha: 0.1),
+                          color: AppColors.successGreen.withValues(alpha:  0.1),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
@@ -734,7 +724,7 @@ class _InteractiveBarChartState extends State<InteractiveBarChart> {
                             borderRadius: BorderRadius.circular(4),
                             gradient: LinearGradient(
                               colors: [
-                                AppColors.successGreen.withValues(alpha: 0.8),
+                                AppColors.successGreen.withValues(alpha:  0.8),
                                 AppColors.successGreen,
                               ],
                             ),
@@ -783,7 +773,7 @@ class SubmissionsByFormTypeChart extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: AppColors.textMuted.withValues(alpha: 0.8),
+              color: AppColors.textMuted.withValues(alpha:  0.8),
             ),
           ),
         ),

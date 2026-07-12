@@ -53,17 +53,17 @@ class AppColors {
   static BoxDecoration cardDecoration({double radius = 16, int elevation = 1}) {
     final shadow = switch (elevation) {
       3 => BoxShadow(
-          color: Colors.black.withValues(alpha: 0.12),
-          blurRadius: 24,
-          offset: const Offset(0, 8),
+          color: Colors.black.withValues(alpha:  0.14),
+          blurRadius: 28,
+          offset: const Offset(0, 10),
         ),
       2 => BoxShadow(
-          color: Colors.black.withValues(alpha: 0.08),
-          blurRadius: 16,
+          color: Colors.black.withValues(alpha:  0.09),
+          blurRadius: 18,
           offset: const Offset(0, 6),
         ),
       _ => BoxShadow(
-          color: Colors.black.withValues(alpha: 0.06),
+          color: Colors.black.withValues(alpha:  0.06),
           blurRadius: 12,
           offset: const Offset(0, 4),
         ),
@@ -71,7 +71,7 @@ class AppColors {
     return BoxDecoration(
       color: cardBg,
       borderRadius: BorderRadius.circular(radius),
-      border: Border.all(color: cardBorder),
+      border: Border.all(color: cardBorder, width: 1),
       boxShadow: [shadow],
     );
   }

@@ -2,6 +2,14 @@
 ///
 /// These classes mirror the Supabase schema for form templates, sections,
 /// fields, options, and conditional rules.
+library;
+
+/// Safely converts a dynamic value (bool, int, or null) to bool.
+bool _toBool(dynamic value) {
+  if (value is bool) return value;
+  if (value is int) return value == 1;
+  return false;
+}
 
 /// Field types supported by the dynamic form system.
 enum FormFieldType {
@@ -139,7 +147,7 @@ class FieldOption {
     value: m['option_value'] as String,
     label: m['option_label'] as String,
     order: (m['option_order'] as int?) ?? 0,
-    isDefault: (m['is_default'] as bool?) ?? false,
+    isDefault: coerceDbBool(m['is_default'], false),
   );
 }
 
@@ -210,7 +218,7 @@ class FormFieldModel {
     fieldName: m['field_name'] as String,
     fieldLabel: m['field_label'] as String,
     fieldType: FormFieldType.fromString(m['field_type'] as String? ?? ''),
-    isRequired: (m['is_required'] as bool?) ?? false,
+    isRequired: _toBool(m['is_required']),
     validationRules: m['validation_rules'] as Map<String, dynamic>?,
     fieldOrder: (m['field_order'] as int?) ?? 0,
     canonicalFieldKey: m['canonical_field_key'] as String?,
@@ -321,7 +329,7 @@ class FormSection {
     sectionName: m['section_name'] as String,
     sectionDesc: m['section_desc'] as String?,
     sectionOrder: (m['section_order'] as int?) ?? 0,
-    isCollapsible: (m['is_collapsible'] as bool?) ?? false,
+    isCollapsible: coerceDbBool(m['is_collapsible'], false),
     fields: fields..sort((a, b) => a.fieldOrder.compareTo(b.fieldOrder)),
   );
 }
@@ -431,15 +439,29 @@ class FormTemplate {
       templateId: m['template_id'] as String,
       formName: m['form_name'] as String,
       formDesc: m['form_desc'] as String?,
-      isActive: (m['is_active'] as bool?) ?? true,
+      isActive: coerceDbBool(m['is_active'], true),
       formCode: m['form_code'] as String?,
       referencePrefix: m['reference_prefix'] as String?,
       referenceFormat:
           (m['reference_format'] as String?)?.trim().isNotEmpty == true
           ? m['reference_format'] as String
           : '{FORMCODE}-{YYYY}-{MM}-{####}',
-      requiresReference: (m['requires_reference'] as bool?) ?? true,
+      requiresReference: coerceDbBool(m['requires_reference'], true),
       sections: sections,
     );
   }
+}
+
+/// Coerce a DB value to a bool. Postgres booleans normally come back as `bool`,
+/// but some rows/drivers store them as int (0/1) or string, which would crash a
+/// hard `as bool?` cast. Falls back to [fallback] when null/unknown.
+bool coerceDbBool(dynamic value, bool fallback) {
+  if (value is bool) return value;
+  if (value is int) return value == 1;
+  if (value is String) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized == 'true' || normalized == '1') return true;
+    if (normalized == 'false' || normalized == '0') return false;
+  }
+  return fallback;
 }

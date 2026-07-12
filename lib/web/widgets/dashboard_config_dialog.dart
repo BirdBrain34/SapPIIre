@@ -42,17 +42,20 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
     FormFieldType.unknown,
   };
 
-  static const _chartTypeOptions = [
-    'bar',
-    'hbar',
-    'pie',
-    'line',
-  ];
-
   @override
   void initState() {
     super.initState();
-    _selectedWidgets = List.from(widget.initialConfigs);
+    _selectedWidgets = widget.initialConfigs.map((config) {
+      if (config.chartType == 'counter') {
+        return DashboardWidgetConfig(
+          fieldName: config.fieldName,
+          fieldLabel: config.fieldLabel,
+          chartType: 'bar',
+          displayOrder: config.displayOrder,
+        );
+      }
+      return config;
+    }).toList();
 
     _availableFields = widget.template.allFields
         .where((field) => field.parentFieldId == null)
@@ -70,7 +73,7 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
       case FormFieldType.checkbox:
         return 'hbar';
       case FormFieldType.number:
-        return 'counter';
+        return 'bar';
       case FormFieldType.date:
         return 'line';
       case FormFieldType.text:
@@ -188,6 +191,8 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
         return 'Pie Chart';
       case 'donut':
         return 'Donut Chart';
+      case 'histogram':
+        return 'Histogram';
       case 'line':
         return 'Line Chart';
       case 'area':
@@ -215,6 +220,8 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
         return Icons.pie_chart_rounded;
       case 'donut':
         return Icons.donut_large_rounded;
+      case 'histogram':
+        return Icons.bar_chart_rounded;
       case 'line':
         return Icons.show_chart_rounded;
       case 'area':
@@ -283,6 +290,40 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
         return const Color(0xFF8B5CF6);
       default:
         return AppColors.textMuted;
+    }
+  }
+
+  /// Returns the curated chart type options.
+  List<String> _chartOptionsFor(DashboardWidgetConfig config) {
+    return const ['bar', 'hbar', 'pie', 'line'];
+  }
+
+  Color _chartTypeColor(String type) {
+    switch (type) {
+      case 'bar':
+        return AppColors.highlight;
+      case 'hbar':
+        return const Color(0xFF6366F1);
+      case 'pie':
+        return const Color(0xFFEC4899);
+      case 'histogram':
+        return const Color(0xFFF59E0B);
+      case 'donut':
+        return const Color(0xFF8B5CF6);
+      case 'line':
+        return const Color(0xFF2EC4B6);
+      case 'area':
+        return const Color(0xFF06B6D4);
+      case 'stacked':
+        return const Color(0xFFF59E0B);
+      case 'counter':
+        return const Color(0xFF10B981);
+      case 'table':
+        return const Color(0xFF6B7280);
+      case 'funnel':
+        return const Color(0xFFF97316);
+      default:
+        return AppColors.highlight;
     }
   }
 
@@ -397,7 +438,7 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
     );
   }
 
-  // ------------------------------------------------------------------------  // Wide: two-panel layout
+  // ---------------------------------------------------------------------------  // Wide: two-panel layout
   // ---------------------------------------------------------------------------
   Widget _buildWideLayout() {
     return Row(
@@ -785,6 +826,8 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
   }
 
   Widget _buildWidgetTile(int index, DashboardWidgetConfig config) {
+    final validTypes = _chartOptionsFor(config);
+
     return Container(
       key: ValueKey(config.fieldName),
       margin: const EdgeInsets.only(bottom: 8),
@@ -885,7 +928,9 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
-                    value: config.chartType,
+                    value: validTypes.contains(config.chartType)
+                        ? config.chartType
+                        : validTypes.first,
                     isDense: true,
                     isExpanded: true,
                     icon: Icon(
@@ -898,7 +943,7 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
                       fontWeight: FontWeight.w500,
                       color: AppColors.textDark,
                     ),
-                    items: _chartTypeOptions.map((type) {
+                    items: validTypes.map((type) {
                       return DropdownMenuItem<String>(
                         value: type,
                         child: Row(
@@ -933,33 +978,6 @@ class _DashboardConfigDialogState extends State<DashboardConfigDialog> {
         ],
       ),
     );
-  }
-
-  Color _chartTypeColor(String type) {
-    switch (type) {
-      case 'bar':
-        return AppColors.highlight;
-      case 'hbar':
-        return const Color(0xFF6366F1);
-      case 'pie':
-        return const Color(0xFFEC4899);
-      case 'donut':
-        return const Color(0xFF8B5CF6);
-      case 'line':
-        return const Color(0xFF2EC4B6);
-      case 'area':
-        return const Color(0xFF06B6D4);
-      case 'stacked':
-        return const Color(0xFFF59E0B);
-      case 'counter':
-        return const Color(0xFF10B981);
-      case 'table':
-        return const Color(0xFF6B7280);
-      case 'funnel':
-        return const Color(0xFFF97316);
-      default:
-        return AppColors.highlight;
-    }
   }
 
   // ---------------------------------------------------------------------------

@@ -20,7 +20,10 @@ class FormBuilderTemplateListPanel extends StatelessWidget {
     final visibleTemplates = controller.templates.where((template) {
       final status = (template['status'] as String?) ?? 'draft';
       final isArchived = status == 'archived';
-      final isActive = (template['is_active'] as bool?) == true;
+      final rawIsActive = template['is_active'];
+      final isActive = rawIsActive is bool
+          ? rawIsActive
+          : (rawIsActive is int ? rawIsActive == 1 : false);
 
       return switch (controller.templateListFilter) {
         TemplateListFilter.archived => isArchived,
@@ -73,10 +76,21 @@ class FormBuilderTemplateListPanel extends StatelessWidget {
           const Divider(height: 1, color: AppColors.cardBorder),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
+            child: ChipTheme(
+              data: ChipThemeData(
+                backgroundColor: AppColors.pageBg,
+                selectedColor: AppColors.highlight.withValues(alpha: 0.15),
+                showCheckmark: false,
+                labelStyle: const TextStyle(fontSize: 12, color: AppColors.textDark),
+                secondaryLabelStyle: const TextStyle(fontSize: 12, color: AppColors.highlight),
+                side: const BorderSide(color: AppColors.cardBorder),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              ),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
                 ChoiceChip(
                   label: const Text('All'),
                   selected:
@@ -126,7 +140,8 @@ class FormBuilderTemplateListPanel extends StatelessWidget {
                     controller.markChanged();
                   },
                 ),
-              ],
+                ],
+              ),
             ),
           ),
           Expanded(
@@ -195,15 +210,17 @@ class FormBuilderTemplateListPanel extends StatelessWidget {
     };
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: isActive
             ? AppColors.highlight.withValues(alpha: 0.08)
             : Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
-        border: isActive
-            ? Border.all(color: AppColors.highlight.withValues(alpha: 0.3))
-            : null,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isActive
+              ? AppColors.highlight.withValues(alpha: 0.35)
+              : AppColors.cardBorder,
+        ),
       ),
       child: ListTile(
         dense: true,

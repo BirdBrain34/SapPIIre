@@ -425,6 +425,8 @@ class _DateField extends StatelessWidget {
                     initialDate: initial,
                     firstDate: DateTime(1900),
                     lastDate: DateTime.now(),
+                    initialEntryMode: DatePickerEntryMode.calendar,
+                  keyboardType: TextInputType.text,
                     builder: (ctx, child) => Theme(
                       data: Theme.of(ctx).copyWith(
                         colorScheme: const ColorScheme.light(
@@ -1094,11 +1096,9 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
                             height: 4,
                           ), // Add spacing between the label and the field.
                           widget.isReadOnly
-                              ? Text(
-                                  m[col.value]?.toString() ?? '-',
-                                  style: const TextStyle(fontSize: 13),
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
+                              ? _readOnlyLabel(
+                                  colKey: col.value,
+                                  rawValue: m[col.value]?.toString() ?? '-',
                                 )
                               : _buildEditCell(context, i, m, col.value),
                         ],
@@ -1135,6 +1135,64 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
     );
   }
 
+  /// Renders a read-only label for a table cell, resolving option values
+  /// to their display labels when options are available.
+  /// Uses width: double.infinity and left-aligned text for consistent alignment.
+  Widget _readOnlyLabel({
+    required String colKey,
+    required String rawValue,
+  }) {
+    if (rawValue.isEmpty || rawValue == '-') {
+      return const SizedBox(
+        width: double.infinity,
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Text('-',
+            style: TextStyle(fontSize: 13, color: Colors.black54),
+          ),
+        ),
+      );
+    }
+
+    // Try to resolve the value to its display label
+    final opts = _optionsFor(colKey);
+    if (opts.isNotEmpty) {
+      final match = opts.where((o) => o.value == rawValue).toList();
+      if (match.isNotEmpty) {
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF5F5F8),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFFE0E0EA)),
+          ),
+          child: Text(
+            match.first.label,
+            style: const TextStyle(fontSize: 13, color: Color(0xFF8888A0)),
+            textAlign: TextAlign.left,
+          ),
+        );
+      }
+    }
+
+    // Fallback: show raw value with read-only styling
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F5F8),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE0E0EA)),
+      ),
+      child: Text(
+        rawValue,
+        style: const TextStyle(fontSize: 13, color: Color(0xFF8888A0)),
+        textAlign: TextAlign.left,
+      ),
+    );
+  }
+
   Widget _buildEditCell(
     BuildContext context,
     int i,
@@ -1163,6 +1221,8 @@ class _FamilyTableFieldState extends State<_FamilyTableField> {
               initialDate: initial,
               firstDate: DateTime(1900),
               lastDate: DateTime.now(),
+              initialEntryMode: DatePickerEntryMode.calendar,
+              keyboardType: TextInputType.text,
               builder: (ctx, child) => Theme(
                 data: Theme.of(ctx).copyWith(
                   colorScheme: const ColorScheme.light(
@@ -1966,11 +2026,9 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
                             height: 4,
                           ), // Add spacing between the label and the field.
                           widget.isReadOnly
-                              ? Text(
-                                  rowData[col.fieldName]?.toString() ?? '',
-                                  style: const TextStyle(fontSize: 13),
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
+                              ? _readOnlyCell(
+                                  col: col,
+                                  rawValue: rowData[col.fieldName]?.toString() ?? '',
                                 )
                               : _buildCellEditor(col, rowData, rowIdx),
                         ],
@@ -2005,6 +2063,55 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
           );
         }),
       ],
+    );
+  }
+
+  /// Renders a read-only cell for a member table, resolving dropdown values
+  /// to their display labels when options are available.
+  /// Uses width: double.infinity and left-aligned text for consistent alignment.
+  Widget _readOnlyCell({
+    required FormFieldModel col,
+    required String rawValue,
+  }) {
+    if (rawValue.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    // For dropdown fields, resolve the value to its label
+    if (col.fieldType == FormFieldType.dropdown || col.fieldType == FormFieldType.radio) {
+      final match = col.options.where((o) => o.value == rawValue).toList();
+      if (match.isNotEmpty) {
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF5F5F8),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFFE0E0EA)),
+          ),
+          child: Text(
+            match.first.label,
+            style: const TextStyle(fontSize: 13, color: Color(0xFF8888A0)),
+            textAlign: TextAlign.left,
+          ),
+        );
+      }
+    }
+
+    // Fallback: show raw value with read-only styling
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F5F8),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE0E0EA)),
+      ),
+      child: Text(
+        rawValue,
+        style: const TextStyle(fontSize: 13, color: Color(0xFF8888A0)),
+        textAlign: TextAlign.left,
+      ),
     );
   }
 
@@ -2079,6 +2186,8 @@ class _MemberTableWidgetState extends State<_MemberTableWidget> {
               initialDate: initial,
               firstDate: DateTime(1900),
               lastDate: DateTime(2100),
+              initialEntryMode: DatePickerEntryMode.calendar,
+              keyboardType: TextInputType.text,
               builder: DatePickerHelper.themedBuilder,
             );
             if (picked != null) {

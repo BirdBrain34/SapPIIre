@@ -147,13 +147,16 @@ class InfoScannerController extends ChangeNotifier {
         }
       } else if (lower.contains('sibil') || lower.contains('marital')) {
         if (data.bloodType.isEmpty) {
-          final beforeLabel = lower.indexOf('sbil') != -1
-              ? lines[i].substring(0, lower.indexOf('sbil')).trim()
-              : lower.indexOf('sibil') != -1
-              ? lines[i].substring(0, lower.indexOf('sibil')).trim()
-              : '';
-          if (beforeLabel.isNotEmpty && !_isJunk(beforeLabel)) {
-            data.bloodType = beforeLabel;
+          if (lower.contains('sbil')) {
+            final before = lines[i].substring(0, lower.indexOf('sbil')).trim();
+            if (before.isNotEmpty && !_isJunk(before)) {
+              data.bloodType = before;
+            }
+          } else if (lower.contains('sibil')) {
+            final before = lines[i].substring(0, lower.indexOf('sibil')).trim();
+            if (before.isNotEmpty && !_isJunk(before)) {
+              data.bloodType = before;
+            }
           }
         }
         if (i + 1 < lines.length) {
@@ -200,10 +203,12 @@ class InfoScannerController extends ChangeNotifier {
             if (_isLabel(next) || _isJunk(next)) break;
             if (next == 'PHL') break;
             final nl = next.toLowerCase();
-            if (nl == 'male' ||
-                nl == 'female' ||
-                nl == 'lalaki' ||
-                nl == 'babae') break;
+          if (nl == 'male' ||
+              nl == 'female' ||
+              nl == 'lalaki' ||
+              nl == 'babae') {
+            break;
+          }
             parts.add(next);
           }
           if (parts.isNotEmpty) {
@@ -253,12 +258,16 @@ class InfoScannerController extends ChangeNotifier {
           ll.contains('exclusively') ||
           ll.contains('distributed') ||
           ll.contains('property') ||
-          ll.contains('university')) continue;
+          ll.contains('university')) {
+        continue;
+      }
       if (ll == 'male' || ll == 'female' || ll == 'lalaki' || ll == 'babae') {
         break;
       }
       collected.add(l);
-      if (collected.length >= 3) break;
+      if (collected.length >= 3) {
+        break;
+      }
     }
     return collected.join(' ').trim();
   }

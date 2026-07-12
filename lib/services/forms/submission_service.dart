@@ -1,3 +1,4 @@
+// ignore_for_file: use_null_aware_elements
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -65,10 +66,21 @@ class SubmissionService {
   Future<Map<String, dynamic>?> fetchSessionSnapshot(String sessionId) async {
     final row = await _supabase
         .from('form_submission')
-        .select('id, status, transmission_version')
+        .select('id, status, transmission_version, expires_at')
         .eq('id', sessionId)
         .maybeSingle();
     return row == null ? null : Map<String, dynamic>.from(row);
+  }
+
+  Future<DateTime?> fetchSessionExpiresAt(String sessionId) async {
+    final row = await _supabase
+        .from('form_submission')
+        .select('expires_at')
+        .eq('id', sessionId)
+        .maybeSingle();
+    final raw = row?['expires_at'];
+    if (raw == null) return null;
+    return DateTime.tryParse(raw.toString())?.toLocal();
   }
 
   Future<String?> fetchSessionUserId(String sessionId) async {
@@ -359,6 +371,9 @@ class SubmissionService {
       }),
     );
 
+    if (response.statusCode == 410) {
+      throw Exception('session_expired');
+    }
     if (response.statusCode != 200) {
       debugPrint(
         '[SubmissionService/fetchDecryptedStagingSubmission] Error '

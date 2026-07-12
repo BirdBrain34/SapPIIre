@@ -27,7 +27,7 @@ class HistoryDetailDialog {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: AppColors.primaryBlue.withOpacity(0.1),
+                      color: AppColors.primaryBlue.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(Icons.qr_code_scanner, color: AppColors.primaryBlue, size: 22),
@@ -45,7 +45,7 @@ class HistoryDetailDialog {
                           margin: const EdgeInsets.only(top: 4),
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.1),
+                            color: Colors.green.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: const Text('Submitted', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.green)),
@@ -145,7 +145,7 @@ class HistoryDetailDialog {
           Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: AppColors.primaryBlue.withOpacity(0.06),
+              color: AppColors.primaryBlue.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Icon(icon, size: 14, color: AppColors.primaryBlue),

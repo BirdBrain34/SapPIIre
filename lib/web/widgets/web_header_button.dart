@@ -15,7 +15,7 @@ class WebHeaderButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return OutlinedButton.icon(
-      onPressed: onPressed ?? () {},
+      onPressed: onPressed,
       icon: Icon(icon, color: AppColors.primaryBlue),
       label: Text(
         label,

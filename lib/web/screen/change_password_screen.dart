@@ -2,16 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/services/auth/web_auth_service.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
+import 'package:sappiire/web/utils/web_session.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
-  final String cswd_id;
+  final String cswdId;
   final String role;
   final String displayName;
 
   const ChangePasswordScreen({
     super.key,
-    required this.cswd_id,
+    required this.cswdId,
     required this.role,
     this.displayName = '',
   });
@@ -76,7 +77,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     setState(() => _isLoading = true);
 
     final result = await _authService.changePassword(
-      cswd_id: widget.cswd_id,
+      cswdId: widget.cswdId,
       currentPassword: _currentPasswordController.text,
       newPassword: _newPasswordController.text,
     );
@@ -103,16 +104,15 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       pageTitle: 'Change Password',
       pageSubtitle: 'Update your account password',
       role: widget.role,
-      cswd_id: widget.cswd_id,
+      cswdId: widget.cswdId,
       displayName: widget.displayName,
-      onLogout: () => Navigator.pop(context),
+      onLogout: () => WebSession.logout(context),
       onNavigate: (path) => WebNavigator.go(
         context,
         path,
-        cswdId: widget.cswd_id,
+        cswdId: widget.cswdId,
         role: widget.role,
         displayName: widget.displayName,
-        onLogout: () => Navigator.pop(context),
       ),
       child: Center(
         child: SingleChildScrollView(
@@ -130,7 +130,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                     border: Border.all(color: AppColors.cardBorder),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.06),
+                        color: Colors.black.withValues(alpha:  0.06),
                         blurRadius: 16,
                         offset: const Offset(0, 4),
                       ),
@@ -144,7 +144,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: AppColors.highlight.withValues(alpha: 0.1),
+                              color: AppColors.highlight.withValues(alpha:  0.1),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Icon(
@@ -182,10 +182,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                         Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: AppColors.successGreen.withValues(alpha: 0.1),
+                            color: AppColors.successGreen.withValues(alpha:  0.1),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: AppColors.successGreen.withValues(alpha: 0.4),
+                              color: AppColors.successGreen.withValues(alpha:  0.4),
                             ),
                           ),
                           child: const Row(
@@ -212,10 +212,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                         Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: AppColors.dangerRed.withValues(alpha: 0.08),
+                            color: AppColors.dangerRed.withValues(alpha:  0.08),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: AppColors.dangerRed.withValues(alpha: 0.3),
+                              color: AppColors.dangerRed.withValues(alpha:  0.3),
                             ),
                           ),
                           child: Row(
@@ -323,10 +323,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: AppColors.warningAmber.withValues(alpha: 0.08),
+                    color: AppColors.warningAmber.withValues(alpha:  0.08),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: AppColors.warningAmber.withValues(alpha: 0.3),
+                      color: AppColors.warningAmber.withValues(alpha:  0.3),
                     ),
                   ),
                   child: const Row(

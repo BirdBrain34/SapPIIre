@@ -6,7 +6,7 @@ The Supabase schema separates data into distinct security domains to reduce expo
 
 1. Cryptographic key registry domain (`app_rsa_keypairs`).
 2. User-owned PII value domain (`user_field_values`).
-3. Live session transport domain (`form_submission`, `submission_field_values`, `display_sessions`).
+3. Live session transport domain (`form_submission`, `display_sessions`).
 4. Finalized applicant archive domain (`client_submissions`).
 5. Identity and access governance domain (`staff_accounts`, `staff_profiles`, OTP tables, `audit_logs`).
 
@@ -36,7 +36,7 @@ The application derives protection keys through the `derive-field-key` Edge Func
 `form_submission` is the system's QR handshake anchor and enforces lifecycle constraints:
 
 1. `status` domain is constrained to `active`, `scanned`, `completed`, `closed`, `expired`.
-2. `expires_at` defaults to 30-minute session validity.
+2. `expires_at` defaults to 10-minute session validity.
 3. Hybrid transport columns include `encrypted_payload`, `payload_iv`, `encrypted_aes_key`, and `transmission_version`.
 4. Staff linkage is modeled through optional `user_id` foreign key (not enforced in schema).
 5. **Zero-Knowledge Staging:** Decryption occurs strictly in-memory via the `serve-submission-for-review` Edge Function during the request lifecycle, delivering plaintext ephemerally to the dashboard without any database persistence.
@@ -53,7 +53,7 @@ The application derives protection keys through the `derive-field-key` Edge Func
    - A random 12-byte IV is generated per record and stored in `data_iv`.
    - The encryption algorithm is AES-256-GCM, with symmetric key (`SERVER_AES_KEY`) stored in Supabase Edge Secrets.
    - `data_encryption_version` is set to 1 to indicate encryption status and enable future versioning.
-5. **Decryption Access Control:** The `decrypt-submission-data` Edge Function authorizes decryption requests based on staff role (`admin`, `form_editor`, `superadmin`), preventing `viewer` role access to plaintext records.
+5. **Decryption Access Control:** The `decrypt-submission-data` Edge Function authorizes decryption requests based on staff role (`admin`, `superadmin`).
 6. This architecture provides a defense-in-depth layer protecting finalized applicant records at rest, complementing client-side field encryption in `user_field_values` and hybrid transport encryption in `form_submission`.
 
 ### 2.5 Dynamic Metadata Layer
@@ -74,8 +74,8 @@ For web analytics presentation, `dashboard_widget_configs` and `dashboard_card_s
 
 `staff_accounts` and `staff_profiles` implement dashboard identity governance with schema-level role and status constraints:
 
-1. `role` in {viewer, form_editor, admin, superadmin}
-2. `requested_role` in {viewer, form_editor, admin}
+1. `role` in {admin, superadmin}
+2. `requested_role` in {admin, superadmin}
 3. `account_status` in {pending, active, deactivated}
 4. `is_active` and `is_first_login` for operational gatekeeping
 
@@ -101,13 +101,14 @@ Mobile form values are transformed into field-level records keyed by `field_id` 
 
 When transmission is initiated:
 
-1. Normalized rows are written to `submission_field_values` (session-level per-field trace).
-2. Encrypted envelope data is written to `form_submission` transport columns.
-3. Session status transitions to `scanned` for dashboard pickup.
+1. Encrypted envelope data is written to `form_submission` transport columns.
+2. Session status transitions to `scanned` for dashboard pickup.
 
 ### 3.4 Zero-Knowledge Staging and Finalization
 
 **In-Memory Decryption:** When staff open a session with `status='scanned'` and `transmission_version=1`, the `serve-submission-for-review` Edge Function decrypts the encrypted envelope on-demand and returns plaintext JSON ephemerally in the HTTP response. Staff review the decrypted payload directly in the dashboard UI.
+
+If the session has passed `expires_at`, the same function returns HTTP 410 with `reason = 'session_expired'`, which the client can surface as an expired-session state instead of retrying the decryption path.
 
 **Server-Side Finalization:** Upon review completion, staff finalize the record via the `encrypt-and-save-submission` Edge Function, which performs server-side AES-256-GCM encryption before persisting to `client_submissions`.
 
@@ -125,9 +126,8 @@ The schema supports chain-of-custody reconstruction:
 
 1. `user_accounts.user_id` -> `user_field_values.user_id` (user PII ownership).
 2. `form_submission.user_id` (user-to-session linkage).
-3. `submission_field_values.submission_id` -> `form_submission.id` (session field evidence).
-4. `client_submissions.session_id` (final-record linkage to scanned session).
-5. `audit_logs` records actor and action context for privileged operations.
+3. `client_submissions.session_id` (final-record linkage to scanned session).
+4. `audit_logs` records actor and action context for privileged operations.
 
 ## 5. Core Feature Conformance
 
@@ -138,9 +138,51 @@ The schema supports manuscript-required features:
 3. Secured autofill through decrypt-to-session and staff completion workflows.
 4. CSWD dashboard governance through role/status-constrained staff identity tables.
 
-## 6. Hardening Notes from Current Schema Context
+## 6. Row Level Security (RLS) — Staff Tables
 
-1. Add or verify unique constraints for (`user_id`, `field_id`) in `user_field_values` and (`submission_id`, `field_id`) in `submission_field_values` to align with deterministic upsert expectations.
-2. Maintain strict RLS policies to confine decrypted payload visibility.
-3. Monitor `encryption_version` distribution and missing-IV anomalies.
-4. Keep `app_rsa_keypairs` activation and rotation governance auditable through `audit_logs`.
+### 6.1 RLS Architecture
+
+Staff identity tables (`staff_accounts`, `staff_profiles`, `staff_display_view`) are locked down with restrictive RLS policies. Since the application uses **custom authentication** (not Supabase Auth), `auth.uid()` is always null and cannot be used for policy gating.
+
+The protection strategy is:
+
+1. **RLS enabled** on `staff_accounts` and `staff_profiles`.
+2. **RESTRICTIVE deny-all policies** applied to `anon` and `authenticated` roles on both tables — blocking all SELECT, INSERT, UPDATE, and DELETE.
+3. **SELECT revoked** on `staff_display_view` from `anon` and `authenticated` roles.
+
+### 6.2 Access Control Flow
+
+All staff table operations route through the `manage-staff-account` Edge Function, which uses `SUPABASE_SERVICE_ROLE_KEY` (bypasses RLS):
+
+```
+Flutter Client → Edge Function (service role key) → staff_accounts/staff_profiles/staff_display_view
+```
+
+The anon key shipped with the client can no longer read or write any staff table directly.
+
+### 6.3 Edge Function Actions
+
+| Action | Purpose |
+|---|---|
+| `login` | Superadmin lookup by username, staff lookup by email |
+| `update_last_login` | Set `last_login = now()` |
+| `fetch_profile` | Get profile fields by cswd_id |
+| `fetch_account` | Get account (email/username/role/status) by email or cswd_id |
+| `fetch_password_hash` | Get password_hash by cswd_id |
+| `check_username` | Case-insensitive username existence check |
+| `check_username_unique` | Exact-match uniqueness check |
+| `create_pending` | Insert into both tables with rollback on profile failure |
+| `create_admin` | Insert admin account + profile with rollback |
+| `update_account` | Generic UPDATE with dynamic fields |
+| `fetch_accounts` | Pending + active account lists |
+| `fetch_staff_batch` | Bulk account/profile fetch by ID list |
+| `fetch_display` | SELECT from staff_display_view |
+
+
+
+## 7. Hardening Notes from Current Schema Context
+
+1. Add or verify unique constraints for (`user_id`, `field_id`) in `user_field_values` to align with deterministic upsert expectations.
+2. Monitor `encryption_version` distribution and missing-IV anomalies.
+3. Keep `app_rsa_keypairs` activation and rotation governance auditable through `audit_logs`.
+4. Remaining dashboard and mobile features (`dashboard_analytics_service.dart`, `supabase_service.dart`, `history_controller.dart`) still query staff tables directly with anon key — they silently return empty under RLS. Migrate these to Edge Function actions if dashboard functionality is needed.

@@ -22,6 +22,7 @@ class QrScannerController extends ChangeNotifier {
   bool isTransmitting = false;
   bool transmitDone = false;
   bool transmitSuccess = false;
+  bool sessionExpired = false;
   String transmitStatus = 'Securing your data...';
   bool isPopping = false;
   bool isFinalized = false;
@@ -41,10 +42,10 @@ class QrScannerController extends ChangeNotifier {
   }
 
   Future<void> performTransmission(String sessionId) async {
-
     isTransmitting = true;
     transmitDone = false;
     transmitSuccess = false;
+    sessionExpired = false;
     transmitStatus = 'Encrypting your data with AES-256...';
     notifyListeners();
 
@@ -55,10 +56,10 @@ class QrScannerController extends ChangeNotifier {
     transmitStatus = 'Transmitting securely to CSWD portal...';
     notifyListeners();
 
-    bool success = false;
+    String result = 'error';
     try {
       await Future.delayed(const Duration(milliseconds: 400));
-      success = await (supabaseService ?? SupabaseService())
+      result = await (supabaseService ?? SupabaseService())
           .sendDataToWebSession(
         sessionId,
         transmitData ?? {},
@@ -66,17 +67,19 @@ class QrScannerController extends ChangeNotifier {
       );
     } catch (e) {
       debugPrint('[QrScannerController/performTransmission] Error: $e');
-      success = false;
     }
 
     isTransmitting = false;
     transmitDone = true;
-    transmitSuccess = success;
-    transmitStatus = success
+    sessionExpired = result == 'expired';
+    transmitSuccess = result == 'ok';
+    transmitStatus = result == 'ok'
         ? 'Your information has been securely transmitted to the CSWD staff portal.'
-        : 'Something went wrong during transmission. Please try again.';
+        : result == 'expired'
+            ? 'This QR session has expired. Please ask the CSWD staff to generate a new QR code.'
+            : 'Something went wrong during transmission. Please try again.';
 
-    if (success) {
+    if (result == 'ok') {
       startFinalizationPolling(sessionId);
     } else {
       notifyListeners();

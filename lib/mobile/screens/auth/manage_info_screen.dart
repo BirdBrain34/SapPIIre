@@ -1,6 +1,3 @@
-/// Mobile manage-info screen for loading profiles, editing dynamic forms,
-/// and transmitting selected fields to the web portal through QR.
-
 import 'dart:async';
 import 'dart:convert';
 
@@ -13,14 +10,13 @@ import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/mobile/controllers/manage_info_controller.dart';
 import 'package:sappiire/mobile/screens/auth/qr_scanner_screen.dart';
 import 'package:sappiire/mobile/screens/auth/login_screen.dart';
-import 'package:sappiire/mobile/screens/auth/InfoScannerScreen.dart';
-import 'package:sappiire/mobile/screens/auth/ProfileScreen.dart';
-import 'package:sappiire/mobile/screens/auth/HistoryScreen.dart';
+import 'package:sappiire/mobile/screens/auth/profile_screen.dart';
+import 'package:sappiire/mobile/screens/auth/history_screen.dart';
 import 'package:sappiire/mobile/widgets/unsaved_changes_dialog.dart';
 import 'package:sappiire/mobile/widgets/logout_confirmation_dialog.dart';
-import 'package:sappiire/mobile/widgets/TermsAndCondition.dart';
+import 'package:sappiire/mobile/widgets/terms_and_condition.dart';
 import 'package:sappiire/models/form_template_models.dart';
-import 'package:sappiire/mobile/screens/auth/NotificationScreen.dart';
+import 'package:sappiire/mobile/screens/auth/notification_screen.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/mobile/widgets/save_button.dart';
 
@@ -409,7 +405,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.08),
+                  color: Colors.red.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(Icons.warning_amber_rounded,
@@ -445,10 +441,10 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 12, vertical: 8),
                               decoration: BoxDecoration(
-                                color: Colors.red.withOpacity(0.06),
+                                color: Colors.red.withValues(alpha: 0.06),
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
-                                    color: Colors.red.withOpacity(0.25)),
+                                    color: Colors.red.withValues(alpha: 0.25)),
                               ),
                               child: Row(
                                 children: [
@@ -651,20 +647,6 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     }
   }
 
-  Future<void> _openCamera() async {
-    final canProceed = await _resolveUnsavedChangesIfAny();
-    if (!canProceed || !mounted) return;
-
-    await Navigator.push(
-        context, MaterialPageRoute(builder: (_) => const InfoScannerScreen()));
-    if (mounted) {
-      await _controller.loadAll(forceRefresh: true);
-      _attachFormControllerListener();
-      _savedFormFingerprint = _currentFormFingerprint();
-      setState(() => _hasUnsavedChanges = false);
-    }
-  }
-
   void _showFeedback(String msg, Color color) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -798,7 +780,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
             Container(
               padding: const EdgeInsets.all(7),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.15),
+                color: Colors.white.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Icon(Icons.person_outline,
@@ -888,7 +870,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withValues(alpha: 0.08),
                 blurRadius: 24,
                 offset: const Offset(0, 8),
               )
@@ -902,7 +884,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                 width: 72,
                 height: 72,
                 decoration: BoxDecoration(
-                  color: AppColors.primaryBlue.withOpacity(0.08),
+                  color: AppColors.primaryBlue.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(18),
                 ),
                 child: Icon(Icons.edit_document,
@@ -913,7 +895,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
-                  color: AppColors.primaryBlue.withOpacity(0.08),
+                  color: AppColors.primaryBlue.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -989,7 +971,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
                     backgroundColor: AppColors.primaryBlue,
                     foregroundColor: Colors.white,
                     disabledBackgroundColor:
-                        AppColors.primaryBlue.withOpacity(0.4),
+                        AppColors.primaryBlue.withValues(alpha: 0.4),
                     padding: const EdgeInsets.symmetric(vertical: 15),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
@@ -1116,7 +1098,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   /// Also uses the shared _onTemplateSwitched handler.
   Widget _buildFormSelector() {
     return Container(
-      color: AppColors.primaryBlue.withOpacity(0.04),
+      color: AppColors.primaryBlue.withValues(alpha: 0.04),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(
         children: [

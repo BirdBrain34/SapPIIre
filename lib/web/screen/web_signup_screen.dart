@@ -27,8 +27,8 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
       TextEditingController();
 
   bool _isLoading = false;
-  String _selectedRequestedRole = 'viewer';
-  final List<String> _requestedRoles = ['viewer', 'form_editor'];
+  String _selectedRequestedRole = 'admin';
+  final List<String> _requestedRoles = ['admin'];
   final WebSignupService _webSignupService = WebSignupService();
 
   void _showSnackBar(String message, {bool isError = false}) {
@@ -553,7 +553,8 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
             ),
           ),
           items: _requestedRoles.map((role) {
-            return DropdownMenuItem<String>(value: role, child: Text(role));
+            final label = role == 'admin' ? 'Administrator' : role;
+            return DropdownMenuItem<String>(value: role, child: Text(label));
           }).toList(),
           onChanged: (value) {
             if (value != null) {
@@ -569,9 +570,9 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
+        color: Colors.white.withValues(alpha:  0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.lightBlue.withValues(alpha: 0.3)),
+        border: Border.all(color: AppColors.lightBlue.withValues(alpha:  0.3)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,

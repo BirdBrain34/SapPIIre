@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/mobile/screens/auth/manage_info_screen.dart';
 import 'package:sappiire/mobile/screens/auth/signup_screen.dart';
-import 'package:sappiire/mobile/screens/auth/ChangePassword.dart';
+import 'package:sappiire/mobile/screens/auth/change_password.dart';
 import 'package:sappiire/mobile/controllers/login_controller.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -40,7 +40,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final result = await _controller.login();
     if (!mounted) return;
     if (result['success'] == true) {
-      _snack('Welcome back, ' + result['username'] + '!');
+      _snack('Welcome back, ${result['username']}!');
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -95,7 +95,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.3),
+                        color: Colors.black.withValues(alpha: 0.3),
                         blurRadius: 15,
                         offset: const Offset(0, 8),
                       ),

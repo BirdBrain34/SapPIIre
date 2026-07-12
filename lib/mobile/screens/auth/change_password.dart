@@ -132,10 +132,15 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () async {
+              // ignore: use_build_context_synchronously
+              final navigator = Navigator.of(context);
               if (_controller.currentPage > 0) {
-                if (await _confirmCancel() && mounted) Navigator.pop(context);
+                final confirmed = await _confirmCancel();
+                if (confirmed && mounted) {
+                  navigator.pop();
+                }
               } else {
-                Navigator.pop(context);
+                navigator.pop();
               }
             },
           ),
@@ -195,7 +200,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           // Toggle: Email / Phone
           Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: AppColors.buttonOutlineBlue, width: 2),
             ),
@@ -264,7 +269,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
             color: selected
-                ? Colors.white.withOpacity(0.2)
+                ? Colors.white.withValues(alpha: 0.2)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
           ),

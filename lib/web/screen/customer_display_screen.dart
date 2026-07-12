@@ -36,11 +36,16 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
   StreamSubscription? _subscription; // station row (display_sessions)
   StreamSubscription? _sessionSub; // active session row (form_submission)
   Timer? _pollTimer; // backup poll for the scan (realtime is unreliable here)
+  Timer? _countdownTimer;
 
   String? _sessionId;
   String? _templateId;
   String? _formName;
   String _status = 'standby'; // 'active' | 'standby'
+
+  // Expiry countdown
+  Duration _timeRemaining = Duration.zero;
+  bool _sessionExpired = false;
 
   // Review ("mirror") state — populated once the applicant's scan arrives so
   // the customer can verify the autofilled form on their own monitor.
@@ -92,6 +97,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
       _sessionSub = null;
       _pollTimer?.cancel();
       _pollTimer = null;
+      _stopCountdown();
       _clearReview();
       setState(() {
         _status = 'standby';
@@ -114,7 +120,45 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
     if (isNewSession) {
       _clearReview();
       _subscribeToSession(sessionId);
+      // Fetch expires_at and start countdown
+      _submissionService.fetchSessionExpiresAt(sessionId).then((expiresAt) {
+        if (expiresAt != null && mounted) _startCountdown(expiresAt);
+      });
     }
+  }
+
+  void _startCountdown(DateTime expiresAt) {
+    _countdownTimer?.cancel();
+    setState(() {
+      _timeRemaining = expiresAt.difference(DateTime.now());
+      _sessionExpired = _timeRemaining.isNegative;
+    });
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) { timer.cancel(); return; }
+      final remaining = expiresAt.difference(DateTime.now());
+      if (remaining.isNegative || remaining == Duration.zero) {
+        timer.cancel();
+        setState(() {
+          _timeRemaining = Duration.zero;
+          _sessionExpired = true;
+        });
+      } else {
+        setState(() => _timeRemaining = remaining);
+      }
+    });
+  }
+
+  void _stopCountdown() {
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
+    _timeRemaining = Duration.zero;
+    _sessionExpired = false;
+  }
+
+  String _formatCountdown(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
   }
 
   /// Watch the active session's form_submission row for the applicant's scan.
@@ -244,7 +288,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
     }
   }
 
-  /// Station ids are formatted as `desk_<cswd_id>`; the staff id is the suffix.
+  /// Station ids are formatted as `desk_<cswdId>`; the staff id is the suffix.
   String _staffIdFromStation(String stationId) {
     const prefix = 'desk_';
     return stationId.startsWith(prefix)
@@ -257,6 +301,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
     _subscription?.cancel();
     _sessionSub?.cancel();
     _pollTimer?.cancel();
+    _countdownTimer?.cancel();
     _reviewController?.dispose();
     _pulseCtrl.dispose();
     super.dispose();
@@ -307,7 +352,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
               width: 120,
               height: 120,
               decoration: BoxDecoration(
-                color: AppColors.highlight.withValues(alpha: 0.15),
+                color: AppColors.highlight.withValues(alpha:  0.15),
                 borderRadius: BorderRadius.circular(30),
               ),
               child: const Icon(
@@ -331,7 +376,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
           Text(
             'Please wait for the staff to start your session.',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.6),
+              color: Colors.white.withValues(alpha:  0.6),
               fontSize: 20,
               fontWeight: FontWeight.w300,
             ),
@@ -341,14 +386,14 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.08),
+              color: Colors.white.withValues(alpha:  0.08),
               borderRadius: BorderRadius.circular(30),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+              border: Border.all(color: Colors.white.withValues(alpha:  0.12)),
             ),
             child: Text(
               'Station: ${widget.stationId}',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.5),
+                color: Colors.white.withValues(alpha:  0.5),
                 fontSize: 14,
                 letterSpacing: 1.0,
               ),
@@ -369,7 +414,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             decoration: BoxDecoration(
-              color: AppColors.successGreen.withValues(alpha: 0.2),
+              color: AppColors.successGreen.withValues(alpha:  0.2),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Row(
@@ -412,7 +457,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
           Text(
             'Scan the QR code below with the SapPIIre app',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.6),
+              color: Colors.white.withValues(alpha:  0.6),
               fontSize: 16,
             ),
           ),
@@ -426,7 +471,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
               borderRadius: BorderRadius.circular(28),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.highlight.withValues(alpha: 0.25),
+                  color: AppColors.highlight.withValues(alpha:  0.25),
                   blurRadius: 60,
                   spreadRadius: 5,
                 ),
@@ -452,11 +497,62 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
           Text(
             'Session: ${_sessionId!.split('-').first}...',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.35),
+              color: Colors.white.withValues(alpha:  0.35),
               fontSize: 13,
             ),
           ),
-          const SizedBox(height: 48),
+          const SizedBox(height: 16),
+
+          // Expiry countdown — large and prominent for the customer
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            decoration: BoxDecoration(
+              color: _sessionExpired
+                  ? Colors.red.withValues(alpha:  0.15)
+                  : _timeRemaining.inMinutes < 5
+                      ? Colors.orange.withValues(alpha:  0.15)
+                      : Colors.white.withValues(alpha:  0.08),
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(
+                color: _sessionExpired
+                    ? Colors.red.withValues(alpha:  0.4)
+                    : _timeRemaining.inMinutes < 5
+                        ? Colors.orange.withValues(alpha:  0.4)
+                        : Colors.white.withValues(alpha:  0.15),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _sessionExpired ? Icons.timer_off_rounded : Icons.timer_rounded,
+                  color: _sessionExpired
+                      ? Colors.red
+                      : _timeRemaining.inMinutes < 5
+                          ? Colors.orange
+                          : Colors.white60,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  _sessionExpired
+                      ? 'Session Expired'
+                      : 'Expires in ${_formatCountdown(_timeRemaining)}',
+                  style: TextStyle(
+                    color: _sessionExpired
+                        ? Colors.red
+                        : _timeRemaining.inMinutes < 5
+                            ? Colors.orange
+                            : Colors.white60,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 32),
 
           // Instructions row
           Row(
@@ -515,7 +611,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
           Text(
             'Check that the information below is correct.',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.6),
+              color: Colors.white.withValues(alpha:  0.6),
               fontSize: 18,
               fontWeight: FontWeight.w300,
             ),
@@ -525,7 +621,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
               decoration: BoxDecoration(
-                color: AppColors.highlight.withValues(alpha: 0.15),
+                color: AppColors.highlight.withValues(alpha:  0.15),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
@@ -569,7 +665,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
           width: 28,
           height: 28,
           decoration: BoxDecoration(
-            color: AppColors.highlight.withValues(alpha: 0.2),
+            color: AppColors.highlight.withValues(alpha:  0.2),
             shape: BoxShape.circle,
           ),
           alignment: Alignment.center,
@@ -586,7 +682,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen>
         Text(
           text,
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.5),
+            color: Colors.white.withValues(alpha:  0.5),
             fontSize: 14,
           ),
         ),

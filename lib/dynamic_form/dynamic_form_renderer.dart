@@ -140,13 +140,13 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: sectionHasError
-            ? Border.all(color: Colors.red.withValues(alpha: 0.4), width: 1.5)
+            ? Border.all(color: Colors.red.withValues(alpha:  0.4), width: 1.5)
             : null,
         boxShadow: [
           BoxShadow(
             color: sectionHasError
-                ? Colors.red.withValues(alpha: 0.08)
-                : Colors.black.withValues(alpha: 0.05),
+                ? Colors.red.withValues(alpha:  0.08)
+                : Colors.black.withValues(alpha:  0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -189,9 +189,9 @@ class _DynamicFormRendererState extends State<DynamicFormRenderer> {
   Widget _buildHighlightedField(FormFieldModel field) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.red.withValues(alpha: 0.03),
+        color: Colors.red.withValues(alpha:  0.03),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.red.withValues(alpha: 0.5), width: 1.5),
+        border: Border.all(color: Colors.red.withValues(alpha:  0.5), width: 1.5),
       ),
       padding: const EdgeInsets.all(8),
       child: Column(

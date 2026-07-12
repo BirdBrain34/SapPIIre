@@ -1,6 +1,3 @@
-import 'dart:convert';
-
-import 'package:crypto/crypto.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class StaffAdminService {
@@ -8,25 +5,6 @@ class StaffAdminService {
     : _supabase = supabaseClient ?? Supabase.instance.client;
 
   final SupabaseClient _supabase;
-
-  Future<void> _cleanupProvisionedAccount(String cswdId) async {
-    try {
-      await _supabase.from('staff_profiles').delete().eq('cswd_id', cswdId);
-    } catch (_) {
-      // Best-effort cleanup only.
-    }
-
-    try {
-      await _supabase.from('staff_accounts').delete().eq('cswd_id', cswdId);
-    } catch (_) {
-      // Best-effort cleanup only.
-    }
-  }
-
-  String _hashPassword(String password) {
-    final bytes = utf8.encode(password);
-    return sha256.convert(bytes).toString();
-  }
 
   String _sanitizeUsernamePart(String value) {
     return value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
@@ -56,65 +34,48 @@ class StaffAdminService {
     var suffix = 1;
 
     while (true) {
-      final existing = await _supabase
-          .from('staff_accounts')
-          .select('username')
-          .eq('username', candidate)
-          .maybeSingle();
-
-      if (existing == null) {
-        return candidate;
-      }
-
+      final result = await _supabase.functions.invoke('manage-staff-account', body: {
+        'action': 'check_username_unique',
+        'candidate': candidate,
+      });
+      final data = result.data as Map<String, dynamic>?;
+      if (data?['exists'] != true) return candidate;
       candidate = '$baseUsername$suffix';
       suffix += 1;
     }
   }
 
   Future<Map<String, List<Map<String, dynamic>>>> fetchAccounts() async {
-    final pending = await _supabase
-        .from('staff_accounts')
-        .select('cswd_id, username, email, requested_role, created_at')
-        .eq('account_status', 'pending')
-        .order('created_at');
-
-    final active = await _supabase
-        .from('staff_accounts')
-        .select(
-          'cswd_id, username, email, role, account_status, is_active, is_first_login',
-        )
-        .neq('account_status', 'pending')
-        .order('username');
-
+    final result = await _supabase.functions.invoke('manage-staff-account', body: {'action': 'fetch_accounts'});
+    final data = result.data as Map<String, dynamic>;
     return {
-      'pending': List<Map<String, dynamic>>.from(pending),
-      'active': List<Map<String, dynamic>>.from(active),
+      'pending': List<Map<String, dynamic>>.from(data['pending'] as List),
+      'active': List<Map<String, dynamic>>.from(data['active'] as List),
     };
   }
 
   Future<void> approveAccount(String cswdId, String requestedRole) async {
-    await _supabase
-        .from('staff_accounts')
-        .update({
-          'role': requestedRole,
-          'account_status': 'active',
-          'is_active': true,
-        })
-        .eq('cswd_id', cswdId);
+    await _supabase.functions.invoke('manage-staff-account', body: {
+      'action': 'update_account',
+      'cswd_id': cswdId,
+      'updates': {'role': requestedRole, 'account_status': 'active', 'is_active': true},
+    });
   }
 
   Future<void> rejectAccount(String cswdId) async {
-    await _supabase
-        .from('staff_accounts')
-        .update({'account_status': 'deactivated', 'is_active': false})
-        .eq('cswd_id', cswdId);
+    await _supabase.functions.invoke('manage-staff-account', body: {
+      'action': 'update_account',
+      'cswd_id': cswdId,
+      'updates': {'account_status': 'deactivated', 'is_active': false},
+    });
   }
 
   Future<void> updateRole(String cswdId, String newRole) async {
-    await _supabase
-        .from('staff_accounts')
-        .update({'role': newRole})
-        .eq('cswd_id', cswdId);
+    await _supabase.functions.invoke('manage-staff-account', body: {
+      'action': 'update_account',
+      'cswd_id': cswdId,
+      'updates': {'role': newRole},
+    });
   }
 
   Future<Map<String, dynamic>> createAdminStaffAccount({
@@ -132,82 +93,39 @@ class StaffAdminService {
       lastName,
     );
 
-    final placeholderPassword = _hashPassword(
-      'pending_setup_${DateTime.now().millisecondsSinceEpoch}',
-    );
+    // Generate a random placeholder password — server will bcrypt hash it
+    final placeholderPassword = 'pending_setup_${DateTime.now().millisecondsSinceEpoch}';
 
-    final accountResponse = await _supabase
-        .from('staff_accounts')
-        .insert({
-          'email': email.trim().toLowerCase(),
-          'username': generatedUsername,
-          'password_hash': placeholderPassword,
-          'role': 'admin',
-          'requested_role': 'admin',
-          'account_status': 'active',
-          'is_active': true,
-          'is_first_login': true,
-        })
-        .select('cswd_id')
-        .single();
+    final result = await _supabase.functions.invoke('manage-staff-account', body: {
+      'action': 'create_admin',
+      'email': email.trim().toLowerCase(),
+      'username': generatedUsername,
+      'password': placeholderPassword, // Send raw password — server does bcrypt hash
+      'first_name': firstName.trim(),
+      'middle_name': middleName?.trim().isEmpty == true ? null : middleName?.trim(),
+      'last_name': lastName.trim(),
+      'name_suffix': nameSuffix?.trim().isEmpty == true ? null : nameSuffix?.trim(),
+      'position': position?.trim().isEmpty == true ? null : position?.trim(),
+      'department': department?.trim().isEmpty == true ? null : department?.trim(),
+      'phone_number': phoneNumber?.trim().isEmpty == true ? null : phoneNumber?.trim(),
+    });
 
-    final cswdId = accountResponse['cswd_id']?.toString();
-    if (cswdId == null || cswdId.isEmpty) {
-      return {
-        'success': false,
-        'message': 'Account created but failed to get ID. Contact developer.',
-      };
+    final data = result.data as Map<String, dynamic>?;
+
+    if (data?['error'] != null) {
+      final code = data?['code']?.toString();
+      if (code == '42501') {
+        return {'success': false, 'message': 'Database policy blocked profile creation. Apply the latest staff_profiles RLS migration, then try again.'};
+      }
+      if (code == '23502') {
+        return {'success': false, 'message': 'Position and department are required by the database. Please fill them in and try again.'};
+      }
+      return {'success': false, 'message': 'Failed to create staff profile: ${data!['error']}'};
     }
 
-    try {
-      await _supabase.from('staff_profiles').insert({
-        'cswd_id': cswdId,
-        'first_name': firstName.trim(),
-        'middle_name': middleName?.trim().isEmpty == true
-            ? null
-            : middleName?.trim(),
-        'last_name': lastName.trim(),
-        'name_suffix': nameSuffix?.trim().isEmpty == true
-            ? null
-            : nameSuffix?.trim(),
-        'position': position?.trim().isEmpty == true ? null : position?.trim(),
-        'department': department?.trim().isEmpty == true
-            ? null
-            : department?.trim(),
-        'phone_number': phoneNumber?.trim().isEmpty == true
-            ? null
-            : phoneNumber?.trim(),
-      });
-    } on PostgrestException catch (e) {
-      await _cleanupProvisionedAccount(cswdId);
-
-      if (e.code == '42501') {
-        return {
-          'success': false,
-          'message':
-              'Database policy blocked profile creation. Apply the latest staff_profiles RLS migration, then try again.',
-        };
-      }
-
-      if (e.code == '23502') {
-        return {
-          'success': false,
-          'message':
-              'Position and department are required by the database. Please fill them in and try again.',
-        };
-      }
-
-      return {
-        'success': false,
-        'message':
-            'Failed to create staff profile: ${e.message}${e.details == null || e.details!.toString().isEmpty ? '' : ' (${e.details})'}',
-      };
-    } catch (_) {
-      await _cleanupProvisionedAccount(cswdId);
-      return {
-        'success': false,
-        'message': 'Failed to create staff profile. Please try again.',
-      };
+    final cswdId = data?['cswd_id']?.toString();
+    if (cswdId == null || cswdId.isEmpty) {
+      return {'success': false, 'message': 'Account created but failed to get ID. Contact developer.'};
     }
 
     return {'success': true, 'cswd_id': cswdId, 'username': generatedUsername};

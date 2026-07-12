@@ -25,9 +25,9 @@ class SortChip extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: isActive ? AppColors.primaryBlue.withOpacity(0.1) : Colors.grey.shade100,
+          color: isActive ? AppColors.primaryBlue.withValues(alpha: 0.1) : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: isActive ? AppColors.primaryBlue.withOpacity(0.4) : Colors.transparent),
+          border: Border.all(color: isActive ? AppColors.primaryBlue.withValues(alpha: 0.4) : Colors.transparent),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,

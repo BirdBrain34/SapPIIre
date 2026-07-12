@@ -32,15 +32,15 @@ class CustomTextField extends StatelessWidget {
     // Adjust colors based on background (dark or light)
     final Color contentColor = isDarkBackground ? Colors.white : AppColors.primaryBlue;
     final Color fillColor = isDarkBackground 
-        ? Colors.white.withOpacity(0.15) 
-        : const Color.fromARGB(255, 255, 255, 255).withOpacity(0.1);
+        ? Colors.white.withValues(alpha:  0.15) 
+        : const Color.fromARGB(255, 255, 255, 255).withValues(alpha:  0.1);
 
     return Container(
       decoration: BoxDecoration(
         color: fillColor,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: contentColor.withOpacity(0.3),
+          color: contentColor.withValues(alpha:  0.3),
           width: 1,
         ),
       ),
@@ -55,10 +55,10 @@ class CustomTextField extends StatelessWidget {
         decoration: InputDecoration(
           hintText: hintText,
           hintStyle: TextStyle(
-            color: contentColor.withOpacity(0.5),
+            color: contentColor.withValues(alpha:  0.5),
           ),
           prefixIcon: prefixIcon != null 
-              ? Icon(prefixIcon!.icon, color: contentColor.withOpacity(0.7)) 
+              ? Icon(prefixIcon!.icon, color: contentColor.withValues(alpha:  0.7)) 
               : null,
           suffixIcon: suffixIcon,
           border: InputBorder.none,

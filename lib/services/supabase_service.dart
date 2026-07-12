@@ -1,8 +1,8 @@
+// ignore_for_file: use_null_aware_elements
 import 'dart:async';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/services/crypto/hybrid_crypto_service.dart';
@@ -46,7 +46,7 @@ class SupabaseService {
       // Fetch all notifications, newest first.
       final rows = await _supabase
           .from('form_template_notifications')
-          .select('id, template_id, template_name, change_type, change_summary, created_at')
+          .select('id, template_id, template_name, change_type, change_summary, created_at, details')
           .order('created_at', ascending: false)
           .limit(100);
  
@@ -95,10 +95,12 @@ class SupabaseService {
   /// Returns the count of unread notifications for the bell badge.
   Future<int> fetchUnreadNotificationCount(String userId) async {
     try {
-      // Total notifications
+      // Total notifications (same 100-window as fetchAppNotifications)
       final allRows = await _supabase
           .from('form_template_notifications')
-          .select('id');
+          .select('id')
+          .order('created_at', ascending: false)
+          .limit(100);
  
       final allIds = (allRows as List)
           .map((r) => r['id']?.toString() ?? '')
@@ -261,6 +263,8 @@ class SupabaseService {
   }
 
   // Check whether email, phone, or username already exists.
+  // If a record exists but has no user_field_values, it's an incomplete
+  // signup — we allow retrying by returning success with the existing user_id.
   Future<Map<String, dynamic>> checkDuplicateSignup({
     String? email,
     String? phone,
@@ -269,19 +273,36 @@ class SupabaseService {
     try {
       if (email != null && email.isNotEmpty) {
         final normalizedEmail = email.trim().toLowerCase();
-        // Use ilike for case-insensitive match
         final existing = await _supabase
             .from('user_accounts')
             .select('user_id, email')
             .ilike('email', normalizedEmail)
             .maybeSingle();
         if (existing != null) {
-          return {
-            'success': false,
-            'field': 'email',
-            'message':
-                'This email is already registered. Please log in instead.',
-          };
+          final userId = existing['user_id'] as String?;
+          if (userId != null && userId.isNotEmpty) {
+            // Check if this is a completed signup (has field values)
+            final fieldValues = await _supabase
+                .from('user_field_values')
+                .select('id')
+                .eq('user_id', userId)
+                .limit(1)
+                .maybeSingle();
+            if (fieldValues != null) {
+              return {
+                'success': false,
+                'field': 'email',
+                'message':
+                    'This email is already registered. Please log in instead.',
+              };
+            }
+            // Incomplete signup — allow retry by returning success with user_id
+            return {
+              'success': true,
+              'user_id': userId,
+              'incomplete': true,
+            };
+          }
         }
       }
 
@@ -293,11 +314,28 @@ class SupabaseService {
             .eq('phone_number', rawPhone)
             .maybeSingle();
         if (existing != null) {
-          return {
-            'success': false,
-            'field': 'phone',
-            'message': 'This phone number is already registered.',
-          };
+          final userId = existing['user_id'] as String?;
+          if (userId != null && userId.isNotEmpty) {
+            final fieldValues = await _supabase
+                .from('user_field_values')
+                .select('id')
+                .eq('user_id', userId)
+                .limit(1)
+                .maybeSingle();
+            if (fieldValues != null) {
+              return {
+                'success': false,
+                'field': 'phone',
+                'message': 'This phone number is already registered.',
+              };
+            }
+            // Incomplete signup — allow retry
+            return {
+              'success': true,
+              'user_id': userId,
+              'incomplete': true,
+            };
+          }
         }
       }
 
@@ -512,39 +550,36 @@ class SupabaseService {
     }
   }
 
-  // Send a phone OTP through Semaphore.
+  /// Send an OTP to the given email (used for retrying incomplete signups).
+  Future<Map<String, dynamic>> signInWithOtp({
+    required String email,
+  }) async {
+    try {
+      await _supabase.auth.signInWithOtp(
+        email: email.trim(),
+        shouldCreateUser: false,
+      );
+      return {'success': true, 'message': 'OTP sent!'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // Send a phone OTP via the Supabase Edge Function (faster — runs on cloud infra).
   Future<Map<String, dynamic>> sendPhoneOtp(String phone) async {
     try {
-      final otp =
-          (100000 + (DateTime.now().millisecondsSinceEpoch % 900000)).toString();
-
-      final response = await http.post(
-        Uri.parse('https://api.semaphore.co/api/v4/otp'),
-        body: {
-          'apikey': 'fc4874818b2f98480dbba9e862b90334',
-          'number': phone,
-          'message':
-              'Your SapPIIre verification code is {otp}. Do not share this with anyone.',
-          'code': otp,
-          'sendername': 'SapPIIre',
-        },
+      final response = await _supabase.functions.invoke(
+        'send-phone-otp',
+        body: {'phone': phone},
       );
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        await _supabase.from('phone_otp').delete().eq('phone', phone);
-        await _supabase.from('phone_otp').insert({
-          'phone': phone,
-          'otp': otp,
-          'expires_at': DateTime.now()
-              .add(const Duration(minutes: 10))
-              .toUtc()
-              .toIso8601String(),
-        });
-        return {'success': true, 'message': 'OTP sent!'};
+      if (response.data != null) {
+        final data = response.data as Map<String, dynamic>;
+        return data;
       } else {
         return {
           'success': false,
-          'message': 'Semaphore error: ${response.body}',
+          'message': 'Failed to send OTP. No response from server.',
         };
       }
     } catch (e) {
@@ -726,26 +761,6 @@ class SupabaseService {
         debugPrint('[SupabaseService/saveProfileAfterVerification] Warning: Password update failed: $e');
       }
 
-      // Upsert the user account record, including phone number.
-      final upsertData = <String, dynamic>{
-        'user_id': userId,
-        'username': username,
-        'is_active': true,
-      };
-
-      // Only include email/phone if non-null and non-empty
-      if (email != null && email.isNotEmpty) {
-        upsertData['email'] = email.toLowerCase().trim();
-      }
-      if (phoneNumber != null && phoneNumber.isNotEmpty) {
-        upsertData['phone_number'] = phoneNumber.trim();
-      }
-
-      await _supabase.from('user_accounts').upsert(
-        upsertData,
-        onConflict: 'user_id',
-      );
-
       // Parse the birthdate into YYYY-MM-DD format.
       final dateParts = dateOfBirth.split('/');
       final formattedDate = dateParts.length == 3
@@ -845,6 +860,28 @@ class SupabaseService {
           );
         }
       }
+
+      // Only upsert user_accounts AFTER field values are saved successfully.
+      // This ensures that if something fails above, no orphaned record in
+      // user_accounts blocks the user from retrying signup.
+      final upsertData = <String, dynamic>{
+        'user_id': userId,
+        'username': username,
+        'is_active': true,
+      };
+
+      // Only include email/phone if non-null and non-empty
+      if (email != null && email.isNotEmpty) {
+        upsertData['email'] = email.toLowerCase().trim();
+      }
+      if (phoneNumber != null && phoneNumber.isNotEmpty) {
+        upsertData['phone_number'] = phoneNumber.trim();
+      }
+
+      await _supabase.from('user_accounts').upsert(
+        upsertData,
+        onConflict: 'user_id',
+      );
 
       return {
         'success': true,
@@ -1082,8 +1119,8 @@ class SupabaseService {
   }
 
   /// Send the selected fields to the matching web session.
-  /// The user chooses which fields to transmit via checkboxes.
-  Future<bool> sendDataToWebSession(
+  /// Returns 'ok', 'expired', or 'error'.
+  Future<String> sendDataToWebSession(
     String sessionId,
     Map<String, dynamic> data, {
     String? userId,
@@ -1099,16 +1136,32 @@ class SupabaseService {
       }
 
       if (publicKey.trim().isEmpty) {
-        // Fallback: transmit unencrypted (transmission_version = 0)
-        // Note: form_data column was removed — plaintext is never written to DB
         debugPrint('[SupabaseService/sendDataToWebSession] Action: No RSA key, falling back to unencrypted');
-        return false;
+        return 'error';
       }
 
       final envelope = await HybridCryptoService.encryptForTransmission(
         data,
         publicKey,
       );
+
+      // Check expiry before writing — avoids a wasted crypto round-trip.
+      final sessionRow = await _supabase
+          .from('form_submission')
+          .select('expires_at, status')
+          .eq('id', sessionId)
+          .maybeSingle();
+
+      if (sessionRow != null) {
+        final expiresRaw = sessionRow['expires_at'];
+        if (expiresRaw != null) {
+          final expiresAt = DateTime.tryParse(expiresRaw.toString())?.toLocal();
+          if (expiresAt != null && DateTime.now().isAfter(expiresAt)) {
+            debugPrint('[SupabaseService/sendDataToWebSession] Session expired: $sessionId');
+            return 'expired';
+          }
+        }
+      }
 
       final response = await _supabase
           .from('form_submission')
@@ -1127,7 +1180,6 @@ class SupabaseService {
           .maybeSingle();
 
       if (response == null) {
-        // Session may no longer be active, so try without the status filter.
         debugPrint('[SupabaseService/sendDataToWebSession] Action: Status filter returned null, retrying without filter');
         final retryResponse = await _supabase
             .from('form_submission')
@@ -1144,13 +1196,13 @@ class SupabaseService {
             .select()
             .maybeSingle();
 
-        if (retryResponse == null) return false;
+        if (retryResponse == null) return 'error';
       }
 
-      return true;
+      return 'ok';
     } catch (e) {
       debugPrint('[SupabaseService/sendDataToWebSession] Error for session $sessionId: $e');
-      return false;
+      return 'error';
     }
   }
 

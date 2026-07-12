@@ -1,0 +1,9 @@
+{
+  "name": "sappiire-bruteforce-tests",
+  "version": "1.0.0",
+  "description": "Brute force testing suite for SapPIIre",
+  "type": "module",
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  }
+}

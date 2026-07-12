@@ -37,11 +37,11 @@ class StaffEmailService {
   }) async {
     try {
       final normalizedEmail = _normalizedEmail(email);
-      final account = await _supabase
-          .from('staff_accounts')
-          .select('cswd_id, is_active, account_status, is_first_login')
-          .ilike('email', normalizedEmail)
-          .maybeSingle();
+      final result = await _supabase.functions.invoke('manage-staff-account', body: {
+        'action': 'fetch_account',
+        'email': normalizedEmail,
+      });
+      final account = (result.data as Map<String, dynamic>?)?['account'] as Map<String, dynamic>?;
 
       if (account == null) {
         return {
@@ -83,11 +83,11 @@ class StaffEmailService {
     try {
       final normalizedEmail = _normalizedEmail(email);
 
-      final account = await _supabase
-          .from('staff_accounts')
-          .select('cswd_id, is_active, account_status, is_first_login')
-          .ilike('email', normalizedEmail)
-          .maybeSingle();
+      final result = await _supabase.functions.invoke('manage-staff-account', body: {
+        'action': 'fetch_account',
+        'email': normalizedEmail,
+      });
+      final account = (result.data as Map<String, dynamic>?)?['account'] as Map<String, dynamic>?;
 
       if (account == null) {
         return {
@@ -156,11 +156,11 @@ class StaffEmailService {
         return {'success': false, 'message': 'Invalid or expired reset code.'};
       }
 
-      final account = await _supabase
-          .from('staff_accounts')
-          .select('cswd_id, is_active, account_status, is_first_login')
-          .ilike('email', normalizedEmail)
-          .maybeSingle();
+      final accountResult = await _supabase.functions.invoke('manage-staff-account', body: {
+        'action': 'fetch_account',
+        'email': normalizedEmail,
+      });
+      final account = (accountResult.data as Map<String, dynamic>?)?['account'] as Map<String, dynamic>?;
 
       if (account == null) {
         return {
@@ -203,11 +203,11 @@ class StaffEmailService {
     try {
       final normalizedEmail = _normalizedEmail(email);
 
-      final account = await _supabase
-          .from('staff_accounts')
-          .select('cswd_id, is_active, account_status, is_first_login')
-          .ilike('email', normalizedEmail)
-          .maybeSingle();
+      final accountResult = await _supabase.functions.invoke('manage-staff-account', body: {
+        'action': 'fetch_account',
+        'email': normalizedEmail,
+      });
+      final account = (accountResult.data as Map<String, dynamic>?)?['account'] as Map<String, dynamic>?;
 
       if (account == null) {
         return {

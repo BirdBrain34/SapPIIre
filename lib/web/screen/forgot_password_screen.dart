@@ -110,7 +110,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     setState(() => _isLoading = false);
 
     if (result['success'] == true) {
-      _verifiedCswdId = result['cswd_id']?.toString();
+      _verifiedCswdId = result['cswdId']?.toString();
       setState(() {
         _step = 3;
         _infoMessage = null;
@@ -141,7 +141,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     });
 
     final result = await _authService.resetPasswordWithOtp(
-      cswd_id: _verifiedCswdId!,
+      cswdId: _verifiedCswdId!,
       newPassword: _newPasswordController.text,
     );
 
@@ -199,7 +199,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.4),
+                    color: Colors.black.withValues(alpha:  0.4),
                     blurRadius: 40,
                   ),
                 ],
@@ -218,10 +218,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: AppColors.dangerRed.withValues(alpha: 0.1),
+                        color: AppColors.dangerRed.withValues(alpha:  0.1),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: AppColors.dangerRed.withValues(alpha: 0.4),
+                          color: AppColors.dangerRed.withValues(alpha:  0.4),
                         ),
                       ),
                       child: Text(
@@ -238,10 +238,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: AppColors.successGreen.withValues(alpha: 0.12),
+                        color: AppColors.successGreen.withValues(alpha:  0.12),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: AppColors.successGreen.withValues(alpha: 0.45),
+                          color: AppColors.successGreen.withValues(alpha:  0.45),
                         ),
                       ),
                       child: Text(

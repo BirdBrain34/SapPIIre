@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/mobile/controllers/profile_controller.dart';
-import 'package:sappiire/mobile/screens/auth/ChangePassword.dart';
-import 'package:sappiire/mobile/screens/auth/InfoScannerScreen.dart';
-import 'package:sappiire/mobile/widgets/TermsAndCondition.dart';
+import 'package:sappiire/mobile/screens/auth/change_password.dart';
+import 'package:sappiire/mobile/screens/auth/info_scanner_screen.dart';
+import 'package:sappiire/mobile/widgets/terms_and_condition.dart';
 import 'package:sappiire/mobile/widgets/profile_header_card.dart';
 import 'package:sappiire/mobile/widgets/profile_section_card.dart';
 import 'package:sappiire/mobile/widgets/signature_pad_widget.dart';
@@ -190,7 +190,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Container(
             padding: const EdgeInsets.all(7),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
+              color: Colors.white.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Icon(Icons.person_outline, color: Colors.white, size: 18),
