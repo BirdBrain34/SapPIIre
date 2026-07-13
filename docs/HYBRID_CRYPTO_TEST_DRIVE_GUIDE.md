@@ -275,3 +275,31 @@ A healthy run should show:
 
 ### Main Entry Point
 - `lib/main.dart`
+
+### Benchmarks
+- `tests/benchmarks/crypto_benchmark.ts` (Server-side/Deno performance measurement)
+- `tests/benchmarks/crypto_benchmark.dart` (Client-side/Dart performance measurement)
+
+## 13) Performance Benchmarks
+
+To collect the performance metrics for the hybrid security implementation (for manuscripts or security reports), you can run the benchmark scripts. These scripts isolate the exact cryptographic operations used in production (AES-256-GCM and RSA-2048-OAEP) to measure computational overhead accurately.
+
+### Running the Server-Side (Deno) Benchmark
+This script measures the performance of the native Web Crypto API, exactly as it runs in the Supabase Edge Functions.
+
+```bash
+deno run --allow-all tests/benchmarks/crypto_benchmark.ts
+```
+Optional flags:
+- `--iterations=5000` (default is 1000)
+- `--payload-size=2048` (default is ~1KB)
+
+### Running the Client-Side (Dart) Benchmark
+This script measures the performance of the `encrypt` and `pointycastle` packages, exactly as they run in the Flutter mobile app.
+
+```bash
+dart run tests/benchmarks/crypto_benchmark.dart
+```
+*(To configure iterations in Dart, you can pass `BENCH_ITERATIONS` as a dart environment variable: `dart run --define=BENCH_ITERATIONS=5000 tests/benchmarks/crypto_benchmark.dart`)*
+
+Both scripts will automatically verify round-trip encryption correctness and output a table of **Min, Max, Average, and Median** execution times in milliseconds. They also output CSV text for easy copy-pasting into your manuscript's tables.

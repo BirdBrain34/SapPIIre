@@ -193,3 +193,25 @@ The handshake implements manuscript core requirements:
 3. Secured autofill decryption path through backend function logic.
 4. Controlled transition from encrypted session envelope to dashboard-usable form data.
 5. **Form template mismatch guard**: Pre-transmission validation on mobile prevents data from being sent to the wrong form template.
+
+## 8. Cryptographic Performance Benchmarking
+
+To rigorously validate the computational overhead of the hybrid cryptosystem, the project includes standalone benchmark scripts that measure the exact cryptographic primitives used in production.
+
+### 8.1 Methodology
+
+The performance metrics are gathered by isolating the cryptographic operations from network and database latency:
+- **Server-Side (Deno):** Benchmarks use the native `crypto.subtle` Web Crypto API, identical to the implementation in the Supabase Edge Functions.
+- **Client-Side (Dart):** Benchmarks use the `encrypt` and `pointycastle` packages, identical to the implementation in the Flutter mobile app.
+
+Each benchmark executes a configurable number of iterations (default 1000) using a realistic ~1KB JSON payload, measuring the execution time with sub-millisecond precision (`performance.now()` in Deno and `Stopwatch` in Dart).
+
+### 8.2 Operations Measured
+
+The benchmarks capture the Min, Max, Average, and Median execution times for:
+1. **AES-256-GCM Encryption** (Client & Server at-rest)
+2. **AES-256-GCM Decryption** (Server Zero-Knowledge Staging)
+3. **RSA-2048-OAEP Key Encryption** (Client packaging)
+4. **RSA-2048-OAEP Key Decryption** (Server envelope unwrapping)
+
+These metrics provide empirical evidence that the hybrid cryptography adds negligible overhead to the session handoff and data-at-rest encryption flows. For instructions on running these benchmarks, refer to the `HYBRID_CRYPTO_TEST_DRIVE_GUIDE.md`.
