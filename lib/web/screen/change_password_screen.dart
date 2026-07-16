@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/services/auth/web_auth_service.dart';
+import 'package:sappiire/services/password/password_validator.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
 import 'package:sappiire/web/utils/web_session.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
@@ -34,16 +35,20 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   String? _errorMessage;
   bool _success = false;
 
-  bool get _hasMinLength => _newPasswordController.text.length >= 8;
-  bool get _hasUppercase =>
-      _newPasswordController.text.contains(RegExp(r'[A-Z]'));
-  bool get _hasNumber => _newPasswordController.text.contains(RegExp(r'[0-9]'));
-  bool get _passwordsMatch =>
-      _newPasswordController.text == _confirmPasswordController.text &&
-      _newPasswordController.text.isNotEmpty;
+  /// Incremented on each keystroke to trigger ValueListenableBuilder rebuilds,
+  /// without calling setState on the parent widget.
+  final _refreshCounter = ValueNotifier<int>(0);
+
+  @override
+  void initState() {
+    super.initState();
+    _newPasswordController.addListener(() => _refreshCounter.value++);
+    _confirmPasswordController.addListener(() => _refreshCounter.value++);
+  }
 
   @override
   void dispose() {
+    _refreshCounter.dispose();
     _currentPasswordController.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
@@ -63,14 +68,17 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       return;
     }
 
-    if (!_passwordsMatch) {
+    final pwMatch = _newPasswordController.text == _confirmPasswordController.text &&
+        _confirmPasswordController.text.isNotEmpty;
+    if (!pwMatch) {
       setState(() => _errorMessage = 'New passwords do not match.');
       return;
     }
 
-    if (!_hasMinLength) {
-      setState(
-          () => _errorMessage = 'New password must be at least 8 characters.');
+    final pwValidation = validatePassword(_newPasswordController.text);
+    if (!pwValidation.isValid) {
+      setState(() => _errorMessage =
+          'Password must be at least 8 characters with uppercase, lowercase, number, and special character.');
       return;
     }
 
@@ -254,17 +262,33 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                         hint: 'Enter your new password',
                         obscure: _obscureNew,
                         onToggle: () => setState(() => _obscureNew = !_obscureNew),
-                        onChanged: (_) => setState(() {}),
                       ),
                       const SizedBox(height: 10),
-                      _buildStrengthRow('8+ characters', _hasMinLength),
-                      const SizedBox(height: 4),
-                      _buildStrengthRow(
-                        'Contains uppercase letter',
-                        _hasUppercase,
+                      // Only this small section rebuilds on keystrokes
+                      ValueListenableBuilder<int>(
+                        valueListenable: _refreshCounter,
+                        builder: (context, _, _a) {
+                          final v = validatePassword(_newPasswordController.text);
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              PasswordRequirementRow(label: '8+ characters', met: v.hasMinLength, unmetColor: AppColors.textMuted),
+                              const SizedBox(height: 4),
+                              PasswordRequirementRow(label: 'Uppercase letter', met: v.hasUppercase, unmetColor: AppColors.textMuted),
+                              const SizedBox(height: 4),
+                              PasswordRequirementRow(label: 'Lowercase letter', met: v.hasLowercase, unmetColor: AppColors.textMuted),
+                              const SizedBox(height: 4),
+                              PasswordRequirementRow(label: 'Contains a number', met: v.hasNumber, unmetColor: AppColors.textMuted),
+                              const SizedBox(height: 4),
+                              PasswordRequirementRow(label: 'Special character (!@#\$%^&*)', met: v.hasSpecialChar, unmetColor: AppColors.textMuted),
+                              if (_newPasswordController.text.isNotEmpty) ...[
+                                const SizedBox(height: 8),
+                                PasswordStrengthBar(result: v),
+                              ],
+                            ],
+                          );
+                        },
                       ),
-                      const SizedBox(height: 4),
-                      _buildStrengthRow('Contains a number', _hasNumber),
                       const SizedBox(height: 20),
                       _fieldLabel('Confirm New Password'),
                       const SizedBox(height: 8),
@@ -274,17 +298,27 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                         obscure: _obscureConfirm,
                         onToggle: () =>
                             setState(() => _obscureConfirm = !_obscureConfirm),
-                        onChanged: (_) => setState(() {}),
                       ),
-                      if (_confirmPasswordController.text.isNotEmpty &&
-                          !_passwordsMatch) ...[
-                        const SizedBox(height: 6),
-                        const Text(
-                          'Passwords do not match',
-                          style:
-                              TextStyle(color: AppColors.dangerRed, fontSize: 12),
-                        ),
-                      ],
+                      ValueListenableBuilder<int>(
+                        valueListenable: _refreshCounter,
+                        builder: (context, _, __) {
+                          if (_confirmPasswordController.text.isEmpty) return const SizedBox.shrink();
+                          final match = _newPasswordController.text == _confirmPasswordController.text &&
+                              _confirmPasswordController.text.isNotEmpty;
+                          return Column(
+                            children: [
+                              const SizedBox(height: 6),
+                              Text(
+                                match ? 'Passwords match' : 'Passwords do not match',
+                                style: TextStyle(
+                                  color: match ? AppColors.successGreen : AppColors.dangerRed,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
                       const SizedBox(height: 28),
                       SizedBox(
                         height: 50,
@@ -373,12 +407,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     required String hint,
     required bool obscure,
     required VoidCallback onToggle,
-    ValueChanged<String>? onChanged,
   }) {
     return TextField(
       controller: controller,
       obscureText: obscure,
-      onChanged: onChanged,
       style: const TextStyle(fontSize: 14, color: AppColors.textDark),
       decoration: InputDecoration(
         hintText: hint,
@@ -412,25 +444,4 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       ),
     );
   }
-
-  Widget _buildStrengthRow(String label, bool met) {
-    return Row(
-      children: [
-        Icon(
-          met ? Icons.check_circle : Icons.radio_button_unchecked,
-          size: 14,
-          color: met ? AppColors.successGreen : AppColors.textMuted,
-        ),
-        const SizedBox(width: 6),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: met ? AppColors.successGreen : AppColors.textMuted,
-          ),
-        ),
-      ],
-    );
-  }
-
 }
