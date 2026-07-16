@@ -13,7 +13,7 @@ The mobile identity flow includes:
 1. Username-password sign-in for returning users.
 2. Multi-step signup with profile completion.
 3. Email OTP verification through Supabase Auth pathways.
-4. Phone OTP verification via the `send-phone-otp` Edge Function, which calls the Semaphore SMS API from cloud infrastructure (faster than mobile-initiated calls), verifies the SMS was queued by parsing the Semaphore response, and refreshes the `phone_otp` record with a delete-then-insert to prevent stale code collisions. OTP expiry window is 10 minutes; the mobile countdown timer is 120 seconds.
+4. Phone OTP verification via the `send-phone-otp` Edge Function (`supabase/functions/send-phone-otp/index.ts`), which calls the Semaphore SMS API from cloud infrastructure (faster than mobile-initiated calls), verifies the SMS was queued by parsing the Semaphore response, and refreshes the `phone_otp` record with a delete-then-insert to prevent stale code collisions. OTP expiry window is 10 minutes; the mobile countdown timer is 120 seconds. Verification is handled by the `verify-phone-otp` Edge Function (`supabase/functions/verify-phone-otp/index.ts`), which calls `verify_and_consume_phone_otp` RPC for atomic verification-and-deletion — preventing replay attacks.
 5. Incomplete signup retry support: if a previous signup attempt left an orphaned `user_accounts` record with no `user_field_values`, `checkDuplicateSignup` returns `incomplete: true` with the existing `user_id`, allowing the user to resume without contacting support.
 6. Phone-only signup defers Supabase Auth user creation to the credentials step, using a deterministic synthetic email (`<digits>@sappiire.phone`) so no real email is required.
 7. Password reset services with email and phone-assisted recovery flows.
@@ -33,7 +33,7 @@ Persistent PII values are mapped into `user_field_values` by `field_id`, support
 
 ### 2.3 Encrypted Data-at-Rest Semantics
 
-For protected rows, user field values are persisted with encryption metadata (`iv`, `encryption_version`). The mobile app now retrieves AES keys through the `derive-field-key` Edge Function, which validates the caller's JWT, derives the key using `FIELD_KEY_HMAC_SECRET_V2` in Edge Secrets, and prevents IDOR by verifying record ownership. The derived key is cached only in volatile memory on the device and destroyed upon logout. See [docs/01_QR_Handshake_and_Cryptography.md](docs/01_QR_Handshake_and_Cryptography.md) for the v1-to-v2 comparison.
+For protected rows, user field values are persisted with encryption metadata (`iv`, `encryption_version`). The mobile app now retrieves AES keys through the `derive-field-key` Edge Function (`supabase/functions/derive-field-key/index.ts`), which validates the caller's JWT, derives the key using `FIELD_KEY_HMAC_SECRET_V2` in Edge Secrets, and prevents IDOR by verifying record ownership. The derived key is cached only in volatile memory on the device and destroyed upon logout. See [docs/01_QR_Handshake_and_Cryptography.md](docs/01_QR_Handshake_and_Cryptography.md) for the v1-to-v2 comparison.
 
 ### 2.4 InfoScanner OCR Workflow (Extended Feature)
 
@@ -57,10 +57,10 @@ The mobile app performs session-targeted data transmission by:
    - Legacy plain-text UUID QR codes are accepted for backward compatibility.
 3. Building a filtered payload from user-selected fields.
 4. Packaging encrypted envelope artifacts (`encrypted_payload`, `payload_iv`, `encrypted_aes_key`).
-5. Updating `form_submission` with transport metadata and scanned status.
-6. **Zero-Knowledge Staging:** Encrypted envelope persists in database; decryption occurs in-memory on staff request via `serve-submission-for-review` Edge Function, ensuring no plaintext persistence in `form_submission`.
+5. Sending the envelope to the `decrypt-qr-payload` Edge Function (`supabase/functions/decrypt-qr-payload/index.ts`), which authenticates via JWT, validates envelope completeness, and transitions `form_submission.status` to `'scanned'`. This function does NOT decrypt — decryption is deferred.
+6. **Zero-Knowledge Staging:** Encrypted envelope persists in `form_submission`; decryption occurs in-memory on staff request via `serve-submission-for-review` Edge Function, ensuring no plaintext persistence.
 
-If the session is already expired, the mobile QR controller now treats the transmission result as `expired`, shows an expired-session UI state, and prompts the user to scan again instead of presenting a generic failure.
+If the session is already expired, the mobile QR controller treats the transmission result as `expired`, shows an expired-session UI state, and prompts the user to scan again.
 
 This is the client-side entry point of the hybrid cryptosystem handshake, now including a pre-transmission template guard to prevent cross-template data corruption.
 
@@ -78,7 +78,7 @@ This provides user transparency for data entry intent and prevents accidental lo
 
 ### 2.7 Real-Time Form Template Notifications
 
-Mobile clients subscribe to real-time `form_template_notifications` table broadcasts via the `FormTemplateNotificationService`. Notifications are triggered by database events when staff editors modify form templates in the web builder and include:
+Mobile clients subscribe to real-time `form_template_notifications` table broadcasts via the `FormTemplateNotificationService`. Notifications are triggered by `FormBuilderService` when staff editors modify form templates in the web builder and include:
 
 1. **Template-level events**: `added`, `updated`, `deleted`, `published`, `pushed_to_mobile`, `archived`.
 2. **Field-level events**: `field_added`, `field_updated`, `field_deleted`.
@@ -110,6 +110,7 @@ The **NotificationScreen** provides a centralized view of all form template noti
    - Tap notification to mark as read.
    - "Mark all read" button in app bar for bulk operations.
    - Visual distinction between read (white background) and unread (blue tint) notifications.
+   - Read state persisted in `user_notification_reads` table.
 
 4. **Pull-to-Refresh**: Swipe down to reload notifications from server.
 
@@ -195,9 +196,10 @@ The mobile tier contributes the following controls:
 
 1. Selective field transmission rather than blanket payload sharing.
 2. Hybrid cryptographic payload packaging before transit.
-3. OTP-backed identity verification for sensitive account flows.
-4. At-rest protected field persistence model.
+3. OTP-backed identity verification for sensitive account flows via `send-phone-otp` + `verify-phone-otp` Edge Functions.
+4. At-rest protected field persistence model using `derive-field-key` Edge Function for key derivation.
 5. Timestamped session handoff boundaries through `form_submission` lifecycle states.
+6. Key derivation keys cached only in volatile memory, cleared on sign-out.
 
 ## 5. Manuscript Alignment and Added Capabilities
 
@@ -210,11 +212,11 @@ The mobile tier contributes the following controls:
 ### 5.2 Added Mobile Enhancements
 
 1. InfoScanner OCR-assisted profile capture.
-2. Extended OTP and password recovery workflows.
+2. Extended OTP and password recovery workflows via `send-phone-otp` / `verify-phone-otp` Edge Functions.
 3. Cross-template semantic autofill continuity through canonical field handling.
 4. Unsaved changes detection with form-fingerprint tracking and explicit discard workflow.
 5. Real-time template notifications for field and template lifecycle events, enabling mobile users to be aware of form infrastructure changes.
-6. **Mobile Notification Center**: Dedicated NotificationScreen with expandable notification details, read state management, and pull-to-refresh.
+6. **Mobile Notification Center**: Dedicated NotificationScreen with expandable notification details, read state management (`user_notification_reads`), and pull-to-refresh.
 7. Read-only and computed field visualization with lock-style affordances and distinct colors.
 8. Layered architecture with clean separation of concerns: Controllers (business logic), Screens (UI rendering), Widgets (reusable components), Utilities (shared helpers).
 
@@ -226,5 +228,7 @@ Mobile workflows interact primarily with:
 2. `user_field_values`
 3. `form_submission`
 4. `phone_otp`
+5. `form_template_notifications` (Realtime subscription for template change awareness)
+6. `user_notification_reads` (read state tracking for notifications)
 
 This table footprint reflects the mobile role as secure data producer and controlled transmitter, not final record adjudicator.

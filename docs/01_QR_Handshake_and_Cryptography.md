@@ -119,15 +119,24 @@ The resulting QR transport envelope semantics are represented by:
 
 ### 3.6 Envelope Persistence in `form_submission`
 
-The mobile client updates the targeted active session row with:
+The mobile client sends the encrypted envelope to the `decrypt-qr-payload` Edge Function, which:
 
-1. `encrypted_payload`
-2. `payload_iv`
-3. `encrypted_aes_key`
-4. `transmission_version = 1`
-5. `status = scanned`
-6. `scanned_at` (UTC timestamp)
-7. `user_id` (when available)
+1. Authenticates the requesting user via JWT (`supabase/functions/decrypt-qr-payload/index.ts`, lines 58-76)
+2. Verifies the session exists with `transmission_version=1` (lines 103-110)
+3. Validates `encrypted_payload`, `payload_iv`, and `encrypted_aes_key` are all non-empty (lines 121-124)
+4. Updates the session row with the envelope data only if current status is `'active'` (lines 129-133):
+
+| Column | Value |
+|--------|-------|
+| `encrypted_payload` | Base64 AES-GCM ciphertext |
+| `payload_iv` | Random 12-byte IV (Base64) |
+| `encrypted_aes_key` | RSA-OAEP wrapped AES key (Base64) |
+| `transmission_version` | 1 |
+| `status` | `scanned` |
+| `scanned_at` | UTC timestamp |
+| `user_id` | User identifier (when available) |
+
+The function does NOT decrypt the payload — decryption is deferred to `serve-submission-for-review` when staff open the session for review.
 
 ### 3.7 Zero-Knowledge Staging: On-Demand Edge Decryption
 
@@ -193,3 +202,25 @@ The handshake implements manuscript core requirements:
 3. Secured autofill decryption path through backend function logic.
 4. Controlled transition from encrypted session envelope to dashboard-usable form data.
 5. **Form template mismatch guard**: Pre-transmission validation on mobile prevents data from being sent to the wrong form template.
+
+## 8. Cryptographic Performance Benchmarking
+
+To rigorously validate the computational overhead of the hybrid cryptosystem, the project includes standalone benchmark scripts that measure the exact cryptographic primitives used in production.
+
+### 8.1 Methodology
+
+The performance metrics are gathered by isolating the cryptographic operations from network and database latency:
+- **Server-Side (Deno):** Benchmarks use the native `crypto.subtle` Web Crypto API, identical to the implementation in the Supabase Edge Functions.
+- **Client-Side (Dart):** Benchmarks use the `encrypt` and `pointycastle` packages, identical to the implementation in the Flutter mobile app.
+
+Each benchmark executes a configurable number of iterations (default 1000) using a realistic ~1KB JSON payload, measuring the execution time with sub-millisecond precision (`performance.now()` in Deno and `Stopwatch` in Dart).
+
+### 8.2 Operations Measured
+
+The benchmarks capture the Min, Max, Average, and Median execution times for:
+1. **AES-256-GCM Encryption** (Client & Server at-rest)
+2. **AES-256-GCM Decryption** (Server Zero-Knowledge Staging)
+3. **RSA-2048-OAEP Key Encryption** (Client packaging)
+4. **RSA-2048-OAEP Key Decryption** (Server envelope unwrapping)
+
+These metrics provide empirical evidence that the hybrid cryptography adds negligible overhead to the session handoff and data-at-rest encryption flows. For instructions on running these benchmarks, refer to the `HYBRID_CRYPTO_TEST_DRIVE_GUIDE.md`.
