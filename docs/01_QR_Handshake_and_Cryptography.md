@@ -119,15 +119,24 @@ The resulting QR transport envelope semantics are represented by:
 
 ### 3.6 Envelope Persistence in `form_submission`
 
-The mobile client updates the targeted active session row with:
+The mobile client sends the encrypted envelope to the `decrypt-qr-payload` Edge Function, which:
 
-1. `encrypted_payload`
-2. `payload_iv`
-3. `encrypted_aes_key`
-4. `transmission_version = 1`
-5. `status = scanned`
-6. `scanned_at` (UTC timestamp)
-7. `user_id` (when available)
+1. Authenticates the requesting user via JWT (`supabase/functions/decrypt-qr-payload/index.ts`, lines 58-76)
+2. Verifies the session exists with `transmission_version=1` (lines 103-110)
+3. Validates `encrypted_payload`, `payload_iv`, and `encrypted_aes_key` are all non-empty (lines 121-124)
+4. Updates the session row with the envelope data only if current status is `'active'` (lines 129-133):
+
+| Column | Value |
+|--------|-------|
+| `encrypted_payload` | Base64 AES-GCM ciphertext |
+| `payload_iv` | Random 12-byte IV (Base64) |
+| `encrypted_aes_key` | RSA-OAEP wrapped AES key (Base64) |
+| `transmission_version` | 1 |
+| `status` | `scanned` |
+| `scanned_at` | UTC timestamp |
+| `user_id` | User identifier (when available) |
+
+The function does NOT decrypt the payload — decryption is deferred to `serve-submission-for-review` when staff open the session for review.
 
 ### 3.7 Zero-Knowledge Staging: On-Demand Edge Decryption
 

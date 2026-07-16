@@ -261,17 +261,27 @@ A healthy run should show:
 - `lib/web/controllers/manage_forms_controller.dart`
 
 ### Edge Functions (Zero-Knowledge Staging)
-- `supabase/functions/serve-submission-for-review/index.ts` (on-demand in-memory decryption for staff review)
-- `supabase/functions/decrypt-qr-payload/index.ts` (validation-only, status update)
+- `supabase/functions/serve-submission-for-review/index.ts` (on-demand in-memory decryption for staff review; validates staff auth against `staff_accounts`, unwraps RSA key, decrypts AES-GCM payload, logs to `audit_logs`)
+- `supabase/functions/decrypt-qr-payload/index.ts` (validation-only, status update; authenticates mobile JWT, validates envelope, transitions `form_submission.status` to `'scanned'`)
 
 ### Edge Functions (Client Submissions)
-- `supabase/functions/encrypt-and-save-submission/index.ts` (server-side AES-256-GCM encryption of finalized records)
-- `supabase/functions/decrypt-submission-data/index.ts` (single-record decryption with role-based access control)
-- `supabase/functions/decrypt-submission-batch/index.ts` (batch decryption for applicants screen, 5-10x faster loading)
+- `supabase/functions/encrypt-and-save-submission/index.ts` (server-side AES-256-GCM encryption of finalized records; writes to `client_submissions` with `data_encryption_version=1`; generates intake reference via `next_client_submission_ref` RPC)
+- `supabase/functions/decrypt-submission-data/index.ts` (single-record decryption with role-based access control; validates against `staff_accounts`, logs to `audit_logs`)
+- `supabase/functions/decrypt-submission-batch/index.ts` (batch decryption for applicants screen, 5-10x faster loading; single key import, parallel `Promise.all`, handles version 0/1)
 
 ### Edge Functions (OTP Verification)
-- `supabase/functions/send-phone-otp/index.ts` (generate and store OTP for phone verification)
-- `supabase/functions/verify-phone-otp/index.ts` (validate OTP using RPC)
+- `supabase/functions/send-phone-otp/index.ts` (generate and store OTP for phone verification; rate-limited 3/10min, `crypto.getRandomValues`, Semaphore SMS API, writes to `phone_otp`)
+- `supabase/functions/verify-phone-otp/index.ts` (validate OTP using RPC `verify_and_consume_phone_otp`; atomic verification-and-deletion prevents replay attacks; rate-limited 10/15min)
+
+### Edge Functions (Key Derivation & Name Resolution)
+- `supabase/functions/derive-field-key/index.ts` (server-side HMAC-SHA256 key derivation for `user_field_values` encryption; JWT validation, volatile memory cache only)
+- `supabase/functions/resolve-applicant-names/index.ts` (server-side decryption of applicant names for dashboard display; queries `form_fields` by `canonical_field_key`, decrypts `user_field_values`, keys never reach browser)
+
+### Edge Functions (Staff Governance)
+- `supabase/functions/manage-staff-account/index.ts` (17 action types for staff lifecycle; centralizes all `staff_accounts`/`staff_profiles` access behind Edge Function to bypass RLS; includes bcrypt password hashing, rate-limited login, emergency `reset_superadmin_password`)
+
+### Key Registry Table
+- `app_rsa_keypairs` stores versioned RSA public keys (`key_version`, `public_key_pem`, `is_active`, `rotated_at`). Private key (`RSA_PRIVATE_KEY_PEM`) held exclusively in Edge Secrets. Public key distributed via `get_active_rsa_public_key` RPC.
 
 ### Main Entry Point
 - `lib/main.dart`

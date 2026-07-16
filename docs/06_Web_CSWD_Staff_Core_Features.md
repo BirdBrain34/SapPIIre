@@ -15,7 +15,7 @@ The web tier enforces role-sensitive authentication behavior:
 3. Password hash verification and account-state gating (`is_active`, `account_status`).
 4. First-login onboarding flow requiring credential setup.
 
-Role and state controls are anchored in `staff_accounts` and profile enrichment in `staff_profiles`.
+Role and state controls are anchored in `staff_accounts` and profile enrichment in `staff_profiles`. All staff table access is mediated through the `manage-staff-account` Edge Function (`supabase/functions/manage-staff-account/index.ts`) which bypasses RLS via `SUPABASE_SERVICE_ROLE_KEY`.
 
 ### 2.2 Staff Onboarding, Admin Creation, and Governance (Extended Feature)
 
@@ -23,12 +23,12 @@ The staff governance pipeline includes:
 
 1. Pending account registration with `requested_role` intake.
 2. Staff approval and activation/deactivation in Manage Staff, with role display handled as a fixed badge rather than an editable dropdown.
-2. Approval and rejection workflows for elevated access.
-3. Superadmin-level direct creation of admin accounts.
-4. Account activation, deactivation, reactivation, and role-update controls.
-5. OTP-assisted new staff setup and account recovery flows.
+3. Approval and rejection workflows for elevated access.
+4. Superadmin-level direct creation of admin accounts.
+5. Account activation, deactivation, reactivation, and role-update controls.
+6. OTP-assisted new staff setup and account recovery flows.
 
-This capability directly supports institutional staffing realities and reduces manual account-administration overhead.
+All operations route through the `manage-staff-account` Edge Function actions: `create_pending`, `create_admin`, `update_account`, `fetch_accounts`, `fetch_staff_batch`.
 
 ### 2.3 Session-Oriented Intake Operations
 
@@ -36,14 +36,14 @@ The Manage Forms workflow orchestrates secure intake sessions:
 
 1. Template selection and session creation in `form_submission`.
 2. QR generation for client pairing — the QR code now encodes a JSON payload (`{"sessionId": "...", "templateId": "..."}`) binding the session to the selected form template.
-3. Realtime ingestion of mobile-transmitted payload state.
-4. **Zero-Knowledge Staging:** On-demand decryption of encrypted envelope via `serve-submission-for-review` Edge Function, delivering plaintext in-memory to dashboard without database persistence.
+3. Mobile payload validation via the `decrypt-qr-payload` Edge Function (`supabase/functions/decrypt-qr-payload/index.ts`), which authenticates the mobile user's JWT, validates envelope completeness, and transitions `form_submission.status` to `'scanned'`.
+4. **Zero-Knowledge Staging:** On-demand decryption of encrypted envelope via `serve-submission-for-review` Edge Function (`supabase/functions/serve-submission-for-review/index.ts`), delivering plaintext in-memory to dashboard without database persistence. Staff authorization validated against `staff_accounts` (role, is_active, account_status). Session expiry returns HTTP 410.
 5. Autofilled form review and controlled finalization.
 6. Session closure and display reset behaviors.
 
 **Form Template Mismatch Prevention:** The QR's embedded `templateId` enables the mobile client to validate that the client's selected form matches the staff's active session template before any data is transmitted. If a mismatch is detected, transmission is blocked with a user-facing warning, and the camera is re-activated for re-scanning. Legacy single-UUID QR codes continue to work for backward compatibility.
 
-**Session Expiry Handling:** The backend now returns HTTP 410 with `reason = 'session_expired'` when `expires_at` has elapsed, so staff workflows and diagnostics can distinguish stale sessions from generic decryption failures.
+**Session Expiry Handling:** The `serve-submission-for-review` Edge Function returns HTTP 410 with `reason = 'session_expired'` when `expires_at` has elapsed, so staff workflows and diagnostics can distinguish stale sessions from generic decryption failures.
 
 This is the operational heart of CSWD intake execution.
 
@@ -52,8 +52,10 @@ This is the operational heart of CSWD intake execution.
 The web layer consumes backend-decrypted payload data through the Zero-Knowledge Staging architecture:
 
 1. When a session with `status='scanned'` and empty `form_data` is detected, the dashboard controller (`ManageFormsController`) invokes on-demand decryption.
-2. The `serve-submission-for-review` Edge Function unwraps the RSA-encrypted AES key, decrypts the payload in-memory, and returns plaintext JSON in the HTTP response, or returns HTTP 410 `session_expired` when the session lifetime has elapsed.
+2. The `serve-submission-for-review` Edge Function (`supabase/functions/serve-submission-for-review/index.ts`) validates staff authorization against `staff_accounts`, unwraps the RSA-encrypted AES key using `RSA_PRIVATE_KEY_PEM` from Edge Secrets, decrypts the payload in-memory, and returns plaintext JSON in the HTTP response, or returns HTTP 410 `session_expired` when the session lifetime has elapsed. Audit event logged to `audit_logs`.
 3. Staff perform quality review and final record commitment into `client_submissions`.
+
+**Cross-User Name Resolution (`resolve-applicant-names` Edge Function):** When staff view applicant records, the `resolve-applicant-names` Edge Function (`supabase/functions/resolve-applicant-names/index.ts`) decrypts applicant first/middle/last names from `user_field_values` server-side. Staff never need encryption keys client-side. The function validates staff authorization against `staff_accounts`, queries `form_fields` for field IDs matching `canonical_field_key IN ('first_name', 'middle_name', 'last_name')`, fetches encrypted values, derives the HMAC-SHA256 key server-side, and returns plaintext names ephemerally.
 
 Critical security guarantee: Plaintext is never written back to `form_submission`. The encrypted envelope remains the authoritative storage form until finalization.
 
@@ -67,7 +69,7 @@ The Applicants workflow and dashboard services provide:
 2. Editable record review within role-governed boundaries.
 3. Applicant-level history and form-type views.
 4. Intake reference continuity via `intake_reference` metadata.
-5. **Batch decryption optimization**: The applicants screen now loads 5-10x faster using the `decrypt-submission-batch` Edge Function, which decrypts up to 20 records per request in parallel with a single key import operation.
+5. **Batch decryption optimization**: The applicants screen now loads 5-10x faster using the `decrypt-submission-batch` Edge Function (`supabase/functions/decrypt-submission-batch/index.ts`), which decrypts up to 20 records per request in parallel with a single key import operation. Staff role validated once per batch.
 
 ### 2.6 Dynamic Form Builder and Runtime Evolution
 
@@ -93,7 +95,7 @@ This ensures form editors have explicit control over template publication withou
 
 ### 2.6.2 Template and Field Notification Broadcasting
 
-When staff editors modify form templates, database triggers populate the `form_template_notifications` table with events including:
+When staff editors modify form templates, `FormBuilderService.saveTemplateStructure()` (lines 484-581) populates the `form_template_notifications` table with events including:
 
 1. **Template lifecycle events**: `added`, `updated`, `deleted`, `published`, `pushed_to_mobile`, `archived`.
 2. **Field lifecycle events**: `field_added`, `field_updated`, `field_deleted`.
@@ -103,7 +105,7 @@ The `FormTemplateNotificationService` broadcasts these events via Supabase Realt
 - Mobile users are notified in near-real-time when forms they are viewing or about to use are modified.
 - Web editors receive notifications confirming their publishing and push actions.
 - Clients can choose to reload the form manifest immediately via a RELOAD button on the notification.
-- The online notification path is stable end-to-end, so live clients receive updates without stale builder state.
+- Read state is tracked per user in `user_notification_reads`.
 
 ### 2.7 Conditional Logic and Computed Runtime
 
@@ -123,7 +125,7 @@ The dashboard includes workload and intake analytics modules (counts, trends, di
 
 4. **Time-Frame Filtering**: Dashboard supports time-based filtering for workload analysis (work in progress).
 
-5. **Batch Data Processing**: Dashboard analytics now use `batchDecryptSubmissions()` for efficient bulk record loading.
+5. **Batch Data Processing**: Dashboard analytics now use `batchDecryptSubmissions()` for efficient bulk record loading via `decrypt-submission-batch` Edge Function.
 
 6. **Chart Simplification**: The dashboard keeps only line, horizontal bar, and bar chart types, removing unused chart widgets for a cleaner analytics surface.
 
@@ -139,10 +141,10 @@ The customer display screen now also includes an applicant mirror form so the pu
 
 Finalized applicant records written to `client_submissions` are encrypted server-side using AES-256-GCM:
 
-1. When staff finalize a session by calling `_finalizeEntry()`, the form data is sent to the `encrypt-and-save-submission` Edge Function.
+1. When staff finalize a session by calling `_finalizeEntry()`, the form data is sent to the `encrypt-and-save-submission` Edge Function (`supabase/functions/encrypt-and-save-submission/index.ts`).
 2. The Edge Function generates a random 12-byte IV and encrypts the JSON payload using AES-256-GCM with a `SERVER_AES_KEY` stored in Supabase Edge Secrets.
 3. The encrypted data is stored in `client_submissions.data` (Base64 encoded), with the IV stored in `data_iv` and `data_encryption_version` set to 1.
-4. When staff need to retrieve the finalized record, the `decryptSubmissionData()` method calls the `decrypt-submission-data` Edge Function, which verifies staff authorization and returns plaintext JSON.
+4. When staff need to retrieve the finalized record, the `decryptSubmissionData()` method calls the `decrypt-submission-data` Edge Function (`supabase/functions/decrypt-submission-data/index.ts`), which verifies staff authorization against `staff_accounts` and returns plaintext JSON.
 5. The decryption is transparent to downstream rendering—staff view plaintext records in the Applicants screen as before.
 
 This provides a server-side encryption layer protecting finalized applicant records at rest, complementing the client-side encryption for user PII in `user_field_values` and the hybrid transport encryption in `form_submission`.
@@ -159,7 +161,9 @@ Audit log views provide privileged inspection of high-impact events (auth, staff
    - `severity`: `info`
    - Actor ID and target submission ID for forensic traceability.
 
-2. **Action Type Filtering**: Audit logs screen includes filter dropdown to narrow logs by specific action types, improving investigative efficiency.
+2. **Session Preview Logging**: The `serve-submission-for-review` Edge Function logs `submission_preview_decrypted` events to `audit_logs` (lines 202-210).
+
+3. **Action Type Filtering**: Audit logs screen includes filter dropdown to narrow logs by specific action types, improving investigative efficiency.
 
 ## 3. Web Architecture: Separation of Concerns
 
@@ -227,12 +231,12 @@ The web tier contributes the following controls:
 3. OTP-assisted staff setup and reset mechanisms.
 4. Session lifecycle containment through `form_submission` status and expiry controls.
 5. Audit logging for sensitive administrative actions.
+6. Server-side AES-256-GCM encryption of finalized records in `client_submissions`.
+7. Server-side name resolution via `resolve-applicant-names` Edge Function — encryption keys never reach the browser.
 
 ### 4.1 Staff Table RLS Architecture
 
 `staff_accounts`, `staff_profiles`, and `staff_display_view` are protected by restrictive RLS policies. Direct table access from `anon` and `authenticated` is denied, and all staff data operations are mediated through the `manage-staff-account` Edge Function using `SUPABASE_SERVICE_ROLE_KEY`.
-
-
 
 | Dart File | Edge Function Actions Used |
 |---|---|
@@ -244,12 +248,10 @@ The web tier contributes the following controls:
 
 **Key security properties:**
 - The anon key shipped with the client cannot read or write any staff table directly
-
-- Password hashes are still validated client-side (SHA-256), but the hash is only retrievable via the Edge Function's `login` action
+- Password hashes are validated server-side via bcrypt in the `manage-staff-account` Edge Function
 - Account creation includes automatic rollback if profile insertion fails
 - `staff_accounts`, `staff_profiles`, and `staff_display_view` are protected by restrictive RLS policies
 - All access to staff tables is mediated through the `manage-staff-account` Edge Function using `SUPABASE_SERVICE_ROLE_KEY`
-
 
 ## 5. Manuscript Alignment and Added Capabilities
 
@@ -269,7 +271,7 @@ The web tier contributes the following controls:
 6. Client submissions server-side AES-256-GCM encryption for finalized applicant records.
 7. **Batch decryption optimization**: 5-10x faster applicants screen loading via `decrypt-submission-batch` Edge Function.
 8. Audit log observability with submission decryption tracking and action type filtering.
-9. **Enhanced dashboard analytics**: Worker drill-down, client search, configurable chart elevation, time-frame filtering, batch data processing, and chart simplification.
+9. **Enhanced dashboard analytics**: Worker drill-down, client search, configurable card elevation, time-frame filtering, batch data processing, and chart simplification.
 10. Layered architecture with clean separation of concerns: Controllers (business logic), Screens (UI rendering), Components (analytics/chart), Widgets (reusable UI), Utilities (shared helpers).
 
 ## 6. Primary Data Touchpoints
@@ -287,5 +289,11 @@ Web workflows interact primarily with:
 9. `form_field_conditions`
 10. `display_sessions`
 11. `audit_logs`
+12. `form_template_notifications` (write via `FormBuilderService`, read via Realtime)
+13. `user_notification_reads` (read state tracking)
+14. `dashboard_widget_configs` (chart configuration)
+15. `dashboard_card_settings` (card elevation preferences)
+16. `app_rsa_keypairs` (via `get_active_rsa_public_key` RPC for public key distribution)
+17. `user_field_values` (via `resolve-applicant-names` Edge Function for name resolution)
 
 This table footprint reflects the web role as intake adjudicator, governance surface, and system configuration authority.

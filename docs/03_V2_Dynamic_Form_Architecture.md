@@ -109,6 +109,8 @@ This positions the system as a configurable intake platform rather than a single
 
 ## 7. Governance Notes from Current Schema Context
 
-1. Template status check constraints currently include `draft`, `published`, and `pushed_to_mobile`; if archival states are required in production workflows, the status domain should be explicitly expanded.
-2. Dynamic metadata changes should be audited with actor attribution to sustain administrative accountability.
+1. Template status check constraints currently include `draft`, `published`, `pushed_to_mobile`, and `archived`; the `FormBuilderService.archiveTemplate()` method (line 717) transitions templates to `archived` status. The `form_template_notifications` table broadcasts these lifecycle events to all connected clients via Supabase Realtime.
+2. Dynamic metadata changes should be audited with actor attribution to sustain administrative accountability. The `FormBuilderService.saveTemplateStructure()` method (lines 484-581) emits field-level notifications (`field_added`, `field_updated`, `field_deleted`) to `form_template_notifications` for each changed field.
 3. Condition and formula validation tooling is recommended before publication to prevent runtime rule conflicts.
+4. The `form_template_notifications` table stores template and field lifecycle events consumed by `FormTemplateNotificationService` (`lib/services/form_template_notification_service.dart`) on both mobile and web clients via Realtime subscriptions.
+5. The `user_notification_reads` table tracks per-user read state for notifications, enabling unread badge counts and read/unread visual distinction in the mobile Notification Center.

@@ -18,6 +18,8 @@ This partitioning supports controlled data progression from user input, to encry
 
 `app_rsa_keypairs` stores versioned public keys (`key_version`, `public_key_pem`, `is_active`, `rotated_at`). The table is explicitly public-key oriented; private decryption material remains outside relational storage in Edge secrets.
 
+The active public key is distributed to mobile clients via the `get_active_rsa_public_key` RPC, called by `HybridCryptoService.fetchAndCacheRsaPublicKey()` (`lib/services/crypto/hybrid_crypto_service.dart`, line 198). The corresponding private key (`RSA_PRIVATE_KEY_PEM`) is held exclusively in Supabase Edge Secrets and is used only by the `serve-submission-for-review` Edge Function during in-memory decryption.
+
 ### 2.2 PII at Rest: `user_field_values`
 
 `user_field_values` stores mobile-sourced field values by (`user_id`, `field_id`) with cryptographic metadata:
@@ -29,7 +31,18 @@ This partitioning supports controlled data progression from user input, to encry
 
 Foreign-key linkage to `form_fields(field_id)` binds values to dynamic metadata definitions.
 
-The application derives protection keys through the `derive-field-key` Edge Function and stores the resulting ciphertext metadata in the row alongside the encrypted value.
+**Key Derivation (`derive-field-key` Edge Function):** The mobile client calls `derive-field-key` (`supabase/functions/derive-field-key/index.ts`) to obtain a per-user AES-256 key. The function:
+1. Validates the requesting user's JWT via `supabase.auth.getUser(token)` (line 48) — prevents impersonation
+2. Derives the key via `HMAC-SHA256(FIELD_KEY_HMAC_SECRET_V2, userId)` (lines 59-75)
+3. Returns the key in the HTTP response — never persists it to any database table
+4. The client caches the key in volatile memory (`HybridCryptoService._fieldKeyCache`) and clears it on sign-out
+
+**Server-Side Name Resolution (`resolve-applicant-names` Edge Function):** For dashboard display, staff need to see applicant names without having access to encryption keys. The `resolve-applicant-names` Edge Function (`supabase/functions/resolve-applicant-names/index.ts`) performs server-side decryption:
+1. Validates staff authorization against `staff_accounts` (lines 118-121)
+2. Queries `form_fields` for field IDs matching `canonical_field_key IN ('first_name', 'middle_name', 'last_name')` (lines 162-163)
+3. Fetches encrypted values from `user_field_values` for the requested user IDs (lines 193-198)
+4. Derives the same HMAC-SHA256 key server-side and decrypts (lines 251-259)
+5. Returns plaintext names in the HTTP response — encryption keys never reach the browser
 
 ### 2.3 Transport Session Layer: `form_submission`
 
@@ -39,7 +52,22 @@ The application derives protection keys through the `derive-field-key` Edge Func
 2. `expires_at` defaults to 10-minute session validity.
 3. Hybrid transport columns include `encrypted_payload`, `payload_iv`, `encrypted_aes_key`, and `transmission_version`.
 4. Staff linkage is modeled through optional `user_id` foreign key (not enforced in schema).
-5. **Zero-Knowledge Staging:** Decryption occurs strictly in-memory via the `serve-submission-for-review` Edge Function during the request lifecycle, delivering plaintext ephemerally to the dashboard without any database persistence.
+
+**QR Session Validation (`decrypt-qr-payload` Edge Function):** When the mobile client transmits data to a session, the `decrypt-qr-payload` Edge Function (`supabase/functions/decrypt-qr-payload/index.ts`) validates the transmission:
+1. Authenticates the requesting user via JWT (lines 58-76)
+2. Verifies the session exists and has `transmission_version=1` (lines 103-110)
+3. Checks that `encrypted_payload`, `payload_iv`, and `encrypted_aes_key` are all non-empty (lines 121-124)
+4. Updates `form_submission.status` to `'scanned'` and sets `scanned_at` — but only if current status is `'active'` (lines 129-133)
+5. Does NOT decrypt the payload — decryption is deferred to `serve-submission-for-review`
+
+**Zero-Knowledge Staging (`serve-submission-for-review` Edge Function):** When staff open a session for review, the `serve-submission-for-review` Edge Function (`supabase/functions/serve-submission-for-review/index.ts`) performs in-memory decryption:
+1. Validates staff authorization against `staff_accounts` (role, is_active, account_status) (lines 89-108)
+2. Fetches the encrypted envelope from `form_submission` (lines 111-115)
+3. Checks `expires_at` — returns HTTP 410 if expired (lines 123-126)
+4. Unwraps the AES key using RSA-OAEP with `RSA_PRIVATE_KEY_PEM` from Edge Secrets (lines 143-170)
+5. Decrypts the payload with AES-GCM (lines 173-195)
+6. Returns plaintext JSON ephemerally in the HTTP response — **never writes plaintext to the database** (line 217)
+7. Logs the decryption event to `audit_logs` (lines 202-210)
 
 ### 2.4 Finalized Record Layer: `client_submissions`
 
@@ -54,7 +82,8 @@ The application derives protection keys through the `derive-field-key` Edge Func
    - The encryption algorithm is AES-256-GCM, with symmetric key (`SERVER_AES_KEY`) stored in Supabase Edge Secrets.
    - `data_encryption_version` is set to 1 to indicate encryption status and enable future versioning.
 5. **Decryption Access Control:** The `decrypt-submission-data` Edge Function authorizes decryption requests based on staff role (`admin`, `superadmin`).
-6. This architecture provides a defense-in-depth layer protecting finalized applicant records at rest, complementing client-side field encryption in `user_field_values` and hybrid transport encryption in `form_submission`.
+6. **Batch Decryption (`decrypt-submission-batch` Edge Function):** For dashboard analytics, the `decrypt-submission-batch` Edge Function (`supabase/functions/decrypt-submission-batch/index.ts`) decrypts up to 20 submissions in a single call with one key import. It validates staff role once (lines 66-78), fetches all rows in one query (lines 82-85), imports the AES key once (lines 98-101), and decrypts in parallel via `Promise.all` (lines 105-114). Handles both version 0 (plaintext) and version 1 (encrypted) records transparently (lines 107-113).
+7. This architecture provides a defense-in-depth layer protecting finalized applicant records at rest, complementing client-side field encryption in `user_field_values` and hybrid transport encryption in `form_submission`.
 
 ### 2.5 Dynamic Metadata Layer
 
@@ -81,7 +110,20 @@ For web analytics presentation, `dashboard_widget_configs` and `dashboard_card_s
 
 Complementary verification tables:
 
-1. `phone_otp` for time-bounded mobile OTP.
+1. `phone_otp` for time-bounded mobile OTP with atomic consumption via the `verify_and_consume_phone_otp` RPC.
+
+**OTP Generation (`send-phone-otp` Edge Function):** The `send-phone-otp` Edge Function (`supabase/functions/send-phone-otp/index.ts`) handles SMS-based phone verification:
+1. Rate-limits requests to 3 per 10 minutes per phone number (in-memory store, lines 12-28)
+2. Generates a cryptographically secure 6-digit OTP via `crypto.getRandomValues()` (line 35)
+3. Sends the OTP via Semaphore SMS API (lines 82-89)
+4. Stores the OTP in `phone_otp` with a 10-minute expiry (`expires_at`) (lines 136-142)
+5. Deletes any previous OTP for the same phone before inserting (lines 126-129)
+
+**OTP Verification (`verify-phone-otp` Edge Function):** The `verify-phone-otp` Edge Function (`supabase/functions/verify-phone-otp/index.ts`) handles verification:
+1. Rate-limits verification attempts to 10 per 15 minutes per phone (lines 10-27)
+2. Calls the `verify_and_consume_phone_otp(p_phone, p_otp)` RPC which atomically checks the OTP and deletes the row in a single transaction (lines 63-67)
+3. Returns success/failure — the RPC's atomicity prevents replay attacks since the OTP row is consumed on first successful verification
+4. Rate limiting at both the generation and verification stages provides defense against brute-force attacks
 
 ### 2.7 Audit Domain
 
