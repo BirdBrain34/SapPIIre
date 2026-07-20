@@ -34,7 +34,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   String? _infoMessage;
   String? _verifiedCswdId;
   final RegExp _emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
-  final RegExp _otpRegex = RegExp(r'^\d{6,8}$');
+  final RegExp _otpRegex = RegExp(r'^\d{6}$');
 
   @override
   void dispose() {
@@ -89,7 +89,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     if (!_otpRegex.hasMatch(_otpController.text.trim())) {
       setState(
         () => _errorMessage =
-            'Enter the OTP code from your email (6 to 8 digits).',
+            'Enter the 6-digit code from your email.',
       );
       return;
     }

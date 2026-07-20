@@ -14,21 +14,6 @@ class PasswordResetService {
   Future<Map<String, dynamic>> sendEmailOtp(String email) async {
     try {
       final normalizedEmail = email.trim();
-      final account = await _supabase
-          .from('user_accounts')
-          .select('user_id, email, is_active')
-          .eq('email', normalizedEmail)
-          .maybeSingle();
-
-      if (account == null) {
-        return {
-          'success': false,
-          'message': 'No account found with that email.',
-        };
-      }
-      if (account['is_active'] == false) {
-        return {'success': false, 'message': 'This account is deactivated.'};
-      }
 
       await _supabase.auth.signInWithOtp(
         email: normalizedEmail,
@@ -37,8 +22,12 @@ class PasswordResetService {
 
       return {
         'success': true,
-        'user_id': account['user_id'],
-        'email': account['email'],
+        'email': normalizedEmail,
+      };
+    } on AuthException catch (e) {
+      return {
+        'success': false,
+        'message': e.message,
       };
     } catch (e) {
       return {
@@ -88,44 +77,7 @@ class PasswordResetService {
 
   Future<Map<String, dynamic>> sendPhoneOtp(String phone) async {
     try {
-      final phoneRows = await _supabase
-          .from('user_field_values')
-          .select('user_id, field_value')
-          .eq('field_value', phone.trim())
-          .limit(1)
-          .maybeSingle();
-
-      if (phoneRows == null) {
-        return {
-          'success': false,
-          'message': 'No account found with that phone number.',
-        };
-      }
-
-      final resolvedUserId = phoneRows['user_id']?.toString();
-      if (resolvedUserId == null || resolvedUserId.isEmpty) {
-        return {
-          'success': false,
-          'message': 'No account found with that phone number.',
-        };
-      }
-
-      final account = await _supabase
-          .from('user_accounts')
-          .select('email')
-          .eq('user_id', resolvedUserId)
-          .maybeSingle();
-
-      final sendResult = await _supabaseService.sendPhoneOtp(phone.trim());
-      if (sendResult['success'] != true) {
-        return sendResult;
-      }
-
-      return {
-        'success': true,
-        'user_id': resolvedUserId,
-        'email': account?['email'],
-      };
+      return await _supabaseService.sendPhoneOtp(phone.trim());
     } catch (e) {
       return {'success': false, 'message': 'Error: ${e.toString()}'};
     }

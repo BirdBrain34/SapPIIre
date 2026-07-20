@@ -35,7 +35,7 @@ class _NewStaffSetupScreenState extends State<NewStaffSetupScreen> {
   final _refreshCounter = ValueNotifier<int>(0);
 
   final RegExp _emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
-  final RegExp _otpRegex = RegExp(r'^\d{6,8}$');
+  final RegExp _otpRegex = RegExp(r'^\d{6}$');
 
   PasswordValidationResult get _passwordValidation =>
       validatePassword(_newPasswordController.text);
@@ -103,7 +103,7 @@ Future<void> _handleContinueFromEmail() async {
     if (!_otpRegex.hasMatch(_otpController.text.trim())) {
       setState(
         () => _errorMessage =
-            'Enter the OTP code from your email (6 to 8 digits).',
+            'Enter the 6-digit code from your email.',
       );
       return;
     }
