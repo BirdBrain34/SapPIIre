@@ -25,6 +25,9 @@ const kAuditTemplatePublished = 'template_published';
 const kAuditTemplatePushed = 'template_pushed_to_mobile';
 const kAuditTemplateArchived = 'template_archived';
 const kAuditTemplateDeleted = 'template_deleted';
+const kAuditTemplateSubmittedForApproval = 'template_submitted_for_approval';
+const kAuditTemplateApproved = 'template_approved';
+const kAuditTemplateRejected = 'template_rejected';
 
 const kCategoryAuth = 'auth';
 const kCategorySession = 'session';

@@ -774,6 +774,34 @@ class FormBuilderScreenController extends ChangeNotifier {
     return success;
   }
 
+  Future<bool> submitForApproval() async {
+    if (activeTemplateId == null) return false;
+
+    final success = await _service.submitForApproval(
+      activeTemplateId!,
+      cswdId,
+    );
+    if (_disposed) return success;
+    if (success) {
+      formStatus = 'pending_approval';
+      notifyListeners();
+      await loadTemplateList();
+
+      await AuditLogService().log(
+        actionType: kAuditTemplateSubmittedForApproval,
+        category: kCategoryTemplate,
+        severity: kSeverityInfo,
+        actorId: cswdId,
+        actorName: displayName,
+        actorRole: role,
+        targetType: 'form_template',
+        targetId: activeTemplateId,
+        targetLabel: formName,
+      );
+    }
+    return success;
+  }
+
   Future<bool> publishTemplate() async {
     if (activeTemplateId == null) return false;
 
@@ -795,6 +823,50 @@ class FormBuilderScreenController extends ChangeNotifier {
         targetId: activeTemplateId,
         targetLabel: formName,
       );
+    }
+    return success;
+  }
+
+  Future<bool> approvePendingTemplate() async {
+    if (activeTemplateId == null) return false;
+
+    final success = await _service.approveTemplate(
+      activeTemplateId!,
+      cswdId,
+    );
+    if (_disposed) return success;
+    if (success) {
+      formStatus = 'published';
+      notifyListeners();
+      await loadTemplateList();
+
+      await AuditLogService().log(
+        actionType: kAuditTemplateApproved,
+        category: kCategoryTemplate,
+        severity: kSeverityInfo,
+        actorId: cswdId,
+        actorName: displayName,
+        actorRole: role,
+        targetType: 'form_template',
+        targetId: activeTemplateId,
+        targetLabel: formName,
+      );
+    }
+    return success;
+  }
+
+  Future<bool> rejectPendingTemplate(String reason) async {
+    if (activeTemplateId == null) return false;
+
+    final success = await _service.rejectTemplate(
+      activeTemplateId!,
+      reason,
+    );
+    if (_disposed) return success;
+    if (success) {
+      formStatus = 'draft';
+      notifyListeners();
+      await loadTemplateList();
     }
     return success;
   }

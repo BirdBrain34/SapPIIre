@@ -31,6 +31,12 @@ FormStatusDescriptor statusDescriptor(String formStatus) {
       description: 'Hidden from admins & mobile. Data preserved.',
       icon: Icons.archive_outlined,
     ),
+    'pending_approval' => (
+      color: Colors.deepPurple,
+      label: 'PENDING APPROVAL',
+      description: 'Awaiting superadmin approval before publishing',
+      icon: Icons.hourglass_empty,
+    ),
     _ => (
       color: Colors.orange,
       label: 'DRAFT',

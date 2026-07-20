@@ -29,6 +29,7 @@ class FormBuilderTemplateListPanel extends StatelessWidget {
         TemplateListFilter.archived => isArchived,
         TemplateListFilter.draft => status == 'draft',
         TemplateListFilter.published => status == 'published',
+        TemplateListFilter.pendingApproval => status == 'pending_approval',
         TemplateListFilter.active => isActive && !isArchived,
         TemplateListFilter.all => true,
       };
@@ -131,6 +132,17 @@ class FormBuilderTemplateListPanel extends StatelessWidget {
                   },
                 ),
                 ChoiceChip(
+                  label: const Text('Pending'),
+                  selected:
+                      controller.templateListFilter ==
+                      TemplateListFilter.pendingApproval,
+                  onSelected: (_) {
+                    controller.templateListFilter =
+                        TemplateListFilter.pendingApproval;
+                    controller.markChanged();
+                  },
+                ),
+                ChoiceChip(
                   label: const Text('Archived'),
                   selected:
                       controller.templateListFilter ==
@@ -171,6 +183,7 @@ class FormBuilderTemplateListPanel extends StatelessWidget {
       TemplateListFilter.active => 'No active templates',
       TemplateListFilter.draft => 'No draft templates',
       TemplateListFilter.published => 'No published templates',
+      TemplateListFilter.pendingApproval => 'No pending approval templates',
       TemplateListFilter.all => 'No templates yet',
     };
 
@@ -206,6 +219,7 @@ class FormBuilderTemplateListPanel extends StatelessWidget {
       'published' => (Colors.blue, 'Published'),
       'pushed_to_mobile' => (Colors.green, 'Live'),
       'archived' => (Colors.grey, 'Archived'),
+      'pending_approval' => (Colors.deepPurple, 'Pending'),
       _ => (Colors.orange, 'Draft'),
     };
 

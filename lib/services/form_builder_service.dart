@@ -134,7 +134,8 @@ class FormBuilderService {
             'template_id, form_name, form_desc, is_active, '
             'status, created_by, published_at, pushed_to_mobile_at, '
             'form_code, reference_prefix, reference_format, requires_reference, '
-            'theme_config',
+            'theme_config, submitted_for_approval_by, submitted_for_approval_at, '
+            'approved_by, approved_at, rejected_at, rejection_reason',
           )
           .order('form_name', ascending: true);
       return List<Map<String, dynamic>>.from(res).map((row) {
@@ -163,6 +164,8 @@ class FormBuilderService {
             theme_config, created_by, published_at, pushed_to_mobile_at,
             form_code, reference_prefix, reference_format, requires_reference,
             popup_enabled, popup_subtitle, popup_description,
+            submitted_for_approval_by, submitted_for_approval_at,
+            approved_by, approved_at, rejected_at, rejection_reason,
             form_sections(
               section_id, template_id, section_name, section_desc,
               section_order, is_collapsible
@@ -705,6 +708,151 @@ class FormBuilderService {
       lastActionError = e.toString();
       debugPrint('[FormBuilderService/unpublishTemplate] Error: $e');
       return false;
+    }
+  }
+
+  // ================================================================
+  // APPROVAL WORKFLOW
+  // ================================================================
+
+  /// Submit a draft template for superadmin approval.
+  /// Sets status='pending_approval' and records who submitted it.
+  Future<bool> submitForApproval(String templateId, String submittedBy) async {
+    lastActionError = null;
+    try {
+      final templateData = await _supabase
+          .from('form_templates')
+          .select('form_name')
+          .eq('template_id', templateId)
+          .maybeSingle();
+      final formName = templateData?['form_name'] as String? ?? 'Untitled Form';
+
+      await _supabase
+          .from('form_templates')
+          .update({
+            'status': 'pending_approval',
+            'is_active': false,
+            'submitted_for_approval_by': submittedBy,
+            'submitted_for_approval_at': DateTime.now().toIso8601String(),
+            'approved_by': null,
+            'approved_at': null,
+            'rejected_at': null,
+            'rejection_reason': null,
+          })
+          .eq('template_id', templateId);
+      await _setLegacyArchiveFlag(templateId, archived: false);
+
+      await _insertNotification(
+        templateId: templateId,
+        templateName: formName,
+        changeType: 'submitted_for_approval',
+        changeSummary: '"$formName" has been submitted for approval.',
+        details: {'submitted_by': submittedBy},
+      );
+
+      return true;
+    } catch (e) {
+      lastActionError = e.toString();
+      debugPrint('[FormBuilderService/submitForApproval] Error: $e');
+      return false;
+    }
+  }
+
+  /// Approve a pending template. Sets status='published', is_active=true.
+  Future<bool> approveTemplate(String templateId, String approverId) async {
+    lastActionError = null;
+    try {
+      final templateData = await _supabase
+          .from('form_templates')
+          .select('form_name')
+          .eq('template_id', templateId)
+          .maybeSingle();
+      final formName = templateData?['form_name'] as String? ?? 'Untitled Form';
+
+      await _supabase
+          .from('form_templates')
+          .update({
+            'status': 'published',
+            'is_active': true,
+            'published_at': DateTime.now().toIso8601String(),
+            'approved_by': approverId,
+            'approved_at': DateTime.now().toIso8601String(),
+            'rejected_at': null,
+            'rejection_reason': null,
+          })
+          .eq('template_id', templateId);
+      await _setLegacyArchiveFlag(templateId, archived: false);
+
+      await _insertNotification(
+        templateId: templateId,
+        templateName: formName,
+        changeType: 'approved',
+        changeSummary: '"$formName" has been approved and published.',
+        details: {'approved_by': approverId},
+      );
+
+      return true;
+    } catch (e) {
+      lastActionError = e.toString();
+      debugPrint('[FormBuilderService/approveTemplate] Error: $e');
+      return false;
+    }
+  }
+
+  /// Reject a pending template. Sets status='draft', records rejection reason.
+  Future<bool> rejectTemplate(String templateId, String reason) async {
+    lastActionError = null;
+    try {
+      final templateData = await _supabase
+          .from('form_templates')
+          .select('form_name')
+          .eq('template_id', templateId)
+          .maybeSingle();
+      final formName = templateData?['form_name'] as String? ?? 'Untitled Form';
+
+      await _supabase
+          .from('form_templates')
+          .update({
+            'status': 'draft',
+            'is_active': false,
+            'rejected_at': DateTime.now().toIso8601String(),
+            'rejection_reason': reason,
+          })
+          .eq('template_id', templateId);
+      await _setLegacyArchiveFlag(templateId, archived: false);
+
+      await _insertNotification(
+        templateId: templateId,
+        templateName: formName,
+        changeType: 'rejected',
+        changeSummary: '"$formName" was rejected. Reason: $reason',
+        details: {'rejection_reason': reason},
+      );
+
+      return true;
+    } catch (e) {
+      lastActionError = e.toString();
+      debugPrint('[FormBuilderService/rejectTemplate] Error: $e');
+      return false;
+    }
+  }
+
+  /// Fetch templates with pending_approval status.
+  Future<List<Map<String, dynamic>>> fetchPendingApprovalTemplates() async {
+    try {
+      final res = await _supabase
+          .from('form_templates')
+          .select(
+            'template_id, form_name, form_desc, status, '
+            'created_by, created_at, submitted_for_approval_by, '
+            'submitted_for_approval_at',
+          )
+          .eq('status', 'pending_approval')
+          .order('submitted_for_approval_at', ascending: false);
+      return List<Map<String, dynamic>>.from(res);
+    } catch (e) {
+      debugPrint('[FormBuilderService/fetchPendingApprovalTemplates] Error: $e');
+      return [];
     }
   }
 

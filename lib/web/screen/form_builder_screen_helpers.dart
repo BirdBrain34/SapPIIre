@@ -155,13 +155,39 @@ Widget buildCanvasToolbar(_FormBuilderScreenState state) {
 List<Widget> buildLifecycleActions(_FormBuilderScreenState state) {
   final ctrl = state._controller;
   final saving = ctrl.isSaving;
+  final isAdmin = state.widget.role == 'admin';
+  final isSuperadmin = state.widget.role == 'superadmin';
 
   switch (ctrl.formStatus) {
     case 'draft':
+      if (isAdmin) {
+        // Admin: Submit for Approval instead of Publish
+        return [
+          buildOutlinedAction('Submit for Approval', Icons.send, color: Colors.deepPurple, onPressed: () => state._submitForApprovalAndSnack()),
+          const SizedBox(width: 8),
+          buildPrimaryAction('Save Draft', Icons.save_outlined, busy: saving, onPressed: saving ? null : () => state._saveTemplateAndSnack()),
+        ];
+      }
+      // Superadmin: Direct publish
       return [
         buildOutlinedAction('Publish', Icons.publish, onPressed: () => state._publishTemplateAndSnack()),
         const SizedBox(width: 8),
         buildPrimaryAction('Save Draft', Icons.save_outlined, busy: saving, onPressed: saving ? null : () => state._saveTemplateAndSnack()),
+      ];
+    case 'pending_approval':
+      if (isSuperadmin) {
+        // Superadmin: Approve or Reject
+        return [
+          buildOutlinedAction('Approve', Icons.check_circle, color: Colors.green, onPressed: () => state._approvePendingAndSnack()),
+          const SizedBox(width: 8),
+          buildOutlinedAction('Reject', Icons.cancel, color: Colors.red, onPressed: () => state._rejectPendingAndSnack()),
+          const SizedBox(width: 8),
+          buildPrimaryAction('Save', Icons.save_outlined, busy: saving, onPressed: saving ? null : () => state._saveTemplateAndSnack()),
+        ];
+      }
+      // Admin: Read-only while pending
+      return [
+        buildPrimaryAction('Save', Icons.save_outlined, busy: saving, onPressed: saving ? null : () => state._saveTemplateAndSnack()),
       ];
     case 'published':
       return [

@@ -328,6 +328,6 @@ class BuilderSection {
         fields = fields ?? [];
 }
 
-enum TemplateListFilter { all, active, draft, published, archived }
+enum TemplateListFilter { all, active, draft, published, archived, pendingApproval }
 
 class FormBuilderController extends ChangeNotifier {}
