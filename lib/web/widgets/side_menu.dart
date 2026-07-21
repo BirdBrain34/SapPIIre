@@ -114,7 +114,7 @@ class SideMenu extends StatelessWidget {
                   const SizedBox(height: 16),
                   Container(height: 1, color: const Color(0xFF1E2E60)),
                   const SizedBox(height: 8),
-                  if (role == 'superadmin') ...[
+                  if (role == 'superadmin' || role == 'admin') ...[
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 8, 20, 6),
                       child: Text(
@@ -136,27 +136,36 @@ class SideMenu extends StatelessWidget {
                       'FormBuilder',
                       activePath,
                     ),
-                    _navItem(
-                      context,
-                      Icons.manage_accounts_outlined,
-                      'Manage Staff',
-                      'Staff',
-                      activePath,
-                    ),
-                    _navItem(
-                      context,
-                      Icons.person_add_outlined,
-                      'Create Staff',
-                      'CreateStaff',
-                      activePath,
-                    ),
-                    _navItem(
-                      context,
-                      Icons.history_outlined,
-                      'Audit Logs',
-                      'AuditLogs',
-                      activePath,
-                    ),
+                    if (role == 'superadmin') ...[
+                      _navItem(
+                        context,
+                        Icons.rate_review_outlined,
+                        'Pending Approvals',
+                        'Approvals',
+                        activePath,
+                      ),
+                      _navItem(
+                        context,
+                        Icons.manage_accounts_outlined,
+                        'Manage Staff',
+                        'Staff',
+                        activePath,
+                      ),
+                      _navItem(
+                        context,
+                        Icons.person_add_outlined,
+                        'Create Staff',
+                        'CreateStaff',
+                        activePath,
+                      ),
+                      _navItem(
+                        context,
+                        Icons.history_outlined,
+                        'Audit Logs',
+                        'AuditLogs',
+                        activePath,
+                      ),
+                    ],
                   ],
                 ],
               ),

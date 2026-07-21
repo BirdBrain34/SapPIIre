@@ -8,6 +8,7 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/canonical_key_entry.dart';
 
 class FormBuilderService {
   static final FormBuilderService _instance = FormBuilderService._internal();
@@ -134,7 +135,8 @@ class FormBuilderService {
             'template_id, form_name, form_desc, is_active, '
             'status, created_by, published_at, pushed_to_mobile_at, '
             'form_code, reference_prefix, reference_format, requires_reference, '
-            'theme_config',
+            'theme_config, submitted_for_approval_by, submitted_for_approval_at, '
+            'approved_by, approved_at, rejected_at, rejection_reason',
           )
           .order('form_name', ascending: true);
       return List<Map<String, dynamic>>.from(res).map((row) {
@@ -163,6 +165,8 @@ class FormBuilderService {
             theme_config, created_by, published_at, pushed_to_mobile_at,
             form_code, reference_prefix, reference_format, requires_reference,
             popup_enabled, popup_subtitle, popup_description,
+            submitted_for_approval_by, submitted_for_approval_at,
+            approved_by, approved_at, rejected_at, rejection_reason,
             form_sections(
               section_id, template_id, section_name, section_desc,
               section_order, is_collapsible
@@ -195,6 +199,7 @@ class FormBuilderService {
     }
   }
 
+  @Deprecated('Use fetchCanonicalKeyRegistry instead.')
   Future<List<String>> fetchCanonicalFieldKeys() async {
     final res = await _supabase
         .from('form_fields')
@@ -709,6 +714,151 @@ class FormBuilderService {
   }
 
   // ================================================================
+  // APPROVAL WORKFLOW
+  // ================================================================
+
+  /// Submit a draft template for superadmin approval.
+  /// Sets status='pending_approval' and records who submitted it.
+  Future<bool> submitForApproval(String templateId, String submittedBy) async {
+    lastActionError = null;
+    try {
+      final templateData = await _supabase
+          .from('form_templates')
+          .select('form_name')
+          .eq('template_id', templateId)
+          .maybeSingle();
+      final formName = templateData?['form_name'] as String? ?? 'Untitled Form';
+
+      await _supabase
+          .from('form_templates')
+          .update({
+            'status': 'pending_approval',
+            'is_active': false,
+            'submitted_for_approval_by': submittedBy,
+            'submitted_for_approval_at': DateTime.now().toIso8601String(),
+            'approved_by': null,
+            'approved_at': null,
+            'rejected_at': null,
+            'rejection_reason': null,
+          })
+          .eq('template_id', templateId);
+      await _setLegacyArchiveFlag(templateId, archived: false);
+
+      await _insertNotification(
+        templateId: templateId,
+        templateName: formName,
+        changeType: 'submitted_for_approval',
+        changeSummary: '"$formName" has been submitted for approval.',
+        details: {'submitted_by': submittedBy},
+      );
+
+      return true;
+    } catch (e) {
+      lastActionError = e.toString();
+      debugPrint('[FormBuilderService/submitForApproval] Error: $e');
+      return false;
+    }
+  }
+
+  /// Approve a pending template. Sets status='published', is_active=true.
+  Future<bool> approveTemplate(String templateId, String approverId) async {
+    lastActionError = null;
+    try {
+      final templateData = await _supabase
+          .from('form_templates')
+          .select('form_name')
+          .eq('template_id', templateId)
+          .maybeSingle();
+      final formName = templateData?['form_name'] as String? ?? 'Untitled Form';
+
+      await _supabase
+          .from('form_templates')
+          .update({
+            'status': 'published',
+            'is_active': true,
+            'published_at': DateTime.now().toIso8601String(),
+            'approved_by': approverId,
+            'approved_at': DateTime.now().toIso8601String(),
+            'rejected_at': null,
+            'rejection_reason': null,
+          })
+          .eq('template_id', templateId);
+      await _setLegacyArchiveFlag(templateId, archived: false);
+
+      await _insertNotification(
+        templateId: templateId,
+        templateName: formName,
+        changeType: 'approved',
+        changeSummary: '"$formName" has been approved and published.',
+        details: {'approved_by': approverId},
+      );
+
+      return true;
+    } catch (e) {
+      lastActionError = e.toString();
+      debugPrint('[FormBuilderService/approveTemplate] Error: $e');
+      return false;
+    }
+  }
+
+  /// Reject a pending template. Sets status='draft', records rejection reason.
+  Future<bool> rejectTemplate(String templateId, String reason) async {
+    lastActionError = null;
+    try {
+      final templateData = await _supabase
+          .from('form_templates')
+          .select('form_name')
+          .eq('template_id', templateId)
+          .maybeSingle();
+      final formName = templateData?['form_name'] as String? ?? 'Untitled Form';
+
+      await _supabase
+          .from('form_templates')
+          .update({
+            'status': 'draft',
+            'is_active': false,
+            'rejected_at': DateTime.now().toIso8601String(),
+            'rejection_reason': reason,
+          })
+          .eq('template_id', templateId);
+      await _setLegacyArchiveFlag(templateId, archived: false);
+
+      await _insertNotification(
+        templateId: templateId,
+        templateName: formName,
+        changeType: 'rejected',
+        changeSummary: '"$formName" was rejected. Reason: $reason',
+        details: {'rejection_reason': reason},
+      );
+
+      return true;
+    } catch (e) {
+      lastActionError = e.toString();
+      debugPrint('[FormBuilderService/rejectTemplate] Error: $e');
+      return false;
+    }
+  }
+
+  /// Fetch templates with pending_approval status.
+  Future<List<Map<String, dynamic>>> fetchPendingApprovalTemplates() async {
+    try {
+      final res = await _supabase
+          .from('form_templates')
+          .select(
+            'template_id, form_name, form_desc, status, '
+            'created_by, created_at, submitted_for_approval_by, '
+            'submitted_for_approval_at',
+          )
+          .eq('status', 'pending_approval')
+          .order('submitted_for_approval_at', ascending: false);
+      return List<Map<String, dynamic>>.from(res);
+    } catch (e) {
+      debugPrint('[FormBuilderService/fetchPendingApprovalTemplates] Error: $e');
+      return [];
+    }
+  }
+
+  // ================================================================
   // ARCHIVE / RESTORE
   // ================================================================
 
@@ -828,6 +978,138 @@ class FormBuilderService {
     } catch (e) {
       debugPrint('[FormBuilderService/countSubmissions] Error: $e');
       return 0;
+    }
+  }
+
+  // ================================================================
+  // CANONICAL KEY REGISTRY
+  // ================================================================
+
+  /// Fetch all entries from the canonical_key_registry table.
+  /// [activeOnly] filters to only active keys (for the field picker dropdown).
+  Future<List<CanonicalKeyEntry>> fetchCanonicalKeyRegistry({bool activeOnly = true}) async {
+    try {
+      final rows = activeOnly
+          ? await _supabase
+              .from('canonical_key_registry')
+              .select('key_name, display_label, description, is_system, is_active')
+              .eq('is_active', true)
+              .order('display_label', ascending: true)
+          : await _supabase
+              .from('canonical_key_registry')
+              .select('key_name, display_label, description, is_system, is_active')
+              .order('display_label', ascending: true);
+      return (rows as List).map((row) => CanonicalKeyEntry.fromMap(row as Map<String, dynamic>)).toList();
+    } catch (e) {
+      debugPrint('[FormBuilderService/fetchCanonicalKeyRegistry] Error: $e');
+      return [];
+    }
+  }
+
+  /// Create a new canonical key in the registry.
+  /// Catches unique-violation (code 23505) and returns a friendly message.
+  Future<Map<String, dynamic>> createCanonicalKey({
+    required String keyName,
+    required String displayLabel,
+    String? description,
+    String? createdBy,
+  }) async {
+    try {
+      await _supabase.from('canonical_key_registry').insert({
+        'key_name': keyName,
+        'display_label': displayLabel,
+        if (description != null && description.trim().isNotEmpty)
+          'description': description,
+        if (createdBy != null && createdBy.isNotEmpty)
+          'created_by': createdBy,
+        'is_system': false,
+      });
+      return {'success': true, 'message': 'Key "$keyName" created.'};
+    } on PostgrestException catch (e) {
+      if (e.code == '23505') {
+        return {'success': false, 'message': 'A key named "$keyName" already exists.'};
+      }
+      return {'success': false, 'message': e.message};
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to create key: $e'};
+    }
+  }
+
+  /// Update display_label and/or description for a key.
+  Future<bool> updateCanonicalKeyMeta({
+    required String keyName,
+    String? displayLabel,
+    String? description,
+  }) async {
+    try {
+      final updates = <String, dynamic>{};
+      if (displayLabel != null) updates['display_label'] = displayLabel;
+      if (description != null) updates['description'] = description;
+      if (updates.isEmpty) return true;
+      await _supabase.from('canonical_key_registry').update(updates).eq('key_name', keyName);
+      return true;
+    } catch (e) {
+      debugPrint('[FormBuilderService/updateCanonicalKeyMeta] Error: $e');
+      return false;
+    }
+  }
+
+  /// Set a key's active/inactive state (non-system keys can be deactivated).
+  Future<bool> setCanonicalKeyActive(String keyName, bool isActive) async {
+    try {
+      await _supabase.from('canonical_key_registry').update({'is_active': isActive}).eq('key_name', keyName);
+      return true;
+    } catch (e) {
+      debugPrint('[FormBuilderService/setCanonicalKeyActive] Error: $e');
+      return false;
+    }
+  }
+
+  /// Fetch usage counts (number of form_fields referencing each key).
+  /// Client-side aggregation over form_fields (metadata table, not user data).
+  Future<Map<String, int>> fetchCanonicalKeyUsageCounts() async {
+    try {
+      final rows = await _supabase
+          .from('form_fields')
+          .select('canonical_field_key')
+          .not('canonical_field_key', 'is', null);
+      final counts = <String, int>{};
+      for (final row in (rows as List)) {
+        final key = row['canonical_field_key'] as String?;
+        if (key != null && key.isNotEmpty) {
+          counts[key] = (counts[key] ?? 0) + 1;
+        }
+      }
+      return counts;
+    } catch (e) {
+      debugPrint('[FormBuilderService/fetchCanonicalKeyUsageCounts] Error: $e');
+      return {};
+    }
+  }
+
+  /// Delete a canonical key ONLY if no form_fields reference it.
+  /// Returns { success: bool, message: String, inUse: int? }.
+  /// Mirrors the archive-vs-force-delete pattern from template deletion.
+  Future<Map<String, dynamic>> deleteUnusedCanonicalKey(String keyName) async {
+    try {
+      // Check if any form_field references this key (limit 1 for performance)
+      final refs = await _supabase
+          .from('form_fields')
+          .select('field_id')
+          .eq('canonical_field_key', keyName)
+          .limit(1);
+      final usageCount = (refs as List).length;
+      if (usageCount > 0) {
+        return {
+          'success': false,
+          'message': 'Cannot delete "$keyName": it is used by $usageCount field(s). Deactivate it instead.',
+          'inUse': usageCount,
+        };
+      }
+      await _supabase.from('canonical_key_registry').delete().eq('key_name', keyName);
+      return {'success': true, 'message': 'Key "$keyName" deleted.'};
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to delete key: $e'};
     }
   }
 }

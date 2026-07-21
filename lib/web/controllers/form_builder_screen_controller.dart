@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:sappiire/models/canonical_key_entry.dart';
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/services/audit/audit_log_service.dart';
 import 'package:sappiire/services/form_builder_service.dart';
@@ -171,8 +172,9 @@ class FormBuilderScreenController extends ChangeNotifier {
   bool isSaving = false;
   bool isLoadingTemplate = false;
   bool hasUnsavedChanges = false;
-  List<({String key, String label})> availableCanonicalKeys = const [];
+  List<CanonicalKeyEntry> availableCanonicalKeys = const [];
   bool isLoadingCanonicalKeys = false;
+  String? canonicalKeyCreationError;
 
   String? get lastSaveError => _service.lastSaveError;
   String? get lastActionError => _service.lastActionError;
@@ -293,28 +295,33 @@ class FormBuilderScreenController extends ChangeNotifier {
     isLoadingCanonicalKeys = true;
     notifyListeners();
     try {
-      final dbKeys = (await _service.fetchCanonicalFieldKeys()).toSet();
-
-      for (final standard in base.standardProfileCanonicalKeys) {
-        dbKeys.add(standard.key);
-      }
-
-      final labelMap = {
-        for (final standard in base.standardProfileCanonicalKeys)
-          standard.key: standard.label,
-      };
-      final merged = dbKeys.map((key) {
-        return (key: key, label: labelMap[key] ?? key);
-      }).toList()..sort((a, b) => a.key.compareTo(b.key));
-
+      final registry = await _service.fetchCanonicalKeyRegistry();
       if (_disposed) return;
-      availableCanonicalKeys = merged;
+      if (registry.isNotEmpty) {
+        availableCanonicalKeys = registry;
+      } else {
+        // Fallback to static list if registry table is empty/unreachable
+        availableCanonicalKeys = base.standardProfileCanonicalKeys
+            .map((e) => CanonicalKeyEntry(
+                  keyName: e.key,
+                  displayLabel: e.label,
+                  isSystem: true,
+                ))
+            .toList();
+      }
       isLoadingCanonicalKeys = false;
       notifyListeners();
     } catch (e) {
-      debugPrint('[FormBuilderScreenController/_loadCanonicalKeys] Error: $e');
+      debugPrint('[FormBuilderScreenController/loadCanonicalKeys] Error: $e');
       if (_disposed) return;
-      availableCanonicalKeys = List.of(base.standardProfileCanonicalKeys);
+      // Fallback to static list on error (pre-migration environment)
+      availableCanonicalKeys = base.standardProfileCanonicalKeys
+          .map((e) => CanonicalKeyEntry(
+                keyName: e.key,
+                displayLabel: e.label,
+                isSystem: true,
+              ))
+          .toList();
       isLoadingCanonicalKeys = false;
       notifyListeners();
     }
@@ -774,6 +781,34 @@ class FormBuilderScreenController extends ChangeNotifier {
     return success;
   }
 
+  Future<bool> submitForApproval() async {
+    if (activeTemplateId == null) return false;
+
+    final success = await _service.submitForApproval(
+      activeTemplateId!,
+      cswdId,
+    );
+    if (_disposed) return success;
+    if (success) {
+      formStatus = 'pending_approval';
+      notifyListeners();
+      await loadTemplateList();
+
+      await AuditLogService().log(
+        actionType: kAuditTemplateSubmittedForApproval,
+        category: kCategoryTemplate,
+        severity: kSeverityInfo,
+        actorId: cswdId,
+        actorName: displayName,
+        actorRole: role,
+        targetType: 'form_template',
+        targetId: activeTemplateId,
+        targetLabel: formName,
+      );
+    }
+    return success;
+  }
+
   Future<bool> publishTemplate() async {
     if (activeTemplateId == null) return false;
 
@@ -795,6 +830,50 @@ class FormBuilderScreenController extends ChangeNotifier {
         targetId: activeTemplateId,
         targetLabel: formName,
       );
+    }
+    return success;
+  }
+
+  Future<bool> approvePendingTemplate() async {
+    if (activeTemplateId == null) return false;
+
+    final success = await _service.approveTemplate(
+      activeTemplateId!,
+      cswdId,
+    );
+    if (_disposed) return success;
+    if (success) {
+      formStatus = 'published';
+      notifyListeners();
+      await loadTemplateList();
+
+      await AuditLogService().log(
+        actionType: kAuditTemplateApproved,
+        category: kCategoryTemplate,
+        severity: kSeverityInfo,
+        actorId: cswdId,
+        actorName: displayName,
+        actorRole: role,
+        targetType: 'form_template',
+        targetId: activeTemplateId,
+        targetLabel: formName,
+      );
+    }
+    return success;
+  }
+
+  Future<bool> rejectPendingTemplate(String reason) async {
+    if (activeTemplateId == null) return false;
+
+    final success = await _service.rejectTemplate(
+      activeTemplateId!,
+      reason,
+    );
+    if (_disposed) return success;
+    if (success) {
+      formStatus = 'draft';
+      notifyListeners();
+      await loadTemplateList();
     }
     return success;
   }
@@ -1006,6 +1085,50 @@ class FormBuilderScreenController extends ChangeNotifier {
     sections.insert(nextIndex, section);
     activeSectionIdx = nextIndex;
     markChanged();
+  }
+
+  bool isCanonicalKeyNameTaken(String keyName) =>
+      availableCanonicalKeys.any((e) => e.keyName == keyName);
+
+  Future<CanonicalKeyEntry?> createCanonicalKey({required String label, String? description}) async {
+    final trimmedLabel = label.trim();
+    final slug = base.slugify(trimmedLabel);
+    canonicalKeyCreationError = null;
+
+    if (trimmedLabel.isEmpty || slug.isEmpty) {
+      canonicalKeyCreationError = 'Enter a label to generate a key.';
+      notifyListeners();
+      return null;
+    }
+    if (isCanonicalKeyNameTaken(slug)) {
+      canonicalKeyCreationError = 'A key named "$slug" already exists.';
+      notifyListeners();
+      return null;
+    }
+
+    final result = await _service.createCanonicalKey(
+      keyName: slug, displayLabel: trimmedLabel, description: description, createdBy: cswdId,
+    );
+    if (result['success'] != true) {
+      canonicalKeyCreationError = result['message']?.toString() ?? 'Failed to create key.';
+      notifyListeners();
+      return null;
+    }
+
+    final entry = CanonicalKeyEntry(keyName: slug, displayLabel: trimmedLabel, description: description);
+    availableCanonicalKeys = [...availableCanonicalKeys, entry]
+      ..sort((a, b) => a.displayLabel.compareTo(b.displayLabel));
+
+    await AuditLogService().log(
+      actionType: kAuditCanonicalKeyCreated,
+      category: kCategoryTemplate,
+      severity: kSeverityInfo,
+      actorId: cswdId, actorName: displayName, actorRole: role,
+      targetType: 'canonical_key', targetId: slug, targetLabel: trimmedLabel,
+    );
+
+    notifyListeners();
+    return entry;
   }
 
   void moveColumn(base.BuilderField field, int columnIndex, int direction) {

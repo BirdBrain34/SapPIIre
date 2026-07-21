@@ -127,7 +127,13 @@ class SupabaseService {
     }
   }
 
-  // Save PII using canonical key matching across templates.
+  /// Saves PII from OCR scanning (ID scanner) using canonical key matching.
+  ///
+  /// This intentionally uses a fixed set of keys (OCR cannot produce arbitrary
+  /// custom data). That fixed set now has a durable, protected home in the
+  /// canonical_key_registry table as is_system = true rows. Do NOT generalize
+  /// this to read from the registry — OCR/signup only populate the identity
+  /// fields they can actually extract (first_name, last_name, etc.).
   Future<Map<String, dynamic>> saveScannedIdFieldValues({
     required String userId,
     required Map<String, String> canonicalValues,
@@ -737,7 +743,12 @@ class SupabaseService {
     }
   }
 
-  // Save the profile data after verification.
+  /// Saves the profile data after verification.
+  /// 
+  /// This intentionally uses a fixed set of keys (first_name, last_name, etc.)
+  /// that align with the `is_system = true` rows in the `canonical_key_registry`.
+  /// Do NOT generalize this to read from the registry — the signup flow only 
+  /// collects these specific core identity fields.
   Future<Map<String, dynamic>> saveProfileAfterVerification({
     required String userId,
     required String username,

@@ -4,6 +4,8 @@ import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/web/controllers/form_builder_screen_controller.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
+import 'package:sappiire/services/form_builder_service.dart';
+import 'package:sappiire/web/widgets/canonical_key_manager_dialog.dart';
 import 'package:sappiire/web/widgets/form_builder_field_card.dart';
 import 'package:sappiire/web/widgets/form_builder_section_header.dart';
 import 'package:sappiire/web/widgets/form_builder_status_card.dart';
@@ -115,6 +117,102 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       success ? Colors.green : Colors.red,
     );
     return success;
+  }
+
+  Future<void> _submitForApprovalAndSnack() async {
+    if (!_controller.canPublish) {
+      _showSnackBar(
+        'Add at least one section with a question before submitting for approval.',
+        Colors.orange,
+      );
+      return;
+    }
+    if (_controller.hasUnsavedChanges) {
+      await _saveTemplateAndSnack();
+    }
+    final confirmed = await _showConfirmDialog(
+      title: 'Submit for Approval',
+      message:
+          'This will submit the form to a superadmin for review and approval. You will not be able to publish it directly. Continue?',
+      confirmLabel: 'Submit',
+      confirmColor: Colors.deepPurple,
+    );
+    if (confirmed != true) return;
+
+    final success = await _controller.submitForApproval();
+    if (!mounted) return;
+    _showSnackBar(
+      success ? 'Form submitted for approval' : 'Error submitting for approval',
+      success ? Colors.deepPurple : Colors.red,
+    );
+  }
+
+  Future<void> _approvePendingAndSnack() async {
+    final confirmed = await _showConfirmDialog(
+      title: 'Approve Form',
+      message:
+          'This will approve the form and publish it, making it visible to all admin users. Continue?',
+      confirmLabel: 'Approve & Publish',
+      confirmColor: Colors.green,
+    );
+    if (confirmed != true) return;
+
+    final success = await _controller.approvePendingTemplate();
+    if (!mounted) return;
+    _showSnackBar(
+      success ? 'Form approved and published' : 'Error approving form',
+      success ? Colors.green : Colors.red,
+    );
+  }
+
+  Future<void> _rejectPendingAndSnack() async {
+    final reasonCtrl = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Reject Form'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Provide a reason for rejection:'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonCtrl,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                hintText: 'Reason for rejection...',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, reasonCtrl.text.trim()),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text(
+              'Reject',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (reason == null || reason.isEmpty) return;
+
+    final success = await _controller.rejectPendingTemplate(reason);
+    if (!mounted) return;
+    _showSnackBar(
+      success ? 'Form rejected and returned to draft' : 'Error rejecting form',
+      success ? Colors.orange : Colors.red,
+    );
   }
 
   Future<void> _publishTemplateAndSnack() async {

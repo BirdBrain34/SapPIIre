@@ -19,6 +19,8 @@ class FormTemplateService {
   List<FormTemplate>? _allTemplates;
 
   // Fetch all active templates for builders and readers.
+  // Includes both published (is_active=true) and pending_approval forms
+  // so that admin users can see forms awaiting superadmin approval.
   Future<List<FormTemplate>> fetchActiveTemplates({bool forceRefresh = false}) async {
     if (!forceRefresh && _allTemplates != null) return _allTemplates!;
     try {
@@ -43,7 +45,7 @@ class FormTemplateService {
               )
             )
           ''')
-          .eq('is_active', true)
+          .or('is_active.eq.true,status.eq.pending_approval')
           .order('created_at', ascending: false);
 
       final templates = (res as List<dynamic>)

@@ -344,6 +344,7 @@ class FormTemplate {
   final String? referencePrefix;
   final String referenceFormat;
   final bool requiresReference;
+  final String status; // draft, pending_approval, published, pushed_to_mobile, archived
   final List<FormSection> sections;
 
   const FormTemplate({
@@ -355,6 +356,7 @@ class FormTemplate {
     this.referencePrefix,
     this.referenceFormat = '{FORMCODE}-{YYYY}-{MM}-{####}',
     this.requiresReference = true,
+    this.status = 'draft',
     this.sections = const [],
   });
 
@@ -447,6 +449,7 @@ class FormTemplate {
           ? m['reference_format'] as String
           : '{FORMCODE}-{YYYY}-{MM}-{####}',
       requiresReference: coerceDbBool(m['requires_reference'], true),
+      status: m['status'] as String? ?? 'draft',
       sections: sections,
     );
   }

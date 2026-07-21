@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import 'package:sappiire/constants/app_colors.dart';
+import 'package:sappiire/models/canonical_key_entry.dart';
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/web/controllers/form_builder_screen_controller.dart';
+import 'package:sappiire/web/widgets/canonical_key_creator_sheet.dart';
 
 class FormBuilderFieldCard extends StatelessWidget {
   const FormBuilderFieldCard({
@@ -66,7 +68,7 @@ class FormBuilderFieldCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (isActive)
-                        _buildFieldHeaderActive(field)
+                        _buildFieldHeaderActive(context, field)
                       else
                         _buildFieldHeaderInactive(field),
                       const SizedBox(height: 12),
@@ -87,7 +89,91 @@ class FormBuilderFieldCard extends StatelessWidget {
     );
   }
 
-  Widget _buildFieldHeaderActive(BuilderField field) {
+  /// BUG FIX #1: Safe Value Resolution - verifies the selected key exists
+  /// in the available keys list. If not found, returns null to avoid the
+  /// "Assertion failed: ... length == 1" crash.
+  String? _safeCanonicalKeyValue({
+    required bool isSignatureField,
+    required String? selectedKey,
+    required List<CanonicalKeyEntry> availableKeys,
+  }) {
+    if (isSignatureField) return 'signature';
+    if (selectedKey == null) return null;
+    CanonicalKeyEntry? originalEntry;
+    for (final e in availableKeys) {
+      if (e.keyName == selectedKey) {
+        originalEntry = e;
+        break;
+      }
+    }
+    if (originalEntry == null) return null;
+
+    // We deduplicate by displayLabel. We must return the keyName that is actually in the dropdown.
+    for (final e in availableKeys) {
+      if (e.displayLabel == originalEntry.displayLabel) {
+        return e.keyName;
+      }
+    }
+    return null;
+  }
+
+  /// BUG FIX #2: Builds deduplicated canonical key dropdown items.
+  /// Ensures only ONE null "None" item and no duplicate keyName values.
+  List<DropdownMenuItem<String?>> _buildCanonicalKeyItems({
+    required bool isSignatureField,
+    required List<CanonicalKeyEntry> availableKeys,
+  }) {
+    final items = <DropdownMenuItem<String?>>[];
+
+    // Add "None" option only for non-signature fields (exactly once)
+    if (!isSignatureField) {
+      items.add(
+        const DropdownMenuItem<String?>(
+          value: null,
+          child: Text('None'),
+        ),
+      );
+    }
+
+    // Build the list of canonical key entries (signature or from controller)
+    final entries = isSignatureField
+        ? [const CanonicalKeyEntry(keyName: 'signature', displayLabel: 'Signature', isSystem: true)]
+        : availableKeys;
+
+    // Deduplicate by displayLabel - keep only the first occurrence
+    final seenDisplayLabels = <String>{};
+    for (final entry in entries) {
+      if (!seenDisplayLabels.add(entry.displayLabel)) continue; // skip duplicates
+      items.add(
+        DropdownMenuItem<String?>(
+          value: entry.keyName,
+          child: Row(
+            children: [
+              if (entry.isSystem)
+                const Padding(
+                  padding: EdgeInsets.only(right: 6),
+                  child: Icon(
+                    Icons.shield,
+                    size: 12,
+                    color: AppColors.highlight,
+                  ),
+                ),
+              Flexible(
+                child: Text(
+                  entry.displayLabel,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return items;
+  }
+
+  Widget _buildFieldHeaderActive(BuildContext context, BuilderField field) {
     final isSignatureField = field.type == FormFieldType.signature;
     final canLinkCanonicalKey =
         canonicalKeyEligibleTypes.contains(field.type) || isSignatureField;
@@ -238,49 +324,64 @@ class FormBuilderFieldCard extends StatelessWidget {
             style: TextStyle(fontSize: 12, color: AppColors.textMuted),
           ),
           const SizedBox(height: 4),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.cardBorder),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String?>(
-                value: selectedCanonicalKey,
-                isExpanded: true,
-                hint: const Text(
-                  'Link to known field (optional)',
-                  style: TextStyle(fontSize: 13, color: AppColors.textMuted),
-                ),
-                items: [
-                  if (!isSignatureField)
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('None'),
-                    ),
-                  ...(isSignatureField
-                          ? const [(key: 'signature', label: 'Signature')]
-                          : controller.availableCanonicalKeys)
-                      .map(
-                        (entry) => DropdownMenuItem<String?>(
-                          value: entry.key,
-                          child: Text(
-                            entry.key == entry.label
-                                ? entry.key
-                                : '${entry.label}  (${entry.key})',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.cardBorder),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String?>(
+                      value: _safeCanonicalKeyValue(
+                        isSignatureField: isSignatureField,
+                        selectedKey: selectedCanonicalKey,
+                        availableKeys: controller.availableCanonicalKeys,
                       ),
-                ],
-                onChanged: (value) {
-                  field.canonicalFieldKey = isSignatureField
-                      ? 'signature'
-                      : value;
-                  controller.markChanged();
-                },
+                      isExpanded: true,
+                      hint: const Text(
+                        'Link to known field (optional)',
+                        style: TextStyle(fontSize: 13, color: AppColors.textMuted),
+                      ),
+                      items: _buildCanonicalKeyItems(
+                        isSignatureField: isSignatureField,
+                        availableKeys: controller.availableCanonicalKeys,
+                      ),
+                      onChanged: (value) {
+                        field.canonicalFieldKey = isSignatureField
+                            ? 'signature'
+                            : value;
+                        controller.markChanged();
+                      },
+                    ),
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(width: 12),
+              TextButton.icon(
+                onPressed: () {
+                  showCanonicalKeyCreatorSheet(
+                    context,
+                    controller,
+                    onCreated: (newKeyName) {
+                      field.canonicalFieldKey = newKeyName;
+                      controller.markChanged();
+                    },
+                  );
+                },
+                icon: const Icon(Icons.add_circle_outline, size: 14, color: AppColors.highlight),
+                label: const Text(
+                  '+ New canonical key…',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.highlight,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ],
