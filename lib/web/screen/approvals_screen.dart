@@ -23,12 +23,19 @@ class ApprovalsScreen extends StatefulWidget {
 }
 
 class _ApprovalsScreenState extends State<ApprovalsScreen> {
-  final _controller = ApprovalsController();
+  // Built in initState, not as a field initializer, because it needs the
+  // actor context from `widget` for its audit entries.
+  late final ApprovalsController _controller;
   Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
+    _controller = ApprovalsController(
+      cswdId: widget.cswdId,
+      displayName: widget.displayName,
+      role: widget.role,
+    );
     _controller.addListener(_onControllerChanged);
     _controller.loadPendingApprovals();
 
@@ -84,7 +91,6 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
 
     final success = await _controller.approveTemplate(
       template['template_id'] as String,
-      widget.cswdId,
     );
 
     if (!mounted) return;

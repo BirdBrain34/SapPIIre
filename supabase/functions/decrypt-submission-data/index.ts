@@ -41,36 +41,52 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Validate staff member if staffId provided
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
-    let actorId = 'anonymous';
-    let actorRole: string | null = null;
-
-    if (staffId) {
-      const { data: staffData, error: staffError } = await supabase
-        .from('staff_accounts')
-        .select('cswd_id, role')
-        .eq('cswd_id', staffId)
-        .single();
-
-      if (staffError || !staffData) {
-        return new Response(
-          JSON.stringify({ error: 'Staff record not found' }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      const role = staffData.role;
-      if (role === 'viewer') {
-        return new Response(
-          JSON.stringify({ error: 'Insufficient permissions: viewers cannot decrypt records' }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      
-      actorId = staffId;
-      actorRole = role;
+    // staffId is unconditionally required. It previously sat behind an
+    // `if (staffId)` guard that both skipped authorization entirely and fell
+    // back to actor_id 'anonymous' — which is not a valid uuid, so the audit
+    // insert below failed silently (supabase-js returns errors, it does not
+    // throw). Anonymous decrypts were therefore never recorded at all.
+    if (!staffId) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required field: staffId' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
+
+    // Validate staff. Account state is checked as well as role, matching
+    // decrypt-submission-batch and search-applicants: a deactivated or pending
+    // account must not be able to decrypt records.
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    const { data: staffData, error: staffError } = await supabase
+      .from('staff_accounts')
+      .select('cswd_id, role, is_active, account_status')
+      .eq('cswd_id', staffId)
+      .single();
+
+    if (staffError || !staffData) {
+      return new Response(
+        JSON.stringify({ error: 'Staff record not found' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (staffData.is_active === false || staffData.account_status !== 'active') {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (staffData.role === 'viewer') {
+      return new Response(
+        JSON.stringify({ error: 'Insufficient permissions: viewers cannot decrypt records' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const actorId = staffId;
+    const actorRole: string | null = staffData.role;
 
     // Fetch submission from database
     const { data: submission, error: fetchError } = await supabase

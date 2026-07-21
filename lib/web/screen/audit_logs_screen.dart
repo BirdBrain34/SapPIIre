@@ -67,6 +67,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     kAuditApplicantSearch,
     kAuditStaffCreated, kAuditStaffApproved, kAuditStaffRejected, kAuditRoleChanged,
     kAuditTemplateCreated, kAuditTemplatePublished, kAuditTemplatePushed, kAuditTemplateArchived, kAuditTemplateDeleted,
+    kAuditTemplateSubmittedForApproval, kAuditTemplateApproved, kAuditTemplateRejected,
     kAuditSessionStarted, kAuditSessionCompleted, kAuditSessionClosed,
     kAuditCanonicalKeyCreated, kAuditCanonicalKeyDeactivated,
   ];
@@ -338,6 +339,12 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         return 'Template Archived';
       case kAuditTemplateDeleted:
         return 'Template Deleted';
+      case kAuditTemplateSubmittedForApproval:
+        return 'Template Submitted for Approval';
+      case kAuditTemplateApproved:
+        return 'Template Approved';
+      case kAuditTemplateRejected:
+        return 'Template Rejected';
       case kAuditCanonicalKeyCreated:
         return 'Canonical Key Created';
       case kAuditCanonicalKeyDeactivated:
