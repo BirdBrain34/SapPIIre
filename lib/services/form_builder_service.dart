@@ -8,6 +8,7 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/canonical_key_entry.dart';
 
 class FormBuilderService {
   static final FormBuilderService _instance = FormBuilderService._internal();
@@ -198,6 +199,7 @@ class FormBuilderService {
     }
   }
 
+  @Deprecated('Use fetchCanonicalKeyRegistry instead.')
   Future<List<String>> fetchCanonicalFieldKeys() async {
     final res = await _supabase
         .from('form_fields')
@@ -976,6 +978,138 @@ class FormBuilderService {
     } catch (e) {
       debugPrint('[FormBuilderService/countSubmissions] Error: $e');
       return 0;
+    }
+  }
+
+  // ================================================================
+  // CANONICAL KEY REGISTRY
+  // ================================================================
+
+  /// Fetch all entries from the canonical_key_registry table.
+  /// [activeOnly] filters to only active keys (for the field picker dropdown).
+  Future<List<CanonicalKeyEntry>> fetchCanonicalKeyRegistry({bool activeOnly = true}) async {
+    try {
+      final rows = activeOnly
+          ? await _supabase
+              .from('canonical_key_registry')
+              .select('key_name, display_label, description, is_system, is_active')
+              .eq('is_active', true)
+              .order('display_label', ascending: true)
+          : await _supabase
+              .from('canonical_key_registry')
+              .select('key_name, display_label, description, is_system, is_active')
+              .order('display_label', ascending: true);
+      return (rows as List).map((row) => CanonicalKeyEntry.fromMap(row as Map<String, dynamic>)).toList();
+    } catch (e) {
+      debugPrint('[FormBuilderService/fetchCanonicalKeyRegistry] Error: $e');
+      return [];
+    }
+  }
+
+  /// Create a new canonical key in the registry.
+  /// Catches unique-violation (code 23505) and returns a friendly message.
+  Future<Map<String, dynamic>> createCanonicalKey({
+    required String keyName,
+    required String displayLabel,
+    String? description,
+    String? createdBy,
+  }) async {
+    try {
+      await _supabase.from('canonical_key_registry').insert({
+        'key_name': keyName,
+        'display_label': displayLabel,
+        if (description != null && description.trim().isNotEmpty)
+          'description': description,
+        if (createdBy != null && createdBy.isNotEmpty)
+          'created_by': createdBy,
+        'is_system': false,
+      });
+      return {'success': true, 'message': 'Key "$keyName" created.'};
+    } on PostgrestException catch (e) {
+      if (e.code == '23505') {
+        return {'success': false, 'message': 'A key named "$keyName" already exists.'};
+      }
+      return {'success': false, 'message': e.message};
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to create key: $e'};
+    }
+  }
+
+  /// Update display_label and/or description for a key.
+  Future<bool> updateCanonicalKeyMeta({
+    required String keyName,
+    String? displayLabel,
+    String? description,
+  }) async {
+    try {
+      final updates = <String, dynamic>{};
+      if (displayLabel != null) updates['display_label'] = displayLabel;
+      if (description != null) updates['description'] = description;
+      if (updates.isEmpty) return true;
+      await _supabase.from('canonical_key_registry').update(updates).eq('key_name', keyName);
+      return true;
+    } catch (e) {
+      debugPrint('[FormBuilderService/updateCanonicalKeyMeta] Error: $e');
+      return false;
+    }
+  }
+
+  /// Set a key's active/inactive state (non-system keys can be deactivated).
+  Future<bool> setCanonicalKeyActive(String keyName, bool isActive) async {
+    try {
+      await _supabase.from('canonical_key_registry').update({'is_active': isActive}).eq('key_name', keyName);
+      return true;
+    } catch (e) {
+      debugPrint('[FormBuilderService/setCanonicalKeyActive] Error: $e');
+      return false;
+    }
+  }
+
+  /// Fetch usage counts (number of form_fields referencing each key).
+  /// Client-side aggregation over form_fields (metadata table, not user data).
+  Future<Map<String, int>> fetchCanonicalKeyUsageCounts() async {
+    try {
+      final rows = await _supabase
+          .from('form_fields')
+          .select('canonical_field_key')
+          .not('canonical_field_key', 'is', null);
+      final counts = <String, int>{};
+      for (final row in (rows as List)) {
+        final key = row['canonical_field_key'] as String?;
+        if (key != null && key.isNotEmpty) {
+          counts[key] = (counts[key] ?? 0) + 1;
+        }
+      }
+      return counts;
+    } catch (e) {
+      debugPrint('[FormBuilderService/fetchCanonicalKeyUsageCounts] Error: $e');
+      return {};
+    }
+  }
+
+  /// Delete a canonical key ONLY if no form_fields reference it.
+  /// Returns { success: bool, message: String, inUse: int? }.
+  /// Mirrors the archive-vs-force-delete pattern from template deletion.
+  Future<Map<String, dynamic>> deleteUnusedCanonicalKey(String keyName) async {
+    try {
+      // Check if any form_field references this key (limit 1 for performance)
+      final refs = await _supabase
+          .from('form_fields')
+          .select('field_id')
+          .eq('canonical_field_key', keyName)
+          .limit(1);
+      final usageCount = (refs as List).length;
+      if (usageCount > 0) {
+        return {
+          'success': false,
+          'message': 'Cannot delete "$keyName": it is used by $usageCount field(s). Deactivate it instead.',
+          'inUse': usageCount,
+        };
+      }
+      await _supabase.from('canonical_key_registry').delete().eq('key_name', keyName);
+      return {'success': true, 'message': 'Key "$keyName" deleted.'};
+    } catch (e) {
+      return {'success': false, 'message': 'Failed to delete key: $e'};
     }
   }
 }

@@ -29,6 +29,9 @@ const kAuditTemplateSubmittedForApproval = 'template_submitted_for_approval';
 const kAuditTemplateApproved = 'template_approved';
 const kAuditTemplateRejected = 'template_rejected';
 
+const kAuditCanonicalKeyCreated = 'canonical_key_created';
+const kAuditCanonicalKeyDeactivated = 'canonical_key_deactivated';
+
 const kCategoryAuth = 'auth';
 const kCategorySession = 'session';
 const kCategorySubmission = 'submission';
