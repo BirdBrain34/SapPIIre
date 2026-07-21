@@ -62,6 +62,7 @@ Deno.serve(async (req: Request) => {
 
     // Validate staff role once — not per record
     const supabase = createClient(supabaseUrl, serviceRoleKey);
+    let actorRole: string | null = null;
     if (staffId) {
       const { data: staff } = await supabase
         .from('staff_accounts')
@@ -75,6 +76,7 @@ Deno.serve(async (req: Request) => {
           { status: 403, headers: corsHeaders },
         );
       }
+      actorRole = staff.role;
       console.log(`[decrypt-submission-batch] Staff validated: ${staffId}, role=${staff.role}`);
     }
 
@@ -116,6 +118,28 @@ Deno.serve(async (req: Request) => {
 
     const decryptedCount = results.filter(r => r.decrypted).length;
     console.log(`[decrypt-submission-batch] Decrypted ${decryptedCount}/${rows.length} records in ${elapsed}ms`);
+
+    // Audit: ONE aggregated critical event per batch call (not per record) so
+    // routine list rendering doesn't flood the log. UI groups bursts further.
+    if (decryptedCount > 0) {
+      try {
+        await supabase.from('audit_logs').insert({
+          action_type: 'submission_decrypted',
+          category: 'submission',
+          severity: 'critical',
+          actor_id: staffId ?? 'anonymous',
+          actor_role: actorRole,
+          target_type: 'client_submission',
+          details: {
+            count: decryptedCount,
+            ids: results.filter(r => r.decrypted).map(r => r.id),
+            purpose: 'list_view',
+          },
+        });
+      } catch (e) {
+        console.error('[decrypt-submission-batch] Audit log insert failed:', e);
+      }
+    }
 
     return new Response(JSON.stringify({ results }), {
       status: 200,

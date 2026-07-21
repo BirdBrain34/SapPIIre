@@ -14,6 +14,8 @@ const kAuditSubmissionCreated = 'submission_created';
 const kAuditSubmissionEdited = 'submission_edited';
 const kAuditSubmissionDeleted = 'submission_deleted';
 const kAuditSubmissionDecrypted = 'submission_decrypted';
+const kAuditSubmissionPreviewDecrypted = 'submission_preview_decrypted';
+const kAuditApplicantNamesResolved = 'applicant_names_resolved';
 
 const kAuditStaffCreated = 'staff_created';
 const kAuditStaffApproved = 'staff_approved';

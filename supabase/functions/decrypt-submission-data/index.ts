@@ -44,7 +44,8 @@ Deno.serve(async (req: Request) => {
     // Validate staff member if staffId provided
     const supabase = createClient(supabaseUrl, serviceRoleKey);
     let actorId = 'anonymous';
-    
+    let actorRole: string | null = null;
+
     if (staffId) {
       const { data: staffData, error: staffError } = await supabase
         .from('staff_accounts')
@@ -68,6 +69,7 @@ Deno.serve(async (req: Request) => {
       }
       
       actorId = staffId;
+      actorRole = role;
     }
 
     // Fetch submission from database
@@ -128,12 +130,15 @@ Deno.serve(async (req: Request) => {
     const decryptedText = new TextDecoder().decode(decryptedBuffer);
     const decryptedData = JSON.parse(decryptedText);
 
-    // Log to audit_logs
+    // Log to audit_logs — sensitive PII access is a CRITICAL security event.
     await supabase.from('audit_logs').insert({
       action_type: 'submission_decrypted',
       category: 'submission',
-      severity: 'info',
+      severity: 'critical',
       actor_id: actorId,
+      actor_role: actorRole,
+      target_type: 'client_submission',
+      target_id: String(submissionId),
       details: { purpose: 'applicant_record_view' },
     });
 

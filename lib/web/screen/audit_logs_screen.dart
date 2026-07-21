@@ -60,6 +60,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     '',
     kAuditLogin, kAuditLoginFailed, kAuditLogout, kAuditPasswordChanged,
     kAuditSubmissionCreated, kAuditSubmissionEdited, kAuditSubmissionDeleted, kAuditSubmissionDecrypted,
+    kAuditSubmissionPreviewDecrypted, kAuditApplicantNamesResolved,
     kAuditStaffCreated, kAuditStaffApproved, kAuditStaffRejected, kAuditRoleChanged,
     kAuditTemplateCreated, kAuditTemplatePublished, kAuditTemplatePushed, kAuditTemplateArchived, kAuditTemplateDeleted,
     kAuditSessionStarted, kAuditSessionCompleted, kAuditSessionClosed,
@@ -307,6 +308,10 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         return 'Submission Deleted';
       case kAuditSubmissionDecrypted:
         return 'Submission Decrypted';
+      case kAuditSubmissionPreviewDecrypted:
+        return 'Submission Preview Decrypted';
+      case kAuditApplicantNamesResolved:
+        return 'Applicant Names Resolved';
       case kAuditStaffCreated:
         return 'Staff Created';
       case kAuditStaffApproved:

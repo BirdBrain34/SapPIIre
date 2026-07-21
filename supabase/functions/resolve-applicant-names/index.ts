@@ -274,6 +274,28 @@ Deno.serve(async (req: Request) => {
       `${decryptSuccessCount} decrypts succeeded, ${decryptFailCount} failed`
     );
 
+    // Audit: ONE aggregated warning event per call — name decryption is PII
+    // access, one tier below a full record decrypt.
+    if (resolvedCount > 0) {
+      try {
+        await supabase.from('audit_logs').insert({
+          action_type: 'applicant_names_resolved',
+          category: 'submission',
+          severity: 'warning',
+          actor_id: staffId,
+          actor_role: staff.role,
+          target_type: 'user_field_values',
+          details: {
+            requested: userIds.length,
+            resolved: resolvedCount,
+            purpose: 'list_view',
+          },
+        });
+      } catch (e) {
+        console.error('[resolve-applicant-names] Audit log insert failed:', e);
+      }
+    }
+
     return new Response(
       JSON.stringify(namesByUser),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
