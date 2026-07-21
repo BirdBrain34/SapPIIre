@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:sappiire/services/dashboard_analytics_service.dart';
+import 'package:sappiire/services/forms/applicant_search_service.dart';
 
 /// Coordinates dashboard data loading, planning insights, and client search state.
 class DashboardController extends ChangeNotifier {
@@ -108,8 +109,11 @@ class DashboardController extends ChangeNotifier {
 
   Future<void> searchClients() async {
     final query = clientSearchController.text.trim();
-    if (query.isEmpty) {
+    // Below the minimum, a query would scan almost everything server-side and
+    // return nothing an admin can use.
+    if (query.length < ApplicantSearchService.minQueryLength) {
       clientSearchResults = [];
+      isSearchingClients = false;
       notifyListeners();
       return;
     }
