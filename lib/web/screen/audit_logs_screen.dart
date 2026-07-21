@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/services/audit/audit_log_service.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
+import 'package:sappiire/web/widgets/filter_controls.dart';
 import 'package:sappiire/web/utils/web_session.dart';
+import 'package:sappiire/web/utils/debouncer.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
 
 class AuditLogsScreen extends StatefulWidget {
@@ -25,6 +27,7 @@ class AuditLogsScreen extends StatefulWidget {
 class _AuditLogsScreenState extends State<AuditLogsScreen> {
   final _service = AuditLogService();
   final _searchController = TextEditingController();
+  final _searchDebouncer = Debouncer(const Duration(milliseconds: 400));
 
   List<Map<String, dynamic>> _logs = [];
   List<Map<String, dynamic>> _displayLogs = [];
@@ -60,8 +63,11 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     '',
     kAuditLogin, kAuditLoginFailed, kAuditLogout, kAuditPasswordChanged,
     kAuditSubmissionCreated, kAuditSubmissionEdited, kAuditSubmissionDeleted, kAuditSubmissionDecrypted,
+    kAuditSubmissionPreviewDecrypted, kAuditApplicantNamesResolved,
+    kAuditApplicantSearch,
     kAuditStaffCreated, kAuditStaffApproved, kAuditStaffRejected, kAuditRoleChanged,
     kAuditTemplateCreated, kAuditTemplatePublished, kAuditTemplatePushed, kAuditTemplateArchived, kAuditTemplateDeleted,
+    kAuditTemplateSubmittedForApproval, kAuditTemplateApproved, kAuditTemplateRejected,
     kAuditSessionStarted, kAuditSessionCompleted, kAuditSessionClosed,
     kAuditCanonicalKeyCreated, kAuditCanonicalKeyDeactivated,
   ];
@@ -81,6 +87,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
 
   @override
   void dispose() {
+    _searchDebouncer.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -308,6 +315,12 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         return 'Submission Deleted';
       case kAuditSubmissionDecrypted:
         return 'Submission Decrypted';
+      case kAuditSubmissionPreviewDecrypted:
+        return 'Submission Preview Decrypted';
+      case kAuditApplicantNamesResolved:
+        return 'Applicant Names Resolved';
+      case kAuditApplicantSearch:
+        return 'Applicant Search';
       case kAuditStaffCreated:
         return 'Staff Created';
       case kAuditStaffApproved:
@@ -326,6 +339,12 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         return 'Template Archived';
       case kAuditTemplateDeleted:
         return 'Template Deleted';
+      case kAuditTemplateSubmittedForApproval:
+        return 'Template Submitted for Approval';
+      case kAuditTemplateApproved:
+        return 'Template Approved';
+      case kAuditTemplateRejected:
+        return 'Template Rejected';
       case kAuditCanonicalKeyCreated:
         return 'Canonical Key Created';
       case kAuditCanonicalKeyDeactivated:
@@ -362,16 +381,31 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     }
   }
 
+  /// Action types emitted in bursts, which are collapsed into a single display
+  /// row per actor per 5-minute window.
+  ///
+  /// Applicant search is here because a debounced search box still emits one
+  /// event per settled query — ten minutes of an admin looking someone up
+  /// would otherwise bury every other event on the page. The names-resolved
+  /// action is included because it is what `search-applicants` falls back to
+  /// when the live table rejects `applicant_search`.
+  static const _collapsibleActions = {
+    kAuditSubmissionDecrypted,
+    kAuditApplicantSearch,
+    kAuditApplicantNamesResolved,
+  };
+
   List<Map<String, dynamic>> _groupDecryptionLogs(List<Map<String, dynamic>> logs) {
     final result = <Map<String, dynamic>>[];
     for (final log in logs) {
-      if (log['action_type'] != kAuditSubmissionDecrypted) {
+      final actionType = log['action_type'];
+      if (!_collapsibleActions.contains(actionType)) {
         result.add(log);
         continue;
       }
       if (result.isNotEmpty) {
         final last = result.last;
-        if (last['action_type'] == kAuditSubmissionDecrypted &&
+        if (last['action_type'] == actionType &&
             last['actor_id'] == log['actor_id']) {
           final groupStart = DateTime.tryParse(last['created_at'] as String? ?? '');
           final thisTime = DateTime.tryParse(log['created_at'] as String? ?? '');
@@ -538,32 +572,21 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         children: [
           Expanded(
             flex: 3,
-            child: TextField(
+            child: WebSearchField(
               controller: _searchController,
-              onSubmitted: (_) {
+              hintText: 'Search by actor name...',
+              // Search on typing rather than only on Enter, but debounced so a
+              // burst of keystrokes is one query.
+              onChanged: (_) => _searchDebouncer.run(() {
+                if (!mounted) return;
                 _resetPaging();
                 _loadLogs();
-              },
-              decoration: InputDecoration(
-                hintText: 'Search by actor name...',
-                hintStyle: const TextStyle(
-                  fontSize: 13,
-                  color: AppColors.textMuted,
-                ),
-                prefixIcon: const Icon(
-                  Icons.search,
-                  size: 18,
-                  color: AppColors.textMuted,
-                ),
-                filled: true,
-                fillColor: AppColors.pageBg,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide.none,
-                ),
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(vertical: 10),
-              ),
+              }),
+              onSubmitted: (_) => _searchDebouncer.flush(() {
+                if (!mounted) return;
+                _resetPaging();
+                _loadLogs();
+              }),
             ),
           ),
           const SizedBox(width: 12),
@@ -649,6 +672,9 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     );
   }
 
+  // Chrome now lives in web/widgets/filter_controls.dart so the applicants
+  // filter bar renders identically. These thin wrappers keep the call sites
+  // in _buildFilterBar unchanged.
   Widget _buildDropdownFilter({
     required String value,
     required String hint,
@@ -656,35 +682,12 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     required Map<String, String> labels,
     required ValueChanged<String?> onChanged,
   }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: AppColors.pageBg,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.cardBorder),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: value,
-          hint: Text(
-            hint,
-            style: const TextStyle(fontSize: 13, color: AppColors.textMuted),
-          ),
-          isDense: true,
-          items: items
-              .map(
-                (item) => DropdownMenuItem(
-                  value: item,
-                  child: Text(
-                    labels[item] ?? item,
-                    style: const TextStyle(fontSize: 13),
-                  ),
-                ),
-              )
-              .toList(),
-          onChanged: onChanged,
-        ),
-      ),
+    return WebDropdownFilter(
+      value: value,
+      hint: hint,
+      items: items,
+      labels: labels,
+      onChanged: onChanged,
     );
   }
 
@@ -693,28 +696,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     required VoidCallback onTap,
     required bool isSet,
   }) {
-    return OutlinedButton.icon(
-      onPressed: onTap,
-      icon: Icon(
-        Icons.calendar_today,
-        size: 14,
-        color: isSet ? AppColors.highlight : AppColors.textMuted,
-      ),
-      label: Text(
-        label,
-        style: TextStyle(
-          fontSize: 12,
-          color: isSet ? AppColors.highlight : AppColors.textMuted,
-        ),
-      ),
-      style: OutlinedButton.styleFrom(
-        side: BorderSide(
-          color: isSet ? AppColors.highlight : AppColors.cardBorder,
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
+    return WebDateFilterButton(label: label, onTap: onTap, isSet: isSet);
   }
 
   Widget _buildLogsTable() {

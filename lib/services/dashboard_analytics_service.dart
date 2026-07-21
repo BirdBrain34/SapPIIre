@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:sappiire/services/forms/applicant_search_service.dart';
 import 'package:sappiire/services/forms/submission_service.dart';
 
 class SlaComplianceSummary {
@@ -49,6 +50,7 @@ class DashboardAnalyticsService {
 
   final SupabaseClient _supabase = Supabase.instance.client;
   final SubmissionService _submissionService = SubmissionService();
+  final ApplicantSearchService _applicantSearch = ApplicantSearchService();
   final Map<String, List<Map<String, dynamic>>> _decryptedCache = {};
   final Map<String, DateTime> _cacheTimestamps = {};
   static const Duration _cacheTTL = Duration(minutes: 5);
@@ -920,37 +922,51 @@ class DashboardAnalyticsService {
     }
   }
 
+  /// Client 360 name lookup.
+  ///
+  /// Routed through the `search-applicants` Edge Function rather than the
+  /// `search_users_by_name_canonical` RPC: `user_field_values.field_value` is
+  /// AES-GCM ciphertext for `encryption_version = 2`, so SQL `LIKE` inside
+  /// that RPC could only ever match legacy plaintext rows.
+  ///
+  /// Restricted to applicants with a linked mobile account, which is correct
+  /// here — both consumers ([fetchClientHistory] and
+  /// [fetchEligibilityFrequencyFlags]) key off `user_id`, and a walk-in has no
+  /// 360 view to show.
   Future<List<Map<String, String>>> searchClientsByName(String query) async {
     final text = query.trim();
-    if (text.isEmpty) {
+    if (text.length < ApplicantSearchService.minQueryLength) {
+      return [];
+    }
+
+    // Same guard as the other server-side calls on this service (see
+    // fetchClientHistory, _fetchSubmissionDataRows): the Edge Function
+    // requires an authenticated staff id and rejects the call without one.
+    final staffId = _staffId;
+    if (staffId == null || staffId.isEmpty) {
+      debugPrint(
+        '[DashboardAnalyticsService/searchClientsByName] '
+        'Missing staffId — call setStaffId() before searching.',
+      );
       return [];
     }
 
     try {
-      final rpcResult =
-          await _supabase.rpc(
-                'search_users_by_name_canonical',
-                params: {'p_search': text, 'p_limit': 12},
-              )
-              as List<dynamic>;
+      final result = await _applicantSearch.search(
+        staffId: staffId,
+        query: text,
+        filters: const ApplicantSearchFilters(
+          accountLink: AccountLinkFilter.linked,
+        ),
+        limit: 12,
+      );
 
-      return rpcResult
-          .cast<Map<String, dynamic>>()
-          .map((row) {
-            final uid = row['user_id']?.toString() ?? '';
-            final last = (row['last_name'] as String?)?.trim() ?? '';
-            final first = (row['first_name'] as String?)?.trim() ?? '';
-            final middle = (row['middle_name'] as String?)?.trim() ?? '';
-            final full =
-                '$last, $first${middle.isNotEmpty ? ' ${middle[0]}.' : ''}'
-                    .trim();
+      // Superseded by a newer in-flight search, or the call failed.
+      if (result == null || result.isError) return [];
 
-            return {
-              'user_id': uid,
-              'name': full.isEmpty ? 'Unknown Client' : full,
-            };
-          })
-          .where((row) => (row['user_id'] ?? '').isNotEmpty)
+      return result.applicants
+          .where((a) => a.userId != null && a.userId!.isNotEmpty)
+          .map((a) => {'user_id': a.userId!, 'name': a.displayName})
           .toList();
     } catch (e) {
       debugPrint('[DashboardAnalyticsService/searchClientsByName] Error: $e');

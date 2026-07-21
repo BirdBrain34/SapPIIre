@@ -1,6 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:sappiire/models/form_template_models.dart';
 
+/// Legacy client-side applicant grouping.
+///
+/// Grouping now happens server-side in the `search-applicants` Edge Function,
+/// which returns `ApplicantSummary` instead. This cluster — [ApplicantGroup],
+/// [ApplicantsController.groupedApplicants], [ApplicantsController.findApplicantId],
+/// [ApplicantsController.getApplicantName] and the group-scoped helpers — is
+/// retained as the reference implementation but has no callers.
+///
+/// The formatting helpers further down ([ApplicantsController.formatName],
+/// [ApplicantsController.getFormattedDate], the badge helpers) are NOT legacy
+/// and are still used by the applicants screen.
 class ApplicantGroup {
   final String key;
   final String displayName;
@@ -166,6 +177,15 @@ class ApplicantsController {
     return RegExp(r'[0-9+/=]').hasMatch(v);
   }
 
+  /// Resolves a stable per-person identifier for a submission.
+  ///
+  /// Session identifiers are deliberately NOT candidates: `session_id` is
+  /// unique per submission, so falling back to it made every walk-in record
+  /// its own singleton "applicant" — the direct cause of the same person
+  /// appearing several times in the list.
+  ///
+  /// Returns null when no person-level identifier exists. Callers should treat
+  /// that as "cannot group by id" rather than inventing a key.
   String? findApplicantId(Map<String, dynamic> submission) {
     final data = submission['data'] is Map
         ? Map<String, dynamic>.from(submission['data'] as Map)
@@ -173,9 +193,6 @@ class ApplicantsController {
     final candidates = [
       submission['applicant_id'],
       submission['user_id'],
-      submission['session_id'],
-      submission['sessionId'],
-      submission['submission_session_id'],
       data['__applicant_id'],
       data['applicant_id'],
       data['client_id'],
@@ -197,6 +214,10 @@ class ApplicantsController {
     return DateTime.tryParse(created) ?? DateTime.fromMillisecondsSinceEpoch(0);
   }
 
+  /// Superseded by server-side grouping in the `search-applicants` Edge
+  /// Function. Client-side grouping can only ever see the rows already loaded
+  /// in the browser, so it cannot find an applicant outside the current page.
+  @Deprecated('Applicant grouping is now server-side via ApplicantSearchService.')
   List<ApplicantGroup> groupedApplicants({
     required List<Map<String, dynamic>> submissions,
     required String searchQuery,

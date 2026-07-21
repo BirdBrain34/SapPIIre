@@ -46,6 +46,10 @@ class SubmissionService {
         .single();
   }
 
+  /// Superseded by `ApplicantSearchService.search`, which groups submissions
+  /// into distinct applicants server-side and pages properly. This returns
+  /// raw, ungrouped submission rows and cannot search encrypted PII.
+  @Deprecated('Use ApplicantSearchService.search() for applicant browsing.')
   Future<List<Map<String, dynamic>>> fetchApplicantIndex({
     int limit = 100,
     int offset = 0,
@@ -156,7 +160,7 @@ class SubmissionService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
-  @Deprecated('Use fetchApplicantIndex() for list rendering.')
+  @Deprecated('Use ApplicantSearchService.search() for list rendering.')
   Future<List<Map<String, dynamic>>> fetchRecentClientSubmissions({
     int limit = 100,
   }) async {
@@ -196,23 +200,6 @@ class SubmissionService {
       }
     }
     return sessionToUserId;
-  }
-
-  /// Resolves applicant display names using the resolve-applicant-names
-  /// Edge Function (server-side decryption). Requires staffId for authorization.
-  Future<Map<String, Map<String, String>>> fetchCanonicalNamesByUserIds(
-    List<String> userIds,
-  ) async {
-    if (userIds.isEmpty) return {};
-    // This method no longer performs local AES decryption.
-    // Callers should use resolveNamesViaEdgeFunction(userIds, staffId) instead.
-    return {};
-  }
-
-  @Deprecated('Use resolveNamesViaEdgeFunction with staffId instead.')
-  Future<Map<String, String>?> fetchCanonicalNameByUserId(String userId) async {
-    final names = await fetchCanonicalNamesByUserIds([userId]);
-    return names[userId];
   }
 
   /// Resolves applicant names for staff-facing screens using the

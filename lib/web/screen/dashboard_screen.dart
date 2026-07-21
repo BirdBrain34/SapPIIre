@@ -8,6 +8,7 @@ import 'package:sappiire/web/components/intake_chart_widgets.dart';
 import 'package:sappiire/web/components/enhanced_chart_widgets.dart';
 import 'package:sappiire/web/components/staff_submission_activity.dart';
 import 'package:sappiire/web/controllers/dashboard_controller.dart';
+import 'package:sappiire/web/utils/debouncer.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
 import 'package:sappiire/web/utils/web_session.dart';
 import 'package:sappiire/web/widgets/dashboard_config_dialog.dart';
@@ -69,6 +70,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   Map<String, int> get _barangayVolume => _controller.barangayVolume;
   TextEditingController get _clientSearchController =>
       _controller.clientSearchController;
+  final Debouncer _clientSearchDebouncer = Debouncer.search();
   bool get _isSearchingClients => _controller.isSearchingClients;
   bool get _isLoadingClientHistory => _controller.isLoadingClientHistory;
   List<Map<String, String>> get _clientSearchResults =>
@@ -90,6 +92,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   @override
   void dispose() {
+    _clientSearchDebouncer.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -1384,7 +1387,16 @@ class _DashboardScreenState extends State<DashboardScreen>
                 vertical: 14,
               ),
             ),
-            onChanged: (_) => _controller.searchClients(),
+            // Debounced: client search now decrypts server-side, so one call
+            // per keystroke would mean one bulk decrypt per keystroke.
+            onChanged: (_) => _clientSearchDebouncer.run(() {
+              if (!mounted) return;
+              _controller.searchClients();
+            }),
+            onSubmitted: (_) => _clientSearchDebouncer.flush(() {
+              if (!mounted) return;
+              _controller.searchClients();
+            }),
           ),
           if (_isSearchingClients) ...[
             const SizedBox(height: 12),

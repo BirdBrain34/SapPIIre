@@ -14,6 +14,13 @@ const kAuditSubmissionCreated = 'submission_created';
 const kAuditSubmissionEdited = 'submission_edited';
 const kAuditSubmissionDeleted = 'submission_deleted';
 const kAuditSubmissionDecrypted = 'submission_decrypted';
+const kAuditSubmissionPreviewDecrypted = 'submission_preview_decrypted';
+const kAuditApplicantNamesResolved = 'applicant_names_resolved';
+
+/// Emitted by the `search-applicants` Edge Function. If the live `audit_logs`
+/// table has a CHECK constraint that rejects this value, the function falls
+/// back to [kAuditApplicantNamesResolved] with `details.purpose == 'search'`.
+const kAuditApplicantSearch = 'applicant_search';
 
 const kAuditStaffCreated = 'staff_created';
 const kAuditStaffApproved = 'staff_approved';
