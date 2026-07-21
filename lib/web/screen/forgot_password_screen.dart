@@ -8,6 +8,7 @@ import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/services/email/staff_email_service.dart';
 import 'package:sappiire/services/auth/web_auth_service.dart';
 import 'package:sappiire/services/audit/audit_log_service.dart';
+import 'package:sappiire/services/password/password_validator.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -33,7 +34,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   String? _infoMessage;
   String? _verifiedCswdId;
   final RegExp _emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
-  final RegExp _otpRegex = RegExp(r'^\d{6,8}$');
+  final RegExp _otpRegex = RegExp(r'^\d{6}$');
 
   @override
   void dispose() {
@@ -44,10 +45,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     super.dispose();
   }
 
-  bool get _hasMinLength => _newPasswordController.text.length >= 8;
-  bool get _hasUppercase =>
-      _newPasswordController.text.contains(RegExp(r'[A-Z]'));
-  bool get _hasNumber => _newPasswordController.text.contains(RegExp(r'[0-9]'));
+  PasswordValidationResult get _passwordValidation =>
+      validatePassword(_newPasswordController.text);
   bool get _passwordsMatch =>
       _newPasswordController.text == _confirmPasswordController.text &&
       _newPasswordController.text.isNotEmpty;
@@ -90,7 +89,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     if (!_otpRegex.hasMatch(_otpController.text.trim())) {
       setState(
         () => _errorMessage =
-            'Enter the OTP code from your email (6 to 8 digits).',
+            'Enter the 6-digit code from your email.',
       );
       return;
     }
@@ -120,9 +119,19 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     }
   }
 
+  final _refreshCounter = ValueNotifier<int>(0);
+
+  @override
+  void initState() {
+    super.initState();
+    _newPasswordController.addListener(() => _refreshCounter.value++);
+    _confirmPasswordController.addListener(() => _refreshCounter.value++);
+  }
+
   Future<void> _handleResetPassword() async {
-    if (!_hasMinLength) {
-      setState(() => _errorMessage = 'Password must be at least 8 characters.');
+    if (!_passwordValidation.isValid) {
+      setState(() => _errorMessage =
+          'Password must be at least 8 characters with uppercase, lowercase, number, and special character.');
       return;
     }
     if (!_passwordsMatch) {
@@ -403,7 +412,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           hint: 'New password',
           obscure: _obscureNew,
           onToggle: () => setState(() => _obscureNew = !_obscureNew),
-          onChanged: (_) => setState(() {}),
         ),
         const SizedBox(height: 12),
         _passwordField(
@@ -411,14 +419,32 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           hint: 'Confirm new password',
           obscure: _obscureConfirm,
           onToggle: () => setState(() => _obscureConfirm = !_obscureConfirm),
-          onChanged: (_) => setState(() {}),
         ),
         const SizedBox(height: 12),
-        _requirementRow('8+ characters', _hasMinLength),
-        const SizedBox(height: 4),
-        _requirementRow('Uppercase letter', _hasUppercase),
-        const SizedBox(height: 4),
-        _requirementRow('Contains a number', _hasNumber),
+        ValueListenableBuilder<int>(
+          valueListenable: _refreshCounter,
+          builder: (context, _, __) {
+            final v = validatePassword(_newPasswordController.text);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                PasswordRequirementRow(label: '8+ characters', met: v.hasMinLength),
+                const SizedBox(height: 4),
+                PasswordRequirementRow(label: 'Uppercase letter', met: v.hasUppercase),
+                const SizedBox(height: 4),
+                PasswordRequirementRow(label: 'Lowercase letter', met: v.hasLowercase),
+                const SizedBox(height: 4),
+                PasswordRequirementRow(label: 'Contains a number', met: v.hasNumber),
+                const SizedBox(height: 4),
+                PasswordRequirementRow(label: 'Special character (!@#\$%^&*)', met: v.hasSpecialChar),
+                if (_newPasswordController.text.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  PasswordStrengthBar(result: v),
+                ],
+              ],
+            );
+          },
+        ),
       ],
     );
   }
@@ -498,7 +524,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     required String hint,
     required bool obscure,
     required VoidCallback onToggle,
-    ValueChanged<String>? onChanged,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -509,7 +534,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       child: TextField(
         controller: controller,
         obscureText: obscure,
-        onChanged: onChanged,
         style: const TextStyle(color: Colors.white, fontSize: 14),
         decoration: InputDecoration(
           hintText: hint,
@@ -531,30 +555,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _requirementRow(String label, bool met) {
-    return Row(
-      children: [
-        Icon(
-          met ? Icons.check_circle : Icons.radio_button_unchecked,
-          size: 14,
-          color: met ? AppColors.successGreen : Colors.white38,
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 12,
-              color: met ? AppColors.successGreen : Colors.white54,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

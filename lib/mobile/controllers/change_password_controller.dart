@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sappiire/mobile/utils/snackbar_utils.dart';
 import 'package:sappiire/services/auth/password_reset_service.dart';
+import 'package:sappiire/services/password/password_validator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ChangePasswordController extends ChangeNotifier {
@@ -31,9 +32,9 @@ class ChangePasswordController extends ChangeNotifier {
         ? emailCtrl.text.contains('@')
         : phoneCtrl.text.length >= 10,
     1 => useEmail
-        ? otpCtrl.text.length == 8
+        ? otpCtrl.text.length == 6
         : otpCtrl.text.length == 6,
-    _ => newPasswordCtrl.text.length >= 6 &&
+    _ => validatePassword(newPasswordCtrl.text).isValid &&
         newPasswordCtrl.text == confirmPasswordCtrl.text,
   };
 

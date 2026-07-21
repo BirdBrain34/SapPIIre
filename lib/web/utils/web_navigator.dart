@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:sappiire/services/auth/web_auth_service.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 import 'package:sappiire/web/screen/applicants_screen.dart';
+import 'package:sappiire/web/screen/approvals_screen.dart';
 import 'package:sappiire/web/screen/audit_logs_screen.dart';
 import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/dashboard_screen.dart';
@@ -67,8 +68,16 @@ class WebNavigator {
         );
         break;
       case 'FormBuilder':
-        if (role != 'superadmin') return;
+        if (role != 'superadmin' && role != 'admin') return;
         nextScreen = FormBuilderScreen(
+          cswdId: cswdId,
+          role: role,
+          displayName: displayName,
+        );
+        break;
+      case 'Approvals':
+        if (role != 'superadmin') return;
+        nextScreen = ApprovalsScreen(
           cswdId: cswdId,
           role: role,
           displayName: displayName,

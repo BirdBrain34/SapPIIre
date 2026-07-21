@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:sappiire/mobile/utils/snackbar_utils.dart';
 import 'package:sappiire/models/id_information.dart';
+import 'package:sappiire/services/password/password_validator.dart';
 import 'package:sappiire/services/supabase_service.dart';
 
 enum ContactMethod { email, phone, both }
@@ -101,7 +102,7 @@ class SignupController extends ChangeNotifier {
         return phoneVerified;
       case 4:
         return usernameCtrl.text.isNotEmpty &&
-            passwordCtrl.text.length >= 6 &&
+            validatePassword(passwordCtrl.text).isValid &&
             passwordCtrl.text == confirmPasswordCtrl.text;
       default:
         return false;

@@ -4,6 +4,7 @@ import 'package:sappiire/mobile/controllers/change_password_controller.dart';
 import 'package:sappiire/mobile/screens/auth/login_screen.dart';
 import 'package:sappiire/mobile/widgets/custom_button.dart';
 import 'package:sappiire/mobile/widgets/cp_text_field.dart';
+import 'package:sappiire/services/password/password_validator.dart';
 import 'package:sappiire/mobile/widgets/password_changed_dialog.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
@@ -298,7 +299,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   Widget _buildOtpPage() {
     final destination =
         _controller.useEmail ? _controller.emailCtrl.text : _controller.phoneCtrl.text;
-    final digitCount = _controller.useEmail ? '8-digit' : '6-digit';
+    final digitCount = '6-digit';
     final icon = _controller.useEmail
         ? Icons.mark_email_read
         : Icons.sms_outlined;
@@ -349,10 +350,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   }
 
   Widget _buildNewPasswordPage() {
-    final match = _controller.newPasswordCtrl.text.isNotEmpty &&
-        _controller.newPasswordCtrl.text == _controller.confirmPasswordCtrl.text;
-    final tooShort = _controller.newPasswordCtrl.text.isNotEmpty &&
-        _controller.newPasswordCtrl.text.length < 6;
+    final password = _controller.newPasswordCtrl.text;
+    final confirm = _controller.confirmPasswordCtrl.text;
+    final match = password.isNotEmpty && password == confirm;
+    final validation = password.isNotEmpty ? validatePassword(password) : null;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
@@ -372,7 +373,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
           CpTextField(
             controller: _controller.newPasswordCtrl,
-            label: 'New Password (min. 6 characters)',
+            label: 'New Password (min. 8 characters)',
             icon: Icons.lock_outline,
             obscureText: !_controller.showNewPassword,
             suffixIcon: IconButton(
@@ -387,11 +388,11 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   _controller.togglePasswordVisibility(isNew: true),
             ),
           ),
-          if (tooShort) ...[
-            const SizedBox(height: 4),
-            const Text('Password must be at least 6 characters.',
-                style: TextStyle(
-                    color: Colors.orangeAccent, fontSize: 12)),
+          if (password.isNotEmpty && validation != null) ...[
+            const SizedBox(height: 12),
+            PasswordStrengthBar(result: validation),
+            const SizedBox(height: 12),
+            _buildPasswordRequirements(validation),
           ],
           const SizedBox(height: 14),
 
@@ -411,13 +412,13 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
               onPressed: () => _controller.togglePasswordVisibility(isNew: false),
             ),
           ),
-          if (_controller.confirmPasswordCtrl.text.isNotEmpty && !match) ...[
+          if (confirm.isNotEmpty && !match) ...[
             const SizedBox(height: 4),
             const Text('Passwords do not match.',
                 style: TextStyle(
                     color: Colors.orangeAccent, fontSize: 12)),
           ],
-          if (_controller.confirmPasswordCtrl.text.isNotEmpty && match) ...[
+          if (confirm.isNotEmpty && match) ...[
             const SizedBox(height: 4),
             const Row(
               children: [
@@ -432,6 +433,38 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           ],
         ],
       ),
+    );
+  }
+
+  Widget _buildPasswordRequirements(PasswordValidationResult validation) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        PasswordRequirementRow(
+          label: 'At least 8 characters',
+          met: validation.hasMinLength,
+        ),
+        const SizedBox(height: 4),
+        PasswordRequirementRow(
+          label: 'At least 1 uppercase letter',
+          met: validation.hasUppercase,
+        ),
+        const SizedBox(height: 4),
+        PasswordRequirementRow(
+          label: 'At least 1 lowercase letter',
+          met: validation.hasLowercase,
+        ),
+        const SizedBox(height: 4),
+        PasswordRequirementRow(
+          label: 'At least 1 number',
+          met: validation.hasNumber,
+        ),
+        const SizedBox(height: 4),
+        PasswordRequirementRow(
+          label: 'At least 1 special character',
+          met: validation.hasSpecialChar,
+        ),
+      ],
     );
   }
 

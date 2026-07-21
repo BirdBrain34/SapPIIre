@@ -315,6 +315,12 @@ class InfoScannerController extends ChangeNotifier {
         l.contains('nearest');
   }
 
+  /// Saves the scanned ID data to Supabase.
+  ///
+  /// This intentionally maps extracted ID fields to a fixed set of keys
+  /// that correspond to the `is_system = true` rows in the `canonical_key_registry`.
+  /// OCR can only extract specific identity fields, so this method should not 
+  /// be generalized to read from custom keys in the registry.
   Future<void> saveToSupabase() async {
     final userId = _supabaseService.currentUserId;
     if (userId == null) {

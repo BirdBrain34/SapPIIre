@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/services/auth/web_signup_service.dart';
+import 'package:sappiire/services/password/password_validator.dart';
 
 class WebSignupScreen extends StatefulWidget {
   const WebSignupScreen({super.key});
@@ -30,6 +31,14 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
   String _selectedRequestedRole = 'admin';
   final List<String> _requestedRoles = ['admin'];
   final WebSignupService _webSignupService = WebSignupService();
+  final _refreshCounter = ValueNotifier<int>(0);
+
+  @override
+  void initState() {
+    super.initState();
+    _passwordController.addListener(() => _refreshCounter.value++);
+    _confirmPasswordController.addListener(() => _refreshCounter.value++);
+  }
 
   void _showSnackBar(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -41,7 +50,6 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
   }
 
   Future<void> _handleSignUp() async {
-    // Basic validation
     if (_firstNameController.text.trim().isEmpty ||
         _lastNameController.text.trim().isEmpty ||
         _emailController.text.trim().isEmpty ||
@@ -51,13 +59,17 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
       return;
     }
 
-    if (_passwordController.text != _confirmPasswordController.text) {
-      _showSnackBar('Passwords do not match.', isError: true);
+    if (!validatePassword(_passwordController.text).isValid) {
+      _showSnackBar(
+        'Password must be at least 8 characters with uppercase, lowercase, number, and special character.',
+        isError: true,
+      );
       return;
     }
 
-    if (_passwordController.text.length < 8) {
-      _showSnackBar('Password must be at least 8 characters.', isError: true);
+    if (!(_passwordController.text == _confirmPasswordController.text &&
+        _confirmPasswordController.text.isNotEmpty)) {
+      _showSnackBar('Passwords do not match.', isError: true);
       return;
     }
 
@@ -95,7 +107,6 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
       await Future.delayed(const Duration(seconds: 1));
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      // Show the FULL error so you can see exactly what failed
       _showSnackBar('Error: ${e.toString()}', isError: true);
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -104,6 +115,7 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
 
   @override
   void dispose() {
+    _refreshCounter.dispose();
     _firstNameController.dispose();
     _middleNameController.dispose();
     _lastNameController.dispose();
@@ -121,10 +133,69 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-
     return Scaffold(
       backgroundColor: AppColors.pageBg,
       body: screenWidth > 900 ? _buildDesktopLayout() : _buildMobileLayout(),
+    );
+  }
+
+  Widget _buildPasswordRequirements() {
+    return ValueListenableBuilder<int>(
+      valueListenable: _refreshCounter,
+      builder: (context, _, __) {
+        final v = validatePassword(_passwordController.text);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            PasswordRequirementRow(label: '8+ characters', met: v.hasMinLength),
+            const SizedBox(height: 4),
+            PasswordRequirementRow(label: 'Uppercase letter', met: v.hasUppercase),
+            const SizedBox(height: 4),
+            PasswordRequirementRow(label: 'Lowercase letter', met: v.hasLowercase),
+            const SizedBox(height: 4),
+            PasswordRequirementRow(label: 'Contains a number', met: v.hasNumber),
+            const SizedBox(height: 4),
+            PasswordRequirementRow(label: 'Special character (!@#\$%^&*)', met: v.hasSpecialChar),
+            if (_passwordController.text.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              PasswordStrengthBar(result: v),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildMatchIndicator() {
+    return ValueListenableBuilder<int>(
+      valueListenable: _refreshCounter,
+      builder: (context, _, __) {
+        if (_confirmPasswordController.text.isEmpty) return const SizedBox(height: 6);
+        final match = _passwordController.text == _confirmPasswordController.text &&
+            _confirmPasswordController.text.isNotEmpty;
+        return Column(
+          children: [
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(
+                  match ? Icons.check_circle_outline : Icons.error_outline,
+                  color: match ? AppColors.successGreen : AppColors.dangerRed,
+                  size: 14,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  match ? 'Passwords match' : 'Passwords do not match',
+                  style: TextStyle(
+                    color: match ? AppColors.successGreen : AppColors.dangerRed,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -134,7 +205,6 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
 
     return Row(
       children: [
-        // Left Panel: Branding
         Expanded(
           child: Container(
             decoration: const BoxDecoration(
@@ -151,25 +221,9 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
                   children: [
                     Image.asset('assets/Logo/sappiire_logo.png', height: 64),
                     const SizedBox(height: 24),
-                    const Text(
-                      'SapPIIre',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 40,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1,
-                      ),
-                    ),
+                    const Text('SapPIIre', style: TextStyle(color: Colors.white, fontSize: 40, fontWeight: FontWeight.bold, letterSpacing: 1)),
                     const SizedBox(height: 8),
-                    const Text(
-                      'Join the Portal',
-                      style: TextStyle(
-                        color: AppColors.lightBlue,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w300,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
+                    const Text('Join the Portal', style: TextStyle(color: AppColors.lightBlue, fontSize: 18, fontWeight: FontWeight.w300, letterSpacing: 0.5)),
                     const SizedBox(height: 48),
                     _buildFeatureChip('Secure Access'),
                     const SizedBox(height: 16),
@@ -182,11 +236,9 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
             ),
           ),
         ),
-
-        // Right Panel: Registration Form
         Expanded(
           child: Container(
-            color: Color(0xFF152257),
+            color: const Color(0xFF152257),
             child: Center(
               child: SingleChildScrollView(
                 padding: EdgeInsets.all(formPadding),
@@ -195,83 +247,27 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Text(
-                        'Create Account',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      const Text('Create Account', style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 8),
-                      Text(
-                        'Register as a team member',
-                        style: TextStyle(
-                          color: AppColors.textMuted,
-                          fontSize: 14,
-                        ),
-                      ),
+                      Text('Register as a team member', style: TextStyle(color: AppColors.textMuted, fontSize: 14)),
                       const SizedBox(height: 32),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _styledField(
-                              'First Name',
-                              _firstNameController,
-                              false,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _styledField(
-                              'Middle Name',
-                              _middleNameController,
-                              false,
-                            ),
-                          ),
-                        ],
-                      ),
+                      Row(children: [
+                        Expanded(child: _styledField('First Name', _firstNameController, false)),
+                        const SizedBox(width: 12),
+                        Expanded(child: _styledField('Middle Name', _middleNameController, false)),
+                      ]),
                       const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _styledField(
-                              'Last Name',
-                              _lastNameController,
-                              false,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          SizedBox(
-                            width: 100,
-                            child: _styledField(
-                              'Suffix',
-                              _nameSuffixController,
-                              false,
-                            ),
-                          ),
-                        ],
-                      ),
+                      Row(children: [
+                        Expanded(child: _styledField('Last Name', _lastNameController, false)),
+                        const SizedBox(width: 12),
+                        SizedBox(width: 100, child: _styledField('Suffix', _nameSuffixController, false)),
+                      ]),
                       const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _styledField(
-                              'Position',
-                              _positionController,
-                              false,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _styledField(
-                              'Department',
-                              _departmentController,
-                              false,
-                            ),
-                          ),
-                        ],
-                      ),
+                      Row(children: [
+                        Expanded(child: _styledField('Position', _positionController, false)),
+                        const SizedBox(width: 12),
+                        Expanded(child: _styledField('Department', _departmentController, false)),
+                      ]),
                       const SizedBox(height: 16),
                       _styledField('Phone Number', _phoneController, false),
                       const SizedBox(height: 16),
@@ -282,66 +278,27 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
                       _buildRoleDropdown(),
                       const SizedBox(height: 16),
                       _styledField('Password', _passwordController, true),
+                      const SizedBox(height: 8),
+                      _buildPasswordRequirements(),
                       const SizedBox(height: 16),
-                      _styledField(
-                        'Confirm Password',
-                        _confirmPasswordController,
-                        true,
-                      ),
+                      _styledField('Confirm Password', _confirmPasswordController, true),
+                      _buildMatchIndicator(),
                       const SizedBox(height: 28),
                       SizedBox(
                         height: 48,
                         child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.highlight,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
+                          style: ElevatedButton.styleFrom(backgroundColor: AppColors.highlight, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                           onPressed: _isLoading ? null : _handleSignUp,
                           child: _isLoading
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Text(
-                                  'CREATE ACCOUNT',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                    color: Colors.white,
-                                  ),
-                                ),
+                              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              : const Text('CREATE ACCOUNT', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
                         ),
                       ),
                       const SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            'Already have an account? ',
-                            style: TextStyle(
-                              color: AppColors.textMuted,
-                              fontSize: 13,
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: () => Navigator.pop(context),
-                            child: const Text(
-                              'Sign in',
-                              style: TextStyle(
-                                color: AppColors.highlight,
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        Text('Already have an account? ', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                        GestureDetector(onTap: () => Navigator.pop(context), child: const Text('Sign in', style: TextStyle(color: AppColors.highlight, fontSize: 13, fontWeight: FontWeight.bold))),
+                      ]),
                     ],
                   ),
                 ),
@@ -364,15 +321,7 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
             children: [
               Image.asset('assets/Logo/sappiire_logo.png', height: 48),
               const SizedBox(height: 16),
-              const Text(
-                'Create Account',
-                style: TextStyle(
-                  color: AppColors.textDark,
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
+              const Text('Create Account', style: TextStyle(color: AppColors.textDark, fontSize: 28, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
               const SizedBox(height: 32),
               _styledField('First Name', _firstNameController, false),
               const SizedBox(height: 16),
@@ -395,63 +344,27 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
               _buildRoleDropdown(),
               const SizedBox(height: 16),
               _styledField('Password', _passwordController, true),
+              const SizedBox(height: 8),
+              _buildPasswordRequirements(),
               const SizedBox(height: 16),
-              _styledField(
-                'Confirm Password',
-                _confirmPasswordController,
-                true,
-              ),
+              _styledField('Confirm Password', _confirmPasswordController, true),
+              _buildMatchIndicator(),
               const SizedBox(height: 28),
               SizedBox(
                 height: 48,
                 child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.highlight,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.highlight, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                   onPressed: _isLoading ? null : _handleSignUp,
                   child: _isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text(
-                          'CREATE ACCOUNT',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                            color: Colors.white,
-                          ),
-                        ),
+                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Text('CREATE ACCOUNT', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
                 ),
               ),
               const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'Already have an account? ',
-                    style: TextStyle(color: AppColors.textMuted, fontSize: 13),
-                  ),
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: const Text(
-                      'Sign in',
-                      style: TextStyle(
-                        color: AppColors.highlight,
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Text('Already have an account? ', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                GestureDetector(onTap: () => Navigator.pop(context), child: const Text('Sign in', style: TextStyle(color: AppColors.highlight, fontSize: 13, fontWeight: FontWeight.bold))),
+              ]),
             ],
           ),
         ),
@@ -459,23 +372,11 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
     );
   }
 
-  Widget _styledField(
-    String label,
-    TextEditingController controller,
-    bool obscure,
-  ) {
+  Widget _styledField(String label, TextEditingController controller, bool obscure) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.5,
-          ),
-        ),
+        Text(label, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 0.5)),
         const SizedBox(height: 8),
         TextField(
           controller: controller,
@@ -483,26 +384,11 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
           style: const TextStyle(color: Colors.white, fontSize: 14),
           decoration: InputDecoration(
             filled: true,
-            fillColor: Color(0xFF0D1B4E),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(
-                color: Color(0xFF4C8BF5),
-                width: 1.5,
-              ),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFF4C8BF5), width: 1),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFF6EA8FE), width: 2),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 14,
-            ),
+            fillColor: const Color(0xFF0D1B4E),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF4C8BF5), width: 1.5)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF4C8BF5), width: 1)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF6EA8FE), width: 2)),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             hintStyle: const TextStyle(color: Colors.white54, fontSize: 13),
           ),
           cursorColor: AppColors.highlight,
@@ -515,51 +401,26 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'REQUESTED ROLE',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.5,
-          ),
-        ),
+        const Text('REQUESTED ROLE', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 0.5)),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
           initialValue: _selectedRequestedRole,
-          dropdownColor: Color(0xFF0D1B4E),
+          dropdownColor: const Color(0xFF0D1B4E),
           style: const TextStyle(color: Colors.white, fontSize: 14),
           decoration: InputDecoration(
             filled: true,
-            fillColor: Color(0xFF0D1B4E),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(
-                color: Color(0xFF4C8BF5),
-                width: 1.5,
-              ),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFF4C8BF5), width: 1),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFF6EA8FE), width: 2),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 12,
-            ),
+            fillColor: const Color(0xFF0D1B4E),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF4C8BF5), width: 1.5)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF4C8BF5), width: 1)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF6EA8FE), width: 2)),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           ),
           items: _requestedRoles.map((role) {
             final label = role == 'admin' ? 'Administrator' : role;
             return DropdownMenuItem<String>(value: role, child: Text(label));
           }).toList(),
           onChanged: (value) {
-            if (value != null) {
-              setState(() => _selectedRequestedRole = value);
-            }
+            if (value != null) setState(() => _selectedRequestedRole = value);
           },
         ),
       ],
@@ -570,23 +431,13 @@ class _WebSignupScreenState extends State<WebSignupScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha:  0.1),
+        color: Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.lightBlue.withValues(alpha:  0.3)),
+        border: Border.all(color: AppColors.lightBlue.withValues(alpha: 0.3)),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            text,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
+      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Text(text, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500)),
+      ]),
     );
   }
 }

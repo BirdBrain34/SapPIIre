@@ -5,6 +5,7 @@ import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/mobile/controllers/signup_controller.dart';
 import 'package:sappiire/mobile/widgets/custom_button.dart';
 import 'package:sappiire/mobile/widgets/signup_text_field.dart';
+import 'package:sappiire/services/password/password_validator.dart';
 import 'package:sappiire/mobile/widgets/signup_success_screen.dart';
 import 'package:sappiire/mobile/screens/auth/info_scanner_screen.dart';
 import 'package:sappiire/models/id_information.dart';
@@ -442,11 +443,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 const SizedBox(height: 16),
                 Text('Check ${_controller.emailCtrl.text}', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600), textAlign: TextAlign.center),
                 const SizedBox(height: 6),
-                const Text('Enter the 8-digit code we sent to your email.', style: TextStyle(color: Colors.white, fontSize: 13), textAlign: TextAlign.center),
+                const Text('Enter the 6-digit code we sent to your email.', style: TextStyle(color: Colors.white, fontSize: 13), textAlign: TextAlign.center),
                 const SizedBox(height: 28),
                 SignupTextField(
                   controller: _controller.emailOtpCtrl,
-                  label: 'Enter 8-digit code',
+                  label: 'Enter 6-digit code',
                   icon: Icons.pin_outlined,
                   keyboardType: TextInputType.number,
                   textInputAction: TextInputAction.done,
@@ -579,8 +580,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   Widget _buildCredentialsPage() {
-    final match = _controller.passwordCtrl.text.isNotEmpty && _controller.passwordCtrl.text == _controller.confirmPasswordCtrl.text;
-    final tooShort = _controller.passwordCtrl.text.isNotEmpty && _controller.passwordCtrl.text.length < 6;
+    final password = _controller.passwordCtrl.text;
+    final confirm = _controller.confirmPasswordCtrl.text;
+    final match = password.isNotEmpty && password == confirm;
+    final validation = password.isNotEmpty ? validatePassword(password) : null;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
@@ -597,7 +600,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
           SignupTextField(
             controller: _controller.passwordCtrl,
-            label: 'Password (min. 6 characters)',
+            label: 'Password (min. 8 characters)',
             icon: Icons.lock_outline,
             obscureText: !_controller.showPassword,
             textInputAction: TextInputAction.next,
@@ -606,9 +609,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
               onPressed: () => setState(() => _controller.showPassword = !_controller.showPassword),
             ),
           ),
-          if (tooShort) ...[
-            const SizedBox(height: 4),
-            const Text('Password must be at least 6 characters.', style: TextStyle(color: Colors.orangeAccent, fontSize: 12)),
+          if (password.isNotEmpty && validation != null) ...[
+            const SizedBox(height: 12),
+            PasswordStrengthBar(result: validation),
+            const SizedBox(height: 12),
+            _buildPasswordRequirements(validation),
           ],
           const SizedBox(height: 14),
 
@@ -623,11 +628,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
               onPressed: () => setState(() => _controller.showConfirmPassword = !_controller.showConfirmPassword),
             ),
           ),
-          if (_controller.confirmPasswordCtrl.text.isNotEmpty && !match) ...[
+          if (confirm.isNotEmpty && !match) ...[
             const SizedBox(height: 4),
             const Text('Passwords do not match.', style: TextStyle(color: Colors.orangeAccent, fontSize: 12)),
           ],
-          if (_controller.confirmPasswordCtrl.text.isNotEmpty && match) ...[
+          if (confirm.isNotEmpty && match) ...[
             const SizedBox(height: 4),
             const Row(children: [
               Icon(Icons.check_circle_outline, color: Colors.greenAccent, size: 14),
@@ -637,6 +642,38 @@ class _SignUpScreenState extends State<SignUpScreen> {
           ],
         ],
       ),
+    );
+  }
+
+  Widget _buildPasswordRequirements(PasswordValidationResult validation) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        PasswordRequirementRow(
+          label: 'At least 8 characters',
+          met: validation.hasMinLength,
+        ),
+        const SizedBox(height: 4),
+        PasswordRequirementRow(
+          label: 'At least 1 uppercase letter',
+          met: validation.hasUppercase,
+        ),
+        const SizedBox(height: 4),
+        PasswordRequirementRow(
+          label: 'At least 1 lowercase letter',
+          met: validation.hasLowercase,
+        ),
+        const SizedBox(height: 4),
+        PasswordRequirementRow(
+          label: 'At least 1 number',
+          met: validation.hasNumber,
+        ),
+        const SizedBox(height: 4),
+        PasswordRequirementRow(
+          label: 'At least 1 special character',
+          met: validation.hasSpecialChar,
+        ),
+      ],
     );
   }
 
@@ -674,7 +711,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         if (!_controller.emailOtpSent) {
           canProceed = _controller.emailCtrl.text.contains('@');
         } else if (!_controller.emailVerified) {
-          canProceed = _controller.emailOtpCtrl.text.length == 8;
+          canProceed = _controller.emailOtpCtrl.text.length == 6;
         } else {
           canProceed = true;
         }

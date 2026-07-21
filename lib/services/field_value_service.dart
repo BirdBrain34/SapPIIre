@@ -248,7 +248,14 @@ class FieldValueService {
     }
   }
 
-  // Load direct values first, then fill missing fields from canonical matches.
+  /// Loads saved field values for a template, then fills any missing fields
+  /// by matching canonical_field_key across all templates.
+  ///
+  /// Now also serves canonical keys created dynamically via the Web Form
+  /// Builder registry (canonical_key_registry table). No logic change was
+  /// required because matching is already generic string-normalization over
+  /// whatever canonical_field_key contains — see _normalizeCanonicalKey,
+  /// _semanticFieldKey, _candidateLookupKeys.
   Future<Map<String, dynamic>> loadUserFieldValuesWithCrossFormFill({
     required String userId,
     required FormTemplate template,
@@ -456,9 +463,54 @@ class FieldValueService {
 
         for (final field in entry.value) {
           final current = merged[field.fieldName];
-          final isEmpty = current == null || current.toString().trim().isEmpty;
+          var isEmpty = false;
+          if (current == null) {
+            isEmpty = true;
+          } else if (current is List) {
+            isEmpty = current.isEmpty;
+          } else {
+            isEmpty = current.toString().trim().isEmpty;
+          }
+          
           if (isEmpty) {
-            merged[field.fieldName] = bestValue;
+            if (field.fieldType == FormFieldType.memberTable) {
+              try {
+                final sourceRows = (jsonDecode(bestValue) as List)
+                    .map((e) => Map<String, dynamic>.from(e as Map))
+                    .toList();
+
+                final targetAliases = <String, String>{};
+                for (final col in field.columns) {
+                  final alias = _keyFromTextPreferAlias(col.fieldName) ?? col.fieldName;
+                  targetAliases[alias] = col.fieldName;
+                }
+
+                final mappedRows = <Map<String, dynamic>>[];
+                for (final sourceRow in sourceRows) {
+                  final mappedRow = <String, dynamic>{};
+                  
+                  for (final sourceEntry in sourceRow.entries) {
+                    final sourceAlias = _keyFromTextPreferAlias(sourceEntry.key) ?? sourceEntry.key;
+                    
+                    if (targetAliases.containsKey(sourceAlias)) {
+                      mappedRow[targetAliases[sourceAlias]!] = sourceEntry.value;
+                    } else if (field.columns.any((c) => c.fieldName == sourceEntry.key)) {
+                      mappedRow[sourceEntry.key] = sourceEntry.value;
+                    }
+                  }
+                  
+                  if (mappedRow.isNotEmpty) {
+                    mappedRows.add(mappedRow);
+                  }
+                }
+                
+                merged[field.fieldName] = mappedRows;
+              } catch (_) {
+                merged[field.fieldName] = <Map<String, dynamic>>[];
+              }
+            } else {
+              merged[field.fieldName] = bestValue;
+            }
             filledCount++;
           }
         }

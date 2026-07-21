@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/services/auth/web_auth_service.dart';
 import 'package:sappiire/services/audit/audit_log_service.dart';
+import 'package:sappiire/services/password/password_validator.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/utils/page_transitions.dart';
 
@@ -38,16 +39,18 @@ class _FirstLoginPasswordScreenState extends State<FirstLoginPasswordScreen> {
   bool _obscureConfirm = true;
   String? _errorMessage;
 
-  bool get _hasMinLength => _newPasswordController.text.length >= 8;
-  bool get _hasUppercase =>
-      _newPasswordController.text.contains(RegExp(r'[A-Z]'));
-  bool get _hasNumber => _newPasswordController.text.contains(RegExp(r'[0-9]'));
-  bool get _passwordsMatch =>
-      _newPasswordController.text == _confirmPasswordController.text &&
-      _newPasswordController.text.isNotEmpty;
+  final _refreshCounter = ValueNotifier<int>(0);
+
+  @override
+  void initState() {
+    super.initState();
+    _newPasswordController.addListener(() => _refreshCounter.value++);
+    _confirmPasswordController.addListener(() => _refreshCounter.value++);
+  }
 
   @override
   void dispose() {
+    _refreshCounter.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -61,11 +64,13 @@ class _FirstLoginPasswordScreenState extends State<FirstLoginPasswordScreen> {
       setState(() => _errorMessage = 'Please fill in both fields.');
       return;
     }
-    if (!_hasMinLength) {
-      setState(() => _errorMessage = 'Password must be at least 8 characters.');
+    if (!validatePassword(_newPasswordController.text).isValid) {
+      setState(() => _errorMessage =
+          'Password must be at least 8 characters with uppercase, lowercase, number, and special character.');
       return;
     }
-    if (!_passwordsMatch) {
+    if (!(_newPasswordController.text == _confirmPasswordController.text &&
+        _confirmPasswordController.text.isNotEmpty)) {
       setState(() => _errorMessage = 'Passwords do not match.');
       return;
     }
@@ -188,14 +193,30 @@ class _FirstLoginPasswordScreenState extends State<FirstLoginPasswordScreen> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      _requirementRow('At least 8 characters', _hasMinLength),
-                      const SizedBox(height: 4),
-                      _requirementRow(
-                        'Contains an uppercase letter',
-                        _hasUppercase,
+                      ValueListenableBuilder<int>(
+                        valueListenable: _refreshCounter,
+                        builder: (context, _, __) {
+                          final v = validatePassword(_newPasswordController.text);
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              PasswordRequirementRow(label: '8+ characters', met: v.hasMinLength),
+                              const SizedBox(height: 4),
+                              PasswordRequirementRow(label: 'Uppercase letter', met: v.hasUppercase),
+                              const SizedBox(height: 4),
+                              PasswordRequirementRow(label: 'Lowercase letter', met: v.hasLowercase),
+                              const SizedBox(height: 4),
+                              PasswordRequirementRow(label: 'Contains a number', met: v.hasNumber),
+                              const SizedBox(height: 4),
+                              PasswordRequirementRow(label: 'Special character (!@#\$%^&*)', met: v.hasSpecialChar),
+                              if (_newPasswordController.text.isNotEmpty) ...[
+                                const SizedBox(height: 8),
+                                PasswordStrengthBar(result: v),
+                              ],
+                            ],
+                          );
+                        },
                       ),
-                      const SizedBox(height: 4),
-                      _requirementRow('Contains a number', _hasNumber),
                     ],
                   ),
                 ),
@@ -221,32 +242,81 @@ class _FirstLoginPasswordScreenState extends State<FirstLoginPasswordScreen> {
                 ],
                 _fieldLabel('New Password'),
                 const SizedBox(height: 8),
-                _passwordField(
-                  controller: _newPasswordController,
-                  hint: 'Enter your new password',
-                  obscure: _obscureNew,
-                  onToggle: () => setState(() => _obscureNew = !_obscureNew),
-                  onChanged: (_) => setState(() {}),
+                Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0D1B4E),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF2A3F7A), width: 1.5),
+                  ),
+                  child: TextField(
+                    controller: _newPasswordController,
+                    obscureText: _obscureNew,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: 'Enter your new password',
+                      hintStyle: const TextStyle(color: Color(0xFF4A6499), fontSize: 13),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscureNew ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                          color: const Color(0xFF6EA8FE),
+                          size: 18,
+                        ),
+                        onPressed: () => setState(() => _obscureNew = !_obscureNew),
+                      ),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 _fieldLabel('Confirm Password'),
                 const SizedBox(height: 8),
-                _passwordField(
-                  controller: _confirmPasswordController,
-                  hint: 'Re-enter your new password',
-                  obscure: _obscureConfirm,
-                  onToggle: () =>
-                      setState(() => _obscureConfirm = !_obscureConfirm),
-                  onChanged: (_) => setState(() {}),
-                ),
-                if (_confirmPasswordController.text.isNotEmpty &&
-                    !_passwordsMatch) ...[
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Passwords do not match',
-                    style: TextStyle(color: AppColors.dangerRed, fontSize: 12),
+                Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0D1B4E),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF2A3F7A), width: 1.5),
                   ),
-                ],
+                  child: TextField(
+                    controller: _confirmPasswordController,
+                    obscureText: _obscureConfirm,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: 'Re-enter your new password',
+                      hintStyle: const TextStyle(color: Color(0xFF4A6499), fontSize: 13),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                          color: const Color(0xFF6EA8FE),
+                          size: 18,
+                        ),
+                        onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                      ),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    ),
+                  ),
+                ),
+                ValueListenableBuilder<int>(
+                  valueListenable: _refreshCounter,
+                  builder: (context, _, __) {
+                    if (_confirmPasswordController.text.isEmpty) return const SizedBox.shrink();
+                    final match = _newPasswordController.text == _confirmPasswordController.text &&
+                        _confirmPasswordController.text.isNotEmpty;
+                    return Column(
+                      children: [
+                        const SizedBox(height: 6),
+                        Text(
+                          match ? 'Passwords match' : 'Passwords do not match',
+                          style: TextStyle(
+                            color: match ? AppColors.successGreen : AppColors.dangerRed,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
                 const SizedBox(height: 28),
                 SizedBox(
                   height: 50,
@@ -286,30 +356,6 @@ class _FirstLoginPasswordScreenState extends State<FirstLoginPasswordScreen> {
     );
   }
 
-  Widget _requirementRow(String label, bool met) {
-    return Row(
-      children: [
-        Icon(
-          met ? Icons.check_circle : Icons.radio_button_unchecked,
-          size: 14,
-          color: met ? AppColors.successGreen : Colors.white38,
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 12,
-              color: met ? AppColors.successGreen : Colors.white54,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _fieldLabel(String text) => Text(
     text,
     style: const TextStyle(
@@ -319,45 +365,4 @@ class _FirstLoginPasswordScreenState extends State<FirstLoginPasswordScreen> {
       letterSpacing: 0.3,
     ),
   );
-
-  Widget _passwordField({
-    required TextEditingController controller,
-    required String hint,
-    required bool obscure,
-    required VoidCallback onToggle,
-    ValueChanged<String>? onChanged,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF0D1B4E),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF2A3F7A), width: 1.5),
-      ),
-      child: TextField(
-        controller: controller,
-        obscureText: obscure,
-        onChanged: onChanged,
-        style: const TextStyle(color: Colors.white, fontSize: 14),
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: const TextStyle(color: Color(0xFF4A6499), fontSize: 13),
-          suffixIcon: IconButton(
-            icon: Icon(
-              obscure
-                  ? Icons.visibility_outlined
-                  : Icons.visibility_off_outlined,
-              color: const Color(0xFF6EA8FE),
-              size: 18,
-            ),
-            onPressed: onToggle,
-          ),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 14,
-          ),
-        ),
-      ),
-    );
-  }
 }

@@ -159,23 +159,30 @@ const systemTypeIcons = <FormFieldType, IconData>{
   FormFieldType.unknown: Icons.help_outline,
 };
 
+/// Fallback only — used when `canonical_key_registry` is unreachable.
+/// The database registry is the source of truth; keep this list in sync
+/// manually if you ever change the Phase 1 seed.
 const standardProfileCanonicalKeys = <({String key, String label})>[
-  (key: 'last_name', label: 'Last Name'),
   (key: 'first_name', label: 'First Name'),
   (key: 'middle_name', label: 'Middle Name'),
+  (key: 'last_name', label: 'Last Name'),
   (key: 'date_of_birth', label: 'Date of Birth'),
   (key: 'age', label: 'Age'),
   (key: 'kasarian_sex', label: 'Sex / Kasarian'),
   (key: 'estadong_sibil_civil_status', label: 'Civil Status / Estadong Sibil'),
+  (key: 'civil_status', label: 'Civil Status (alias)'),
+  (key: 'marital_status', label: 'Marital Status (alias)'),
+  (key: 'place_of_birth', label: 'Place of Birth (alias)'),
   (key: 'lugar_ng_kapanganakan_place_of_birth', label: 'Place of Birth'),
-  (key: 'cp_number', label: 'Phone Number / CP Number'),
-  (key: 'email_address', label: 'Email Address'),
-  (
-    key: 'house_number_street_name_phase_purok',
-    label: 'House No. / Street / Purok',
-  ),
+  (key: 'house_number_street_name_phase_purok', label: 'House No. / Street / Purok'),
   (key: 'barangay', label: 'Barangay'),
   (key: 'subdivison_', label: 'Subdivision'),
+  (key: 'email', label: 'Email (alias)'),
+  (key: 'email_address', label: 'Email Address'),
+  (key: 'phone_number', label: 'Phone Number (alias)'),
+  (key: 'contact_number', label: 'Contact Number (alias)'),
+  (key: 'numero_ng_telepono_contact_number', label: 'Numero ng Telepono (alias)'),
+  (key: 'cp_number', label: 'Phone Number / CP Number'),
   (key: 'signature', label: 'Signature'),
 ];
 
@@ -186,6 +193,8 @@ const canonicalKeyEligibleTypes = <FormFieldType>{
   FormFieldType.dropdown,
   FormFieldType.radio,
   FormFieldType.boolean,
+  FormFieldType.memberTable,
+  FormFieldType.computed,
 };
 
 class ReferenceToken {
@@ -328,6 +337,6 @@ class BuilderSection {
         fields = fields ?? [];
 }
 
-enum TemplateListFilter { all, active, draft, published, archived }
+enum TemplateListFilter { all, active, draft, published, archived, pendingApproval }
 
 class FormBuilderController extends ChangeNotifier {}

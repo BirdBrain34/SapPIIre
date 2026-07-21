@@ -91,61 +91,76 @@ Widget buildCanvasToolbar(_FormBuilderScreenState state) {
   final ctrl = state._controller;
   final targetSectionIndex = ctrl.activeSectionIdx ?? (ctrl.sections.isNotEmpty ? ctrl.sections.length - 1 : null);
 
-  return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-    decoration: const BoxDecoration(
-      color: AppColors.cardBg,
-      border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
-    ),
-    child: Row(
-      children: [
-        // ---- Build cluster (left) ----
-        buildPrimaryAction(
-          'Add Question',
-          Icons.add_circle_outline,
-          onPressed: targetSectionIndex != null ? () => ctrl.addField(targetSectionIndex) : null,
-        ),
-        const SizedBox(width: 12),
-        buildOutlinedAction(
-          'Add Intake Module',
-          Icons.dashboard_customize_outlined,
-          onPressed: targetSectionIndex != null ? () => showSystemBlockPicker(state, targetSectionIndex) : null,
-        ),
-        if (ctrl.activeSectionIdx != null) ...[
-          const SizedBox(width: 12),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 160),
-            child: Text(
-              'into  ${ctrl.sections[ctrl.activeSectionIdx!].name}',
-              maxLines: 1,
-              style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
-              overflow: TextOverflow.ellipsis,
+  return LayoutBuilder(
+    builder: (context, constraints) {
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minWidth: constraints.maxWidth),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            decoration: const BoxDecoration(
+              color: AppColors.cardBg,
+              border: Border(bottom: BorderSide(color: AppColors.cardBorder)),
             ),
-          ),
-        ],
-        const SizedBox(width: 16),
-        // ---- Status + save cluster (right) ----
-        // Right-pinned when it fits; scrolls horizontally (keeping the Save
-        // end visible via reverse) when the bar gets cramped on narrow screens.
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            reverse: true,
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                buildStatusPill(ctrl.formStatus),
-                if (ctrl.hasUnsavedChanges) ...[
-                  const SizedBox(width: 8),
-                  buildUnsavedChip(),
-                ],
-                const SizedBox(width: 16),
-                ...buildLifecycleActions(state),
+                // ---- Build cluster (left) ----
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    buildPrimaryAction(
+                      'Add Question',
+                      Icons.add_circle_outline,
+                      onPressed: targetSectionIndex != null ? () => ctrl.addField(targetSectionIndex) : null,
+                    ),
+                    const SizedBox(width: 12),
+                    buildOutlinedAction(
+                      'Add Intake Module',
+                      Icons.dashboard_customize_outlined,
+                      onPressed: targetSectionIndex != null ? () => showSystemBlockPicker(state, targetSectionIndex) : null,
+                    ),
+                    if (ctrl.role == 'superadmin') ...[
+                      const SizedBox(width: 12),
+                      buildOutlinedAction(
+                        'Manage Keys',
+                        Icons.vpn_key,
+                        color: Colors.teal,
+                        onPressed: () {
+                          showCanonicalKeyManagerDialog(
+                            state.context,
+                            FormBuilderService(),
+                            cswdId: ctrl.cswdId,
+                            displayName: ctrl.displayName,
+                            role: ctrl.role,
+                            onChanged: () => ctrl.loadCanonicalKeys(),
+                          );
+                        },
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(width: 32),
+                // ---- Status + save cluster (right) ----
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    buildStatusPill(ctrl.formStatus),
+                    if (ctrl.hasUnsavedChanges) ...[
+                      const SizedBox(width: 8),
+                      buildUnsavedChip(),
+                    ],
+                    const SizedBox(width: 16), // Extra spacing before buttons
+                    ...buildLifecycleActions(state),
+                  ],
+                ),
               ],
             ),
           ),
         ),
-      ],
-    ),
+      );
+    },
   );
 }
 
@@ -155,13 +170,39 @@ Widget buildCanvasToolbar(_FormBuilderScreenState state) {
 List<Widget> buildLifecycleActions(_FormBuilderScreenState state) {
   final ctrl = state._controller;
   final saving = ctrl.isSaving;
+  final isAdmin = state.widget.role == 'admin';
+  final isSuperadmin = state.widget.role == 'superadmin';
 
   switch (ctrl.formStatus) {
     case 'draft':
+      if (isAdmin) {
+        // Admin: Submit for Approval instead of Publish
+        return [
+          buildOutlinedAction('Submit for Approval', Icons.send, color: Colors.deepPurple, onPressed: () => state._submitForApprovalAndSnack()),
+          const SizedBox(width: 8),
+          buildPrimaryAction('Save Draft', Icons.save_outlined, busy: saving, onPressed: saving ? null : () => state._saveTemplateAndSnack()),
+        ];
+      }
+      // Superadmin: Direct publish
       return [
         buildOutlinedAction('Publish', Icons.publish, onPressed: () => state._publishTemplateAndSnack()),
         const SizedBox(width: 8),
         buildPrimaryAction('Save Draft', Icons.save_outlined, busy: saving, onPressed: saving ? null : () => state._saveTemplateAndSnack()),
+      ];
+    case 'pending_approval':
+      if (isSuperadmin) {
+        // Superadmin: Approve or Reject
+        return [
+          buildOutlinedAction('Approve', Icons.check_circle, color: Colors.green, onPressed: () => state._approvePendingAndSnack()),
+          const SizedBox(width: 8),
+          buildOutlinedAction('Reject', Icons.cancel, color: Colors.red, onPressed: () => state._rejectPendingAndSnack()),
+          const SizedBox(width: 8),
+          buildPrimaryAction('Save', Icons.save_outlined, busy: saving, onPressed: saving ? null : () => state._saveTemplateAndSnack()),
+        ];
+      }
+      // Admin: Read-only while pending
+      return [
+        buildPrimaryAction('Save', Icons.save_outlined, busy: saving, onPressed: saving ? null : () => state._saveTemplateAndSnack()),
       ];
     case 'published':
       return [
