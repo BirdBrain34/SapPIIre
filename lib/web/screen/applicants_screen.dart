@@ -920,6 +920,21 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                         _buildOriginBadge(applicant),
                       ],
                     ),
+                    // Account username, when there is one. Walk-ins have no
+                    // account, so the line is omitted rather than shown empty.
+                    if (applicant.username != null &&
+                        applicant.username!.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        '@${applicant.username}',
+                        style: const TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                     const SizedBox(height: 3),
                     Text(
                       latest == '-'

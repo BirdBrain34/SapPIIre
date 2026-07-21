@@ -629,6 +629,27 @@ Deno.serve(async (req: Request) => {
       new Set(candidates.map((c) => c.userId).filter((u): u is string => !!u)),
     );
 
+    // Account usernames. Plaintext in user_accounts, so this is one cheap
+    // query with no decryption — fetched for every linked user, including
+    // cache hits, since the username is not part of the cached PII projection.
+    const usernameByUser = new Map<string, string>();
+    for (const part of chunk(linkedUserIds, IN_CHUNK_SESSIONS)) {
+      const { data: accountRows, error: accountError } = await supabase
+        .from('user_accounts')
+        .select('user_id, username')
+        .in('user_id', part);
+
+      if (accountError) {
+        console.warn('[search-applicants] user_accounts fetch failed:', accountError.message);
+        continue;
+      }
+      for (const row of (accountRows ?? []) as Array<Record<string, unknown>>) {
+        const uid = (row.user_id ?? '').toString();
+        const username = (row.username ?? '').toString().trim();
+        if (uid && username) usernameByUser.set(uid, username);
+      }
+    }
+
     const projectionsByUser = new Map<string, NameProjection>();
     const usersToFetch: string[] = [];
 
@@ -871,6 +892,7 @@ Deno.serve(async (req: Request) => {
       displayName: string;
       nameParts: { last: string; first: string; middle: string };
       userId: string | null;
+      username: string | null;
       submissionCount: number;
       firstSubmissionAt: string;
       latestSubmissionAt: string;
@@ -946,6 +968,10 @@ Deno.serve(async (req: Request) => {
         displayName: formatDisplayName(last, first, middle),
         nameParts: { last, first, middle },
         userId: linked?.userId ?? null,
+        // Walk-ins have no account, so no username.
+        username: linked?.userId
+          ? (usernameByUser.get(linked.userId) ?? null)
+          : null,
         submissionCount: rows.length,
         firstSubmissionAt: rows[rows.length - 1].createdAt,
         latestSubmissionAt: rows[0].createdAt,

@@ -154,6 +154,7 @@ class ApplicantSummary {
     required this.formTypes,
     required this.submissions,
     this.userId,
+    this.username,
     this.firstSubmissionAt,
     this.latestSubmissionAt,
     this.latestIntakeReference,
@@ -175,6 +176,10 @@ class ApplicantSummary {
   final List<String> formTypes;
   final List<ApplicantSubmissionRef> submissions;
   final String? userId;
+
+  /// Mobile account username. Null for walk-ins, who have no account.
+  final String? username;
+
   final String? firstSubmissionAt;
   final String? latestSubmissionAt;
   final String? latestIntakeReference;
@@ -204,6 +209,7 @@ class ApplicantSummary {
                 .toList()
           : const [],
       userId: json['userId']?.toString(),
+      username: json['username']?.toString(),
       firstSubmissionAt: json['firstSubmissionAt']?.toString(),
       latestSubmissionAt: json['latestSubmissionAt']?.toString(),
       latestIntakeReference: json['latestIntakeReference']?.toString(),
