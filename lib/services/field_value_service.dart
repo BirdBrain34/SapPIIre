@@ -324,7 +324,8 @@ class FieldValueService {
         // Prefer the canonical from DB (which may be set even if in-memory model is stale).
         final canonical = fieldIdToCanonical[field.fieldId] ?? _semanticFieldKey(field);
         debugPrint('[FieldValueService/FILL] field="${field.fieldName}" type=${field.fieldType} dbCanonical=${fieldIdToCanonical[field.fieldId] ?? "(missing)"} semanticCanonical="${_semanticFieldKey(field)}" resolved="$canonical" hasValue=$hasValue currentType=${current.runtimeType} current=$current');
-        if (hasValue) {
+        // Always cross-fill member_table fields so they stay in sync with the source.
+        if (hasValue && field.fieldType != FormFieldType.memberTable) {
           protectedCount++;
           continue;
         }
@@ -524,7 +525,8 @@ class FieldValueService {
           }
           debugPrint('[FieldValueService/FILL]   Apply field=${field.fieldName} type=${field.fieldType} currentIsEmpty=$isEmpty bestValue_prefix=${bestValue.length > 30 ? bestValue.substring(0,30) : bestValue}');
           
-          if (isEmpty) {
+          // Always overwrite member_table fields so they stay in sync with source.
+          if (field.fieldType == FormFieldType.memberTable || isEmpty) {
             if (field.fieldType == FormFieldType.memberTable) {
               try {
                 final decodedSourceRows = jsonDecode(bestValue) as List;
