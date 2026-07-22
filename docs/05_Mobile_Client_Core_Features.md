@@ -89,11 +89,29 @@ Mobile clients subscribe to real-time `form_template_notifications` table broadc
 
 Each notification includes a `change_type`, `changeSummary`, and `templateName`. On the mobile client:
 
-- Notifications are classified by change category and rendered as floating SnackBars.
+#### 2.7.1 Deduplication and Debounce Batching
+
+The notification system applies **four layers of defense** to prevent duplicate toasts and badge increments, which was a critical issue when editing large templates (e.g. GIS with dozens of fields):
+
+1. **Service-level ID deduplication** (`FormTemplateNotificationService`): A `_processedIds` set tracks every notification ID already emitted. When Supabase Realtime delivers the same row in consecutive callbacks (initial snapshot + INSERT event), the duplicate ID is silently dropped. On `startListening()`, the set is cleared so a fresh subscription does not skip newly arrived rows.
+
+2. **UI-level ID deduplication** (`_uiProcessedNotifIds` in `manage_info_screen.dart`): A second `Set<String>` at the UI listener provides an additional filter. Even if the service layer emits the same ID twice (due to stream controller timing), the UI skips it on second arrival.
+
+3. **Debounce batching** (1.2s window): All notifications that arrive within a 1.2-second window are accumulated into a batch. When the timer fires, a single aggregated SnackBar is shown — e.g. *"3 form change(s) detected for 'Test Form'. Tap RELOAD."* — instead of N individual toasts. This prevents the toast overflow that would occur when a single save operation generates multiple field-level notification rows.
+
+4. **Toast cooldown guard** (3s): After a SnackBar is shown, no new toast can appear for 3 seconds. This is the final backstop against any delayed duplicates that slip past the earlier layers.
+
+#### 2.7.2 Notification Rendering
+
+When the batch timer fires, notifications are classified by change category and rendered as a single floating SnackBar:
 - Field-level changes display with a pencil icon (indicating field edits).
 - New template arrivals display with a star-burst icon.
 - Template removal displays with a minus-circle icon.
-- Each notification includes a RELOAD action, allowing the user to refresh the form manifest immediately.
+- The aggregated toast includes a RELOAD action, allowing the user to refresh the form manifest immediately.
+
+#### 2.7.3 Bell Badge
+
+The unread notification badge in the AppBar refreshes from the server (`_loadUnreadCount()`) after each batch is processed, rather than incrementing a local counter (`_unreadNotifCount++`). This ensures the badge always reflects the true unread count from `user_notification_reads`, regardless of how many notifications arrived in the batch.
 
 ### 2.8 Mobile Notification Center
 
