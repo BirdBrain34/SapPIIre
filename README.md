@@ -16,6 +16,11 @@ This project is a starting point for a Flutter application.
 - 06 Web CSWD Staff Core Features: [docs/06_Web_CSWD_Staff_Core_Features.md](docs/06_Web_CSWD_Staff_Core_Features.md)
 - 07 Mobile Feature Traceability Matrix: [docs/07_Mobile_Feature_Traceability_Matrix.md](docs/07_Mobile_Feature_Traceability_Matrix.md)
 - 08 Web Staff Feature Traceability Matrix: [docs/08_Web_Feature_Traceability_Matrix.md](docs/08_Web_Feature_Traceability_Matrix.md)
+- 09 Database Normalization Architecture: [docs/09_Database_Normalization_Architecture.md](docs/09_Database_Normalization_Architecture.md)
+- 10 Canonical Key Registry: [docs/10_Canonical_Key_Registry.md](docs/10_Canonical_Key_Registry.md)
+- 11 MobSF Remediation Summary: [docs/11_MobSF_Remediation_Summary.md](docs/11_MobSF_Remediation_Summary.md)
+- 12 Account Deletion and Data Erasure: [docs/12_Account_Deletion_and_Data_Erasure.md](docs/12_Account_Deletion_and_Data_Erasure.md)
+- Edge Function Schema Map: [docs/EDGE_FUNCTION_SCHEMA_MAP.md](docs/EDGE_FUNCTION_SCHEMA_MAP.md)
 - Hybrid Crypto Setup and Test Drive Guide: [docs/HYBRID_CRYPTO_TEST_DRIVE_GUIDE.md](docs/HYBRID_CRYPTO_TEST_DRIVE_GUIDE.md)
 
 A few resources to get you started if this is your first Flutter project:

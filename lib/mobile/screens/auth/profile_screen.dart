@@ -385,6 +385,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onTap: () => _controller.handleLogout(context),
               isDestructive: true,
             ),
+            const ProfileDivider(),
+            ProfileActionRow(
+              icon: Icons.delete_forever_outlined,
+              label: 'Delete My Account',
+              subtitle: 'Permanently erase your data (R.A. 10173)',
+              onTap: () => _controller.handleDeleteAccount(context),
+              isDestructive: true,
+            ),
           ]),
 
           const SizedBox(height: 16),

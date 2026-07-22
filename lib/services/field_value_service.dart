@@ -324,7 +324,8 @@ class FieldValueService {
         // Prefer the canonical from DB (which may be set even if in-memory model is stale).
         final canonical = fieldIdToCanonical[field.fieldId] ?? _semanticFieldKey(field);
         debugPrint('[FieldValueService/FILL] field="${field.fieldName}" type=${field.fieldType} dbCanonical=${fieldIdToCanonical[field.fieldId] ?? "(missing)"} semanticCanonical="${_semanticFieldKey(field)}" resolved="$canonical" hasValue=$hasValue currentType=${current.runtimeType} current=$current');
-        if (hasValue) {
+        // Always cross-fill member_table fields so they stay in sync with the source.
+        if (hasValue && field.fieldType != FormFieldType.memberTable) {
           protectedCount++;
           continue;
         }
@@ -524,7 +525,8 @@ class FieldValueService {
           }
           debugPrint('[FieldValueService/FILL]   Apply field=${field.fieldName} type=${field.fieldType} currentIsEmpty=$isEmpty bestValue_prefix=${bestValue.length > 30 ? bestValue.substring(0,30) : bestValue}');
           
-          if (isEmpty) {
+          // Always overwrite member_table fields so they stay in sync with source.
+          if (field.fieldType == FormFieldType.memberTable || isEmpty) {
             if (field.fieldType == FormFieldType.memberTable) {
               try {
                 final decodedSourceRows = jsonDecode(bestValue) as List;
@@ -800,30 +802,9 @@ class FieldValueService {
     return normalized.isEmpty ? null : normalized;
   }
 
-  /// Smart-merges a decrypted source table payload (already-decoded JSON rows
-  /// from another template's member_table field sharing the same
-  /// canonical_field_key) into the destination field's own column schema.
-  ///
-  /// Pure, synchronous, in-memory transform — no Supabase calls, no
-  /// HybridCryptoService calls. This is the single place column-shape
-  /// differences between two templates' member_table fields get reconciled,
-  /// after decryption and before FormStateController.loadFromJson() renders
-  /// them.
-  ///
-  /// Matching is tiered, most to least specific. A source column matching no
-  /// tier is dropped (prune extras). A row ending with zero matched columns
-  /// is dropped entirely rather than inserted blank.
-  ///
-  ///   Tier 1 — exact canonical-key match, only if the caller supplies
-  ///     [sourceColumnCanonicalKeys] AND a destination column carries
-  ///     canonical_field_key. No caller does this yet; the plumbing is free
-  ///     because FormFieldModel already parses canonical_field_key for child
-  ///     rows, so this tier activates with zero further changes once
-  ///     column-level keys are assigned in a future task.
-  ///   Tier 2 — semantic alias match via the existing _keyFromTextPreferAlias
-  ///     heuristic. Behaviorally identical to today for anything it already
-  ///     matched.
-  ///   Tier 3 — exact normalized field-name match.
+  /// Merges source member_table rows into the destination column schema using
+  /// tiered matching (canonical key, semantic alias, exact name), dropping
+  /// unmapped columns and empty rows.
   @visibleForTesting
   static List<Map<String, dynamic>> mergeTablePayloads({
     required List<dynamic> sourceRows,

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -54,8 +56,9 @@ class InfoScannerController extends ChangeNotifier {
     isProcessing = true;
     notifyListeners();
 
+    XFile? imageFile;
     try {
-      final XFile imageFile = await cameraController!.takePicture();
+      imageFile = await cameraController!.takePicture();
       final inputImage = InputImage.fromFilePath(imageFile.path);
       final RecognizedText recognized =
           await _textRecognizer.processImage(inputImage);
@@ -82,6 +85,16 @@ class InfoScannerController extends ChangeNotifier {
     } finally {
       isProcessing = false;
       notifyListeners();
+      // Best-effort cleanup of the captured ID photo after OCR extraction.
+      // This prevents PII-containing images from lingering in the app cache.
+      if (imageFile != null) {
+        try {
+          final f = File(imageFile.path);
+          if (await f.exists()) await f.delete();
+        } catch (_) {
+          // Cleanup must never mask the original scan result or error.
+        }
+      }
     }
   }
 

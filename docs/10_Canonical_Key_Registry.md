@@ -112,7 +112,7 @@ Custom keys can be created by staff (superadmins) in the Form Builder UI. They a
 
 ## Cross-Form Fill with Registry Keys
 
-`FieldValueService` (`lib/services/field_value_service.dart`) handles cross-form autofill by matching `canonical_field_key` across all templates. The service uses generic string-normalization over whatever `canonical_field_key` contains — no logic change was required to support keys from the registry.
+`FieldValueService` (`lib/services/field_value_service.dart`) handles cross-form autofill by matching `canonical_field_key` across all templates. The service uses generic string-normalization over whatever `canonical_field_key` contains.
 
 ### Matching Strategy
 1. **`_normalizeCanonicalKey(raw)`**: Strips non-alphanumeric characters, lowercases, collapses underscores. This normalizes both registry keys and legacy ad-hoc keys to the same format.
@@ -124,13 +124,118 @@ Custom keys can be created by staff (superadmins) in the Form Builder UI. They a
 - Direct field values (loaded by `field_id`) take priority over cross-filled values.
 - Fields that the user has explicitly cleared (`__CLEARED__` sentinel) are not overwritten by cross-fill.
 - Cross-filled values are batch-decrypted (v2 encryption) for performance.
-- The method `loadUserFieldValuesWithCrossFormFill()` is now also used by the Web Form Builder's preview, ensuring registry keys created dynamically via the Web UI are immediately usable for cross-form autofill.
+- The method `loadUserFieldValuesWithCrossFormFill()` is also used by the Web Form Builder's preview, ensuring registry keys created dynamically via the Web UI are immediately usable for cross-form autofill.
 
 ### Fallback for Pre-Migration Environments
 During the transition from ad-hoc `canonical_field_key` values to the governed registry, the system supports a fallback mode:
 - If `fetchCanonicalKeyRegistry()` returns an empty list or throws (table does not exist yet), the controller falls back to `standardProfileCanonicalKeys` — a static list of system keys defined in `form_builder_controller.dart`.
 - These static keys include: `first_name`, `last_name`, `middle_name`, `date_of_birth`, `civil_status`, `gender`, `phone`, `email`, `birthplace`, `address_line`, `subdivision`, `barangay`, `purok_sitio`, `signature`.
 - This ensures the Form Builder remains fully functional even before the registry migration is applied to a given Supabase project.
+
+## Member Table Cross-Fill
+
+`member_table` fields now fully participate in cross-form autofill when they share a `canonical_field_key` across templates. This enables populating member/row-based data (e.g. Family Members, Children, Dependents) from one template to another, even when the column structures differ.
+
+### How Member Tables Are Stored
+
+A member_table field stores its data as a **single JSON blob** in the `user_field_values` table:
+
+```
+field_value = '[{"Name":"Juan","Age":"30"},{"Name":"Maria","Age":"25"}]'
+```
+
+The entire table (all rows, all columns) is serialized with `jsonEncode()` on save and deserialized with `jsonDecode()` on load.
+
+### Table-Level Matching
+
+Two member_table fields are considered "the same" if they share the same `canonical_field_key` in the `form_fields` table. Because the in-memory `FormFieldModel` may have a stale or null `canonicalFieldKey`, the system now performs an **additional DB query** to get the authoritative `canonical_field_key` from `form_fields` directly before building the list of missing fields for cross-fill.
+
+This means: even if the `FormFieldModel` for a member_table field has `canonicalFieldKey = null`, the system will still correctly resolve it to `"family_member"` (or whatever the DB stores).
+
+### Column-Level Reconciliation (`mergeTablePayloads`)
+
+Once two member_table fields are matched at the table level, their **columns** must be mapped individually. The static method `FieldValueService.mergeTablePayloads()` performs this mapping using a **3-tier matching system**:
+
+**Tier 1 — Canonical Key Match** (future-ready, currently inactive)
+- If a destination column carries a `canonical_field_key`, and the caller supplies `sourceColumnCanonicalKeys`, exact canonical key matches are used as the highest-priority mapping.
+- The plumbing is already in place because `FormFieldModel` parses `canonical_field_key` for child rows. This tier becomes active automatically once column-level canonical keys are assigned in the Form Builder UI.
+- **Status**: Ready but unused — no caller yet supplies `sourceColumnCanonicalKeys`.
+
+**Tier 2 — Semantic Alias Match** (active)
+- Each destination column's `fieldName` is run through `_keyFromTextPreferAlias()` to get a normalized alias.
+- Each source column's key is run through the same function.
+- If the aliases match, the value maps across. This handles bilingual name columns like:
+  - Source `"Pangalan"` → Dest `"First Name"` (both resolve to `"first_name"`)
+  - Source `"Apelyido"` → Dest `"Last Name"` (both resolve to `"last_name"`)
+  - Source `"CP Number"` → Dest `"Phone"` (both resolve to `"phone"`)
+
+**Tier 3 — Exact Field-Name Match** (active, lowest priority)
+- If the source key matches a destination column's `fieldName` exactly (case-sensitive), the value maps across.
+- This handles columns with identical English labels like `"Name"` → `"Name"`.
+
+**Unmatched columns** are silently dropped — no error, no blank column in the row.
+
+**Rows with zero matched columns** are dropped entirely — the row count decreases rather than inserting an empty row.
+
+### Always-Overwrite Behavior (Dynamic Updates)
+
+Unlike scalar fields which are only cross-filled **once** (when empty), `member_table` fields are **always overwritten** on every load. This is intentional:
+
+1. Form A saves member_table with 1 row → JSON `[{"Name":"Juan"}]`
+2. Form B loads → cross-fill copies the 1 row into B
+3. Form A adds a 2nd row and saves → JSON `[{"Name":"Juan"},{"Name":"Maria"}]`
+4. Form B loads → **B's member_table is overwritten** with the new 2-row data
+5. Changing a name in Form A → next Form B load → reflects the change
+
+**Trade-off**: Any manual edits to a destination member_table are overwritten on the next load. This is the desired behavior when the source template is the authoritative data entry point.
+
+### Implementation Details
+
+The key logic is in `loadUserFieldValuesWithCrossFormFill()` in `lib/services/field_value_service.dart`:
+
+```dart
+// 1. DB canonical key fallback — fetch the real canonical_field_key from DB
+final fieldIdToCanonical = <String, String>{};
+final eligibleFieldRows = await _supabase
+    .from('form_fields')
+    .select('field_id, canonical_field_key')
+    .inFilter('field_id', eligible.map((f) => f.fieldId).toList());
+// ... populate map ...
+final canonical = fieldIdToCanonical[field.fieldId] ?? _semanticFieldKey(field);
+
+// 2. member_table fields always go into the missing list (never "protected")
+if (hasValue && field.fieldType != FormFieldType.memberTable) {
+    protectedCount++;
+    continue;
+}
+
+// 3. member_table fields always get overwritten in the merge loop
+if (field.fieldType == FormFieldType.memberTable || isEmpty) {
+    // ... decode JSON, call mergeTablePayloads, assign result ...
+}
+```
+
+### Reusing the Semantic Alias Table for Columns
+
+The same `_semanticAliasFromText()` function that maps scalar field labels is reused for member_table column matching. The currently supported aliases are:
+
+| Normalized Key | Matches Include |
+|---|---|
+| `last_name` | `lastname`, `surname`, `family_name`, `apelyido`, contains `last` + `name` |
+| `first_name` | `firstname`, `given_name`, `given_names`, `pangalan`, contains `first` + `name` |
+| `middle_name` | `middlename`, `gitnang`, contains `middle` + `name` |
+| `birth_date` | `birthdate`, `date_of_birth`, `kapanganakan`, contains `birth` + `date`/`day` |
+| `civil_status` | `marital_status`, `estadong_sibil_civil_status`, `sibil`, contains `civil` + `status` |
+| `gender` | `sex`, `kasarian_sex`, `kasarian` |
+| `phone` | `cp_number`, `contact_no`, `contact_number`, `mobile_no`, `cellphone_number`, contains `phone`/`mobile`/`contact` |
+| `email` | `email_address`, contains `email`/`e_mail` |
+| `birthplace` | `place_of_birth`, `birth_place`, `lugar_ng_kapanganakan_place_of_birth` |
+| `address_line` | `house_no_street`, `address_line`, contains `street` |
+| `subdivision` | `subdivison_`, contains `subdivision` |
+| `barangay` | Contains `barangay` |
+| `purok_sitio` | Contains `purok` or `sitio` |
+
+If a column name does not match any alias, the system falls back to Tier 3 (exact name match). If that also fails, the column is silently omitted.
 
 ---
 

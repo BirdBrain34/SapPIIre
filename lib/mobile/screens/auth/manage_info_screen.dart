@@ -87,6 +87,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     if (_listenedFormController != null && _formControllerListener != null) {
       _listenedFormController!.removeListener(_formControllerListener!);
     }
+    _notifDebounceTimer?.cancel();
     _templateNotificationSubscription?.cancel();
     _notificationService.stopListening();
     _controller.dispose();
@@ -253,78 +254,123 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
   // ── Real-time template notifications ──────────────────────────────────────
 
+  /// Debounce timer that batches multiple incoming notifications into one toast.
+  Timer? _notifDebounceTimer;
+
+  /// Accumulator for notifications that arrived during the current debounce window.
+  final List<TemplateNotification> _pendingNotifications = [];
+
+  /// Second-layer dedup: tracks notification IDs already seen by the UI listener.
+  /// Supabase .stream() can deliver the same row in consecutive callbacks
+  /// (e.g. initial snapshot + realtime INSERT event), and even though the
+  /// service layer deduplicates, a new subscription may re-deliver rows.
+  final Set<String> _uiProcessedNotifIds = {};
+
+  /// Prevents showing a new toast within this cooldown period after the last one.
+  /// This is the final backstop: even if the stream delivers duplicate rows
+  /// in separate callbacks more than [debounceWindow] apart, only one toast
+  /// will appear within the cooldown window.
+  static const Duration _toastCooldown = Duration(seconds: 3);
+  DateTime _lastToastTime = DateTime(1970);
+
   void _startTemplateNotifications() {
     _notificationService.startListening();
     _templateNotificationSubscription =
         _notificationService.notificationStream.listen((notification) {
       if (!mounted) return;
 
-      setState(() => _unreadNotifCount++);
+      // === UI-level dedup: skip any notification ID already processed ===
+      if (_uiProcessedNotifIds.contains(notification.id)) return;
+      _uiProcessedNotifIds.add(notification.id);
 
-      final changeType = notification.changeType;
-      final message = notification.changeSummary;
+      // Accumulate into the batch.
+      _pendingNotifications.add(notification);
 
-      // Classify the notification so the UI can choose the right icon and color.
-      final isFieldChange = changeType == 'field_added'
-          || changeType == 'field_updated'
-          || changeType == 'field_deleted';
+      // Reset the debounce timer — each new notification extends the window.
+      _notifDebounceTimer?.cancel();
+      _notifDebounceTimer = Timer(const Duration(milliseconds: 1200), () {
+        if (!mounted || _pendingNotifications.isEmpty) return;
 
-      // Treat pushed or added templates as new form notifications.
-      final isNewForm = changeType == 'pushed_to_mobile'
-          || changeType == 'added';
+        final batch = List<TemplateNotification>.from(_pendingNotifications);
+        _pendingNotifications.clear();
 
-      // Treat archived or deleted templates as removal notifications.
-      final isRemoval = changeType == 'archived'
-          || changeType == 'deleted';
+        // === Toast cooldown guard: don't show a new toast if one was
+        // shown recently. This prevents duplicate toasts when the
+        // Realtime stream delivers the same rows in separate callbacks. ===
+        final now = DateTime.now();
+        if (now.difference(_lastToastTime) < _toastCooldown) return;
 
-      final IconData notifIcon;
-      if (isFieldChange) {
-        notifIcon = Icons.edit_note_rounded;
-      } else if (isNewForm) {
-        notifIcon = Icons.new_releases_outlined;
-      } else if (isRemoval) {
-        notifIcon = Icons.remove_circle_outline;
-      } else {
-        notifIcon = Icons.update_outlined;
-      }
+        // Refresh the unread badge from the server so the count is accurate
+        // regardless of how many notifications arrived in the batch.
+        _loadUnreadCount();
 
-      final Color bgColor;
-      if (isFieldChange) {
-        bgColor = const Color(0xFF0277BD);
-      } else if (isNewForm) {
-        bgColor = const Color(0xFF0D47A1);
-      } else if (isRemoval) {
-        bgColor = const Color(0xFFC62828);
-      } else {
-        bgColor = const Color(0xFF1565C0);
-      }
+        // Determine the "most important" type in this batch for the icon/color.
+        final hasFieldChange = batch.any((n) =>
+            n.changeType == 'field_added' ||
+            n.changeType == 'field_updated' ||
+            n.changeType == 'field_deleted');
+        final hasNewForm = batch.any((n) =>
+            n.changeType == 'pushed_to_mobile' || n.changeType == 'added');
+        final hasRemoval = batch.any((n) =>
+            n.changeType == 'archived' || n.changeType == 'deleted');
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              Icon(notifIcon, color: Colors.white, size: 18),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  message,
-                  style: const TextStyle(fontSize: 13),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 2,
+        final IconData notifIcon;
+        final Color bgColor;
+        if (hasFieldChange) {
+          notifIcon = Icons.edit_note_rounded;
+          bgColor = const Color(0xFF0277BD);
+        } else if (hasNewForm) {
+          notifIcon = Icons.new_releases_outlined;
+          bgColor = const Color(0xFF0D47A1);
+        } else if (hasRemoval) {
+          notifIcon = Icons.remove_circle_outline;
+          bgColor = const Color(0xFFC62828);
+        } else {
+          notifIcon = Icons.update_outlined;
+          bgColor = const Color(0xFF1565C0);
+        }
+
+        final String toastMessage;
+        if (batch.length == 1) {
+          toastMessage = batch.first.changeSummary;
+        } else {
+          final names = batch.map((n) => n.templateName).toSet().join(', ');
+          toastMessage = '${batch.length} form change(s) detected for "$names". Tap RELOAD.';
+        }
+
+        _lastToastTime = now;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(notifIcon, color: Colors.white, size: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    toastMessage,
+                    style: const TextStyle(fontSize: 13),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
+            backgroundColor: bgColor,
+            duration: const Duration(seconds: 6),
+            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(
+              label: 'RELOAD',
+              textColor: Colors.white,
+              onPressed: () {
+                // Also refresh the unread badge since the user is reloading.
+                _loadUnreadCount();
+                _loadAll();
+              },
+            ),
           ),
-          backgroundColor: bgColor,
-          duration: const Duration(seconds: 6),
-          behavior: SnackBarBehavior.floating,
-          action: SnackBarAction(
-            label: 'RELOAD',
-            textColor: Colors.white,
-            onPressed: _loadAll,
-          ),
-        ),
-      );
+        );
+      });
     });
   }
 
