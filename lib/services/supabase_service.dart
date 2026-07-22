@@ -8,6 +8,7 @@ import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/services/crypto/hybrid_crypto_service.dart';
 import 'package:sappiire/services/field_value_service.dart';
 import 'package:sappiire/services/form_template_service.dart';
+import 'package:sappiire/services/log_util.dart';
 
 class SupabaseService {
   final _supabase = Supabase.instance.client;
@@ -34,7 +35,7 @@ class SupabaseService {
           .maybeSingle();
       return row == null ? null : Map<String, dynamic>.from(row);
     } catch (e) {
-      debugPrint('[SupabaseService/fetchTemplatePopupConfig] Error: $e');
+      LogUtil.debugPrint('[SupabaseService/fetchTemplatePopupConfig] Error: $e');
       return null;
     }
   }
@@ -68,7 +69,7 @@ class SupabaseService {
         'readIds': readIds,
       };
     } catch (e) {
-      debugPrint('[SupabaseService/fetchAppNotifications] Error: $e');
+      LogUtil.debugPrint('[SupabaseService/fetchAppNotifications] Error: $e');
       return {'notifications': <Map<String, dynamic>>[], 'readIds': <String>[]};
     }
   }
@@ -88,7 +89,7 @@ class SupabaseService {
           .from('user_notification_reads')
           .upsert(rows, onConflict: 'user_id,notification_id');
     } catch (e) {
-      debugPrint('[SupabaseService/markNotificationsRead] Error: $e');
+      LogUtil.debugPrint('[SupabaseService/markNotificationsRead] Error: $e');
     }
   }
  
@@ -122,7 +123,7 @@ class SupabaseService {
  
       return allIds.difference(readIds).length;
     } catch (e) {
-      debugPrint('[SupabaseService/fetchUnreadNotificationCount] Error: $e');
+      LogUtil.debugPrint('[SupabaseService/fetchUnreadNotificationCount] Error: $e');
       return 0;
     }
   }
@@ -441,7 +442,7 @@ class SupabaseService {
               shouldCreateUser: false,
             );
           } catch (e) {
-            debugPrint('[SupabaseService/signUpWithEmail] Warning: OTP send failed: $e');
+            LogUtil.debugPrint('[SupabaseService/signUpWithEmail] Warning: OTP send failed: $e');
           }
         }
 
@@ -644,20 +645,23 @@ class SupabaseService {
     }
 
     try {
-      // Sanitize the identifier to prevent PostgREST filter-grammar injection.
-      // Characters like ',' '(' ')' have syntactic meaning in .or() filter strings
-      // and could alter query semantics if present in user-supplied input.
-      final safeIdentifier = identifier.replaceAll(RegExp(r'[,()]'), '');
-
-      // Resolve the account by username, email, or phone.
-      final account = await _supabase
+      // Resolve the account by username or email using parameterized queries
+      // instead of .or() string interpolation to prevent PostgREST filter-grammar
+      // injection (CWE-89). Each .ilike() call safely binds the user-supplied
+      // value as a query parameter rather than embedding it in a filter string.
+      Map<String, dynamic>? account = await _supabase
           .from('user_accounts')
           .select('user_id, username, email, phone_number, is_active')
-          .or(
-            'username.ilike.$safeIdentifier,'
-            'email.ilike.$safeIdentifier',
-          )
+          .ilike('username', identifier)
           .maybeSingle();
+
+      if (account == null) {
+        account = await _supabase
+            .from('user_accounts')
+            .select('user_id, username, email, phone_number, is_active')
+            .ilike('email', identifier)
+            .maybeSingle();
+      }
 
       if (account == null) {
         _recordFailedAttempt(identifier);
@@ -719,7 +723,7 @@ class SupabaseService {
             .update({'last_login': DateTime.now().toUtc().toIso8601String()})
             .eq('user_id', account['user_id']);
       } catch (e) {
-        debugPrint('[SupabaseService/login] Warning: last_login update failed: $e');
+        LogUtil.debugPrint('[SupabaseService/login] Warning: last_login update failed: $e');
       }
 
       return {
@@ -774,7 +778,7 @@ class SupabaseService {
       try {
         await _supabase.auth.updateUser(UserAttributes(password: password));
       } catch (e) {
-        debugPrint('[SupabaseService/saveProfileAfterVerification] Warning: Password update failed: $e');
+        LogUtil.debugPrint('[SupabaseService/saveProfileAfterVerification] Warning: Password update failed: $e');
       }
 
       // Parse the birthdate into YYYY-MM-DD format.
@@ -905,7 +909,7 @@ class SupabaseService {
         'user_id': userId,
       };
     } catch (e) {
-      debugPrint('[SupabaseService/saveProfileAfterVerification] Error: $e');
+      LogUtil.debugPrint('[SupabaseService/saveProfileAfterVerification] Error: $e');
       return {
         'success': false,
         'message': 'Error saving profile: ${e.toString()}',
@@ -923,7 +927,7 @@ class SupabaseService {
           .maybeSingle();
       return response?['username'] as String?;
     } catch (e) {
-      debugPrint('[SupabaseService/getUsername] Error: $e');
+      LogUtil.debugPrint('[SupabaseService/getUsername] Error: $e');
       return null;
     }
   }
@@ -1031,13 +1035,13 @@ class SupabaseService {
             }
           }
         } catch (e) {
-          debugPrint('[SupabaseService/fetchClientSubmissionHistoryByUser] Error resolving worker name: $e');
+          LogUtil.debugPrint('[SupabaseService/fetchClientSubmissionHistoryByUser] Error resolving worker name: $e');
         }
       }
 
       return submissions;
     } catch (e) {
-      debugPrint('[SupabaseService/fetchClientSubmissionHistoryByUser] Error: $e');
+      LogUtil.debugPrint('[SupabaseService/fetchClientSubmissionHistoryByUser] Error: $e');
       return [];
     }
   }
@@ -1099,7 +1103,7 @@ class SupabaseService {
         if (version == 2) {
           final iv = row['iv'] as String? ?? '';
           if (iv.trim().isEmpty) {
-            debugPrint('[SupabaseService/loadPiiFromFieldValues] Warning: missing iv for field_id=$fid');
+            LogUtil.debugPrint('[SupabaseService/loadPiiFromFieldValues] Warning: missing iv for field_id=$fid');
             continue;
           }
 
@@ -1110,7 +1114,7 @@ class SupabaseService {
           );
 
           if (resolvedValue.isEmpty) {
-            debugPrint('[SupabaseService/loadPiiFromFieldValues] Warning: decryption failed for field_id=$fid');
+            LogUtil.debugPrint('[SupabaseService/loadPiiFromFieldValues] Warning: decryption failed for field_id=$fid');
             continue;
           }
         }
@@ -1129,7 +1133,7 @@ class SupabaseService {
 
       return result;
     } catch (e) {
-      debugPrint('[SupabaseService/loadPiiFromFieldValues] Error: $e');
+      LogUtil.debugPrint('[SupabaseService/loadPiiFromFieldValues] Error: $e');
       return {};
     }
   }
@@ -1148,11 +1152,11 @@ class SupabaseService {
           forceRefresh: true,
         );
       } catch (e) {
-        debugPrint('[SupabaseService/sendDataToWebSession] Warning: RSA public key fetch failed: $e');
+        LogUtil.debugPrint('[SupabaseService/sendDataToWebSession] Warning: RSA public key fetch failed: $e');
       }
 
       if (publicKey.trim().isEmpty) {
-        debugPrint('[SupabaseService/sendDataToWebSession] Action: No RSA key, falling back to unencrypted');
+        LogUtil.debugPrint('[SupabaseService/sendDataToWebSession] Action: No RSA key, falling back to unencrypted');
         return 'error';
       }
 
@@ -1173,7 +1177,7 @@ class SupabaseService {
         if (expiresRaw != null) {
           final expiresAt = DateTime.tryParse(expiresRaw.toString())?.toLocal();
           if (expiresAt != null && DateTime.now().isAfter(expiresAt)) {
-            debugPrint('[SupabaseService/sendDataToWebSession] Session expired: $sessionId');
+            LogUtil.debugPrint('[SupabaseService/sendDataToWebSession] Session expired: $sessionId');
             return 'expired';
           }
         }
@@ -1196,7 +1200,7 @@ class SupabaseService {
           .maybeSingle();
 
       if (response == null) {
-        debugPrint('[SupabaseService/sendDataToWebSession] Action: Status filter returned null, retrying without filter');
+        LogUtil.debugPrint('[SupabaseService/sendDataToWebSession] Action: Status filter returned null, retrying without filter');
         final retryResponse = await _supabase
             .from('form_submission')
             .update({
@@ -1217,7 +1221,7 @@ class SupabaseService {
 
       return 'ok';
     } catch (e) {
-      debugPrint('[SupabaseService/sendDataToWebSession] Error for session $sessionId: $e');
+      LogUtil.debugPrint('[SupabaseService/sendDataToWebSession] Error for session $sessionId: $e');
       return 'error';
     }
   }

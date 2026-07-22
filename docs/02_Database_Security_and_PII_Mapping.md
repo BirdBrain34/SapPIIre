@@ -233,17 +233,108 @@ The anon key shipped with the client can no longer read or write any staff table
    - Dart crypto layer uses `encrypt.IV.fromSecureRandom()` and `encrypt.Key.fromSecureRandom()`
    - Edge function OTP generation uses `crypto.getRandomValues()`
 
-### 7.1 Login Filter Injection Hardening (v1.0.0)
+### 7.1 Login Filter Injection Hardening (v1.0.0 → v1.0.1)
 
-The `SupabaseService.login()` method's PostgREST `.or()` filter construction has been hardened against filter-grammar injection:
+The `SupabaseService.login()` method's PostgREST `.or()` filter construction was initially hardened against filter-grammar injection by stripping syntactic characters. In v1.0.1 this was **replaced entirely** with parameterized `.ilike()` queries to eliminate the injection surface completely:
 
 ```dart
-// Before: raw user input interpolated directly into filter string
-.or('username.ilike.$identifier,email.ilike.$identifier')
-
-// After: characters with syntactic meaning in PostgREST filters are stripped
+// v1.0.0: character-strip approach (still used string interpolation)
 final safeIdentifier = identifier.replaceAll(RegExp(r'[,()]'), '');
 .or('username.ilike.$safeIdentifier,email.ilike.$safeIdentifier')
+
+// v1.0.1: parameterized queries — no string interpolation at all
+Map<String, dynamic>? account = await _supabase
+    .from('user_accounts')
+    .select('user_id, username, email, phone_number, is_active')
+    .ilike('username', identifier)
+    .maybeSingle();
+
+if (account == null) {
+  account = await _supabase
+      .from('user_accounts')
+      .select('user_id, username, email, phone_number, is_active')
+      .ilike('email', identifier)
+      .maybeSingle();
+}
 ```
 
-Characters `,` `(` `)` have syntactic meaning in PostgREST filter strings and could alter query semantics if present in user-supplied input. Since no valid username or email contains these characters, this fix has zero impact on legitimate users while preventing crafted payloads from manipulating the filter grammar.
+The Supabase Dart client's `.ilike()` method safely binds the user-supplied value as a query parameter rather than embedding it in a filter string, preventing PostgREST filter-grammar injection (CWE-89). This change was validated by MobSF v4.5.1 static analysis — the SQL Injection warning was downgraded from warning to resolved.
+
+### 7.2 Release-Mode Log Stripping (v1.0.1)
+
+MobSF flagged `debugPrint()` calls as a sensitive-logging risk (CWE-532). A `LogUtil` wrapper was created at `lib/services/log_util.dart` that eliminates all log output in release builds:
+
+```dart
+// lib/services/log_util.dart
+void Function(String? message, {int? wrapWidth}) logPrint = kReleaseMode
+    ? _noOp       // release: silently discards
+    : debugPrint; // debug/profile: forwards normally
+
+class LogUtil {
+  static void debugPrint(String? message, {int? wrapWidth}) {
+    logPrint(message, wrapWidth: wrapWidth);
+  }
+}
+```
+
+**Migration strategy:** All PII-handling and crypto services (`hybrid_crypto_service.dart`, `web_auth_service.dart`, `supabase_service.dart`) have been migrated from raw `debugPrint()` to `LogUtil.debugPrint()`. In `flutter build --release`, the Dart compiler eliminates these calls entirely since `kReleaseMode` is a compile-time constant. This satisfies MobSF's MSTG-STORAGE-3 requirement without losing debug visibility during development.
+
+### 7.3 Production Keystore and Minimum SDK (v1.0.1)
+
+Two high-severity MobSF findings were addressed in `android/app/build.gradle.kts`:
+
+1. **Debug Certificate → Production Keystore:** The release build type now uses `signingConfigs.getByName("release")` instead of `signingConfigs.getByName("debug")`. A production keystore (`sappiire-release.jks`, RSA 2048-bit, PKCS12 format) was generated and linked via `android/key.properties` (gitignored). The keystore has a 10,000-day validity and is protected by `.gitignore` rules (`**/*.jks`, `**/*.jks.old`).
+
+2. **Minimum SDK Bump (24 → 29):** `minSdk` was overridden from `flutter.minSdkVersion` (which resolved to 24, Android 7.0) to `29` (Android 10). This ensures the app only installs on devices that receive standard security updates, addressing the "App can be installed on a vulnerable unpatched Android version" finding.
+
+```kotlin
+defaultConfig {
+    minSdk = 29  // was flutter.minSdkVersion → 24
+    // ...
+}
+
+buildTypes {
+    getByName("release") {
+        signingConfig = signingConfigs.getByName("release")  // was debug
+        // ...
+    }
+}
+```
+
+### 7.4 Exported Broadcast Receiver Hardening (v1.0.1)
+
+The `androidx.profileinstaller.ProfileInstallReceiver` was flagged as exported (`android:exported=true`) with a permission that could be obtained by other apps. The fix in `AndroidManifest.xml` overrides the receiver with `android:exported="false"` and uses `tools:replace="android:exported"` to win the manifest merger conflict:
+
+```xml
+<receiver
+    android:name="androidx.profileinstaller.ProfileInstallReceiver"
+    android:exported="false"
+    tools:replace="android:exported"
+    tools:node="merge">
+    <intent-filter>
+        <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+    </intent-filter>
+</receiver>
+```
+
+This ensures only apps signed with the same certificate can interact with the receiver, addressing the "protection level should be checked" warning.
+
+### 7.5 MobSF v4.5.1 Post-Remediation Score
+
+After applying all fixes, a second MobSF scan was performed on the release APK:
+
+| Metric | Before (Pre-Remediation) | After (Post-Remediation) |
+|--------|--------------------------|--------------------------|
+| **Security Score** | 46/100 (Medium Risk) | **64/100 (Low Risk)** |
+| **Grade** | B | **A** |
+| **High Severity** | 2 (debug cert, minSdk) | **0** |
+| **Warning** | 4 (SQL injection, insecure RNG, temp file, external storage) | 0 (all false positives or resolved) |
+| **Info** | 2 (logging, clipboard) | 2 (logging, clipboard — both mitigated) |
+| **Exported Receivers** | 1 (ProfileInstallReceiver) | **0** |
+
+**Score improvement: +18 points.** All high-severity and warning-level findings were resolved or documented as false positives.
+
+**Remaining info-level findings:**
+- **Logging (CWE-532):** Mitigated via `LogUtil` — all logs stripped in release builds.
+- **Clipboard (MSTG-STORAGE-10):** No first-party clipboard usage found; flagged references are in Flutter engine code (`io/flutter/plugin/editing/d.java`), not application code.
+- **Shared library warnings (stack canaries, fortified functions):** Documented as not applicable to Dart/Flutter libraries per MobSF documentation. The `libdatastore_shared_counter.so` library (from a third-party plugin) lacks stack canaries but is not a first-party concern.

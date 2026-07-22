@@ -34,7 +34,7 @@ android {
         applicationId = "com.example.sapiire"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 29
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -51,9 +51,12 @@ android {
 
     buildTypes {
         getByName("release") {
-            // TODO: Switch to signingConfigs.getByName("release") once a production
-            // keystore is created and key.properties is populated.
-            signingConfig = signingConfigs.getByName("debug")
+            // Production signing — create a key.properties file (gitignored) with:
+            //   storeFile=../path-to-your-keystore.jks
+            //   storePassword=xxx
+            //   keyAlias=xxx
+            //   keyPassword=xxx
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

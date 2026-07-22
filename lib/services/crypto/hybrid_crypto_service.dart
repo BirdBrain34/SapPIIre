@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:sappiire/services/log_util.dart';
+
 class EncryptedValue {
   const EncryptedValue({required this.ciphertext, required this.iv});
 
@@ -70,11 +72,11 @@ class HybridCryptoService {
         }
       }
     } catch (e) {
-      debugPrint('[HybridCryptoService/fetchUserFieldKeys] Server error: $e');
+      LogUtil.debugPrint('[HybridCryptoService/fetchUserFieldKeys] Server error: $e');
     }
 
     // Server call failed or returned bad data.
-    debugPrint('[HybridCryptoService/fetchUserFieldKeys] Failed to derive key from server');
+    LogUtil.debugPrint('[HybridCryptoService/fetchUserFieldKeys] Failed to derive key from server');
     final empty = Uint8List(0);
     _fieldKeyCache[userId] = empty;
     return empty;
@@ -203,9 +205,7 @@ class HybridCryptoService {
         _cachedPublicKey = key;
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[HybridCryptoService/fetchAndCacheRsaPublicKey] Error: $e');
-      }
+      LogUtil.debugPrint('[HybridCryptoService/fetchAndCacheRsaPublicKey] Error: $e');
     }
 
     return _cachedPublicKey ?? '';

@@ -1,10 +1,10 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:sappiire/services/audit/audit_log_service.dart';
 import 'package:sappiire/services/crypto/hybrid_crypto_service.dart';
+import 'package:sappiire/services/log_util.dart';
 
 /// Keys used to persist the staff session in SharedPreferences (localStorage
 /// on web), so the session survives tab refreshes.
@@ -214,9 +214,7 @@ class WebAuthService {
         'updates': {'is_first_login': false},
       });
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[WebAuthService/clearFirstLoginFlag] Error: $e');
-      }
+      LogUtil.debugPrint('[WebAuthService/clearFirstLoginFlag] Error: $e');
     }
   }
 
@@ -297,9 +295,7 @@ class WebAuthService {
       );
       await prefs.setString(_kPrefSession, jsonEncode(session.toJson()));
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[WebAuthService/saveSession] Error: $e');
-      }
+      LogUtil.debugPrint('[WebAuthService/saveSession] Error: $e');
     }
   }
 
@@ -312,9 +308,7 @@ class WebAuthService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kPrefSession, jsonEncode(updated.toJson()));
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[WebAuthService/updateLastRoute] Error: $e');
-      }
+      LogUtil.debugPrint('[WebAuthService/updateLastRoute] Error: $e');
     }
   }
 
@@ -328,9 +322,7 @@ class WebAuthService {
       final json = jsonDecode(raw) as Map<String, dynamic>;
       return StaffSession.fromJson(json);
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[WebAuthService/restoreSession] Error: $e');
-      }
+      LogUtil.debugPrint('[WebAuthService/restoreSession] Error: $e');
       return null;
     }
   }
@@ -356,9 +348,7 @@ class WebAuthService {
     } catch (e) {
       // Network error, function not deployed, timeout, etc.
       // Do NOT log the user out — assume the cached session is still good.
-      if (kDebugMode) {
-        debugPrint('[WebAuthService/validateSession] Unreachable: $e');
-      }
+      LogUtil.debugPrint('[WebAuthService/validateSession] Unreachable: $e');
       return SessionValidation.unreachable;
     }
   }
@@ -369,9 +359,7 @@ class WebAuthService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_kPrefSession);
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[WebAuthService/clearSession] Error: $e');
-      }
+      LogUtil.debugPrint('[WebAuthService/clearSession] Error: $e');
     }
   }
 
