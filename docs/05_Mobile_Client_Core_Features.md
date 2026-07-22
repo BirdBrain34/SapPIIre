@@ -46,6 +46,8 @@ The InfoScanner module operationalizes ID-assisted onboarding through:
 
 This feature reduces manual encoding effort and improves intake throughput while keeping the user in control of final submitted values.
 
+**Security hardening (v1.0.0):** After OCR text is extracted from the captured ID photo, the temporary image file is immediately deleted from the app cache via a best-effort cleanup in `finally` block. This prevents PII-containing images (name, DOB, address) from lingering on disk.
+
 ### 2.5 QR Session Transmission and Secure Autofill Trigger
 
 The mobile app performs session-targeted data transmission by:
@@ -200,6 +202,10 @@ The mobile tier contributes the following controls:
 4. At-rest protected field persistence model using `derive-field-key` Edge Function for key derivation.
 5. Timestamped session handoff boundaries through `form_submission` lifecycle states.
 6. Key derivation keys cached only in volatile memory, cleared on sign-out.
+7. **Android platform hardening (v1.0.0):**
+   - Data backup disabled (`android:allowBackup="false"`) to prevent PII from being included in Android auto-backup.
+   - External storage permissions (`READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`) explicitly removed from merged manifest — the app only uses the app-sandboxed camera cache.
+   - Release build configured for production signing via `key.properties` (team must supply a keystore); no longer signs with the well-known debug certificate.
 
 ## 5. Manuscript Alignment and Added Capabilities
 

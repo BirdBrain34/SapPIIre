@@ -800,30 +800,9 @@ class FieldValueService {
     return normalized.isEmpty ? null : normalized;
   }
 
-  /// Smart-merges a decrypted source table payload (already-decoded JSON rows
-  /// from another template's member_table field sharing the same
-  /// canonical_field_key) into the destination field's own column schema.
-  ///
-  /// Pure, synchronous, in-memory transform — no Supabase calls, no
-  /// HybridCryptoService calls. This is the single place column-shape
-  /// differences between two templates' member_table fields get reconciled,
-  /// after decryption and before FormStateController.loadFromJson() renders
-  /// them.
-  ///
-  /// Matching is tiered, most to least specific. A source column matching no
-  /// tier is dropped (prune extras). A row ending with zero matched columns
-  /// is dropped entirely rather than inserted blank.
-  ///
-  ///   Tier 1 — exact canonical-key match, only if the caller supplies
-  ///     [sourceColumnCanonicalKeys] AND a destination column carries
-  ///     canonical_field_key. No caller does this yet; the plumbing is free
-  ///     because FormFieldModel already parses canonical_field_key for child
-  ///     rows, so this tier activates with zero further changes once
-  ///     column-level keys are assigned in a future task.
-  ///   Tier 2 — semantic alias match via the existing _keyFromTextPreferAlias
-  ///     heuristic. Behaviorally identical to today for anything it already
-  ///     matched.
-  ///   Tier 3 — exact normalized field-name match.
+  /// Merges source member_table rows into the destination column schema using
+  /// tiered matching (canonical key, semantic alias, exact name), dropping
+  /// unmapped columns and empty rows.
   @visibleForTesting
   static List<Map<String, dynamic>> mergeTablePayloads({
     required List<dynamic> sourceRows,

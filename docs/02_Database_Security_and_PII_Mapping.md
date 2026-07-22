@@ -228,3 +228,22 @@ The anon key shipped with the client can no longer read or write any staff table
 2. Monitor `encryption_version` distribution and missing-IV anomalies.
 3. Keep `app_rsa_keypairs` activation and rotation governance auditable through `audit_logs`.
 4. Remaining dashboard and mobile features (`dashboard_analytics_service.dart`, `supabase_service.dart`, `history_controller.dart`) still query staff tables directly with anon key — they silently return empty under RLS. Migrate these to Edge Function actions if dashboard functionality is needed.
+5. **Secure random number generation verified (v1.0.0):** All cryptographic RNG usage across the codebase was confirmed as cryptographically secure:
+   - No `java.util.Random` usage in first-party Android/Kotlin code
+   - Dart crypto layer uses `encrypt.IV.fromSecureRandom()` and `encrypt.Key.fromSecureRandom()`
+   - Edge function OTP generation uses `crypto.getRandomValues()`
+
+### 7.1 Login Filter Injection Hardening (v1.0.0)
+
+The `SupabaseService.login()` method's PostgREST `.or()` filter construction has been hardened against filter-grammar injection:
+
+```dart
+// Before: raw user input interpolated directly into filter string
+.or('username.ilike.$identifier,email.ilike.$identifier')
+
+// After: characters with syntactic meaning in PostgREST filters are stripped
+final safeIdentifier = identifier.replaceAll(RegExp(r'[,()]'), '');
+.or('username.ilike.$safeIdentifier,email.ilike.$safeIdentifier')
+```
+
+Characters `,` `(` `)` have syntactic meaning in PostgREST filter strings and could alter query semantics if present in user-supplied input. Since no valid username or email contains these characters, this fix has zero impact on legitimate users while preventing crafted payloads from manipulating the filter grammar.

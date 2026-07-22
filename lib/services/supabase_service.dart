@@ -644,13 +644,18 @@ class SupabaseService {
     }
 
     try {
+      // Sanitize the identifier to prevent PostgREST filter-grammar injection.
+      // Characters like ',' '(' ')' have syntactic meaning in .or() filter strings
+      // and could alter query semantics if present in user-supplied input.
+      final safeIdentifier = identifier.replaceAll(RegExp(r'[,()]'), '');
+
       // Resolve the account by username, email, or phone.
       final account = await _supabase
           .from('user_accounts')
           .select('user_id, username, email, phone_number, is_active')
           .or(
-            'username.ilike.$identifier,'
-            'email.ilike.$identifier',
+            'username.ilike.$safeIdentifier,'
+            'email.ilike.$safeIdentifier',
           )
           .maybeSingle();
 
