@@ -310,6 +310,8 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         return 'Signed out';
       case kAuditPasswordChanged:
         return 'Password changed';
+      case kAuditUserAccountDeleted:
+        return 'Applicant account deleted';
       case kAuditSessionStarted:
         return 'Intake session started';
       case kAuditSessionCompleted:
@@ -377,6 +379,10 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         return 'A staff member signed out.';
       case kAuditPasswordChanged:
         return 'A staff member changed their password.';
+      case kAuditUserAccountDeleted:
+        return 'A mobile applicant permanently deleted their own account and '
+            'personal information. Records they had already submitted to the '
+            'office are kept as official records.';
       case kAuditSessionStarted:
         return 'A staff member started an intake session for a client.';
       case kAuditSessionCompleted:
@@ -474,6 +480,8 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         return 'Super Administrator';
       case 'admin':
         return 'Administrator';
+      case 'applicant':
+        return 'Applicant';
       default:
         return role == null || role.isEmpty ? '-' : role;
     }

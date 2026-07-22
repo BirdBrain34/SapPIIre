@@ -9,6 +9,8 @@ import 'package:sappiire/services/form_template_service.dart';
 import 'package:sappiire/services/field_value_service.dart';
 import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/mobile/screens/auth/login_screen.dart';
+import 'package:sappiire/mobile/widgets/delete_account_dialog.dart';
+import 'package:sappiire/mobile/utils/snackbar_utils.dart';
 
 
 /// Loads, edits, and saves the signed-in user's profile data.
@@ -389,6 +391,47 @@ class ProfileController extends ChangeNotifier {
       notifyListeners();
     }
     return picked;
+  }
+
+  Future<void> handleDeleteAccount(BuildContext context) async {
+    if (exitFlowInProgress) return;
+    exitFlowInProgress = true;
+
+    try {
+      // Same guard as logout: don't leave with unsaved edits mid-flight.
+      if (hasPendingUnsavedChanges()) {
+        debugPrint('[ProfileController/handleDeleteAccount] Blocked: unsaved changes pending');
+        return;
+      }
+
+      await DeleteAccountDialog.show(
+        context,
+        onConfirmDelete: () async {
+          final result = await _supabaseService.deleteMyAccount();
+          if (result['success'] == true) {
+            // Success clears the session inside deleteMyAccount(); return to
+            // login, removing every route (including the open dialog).
+            if (context.mounted) {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                (route) => false,
+              );
+            }
+          } else {
+            // Leave the dialog open so the user can retry; surface the error.
+            if (context.mounted) {
+              SnackbarUtils.showError(
+                context,
+                result['message']?.toString() ??
+                    'Account deletion failed. Please try again.',
+              );
+            }
+          }
+        },
+      );
+    } finally {
+      exitFlowInProgress = false;
+    }
   }
 
   Future<void> handleLogout(BuildContext context) async {

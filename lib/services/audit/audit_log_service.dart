@@ -6,6 +6,10 @@ const kAuditLoginFailed = 'login_failed';
 const kAuditLogout = 'logout';
 const kAuditPasswordChanged = 'password_changed';
 
+/// Emitted server-side by the `manage-user-account` Edge Function when a mobile
+/// applicant self-deletes their account (Data Privacy Act erasure).
+const kAuditUserAccountDeleted = 'user_account_deleted';
+
 const kAuditSessionStarted = 'session_started';
 const kAuditSessionCompleted = 'session_completed';
 const kAuditSessionClosed = 'session_closed';

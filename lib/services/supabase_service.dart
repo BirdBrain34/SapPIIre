@@ -21,6 +21,41 @@ class SupabaseService {
     return _supabase.auth.signOut();
   }
 
+  /// Permanently erases the signed-in user's account and PII (Data Privacy Act
+  /// of 2012 right to erasure). Runs server-side in the `manage-user-account`
+  /// Edge Function using the service-role key — the caller's JWT is attached
+  /// automatically, and the function derives the target user from it, so a user
+  /// can only ever delete their own account. Finalized submissions and the
+  /// audit trail are retained by the office.
+  ///
+  /// On success the local session is cleared. Returns `{'success', 'message'}`.
+  Future<Map<String, dynamic>> deleteMyAccount() async {
+    try {
+      final response = await _supabase.functions.invoke(
+        'manage-user-account',
+        body: {'action': 'delete_account'},
+      );
+
+      final data = response.data;
+      final ok = data is Map && data['success'] == true;
+      if (!ok) {
+        final message = data is Map && data['message'] is String
+            ? data['message'] as String
+            : 'Account deletion failed. Please try again.';
+        return {'success': false, 'message': message};
+      }
+
+      await signOutCurrentUser();
+      return {'success': true};
+    } catch (e) {
+      LogUtil.debugPrint('[SupabaseService/deleteMyAccount] Error: $e');
+      return {
+        'success': false,
+        'message': 'Account deletion failed. Please try again.',
+      };
+    }
+  }
+
   // ================================================================
   // TEMPLATE POPUP CONFIG
   // ================================================================
