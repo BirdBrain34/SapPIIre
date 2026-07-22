@@ -16,6 +16,8 @@ import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/services/form_template_service.dart';
 import 'package:sappiire/services/forms/applicant_search_service.dart';
 import 'package:sappiire/services/forms/submission_service.dart';
+import 'package:sappiire/services/forms/submission_review_service.dart';
+import 'package:sappiire/mobile/widgets/status_badge_widget.dart';
 import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
@@ -86,6 +88,10 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
 
   // Cache templates by form type.
   final Map<String, FormTemplate> _templateCache = {};
+
+  // Local overrides for review_status so the UI updates instantly after approve/deny
+  // without waiting for the Edge Function to return fresh data.
+  final Map<int, String> _localReviewStatuses = {};
 
   @override
   void initState() {
@@ -1522,6 +1528,9 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     final badgeText = _formTypeBadgeText(formType);
     final badgeColor = _formTypeBadgeColor(formType);
     final reference = record.intakeReference?.trim();
+    // Use local override if available, otherwise fall back to the server value
+    final effectiveStatus = _localReviewStatuses[record.id] ?? record.reviewStatus;
+    final isPending = effectiveStatus == 'pending';
 
     return Material(
       color: Colors.transparent,
@@ -1535,6 +1544,13 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
               children: [
+                // Review status badge
+                StatusBadgeWidget(
+                  status: effectiveStatus,
+                  compact: true,
+                ),
+                const SizedBox(width: 10),
+                // Form type badge
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
@@ -1591,6 +1607,23 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
                     ],
                   ),
                 ),
+                // Approve/Deny buttons for pending records
+                if (isPending) ...[
+                  _buildReviewActionButton(
+                    label: 'Approve',
+                    icon: Icons.check_circle_outline,
+                    color: const Color(0xFF10B981),
+                    onTap: () => _handleApprove(record),
+                  ),
+                  const SizedBox(width: 4),
+                  _buildReviewActionButton(
+                    label: 'Deny',
+                    icon: Icons.cancel_outlined,
+                    color: const Color(0xFFEF4444),
+                    onTap: () => _handleDeny(record),
+                  ),
+                  const SizedBox(width: 4),
+                ],
                 const Icon(
                   Icons.chevron_right,
                   color: AppColors.textMuted,
@@ -1602,6 +1635,170 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildReviewActionButton({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(height: 1),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleApprove(ApplicantSubmissionRef record) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Approve Submission'),
+        content: Text(
+          'Are you sure you want to approve this ${record.formType} submission?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF10B981),
+            ),
+            child: const Text('Approve', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final reviewService = SubmissionReviewService();
+      await reviewService.approve(
+        submissionId: record.id,
+        staffId: widget.cswdId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _localReviewStatuses[record.id] = 'approved';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Submission approved successfully'),
+          backgroundColor: Color(0xFF10B981),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleDeny(ApplicantSubmissionRef record) async {
+    final reasonCtrl = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Deny Submission'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Provide a reason for denying this ${record.formType} submission:',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonCtrl,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                hintText: 'e.g. Missing required documents',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, reasonCtrl.text.trim()),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+            ),
+            child: const Text('Deny', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (reason == null || !mounted) return;
+
+    try {
+      final reviewService = SubmissionReviewService();
+      await reviewService.deny(
+        submissionId: record.id,
+        staffId: widget.cswdId,
+        reason: reason.isEmpty ? 'No reason provided' : reason,
+      );
+      if (!mounted) return;
+      setState(() {
+        _localReviewStatuses[record.id] = 'denied';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Submission denied'),
+          backgroundColor: Color(0xFFEF4444),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   Widget _buildDetailPanel() {

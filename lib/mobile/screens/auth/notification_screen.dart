@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/services/supabase_service.dart';
+import 'package:sappiire/services/forms/user_notification_service.dart';
+import 'package:sappiire/mobile/widgets/status_badge_widget.dart';
 
 class NotificationScreen extends StatefulWidget {
   final String userId;
@@ -11,18 +15,52 @@ class NotificationScreen extends StatefulWidget {
   State<NotificationScreen> createState() => _NotificationScreenState();
 }
 
-class _NotificationScreenState extends State<NotificationScreen> {
+class _NotificationScreenState extends State<NotificationScreen>
+    with SingleTickerProviderStateMixin {
   final _supabaseService = SupabaseService();
+  final _userNotifService = UserNotificationService();
 
+  late final TabController _tabCtrl;
+
+  // Template notification state (existing)
   List<Map<String, dynamic>> _notifications = [];
   Set<String> _readIds = {};
   final Set<String> _expandedIds = {};
   bool _isLoading = true;
 
+  // Submission notification state
+  List<Map<String, dynamic>> _submissionNotifs = [];
+  bool _isLoadingSubs = true;
+
+  StreamSubscription? _subNotifSub;
+
   @override
   void initState() {
     super.initState();
+    _tabCtrl = TabController(length: 2, vsync: this);
     _loadNotifications();
+    _loadSubmissionNotifications();
+    _listenToSubmissionNotifs();
+  }
+
+  @override
+  void dispose() {
+    _tabCtrl.dispose();
+    _subNotifSub?.cancel();
+    super.dispose();
+  }
+
+  void _listenToSubmissionNotifs() {
+    _subNotifSub = _userNotifService
+        .streamNotifications(widget.userId)
+        .listen((rows) {
+      if (mounted) {
+        setState(() {
+          _submissionNotifs = rows;
+          _isLoadingSubs = false;
+        });
+      }
+    });
   }
 
   Future<void> _loadNotifications() async {
@@ -33,6 +71,19 @@ class _NotificationScreenState extends State<NotificationScreen> {
         _notifications = result['notifications'] as List<Map<String, dynamic>>;
         _readIds = Set<String>.from(result['readIds'] as List<String>);
         _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadSubmissionNotifications() async {
+    final rows = await _userNotifService.fetchNotifications(
+      userId: widget.userId,
+      limit: 100,
+    );
+    if (mounted) {
+      setState(() {
+        _submissionNotifs = rows;
+        _isLoadingSubs = false;
       });
     }
   }
@@ -50,6 +101,17 @@ class _NotificationScreenState extends State<NotificationScreen> {
     if (mounted) setState(() => _readIds.addAll(unreadIds));
   }
 
+  Future<void> _markAllSubsRead() async {
+    await _userNotifService.markAllRead(widget.userId);
+    if (mounted) {
+      setState(() {
+        for (final n in _submissionNotifs) {
+          n['is_read'] = true;
+        }
+      });
+    }
+  }
+
   Future<void> _markOneRead(String id) async {
     if (_readIds.contains(id)) return;
     await _supabaseService.markNotificationsRead(
@@ -57,6 +119,17 @@ class _NotificationScreenState extends State<NotificationScreen> {
       notificationIds: [id],
     );
     if (mounted) setState(() => _readIds.add(id));
+  }
+
+  Future<void> _markOneSubRead(String id) async {
+    await _userNotifService.markRead(id);
+    if (mounted) {
+      setState(() {
+        for (final n in _submissionNotifs) {
+          if (n['id'] == id) n['is_read'] = true;
+        }
+      });
+    }
   }
 
   Future<void> _toggleExpanded(String id) async {
@@ -73,10 +146,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
   int get _unreadCount =>
       _notifications.where((n) => !_readIds.contains(n['id'] as String)).length;
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  int get _unreadSubCount =>
+      _submissionNotifs.where((n) => n['is_read'] != true).length;
 
-  /// Extract bullet-point change lines from the details JSONB.
-  /// details shape: { "changes": [ { "action": "added"|"updated"|"removed", "field": "Field Label" } ] }
+  // ── Template Notification Helpers (existing) ─────────────────────────
+
   List<String> _getBullets(Map<String, dynamic> notification) {
     final raw = notification['details'];
     if (raw == null || raw is! Map) return [];
@@ -160,27 +234,105 @@ class _NotificationScreenState extends State<NotificationScreen> {
     }
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
+  // ── Submission Notification Helpers (new) ────────────────────────────
+
+  IconData _subIconFor(String status) {
+    switch (status) {
+      case 'scanned':    return Icons.qr_code_scanner;
+      case 'completed':  return Icons.save_outlined;
+      case 'approved':   return Icons.check_circle_outline;
+      case 'denied':     return Icons.cancel_outlined;
+      default:           return Icons.notifications_outlined;
+    }
+  }
+
+  Color _subColorFor(String status) {
+    switch (status) {
+      case 'scanned':    return const Color(0xFF3B82F6);   // blue
+      case 'completed':  return const Color(0xFF6B7280);   // gray
+      case 'approved':   return const Color(0xFF10B981);   // green
+      case 'denied':     return const Color(0xFFEF4444);   // red
+      default:           return const Color(0xFF1565C0);
+    }
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.pageBg,
       appBar: _buildAppBar(),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _notifications.isEmpty
-              ? _buildEmptyState()
-              : RefreshIndicator(
-                  onRefresh: _loadNotifications,
-                  color: AppColors.primaryBlue,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                    itemCount: _notifications.length,
-                    itemBuilder: (context, i) =>
-                        _buildNotificationTile(_notifications[i]),
+      body: Column(
+        children: [
+          // Tab bar
+          Container(
+            color: Colors.white,
+            child: TabBar(
+              controller: _tabCtrl,
+              labelColor: AppColors.primaryBlue,
+              unselectedLabelColor: Colors.grey,
+              indicatorColor: AppColors.primaryBlue,
+              indicatorWeight: 3,
+              labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              tabs: [
+                Tab(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Template Updates'),
+                      if (_unreadCount > 0) ...[
+                        const SizedBox(width: 6),
+                        _badge(_unreadCount),
+                      ],
+                    ],
                   ),
                 ),
+                Tab(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('My Submissions'),
+                      if (_unreadSubCount > 0) ...[
+                        const SizedBox(width: 6),
+                        _badge(_unreadSubCount),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Tab content
+          Expanded(
+            child: TabBarView(
+              controller: _tabCtrl,
+              children: [
+                _buildTemplateTab(),
+                _buildSubmissionsTab(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _badge(int count) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.highlight,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        '$count',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
     );
   }
 
@@ -209,23 +361,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
                   fontWeight: FontWeight.bold),
             ),
           ),
-          if (_unreadCount > 0) ...[
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-              decoration: BoxDecoration(
-                color: AppColors.highlight,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                '$_unreadCount',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
         ],
       ),
       actions: [
@@ -239,6 +374,31 @@ class _NotificationScreenState extends State<NotificationScreen> {
           ),
         const SizedBox(width: 4),
       ],
+    );
+  }
+
+  // ── Template Updates Tab (existing) ──────────────────────────────────
+
+  Widget _buildTemplateTab() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_notifications.isEmpty) {
+      return _buildEmptyState(
+        icon: Icons.notifications_none_rounded,
+        title: 'No notifications yet',
+        subtitle: 'Form updates and changes\nwill appear here.',
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _loadNotifications,
+      color: AppColors.primaryBlue,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        itemCount: _notifications.length,
+        itemBuilder: (context, i) =>
+            _buildNotificationTile(_notifications[i]),
+      ),
     );
   }
 
@@ -292,13 +452,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Main content row ─────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.all(14),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Icon badge
                   Container(
                     width: 40,
                     height: 40,
@@ -309,8 +467,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
                     child: Icon(icon, color: accentColor, size: 20),
                   ),
                   const SizedBox(width: 12),
-
-                  // Text content
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -374,7 +530,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                   : FontWeight.w500,
                               height: 1.4),
                         ),
-                        // "See changes" hint when collapsed and expandable
                         if (canExpand && !isExpanded) ...[
                           const SizedBox(height: 4),
                           Row(
@@ -396,8 +551,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
                       ],
                     ),
                   ),
-
-                  // Chevron
                   if (canExpand) ...[
                     const SizedBox(width: 6),
                     AnimatedRotation(
@@ -413,8 +566,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
                 ],
               ),
             ),
-
-            // ── Expanded bullet list ──────────────────────────────────────
             if (canExpand && isExpanded)
               AnimatedSize(
                 duration: const Duration(milliseconds: 200),
@@ -461,7 +612,198 @@ class _NotificationScreenState extends State<NotificationScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  // ── My Submissions Tab (new) ─────────────────────────────────────────
+
+  Widget _buildSubmissionsTab() {
+    if (_isLoadingSubs) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_submissionNotifs.isEmpty) {
+      return _buildEmptyState(
+        icon: Icons.history_toggle_off_outlined,
+        title: 'No submission updates',
+        subtitle: 'Status updates for your forms\nwill appear here when staff processes them.',
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _loadSubmissionNotifications,
+      color: AppColors.primaryBlue,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        itemCount: _submissionNotifs.length + 1, // +1 for "Mark all read" header
+        itemBuilder: (context, i) {
+          if (i == 0) {
+            return _buildSubsListHeader();
+          }
+          return _buildSubmissionNotifTile(_submissionNotifs[i - 1]);
+        },
+      ),
+    );
+  }
+
+  Widget _buildSubsListHeader() {
+    if (_unreadSubCount == 0) return const SizedBox();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Text(
+            '$_unreadSubCount unread',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade600,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const Spacer(),
+          GestureDetector(
+            onTap: _markAllSubsRead,
+            child: Text(
+              'Mark all read',
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.primaryBlue,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSubmissionNotifTile(Map<String, dynamic> notif) {
+    final id = notif['id']?.toString() ?? '';
+    final status = notif['status']?.toString() ?? '';
+    final message = notif['message']?.toString() ?? '';
+    final formType = notif['form_type']?.toString() ?? '';
+    final intakeRef = notif['intake_reference']?.toString() ?? '';
+    final createdAt = notif['created_at']?.toString() ?? '';
+    final isRead = notif['is_read'] == true;
+
+    final accentColor = _subColorFor(status);
+    final icon = _subIconFor(status);
+
+    return GestureDetector(
+      onTap: () => _markOneSubRead(id),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: BoxDecoration(
+          color: isRead ? Colors.white : accentColor.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isRead
+                ? const Color(0xFFEEEEF5)
+                : accentColor.withValues(alpha: 0.25),
+            width: isRead ? 1.2 : 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isRead ? 0.03 : 0.06),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: accentColor, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        StatusBadgeWidget(
+                          status: status,
+                          compact: true,
+                          fontSize: 9,
+                        ),
+                        const Spacer(),
+                        Text(
+                          _timeAgo(createdAt),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade500,
+                          ),
+                        ),
+                        if (!isRead) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: BoxDecoration(
+                              color: accentColor,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    if (formType.isNotEmpty)
+                      Text(
+                        formType,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                    const SizedBox(height: 3),
+                    Text(
+                      message,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isRead
+                            ? Colors.grey.shade600
+                            : const Color(0xFF1A1A2E),
+                        fontWeight: isRead ? FontWeight.w400 : FontWeight.w500,
+                        height: 1.4,
+                      ),
+                    ),
+                    if (intakeRef.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Ref: $intakeRef',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.primaryBlue,
+                          fontFamily: 'monospace',
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Shared ────────────────────────────────────────────────────────────
+
+  Widget _buildEmptyState({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -470,24 +812,27 @@ class _NotificationScreenState extends State<NotificationScreen> {
             width: 80,
             height: 80,
             decoration: BoxDecoration(
-              color: AppColors.primaryBlue.withValues(alpha:  0.07),
+              color: AppColors.primaryBlue.withValues(alpha: 0.07),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Icon(Icons.notifications_none_rounded,
-                size: 40,
-                color: AppColors.primaryBlue.withValues(alpha:  0.5)),
+            child: Icon(
+              icon,
+              size: 40,
+              color: AppColors.primaryBlue.withValues(alpha: 0.5),
+            ),
           ),
           const SizedBox(height: 16),
-          const Text(
-            'No notifications yet',
-            style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF1A1A2E)),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF1A1A2E),
+            ),
           ),
           const SizedBox(height: 6),
           Text(
-            'Form updates and changes\nwill appear here.',
+            subtitle,
             style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
             textAlign: TextAlign.center,
           ),

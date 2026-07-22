@@ -114,6 +114,7 @@ class ApplicantSubmissionRef {
     required this.createdAt,
     this.sessionId,
     this.intakeReference,
+    this.reviewStatus = 'pending',
   });
 
   final int id;
@@ -121,6 +122,7 @@ class ApplicantSubmissionRef {
   final String createdAt;
   final String? sessionId;
   final String? intakeReference;
+  final String reviewStatus; // 'pending' | 'approved' | 'denied'
 
   factory ApplicantSubmissionRef.fromJson(Map<String, dynamic> json) {
     return ApplicantSubmissionRef(
@@ -129,6 +131,7 @@ class ApplicantSubmissionRef {
       createdAt: json['createdAt']?.toString() ?? '',
       sessionId: json['sessionId']?.toString(),
       intakeReference: json['intakeReference']?.toString(),
+      reviewStatus: json['reviewStatus']?.toString() ?? 'pending',
     );
   }
 
@@ -139,6 +142,7 @@ class ApplicantSubmissionRef {
     'created_at': createdAt,
     'session_id': sessionId,
     'intake_reference': intakeReference,
+    'review_status': reviewStatus,
   };
 }
 

@@ -1,14 +1,21 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sappiire/services/supabase_service.dart';
+import 'package:sappiire/services/forms/submission_service.dart';
 import 'package:sappiire/mobile/utils/date_utils.dart';
 
 enum SortField { date, formType }
 enum SortOrder { asc, desc }
 
 /// Loads the signed-in user's submission history and resolves display names.
+///
+/// Also subscribes to real-time updates on `form_submission` and
+/// `client_submissions` so the citizen sees live status changes.
 class HistoryController extends ChangeNotifier {
   final SupabaseService _supabaseService = SupabaseService();
+  final SubmissionService _submissionService = SubmissionService();
   final _supabase = Supabase.instance.client;
   final String userId;
 
@@ -19,7 +26,77 @@ class HistoryController extends ChangeNotifier {
   SortField sortField = SortField.date;
   SortOrder sortOrder = SortOrder.desc;
 
+  // Live status tracking: session_id -> latest status from form_submission
+  final Map<String, String> _activeStatusMap = {};
+
+  // Realtime subscriptions
+  StreamSubscription? _sessionSub;
+  StreamSubscription? _notificationSub;
+
   HistoryController({required this.userId});
+
+  /// Start listening for real-time submission status updates.
+  void startListening() {
+    // Subscribe to form_submission changes for this user
+    _sessionSub = _submissionService
+        .streamUserSubmissions(userId)
+        .listen((rows) {
+      bool changed = false;
+      for (final row in rows) {
+        final sessionId = row['id']?.toString() ?? '';
+        final status = row['status']?.toString() ?? '';
+        if (sessionId.isNotEmpty && status.isNotEmpty) {
+          if (_activeStatusMap[sessionId] != status) {
+            _activeStatusMap[sessionId] = status;
+            changed = true;
+          }
+        }
+      }
+      if (changed) {
+        // Merge active statuses into existing submissions
+        _applyActiveStatuses();
+        notifyListeners();
+      }
+    });
+
+    // Subscribe to submission notifications for real-time badge
+    _notificationSub = _supabase
+        .from('user_submission_notifications')
+        .stream(primaryKey: ['id'])
+        .eq('user_id', userId)
+        .limit(1)
+        .listen((_) {
+      // Reload to pick up new notifications
+      loadHistory();
+    });
+  }
+
+  @override
+  void dispose() {
+    _sessionSub?.cancel();
+    _notificationSub?.cancel();
+    super.dispose();
+  }
+
+  /// Merge active session statuses into the submission list.
+  void _applyActiveStatuses() {
+    for (var i = 0; i < submissions.length; i++) {
+      final sessionId = submissions[i]['session_id']?.toString() ?? '';
+      if (sessionId.isNotEmpty && _activeStatusMap.containsKey(sessionId)) {
+        submissions[i]['_session_status'] = _activeStatusMap[sessionId];
+      }
+    }
+  }
+
+  /// Get the active session status for a submission item, if available.
+  String? getActiveStatus(Map<String, dynamic> item) {
+    // Priority: form_submission live status > review_status from client_submissions
+    final sessionStatus = item['_session_status']?.toString();
+    if (sessionStatus != null && sessionStatus != 'completed') {
+      return sessionStatus;
+    }
+    return null; // falls back to review_status
+  }
 
   Future<void> loadHistory() async {
     isLoading = true;
@@ -28,7 +105,24 @@ class HistoryController extends ChangeNotifier {
     try {
       username = await _supabaseService.getUsername(userId) ?? '';
       final rawSubmissions = await _supabaseService.fetchClientSubmissionHistoryByUser(userId);
+
+      // Enrich with review_status from client_submissions
+      for (final item in rawSubmissions) {
+        final submissionId = item['id'];
+        if (submissionId != null) {
+          final reviewData = await _submissionService.fetchReviewStatus(submissionId);
+          if (reviewData != null) {
+            item['review_status'] = reviewData['review_status'] ?? 'pending';
+            item['reviewed_at'] = reviewData['reviewed_at'];
+            item['review_notes'] = reviewData['review_notes'];
+          } else {
+            item['review_status'] = 'pending';
+          }
+        }
+      }
+
       submissions = await _resolveAssistedBy(rawSubmissions);
+      _applyActiveStatuses();
       _applySort();
     } catch (e) {
       debugPrint('[HistoryController/loadHistory] Error: $e');

@@ -444,6 +444,49 @@ class SubmissionService {
     return allResults;
   }
 
+  /// Stream form_submission rows for a given user (used by citizen app).
+  Stream<List<Map<String, dynamic>>> streamUserSubmissions(String userId) {
+    return _supabase
+        .from('form_submission')
+        .stream(primaryKey: ['id'])
+        .eq('user_id', userId)
+        .order('created_at', ascending: false)
+        .limit(50)
+        .map((rows) => rows.cast<Map<String, dynamic>>());
+  }
+
+  /// Fetch review status for a submission (citizen-facing).
+  Future<Map<String, dynamic>?> fetchReviewStatus(dynamic submissionId) async {
+    try {
+      final row = await _supabase
+          .from('client_submissions')
+          .select('id, review_status, reviewed_by, reviewed_at, review_notes')
+          .eq('id', submissionId)
+          .maybeSingle();
+      return row == null ? null : Map<String, dynamic>.from(row);
+    } catch (e) {
+      debugPrint('[SubmissionService/fetchReviewStatus] Error: $e');
+      return null;
+    }
+  }
+
+  /// Fetch all reviewable submissions for a set of session IDs.
+  Future<List<Map<String, dynamic>>> fetchSubmissionsBySessions(
+    List<String> sessionIds,
+  ) async {
+    if (sessionIds.isEmpty) return [];
+    try {
+      final rows = await _supabase
+          .from('client_submissions')
+          .select('id, session_id, review_status, reviewed_by, reviewed_at, review_notes, intake_reference')
+          .inFilter('session_id', sessionIds);
+      return List<Map<String, dynamic>>.from(rows as List);
+    } catch (e) {
+      debugPrint('[SubmissionService/fetchSubmissionsBySessions] Error: $e');
+      return [];
+    }
+  }
+
   Future<void> signOut() {
     HybridCryptoService.clearFieldKeyCache();
     return _supabase.auth.signOut();

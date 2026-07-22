@@ -25,6 +25,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     _controller = HistoryController(userId: widget.userId);
     _controller.addListener(() => setState(() {}));
     _controller.loadHistory();
+    _controller.startListening();
   }
 
   @override
