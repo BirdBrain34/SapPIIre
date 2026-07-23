@@ -3,6 +3,8 @@ import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/mobile/controllers/profile_controller.dart';
 import 'package:sappiire/mobile/screens/auth/change_password.dart';
 import 'package:sappiire/mobile/screens/auth/info_scanner_screen.dart';
+import 'package:sappiire/mobile/widgets/email_change_dialog.dart';
+import 'package:sappiire/mobile/widgets/phone_change_dialog.dart';
 import 'package:sappiire/mobile/widgets/terms_and_condition.dart';
 import 'package:sappiire/mobile/widgets/profile_header_card.dart';
 import 'package:sappiire/mobile/widgets/profile_section_card.dart';
@@ -19,6 +21,10 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   late final ProfileController _controller;
+
+  // Field key ('phone' | 'email') briefly showing a success check after a
+  // verified update; null when nothing is flashing.
+  String? _flashedField;
 
   @override
   void initState() {
@@ -83,7 +89,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final canProceed = await _resolveUnsavedChangesIfAny();
       if (!canProceed || !mounted) return;
-      Navigator.pop(context);
+      Navigator.pop(context, _controller.savedDuringSession);
     } finally {
       _controller.exitFlowInProgress = false;
     }
@@ -93,10 +99,71 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final success = await _controller.saveProfile();
     if (!mounted) return;
     if (success) {
-      _showFeedback('Profile updated successfully!', Colors.green);
+      final labels = _controller.lastChangedLabels;
+      final String msg;
+      if (labels.isEmpty) {
+        msg = 'Profile updated';
+      } else if (labels.length == 1) {
+        msg = '✓ ${labels.first} updated';
+      } else {
+        msg = '✓ ${labels.length} details updated';
+      }
+      _showFeedback(msg, Colors.green);
     } else {
       _showFeedback('Account saved, but some PII details failed.', Colors.orange);
     }
+  }
+
+  Future<void> _editPhone() async {
+    // Settle any other pending edits first so the verified-save snapshot is
+    // accurate (persistVerifiedPhone marks the whole form as saved).
+    final canProceed = await _resolveUnsavedChangesIfAny();
+    if (!canProceed || !mounted) return;
+
+    final newPhone = await PhoneChangeDialog.show(
+      context: context,
+      userId: widget.userId,
+      currentPhone: _controller.phoneCtrl.text,
+    );
+    if (newPhone == null || !mounted) return;
+
+    final ok = await _controller.persistVerifiedPhone(newPhone);
+    if (!mounted) return;
+    if (ok) {
+      _flashField('phone');
+      _showFeedback('✓ Phone number updated', Colors.green);
+    } else {
+      _showFeedback('Verified, but saving the phone number failed.', Colors.orange);
+    }
+  }
+
+  Future<void> _editEmail() async {
+    final canProceed = await _resolveUnsavedChangesIfAny();
+    if (!canProceed || !mounted) return;
+
+    final newEmail = await EmailChangeDialog.show(
+      context: context,
+      currentEmail: _controller.emailCtrl.text,
+    );
+    if (newEmail == null || !mounted) return;
+
+    final ok = await _controller.persistVerifiedEmail(newEmail);
+    if (!mounted) return;
+    if (ok) {
+      _flashField('email');
+      _showFeedback('✓ Email updated', Colors.green);
+    } else {
+      _showFeedback('Verified, but saving the email failed.', Colors.orange);
+    }
+  }
+
+  void _flashField(String field) {
+    setState(() => _flashedField = field);
+    Future.delayed(const Duration(milliseconds: 1400), () {
+      if (mounted && _flashedField == field) {
+        setState(() => _flashedField = null);
+      }
+    });
   }
 
   Future<void> _handleChangePassword() async {
@@ -227,6 +294,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Widget _buildEditableContactRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    required String flashKey,
+    required VoidCallback onEdit,
+  }) {
+    final flashing = _flashedField == flashKey;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: Colors.grey.shade400),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                const SizedBox(height: 2),
+                Text(
+                  value.isEmpty ? '-' : value,
+                  style: const TextStyle(fontSize: 14, color: Colors.black87),
+                ),
+              ],
+            ),
+          ),
+          if (flashing)
+            const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Icon(Icons.check_circle, size: 20, color: AppColors.successGreen),
+            ),
+          TextButton.icon(
+            onPressed: onEdit,
+            icon: const Icon(Icons.edit_outlined, size: 16),
+            label: const Text('Edit'),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.primaryBlue,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBody() {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -245,15 +359,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ProfileCard(children: [
             ProfileTextField(label: 'Username', controller: _controller.usernameCtrl, icon: Icons.badge_outlined),
             const ProfileDivider(),
-            ProfileReadOnlyRow(icon: Icons.email_outlined, label: 'Email', value: _controller.emailCtrl.text.isEmpty ? '-' : _controller.emailCtrl.text),
+            _buildEditableContactRow(
+              icon: Icons.email_outlined,
+              label: 'Email',
+              value: _controller.emailCtrl.text,
+              flashKey: 'email',
+              onEdit: _editEmail,
+            ),
             const ProfileDivider(),
-            ProfileReadOnlyRow(icon: Icons.phone_android_outlined, label: 'Phone Number', value: _controller.phoneCtrl.text.isEmpty ? '-' : _controller.phoneCtrl.text),
+            _buildEditableContactRow(
+              icon: Icons.phone_android_outlined,
+              label: 'Phone Number',
+              value: _controller.phoneCtrl.text,
+              flashKey: 'phone',
+              onEdit: _editPhone,
+            ),
           ]),
           const SizedBox(height: 4),
           Padding(
             padding: const EdgeInsets.only(left: 4),
             child: Text(
-              'Email and phone number cannot be changed here. Contact support if needed.',
+              'Tap Edit to update your email or phone. We’ll send a quick verification code to confirm it’s you.',
               style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
             ),
           ),

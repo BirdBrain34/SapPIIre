@@ -816,20 +816,33 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
           final canProceed = await _resolveUnsavedChangesIfAny();
           if (!canProceed || !mounted) return;
  
-          await Navigator.push(
+          final savedInProfile = await Navigator.push<bool>(
             context,
             MaterialPageRoute(
                 builder: (_) => ProfileScreen(userId: widget.userId)),
           );
           if (mounted) {
+            final messenger = ScaffoldMessenger.of(context);
             await _controller.loadAll(forceRefresh: true);
             _attachFormControllerListener();
             _savedFormFingerprint = _currentFormFingerprint();
             setState(() {
-              _showFormIntro = true;
+              // After a profile save, drop the "ready to manage your info?"
+              // intro and show the refreshed form directly — this is an edit,
+              // not a new submission.
+              _showFormIntro = savedInProfile != true;
               _highlightedMissingFields = {};
               _hasUnsavedChanges = false;
             });
+            if (savedInProfile == true) {
+              messenger.showSnackBar(
+                const SnackBar(
+                  content: Text('Your info has been updated everywhere.'),
+                  behavior: SnackBarBehavior.floating,
+                  duration: Duration(seconds: 3),
+                ),
+              );
+            }
           }
         },
         child: Row(

@@ -26,6 +26,14 @@ class ProfileController extends ChangeNotifier {
   bool exitFlowInProgress = false;
   String savedProfileFingerprint = '';
 
+  /// True once any save/persist in this screen session succeeded. Drives the
+  /// "skip the intro card" behaviour when returning to ManageInfoScreen.
+  bool savedDuringSession = false;
+
+  /// Human-readable labels for the fields changed by the most recent
+  /// [saveProfile] call, used to build a specific success message.
+  List<String> lastChangedLabels = [];
+
   // Controllers for the account fields shown in the profile form.
   final TextEditingController usernameCtrl = TextEditingController();
   final TextEditingController emailCtrl = TextEditingController();
@@ -149,6 +157,44 @@ class ProfileController extends ChangeNotifier {
 
   void markProfileAsSaved() {
     savedProfileFingerprint = _currentProfileFingerprint();
+  }
+
+  // Fingerprint key -> human label, for building specific save feedback.
+  static const Map<String, String> _fieldLabels = {
+    'username': 'Username',
+    'email': 'Email',
+    'phone': 'Phone number',
+    'lastName': 'Last name',
+    'firstName': 'First name',
+    'middleName': 'Middle name',
+    'dob': 'Date of birth',
+    'address': 'Address',
+    'placeOfBirth': 'Place of birth',
+    'sex': 'Sex',
+    'maritalStatus': 'Marital status',
+    'signatureBase64': 'Signature',
+  };
+
+  /// Compares the current form values against the last-saved snapshot and
+  /// returns the labels of the fields that actually changed.
+  List<String> _computeChangedLabels() {
+    if (savedProfileFingerprint.isEmpty) return [];
+    Map<String, dynamic> previous;
+    try {
+      previous = jsonDecode(savedProfileFingerprint) as Map<String, dynamic>;
+    } catch (_) {
+      return [];
+    }
+    final current = jsonDecode(_currentProfileFingerprint())
+        as Map<String, dynamic>;
+
+    final changed = <String>[];
+    _fieldLabels.forEach((key, label) {
+      if (current[key]?.toString() != previous[key]?.toString()) {
+        changed.add(label);
+      }
+    });
+    return changed;
   }
 
   bool hasPendingUnsavedChanges() {
@@ -299,6 +345,8 @@ class ProfileController extends ChangeNotifier {
       }
 
       if (savedPII) {
+        lastChangedLabels = _computeChangedLabels();
+        savedDuringSession = true;
         markProfileAsSaved();
         isSaving = false;
         notifyListeners();
@@ -312,6 +360,65 @@ class ProfileController extends ChangeNotifier {
       debugPrint('[ProfileController/saveProfile] Error: $e');
       isSaving = false;
       notifyListeners();
+      return false;
+    }
+  }
+
+  /// Persists a phone number that has already been OTP-verified by
+  /// [PhoneChangeController]. Writes both the account row and the canonical
+  /// PII keys so every form picks up the new value.
+  Future<bool> persistVerifiedPhone(String phone) async {
+    final trimmed = phone.trim();
+    try {
+      await _supabaseService.updateAccountInfo(userId, {
+        'phone_number': trimmed,
+      });
+      final result = await _supabaseService.saveScannedIdFieldValues(
+        userId: userId,
+        canonicalValues: {
+          'cp_number': trimmed,
+          'phone_number': trimmed,
+          'contact_number': trimmed,
+        },
+      );
+      final ok = result['success'] == true;
+      if (ok) {
+        phoneCtrl.text = trimmed;
+        savedDuringSession = true;
+        markProfileAsSaved();
+        notifyListeners();
+      }
+      return ok;
+    } catch (e) {
+      debugPrint('[ProfileController/persistVerifiedPhone] Error: $e');
+      return false;
+    }
+  }
+
+  /// Persists an email that has already been confirmed via Supabase Auth by
+  /// [EmailChangeController]. The auth identity is updated before this call;
+  /// here we only sync the account row and canonical PII keys.
+  Future<bool> persistVerifiedEmail(String email) async {
+    final trimmed = email.trim();
+    try {
+      await _supabaseService.updateAccountInfo(userId, {'email': trimmed});
+      final result = await _supabaseService.saveScannedIdFieldValues(
+        userId: userId,
+        canonicalValues: {
+          'email_address': trimmed,
+          'email': trimmed,
+        },
+      );
+      final ok = result['success'] == true;
+      if (ok) {
+        emailCtrl.text = trimmed;
+        savedDuringSession = true;
+        markProfileAsSaved();
+        notifyListeners();
+      }
+      return ok;
+    } catch (e) {
+      debugPrint('[ProfileController/persistVerifiedEmail] Error: $e');
       return false;
     }
   }

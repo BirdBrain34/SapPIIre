@@ -308,15 +308,25 @@ class SupabaseService {
     }
   }
 
-  // Update the username stored in user_accounts.
+  // Update editable columns on user_accounts. Only the keys actually present
+  // in [updates] are written, so callers can update username, email, and/or
+  // phone_number independently without clobbering the others.
   Future<void> updateAccountInfo(
     String userId,
     Map<String, dynamic> updates,
   ) async {
     try {
+      final payload = <String, dynamic>{};
+      for (final key in const ['username', 'email', 'phone_number']) {
+        if (updates.containsKey(key)) {
+          payload[key] = updates[key];
+        }
+      }
+      if (payload.isEmpty) return;
+
       await _supabase
           .from('user_accounts')
-          .update({'username': updates['username']})
+          .update(payload)
           .eq('user_id', userId);
     } catch (e) {
       throw Exception('Failed to update account: $e');
