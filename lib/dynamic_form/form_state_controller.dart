@@ -444,7 +444,12 @@ class FormStateController extends ChangeNotifier {
     clearAll(notify: false);
 
     data.forEach((key, value) {
-      if (key == '__membership' && value is Map) {
+      if (key == '__archived__') {
+        // Values whose field was removed from the template. Surfaced by
+        // SubmissionMigrationService in a read-only panel, never rendered as
+        // a form field — a label match here would bind them to the wrong one.
+        return;
+      } else if (key == '__membership' && value is Map) {
         membershipData = {
           'solo_parent': (value['solo_parent'] as bool?) ?? false,
           'pwd': (value['pwd'] as bool?) ?? false,

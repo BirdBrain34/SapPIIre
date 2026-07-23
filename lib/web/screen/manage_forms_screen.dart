@@ -665,6 +665,7 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       data: formData,
       createdBy: widget.cswdId,
       acknowledgeDuplicate: acknowledged != null,
+      templateVersion: _selectedTemplate!.version,
     );
 
     final intakeReference = (created['intake_reference'] as String?) ?? '';

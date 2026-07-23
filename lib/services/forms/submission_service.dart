@@ -163,6 +163,7 @@ class SubmissionService {
     required String createdBy,
     String? intakeReference,
     bool acknowledgeDuplicate = false,
+    int? templateVersion,
   }) async {
     const supabaseUrl = 'https://tgbfxepldpdswxehhlkx.supabase.co';
     const anonKey =
@@ -188,6 +189,7 @@ class SubmissionService {
         'intakeReference': intakeReference,
         'createdBy': createdBy,
         'acknowledgeDuplicate': acknowledgeDuplicate,
+        if (templateVersion != null) 'templateVersion': templateVersion,
       }),
     );
 
@@ -218,7 +220,29 @@ class SubmissionService {
       throw Exception(response.body);
     }
 
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    final result = jsonDecode(response.body) as Map<String, dynamic>;
+
+    // Stamp the structural version this record was filled against, so a later
+    // template edit can be detected when the record is reopened. Written from
+    // here rather than inside the Edge Function because the deployed function
+    // carries duplicate-detection logic that is not in this repository — see
+    // docs/16_Form_Template_Versioning.md. A failure here leaves the column
+    // NULL, which reads as version 1.
+    if (templateVersion != null && result['id'] != null) {
+      try {
+        await _supabase
+            .from('client_submissions')
+            .update({'template_version': templateVersion})
+            .eq('id', result['id']);
+      } catch (e) {
+        debugPrint(
+          '[SubmissionService/upsertClientSubmissionSecure] '
+          'Version stamp failed: $e',
+        );
+      }
+    }
+
+    return result;
   }
 
   @Deprecated('Use ApplicantSearchService.search() for list rendering.')

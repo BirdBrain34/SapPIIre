@@ -13,13 +13,16 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/models/form_template_models.dart';
+import 'package:sappiire/models/form_version_models.dart';
 import 'package:sappiire/services/form_template_service.dart';
 import 'package:sappiire/services/forms/applicant_search_service.dart';
+import 'package:sappiire/services/forms/submission_migration_service.dart';
 import 'package:sappiire/services/forms/submission_service.dart';
 import 'package:sappiire/services/forms/submission_review_service.dart';
 import 'package:sappiire/mobile/widgets/status_badge_widget.dart';
 import 'package:sappiire/dynamic_form/dynamic_form_renderer.dart';
 import 'package:sappiire/dynamic_form/form_state_controller.dart';
+import 'package:sappiire/web/widgets/submission_version_banner.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
 import 'package:sappiire/web/widgets/filter_controls.dart';
 import 'package:sappiire/web/utils/web_session.dart';
@@ -50,6 +53,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   final _submissionService = SubmissionService();
   final _searchService = ApplicantSearchService();
   final _templateService = FormTemplateService();
+  final _migrationService = SubmissionMigrationService();
   final _applicantsController = const ApplicantsController();
 
   static const int _pageSize = 25;
@@ -62,6 +66,10 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   Map<String, dynamic>? _selectedSubmission;
   FormTemplate? _activeTemplate;
   FormStateController? _viewCtrl;
+
+  /// Set when the open record was filled against an older template version and
+  /// something about that difference is worth showing. Null otherwise.
+  SubmissionMigration? _activeMigration;
 
   bool _isLoading = true;
   bool _isSearching = false;
@@ -89,6 +97,11 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
   // Cache templates by form type.
   final Map<String, FormTemplate> _templateCache = {};
 
+  // Cache templates by template_id. Form names are not unique — two rows can
+  // share one name, and the name-keyed map above silently keeps whichever came
+  // last. Submissions carry template_id, so prefer that.
+  final Map<String, FormTemplate> _templateById = {};
+
   // Local overrides for review_status so the UI updates instantly after approve/deny
   // without waiting for the Edge Function to return fresh data.
   final Map<int, String> _localReviewStatuses = {};
@@ -107,17 +120,22 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     });
 
     try {
-      final templates = await _templateService.fetchActiveTemplates().catchError(
-        (Object e, StackTrace st) {
-          debugPrint('[ApplicantsScreen/_loadData] Template load error: $e');
-          return <FormTemplate>[];
-        },
-      );
+      // Force a refetch. FormTemplateService caches for the life of the
+      // process and nothing invalidates it, so a template edited by a
+      // superadmin during this session would otherwise still read at its
+      // pre-edit version here and no record would ever look out of date.
+      final templates = await _templateService
+          .fetchActiveTemplates(forceRefresh: true)
+          .catchError((Object e, StackTrace st) {
+            debugPrint('[ApplicantsScreen/_loadData] Template load error: $e');
+            return <FormTemplate>[];
+          });
 
       if (!mounted) return;
 
       for (final t in templates) {
         _templateCache[t.formName] = t;
+        _templateById[t.templateId] = t;
       }
     } catch (e) {
       debugPrint('[ApplicantsScreen/_loadData] Error: $e');
@@ -250,6 +268,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         if (_selected == null) {
           _selectedSubmission = null;
           _activeTemplate = null;
+          _activeMigration = null;
           _rightPanelView = _RightPanelView.records;
         }
       } else {
@@ -404,7 +423,12 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
     final dataMap = data is Map
         ? Map<String, dynamic>.from(data)
         : <String, dynamic>{};
-    final template = _templateCache[formType];
+    // template_id is exact; the form name is only a fallback for older rows
+    // that never recorded one.
+    final templateId = submissionToOpen['template_id']?.toString();
+    final template =
+        (templateId == null ? null : _templateById[templateId]) ??
+        _templateCache[formType];
     _intakeRefCtrl.text =
         (submissionToOpen['intake_reference'] as String?) ?? '';
 
@@ -419,11 +443,26 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         _selectedSubmission = submissionToOpen;
         _activeTemplate = null;
         _viewCtrl = null;
+        _activeMigration = null;
       });
       return;
     }
 
-    final view = FormStateController(template: template)..loadFromJson(dataMap);
+    // Lazy migration: the record's keys are reconciled against the template as
+    // it stands now, once, here, on a deliberate open. Values whose field was
+    // removed would otherwise be dropped by loadFromJson without a trace.
+    final migration = await _migrationService.migrate(
+      template: template,
+      data: dataMap,
+      submissionVersion: (submissionToOpen['template_version'] as num?)?.toInt(),
+    );
+
+    if (loadToken != null && loadToken != _submissionLoadToken) {
+      return;
+    }
+
+    final view = FormStateController(template: template)
+      ..loadFromJson(migration.data);
 
     if (loadToken != null && loadToken != _submissionLoadToken) {
       return;
@@ -433,6 +472,10 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
       _selectedSubmission = submissionToOpen;
       _activeTemplate = template;
       _viewCtrl = view;
+      // Staleness alone earns the banner. A field removed from the form is
+      // worth flagging on every record captured before it, whether or not
+      // this particular one happened to hold a value for it.
+      _activeMigration = migration.isStale ? migration : null;
     });
   }
 
@@ -858,6 +901,7 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
             _recordSortOrder = RecordSortOrder.latestFirst;
             _selectedSubmission = null;
             _activeTemplate = null;
+            _activeMigration = null;
           });
         },
         child: Container(
@@ -1840,6 +1884,14 @@ class _ApplicantsScreenState extends State<ApplicantsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (_activeMigration != null)
+              SubmissionVersionBanner(
+                key: ValueKey(
+                  '${_selectedSubmission?['id']}#'
+                  '${_activeMigration!.submissionVersion}',
+                ),
+                migration: _activeMigration!,
+              ),
             Container(
               padding: const EdgeInsets.all(12),
               margin: const EdgeInsets.only(bottom: 10),

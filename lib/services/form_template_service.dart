@@ -27,7 +27,7 @@ class FormTemplateService {
       final res = await _supabase
           .from('form_templates')
           .select('''
-            template_id, form_name, form_desc, is_active,
+            template_id, form_name, form_desc, is_active, version,
             form_code, reference_prefix, reference_format, requires_reference,
             form_sections(
               section_id, template_id, section_name, section_desc,
@@ -73,7 +73,7 @@ class FormTemplateService {
       final res = await _supabase
           .from('form_templates')
           .select('''
-            template_id, form_name, form_desc, is_active,
+            template_id, form_name, form_desc, is_active, version,
             form_code, reference_prefix, reference_format, requires_reference,
             form_sections(
               section_id, template_id, section_name, section_desc,

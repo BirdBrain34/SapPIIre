@@ -217,7 +217,8 @@ Expired sessions return HTTP 410 `session_expired` (line 125).
 ### `FormBuilderService` (`lib/services/form_builder_service.dart`)
 | Table | Operations |
 |-------|-----------|
-| `form_templates` | INSERT, SELECT, UPDATE, DELETE |
+| `form_templates` | INSERT, SELECT, UPDATE (incl. `version` bump), DELETE |
+| `form_template_versions` | UPSERT (structure snapshot of the superseded version), SELECT |
 | `form_sections` | INSERT, UPSERT, DELETE |
 | `form_fields` | INSERT, UPSERT, DELETE, UPDATE (soft-archive) |
 | `form_field_options` | INSERT, DELETE |
@@ -231,7 +232,15 @@ Expired sessions return HTTP 410 `session_expired` (line 125).
 | Table | Operations |
 |-------|-----------|
 | `form_submission` | INSERT, SELECT, UPDATE, stream |
-| `client_submissions` | UPSERT, SELECT, UPDATE, DELETE |
+| `client_submissions` | UPSERT, SELECT, UPDATE (incl. `template_version` stamp), DELETE |
+
+### `SubmissionMigrationService` (`lib/services/forms/submission_migration_service.dart`)
+| Table | Operations |
+|-------|-----------|
+| `form_template_versions` | SELECT (one snapshot, lazily, on submission open) |
+
+Read-only. Reconciles an opened submission's payload keys against the current
+template — see `docs/16_Form_Template_Versioning.md`.
 
 ### `AuditLogService` (`lib/services/audit/audit_log_service.dart`)
 | Table | Operations |
@@ -259,6 +268,7 @@ Expired sessions return HTTP 410 `session_expired` (line 125).
 | `form_fields` | `resolve-applicant-names`, `encrypt-and-save-submission` | `FormTemplateService`, `FormBuilderService`, `FieldValueService`, `SupabaseService`, `FormStateController` | ✅ |
 | `form_field_options` | — | `FormTemplateService`, `FormBuilderService` | ✅ |
 | `form_field_conditions` | — | `FormTemplateService`, `FormBuilderService` | ✅ |
+| `form_template_versions` | — | `FormBuilderService`, `SubmissionMigrationService` | ✅ |
 | `user_field_values` | `resolve-applicant-names` | `FieldValueService`, `SupabaseService`, `FormBuilderService` | ✅ |
 | `form_submission` | `serve-submission-for-review`, `decrypt-qr-payload`, `encrypt-and-save-submission` | `SubmissionService`, `SupabaseService`, `DisplaySessionService`, `FormBuilderService`, `DashboardAnalyticsService` | ✅ |
 | `client_submissions` | `encrypt-and-save-submission`, `decrypt-submission-data`, `decrypt-submission-batch` | `SubmissionService`, `FormBuilderService`, `SupabaseService`, `DashboardAnalyticsService`, `IntakeAnalyticsService` | ✅ |
@@ -283,10 +293,20 @@ Expired sessions return HTTP 410 `session_expired` (line 125).
 | Edge Functions deployed | 13 |
 | Edge Functions documented above | 10 |
 | Edge Functions with direct schema access | 9 of those documented (derive-field-key is pure computation) |
-| Schema tables | 19 |
+| Schema tables | 20 |
 | Tables with Edge Function access | 13 |
-| Tables with only Dart service access | 5 (form_templates, form_sections, form_field_options, form_field_conditions, display_sessions) |
+| Tables with only Dart service access | 6 (form_templates, form_sections, form_field_options, form_field_conditions, form_template_versions, display_sessions) |
 | Tables with no application code references | 1 (dashboard_card_settings) |
+
+**Known source gap.** The repository copy of
+`supabase/functions/encrypt-and-save-submission/index.ts` (124 lines) does not match what §1
+documents or what the Dart client expects: it has no `content_hash`, no `applicant_key`, no
+`acknowledgeDuplicate` handling, and no 409 duplicate path, and it does not import
+`canonical_hash.ts` or `applicant_identity.ts`. `SubmissionService` catches a 409 and throws
+`DuplicateSubmissionException`, so the deployed function is ahead of this file. **Redeploying
+from the repository copy would drop duplicate detection.** Reconcile the file against the
+deployed version before touching it — see §6 of `docs/16_Form_Template_Versioning.md`, which
+routes around it for the same reason.
 
 **Known documentation gap.** `supabase/functions/` contains 13 function directories, but only 10
 have sections in §1. Undocumented: `search-applicants`, `manage-user-account`, `send-staff-email`.

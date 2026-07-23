@@ -361,6 +361,62 @@ class FormBuilderService {
     }
   }
 
+  /// Freeze a template's structure as [version] in `form_template_versions`.
+  ///
+  /// Called with the rows read *before* a structural save overwrote them, so
+  /// the snapshot describes the version that is being superseded. The live
+  /// tables always hold the current version, so it is never snapshotted.
+  /// Existing rows are left alone — a version, once captured, is immutable.
+  Future<void> _captureVersionSnapshot({
+    required String templateId,
+    required String formName,
+    required int version,
+    required List<dynamic> sections,
+    required List<dynamic> fields,
+  }) async {
+    try {
+      final snapshot = {
+        'template_id': templateId,
+        'form_name': formName,
+        'version': version,
+        'captured_at': DateTime.now().toUtc().toIso8601String(),
+        'sections': sections
+            .map(
+              (s) => {
+                'section_id': s['section_id'],
+                'section_name': s['section_name'],
+                'section_order': s['section_order'],
+              },
+            )
+            .toList(),
+        'fields': fields
+            .map(
+              (f) => {
+                'field_id': f['field_id'],
+                'section_id': f['section_id'],
+                'field_name': f['field_name'],
+                'field_label': f['field_label'],
+                'field_type': f['field_type'],
+                'field_order': f['field_order'],
+                'parent_field_id': f['parent_field_id'],
+                'is_required': f['is_required'],
+              },
+            )
+            .toList(),
+      };
+
+      await _supabase.from('form_template_versions').upsert({
+        'template_id': templateId,
+        'version': version,
+        'snapshot': snapshot,
+      }, onConflict: 'template_id,version', ignoreDuplicates: true);
+    } catch (e) {
+      // A missing snapshot degrades rename detection for records on this
+      // version; it must never fail the save that produced it.
+      debugPrint('[FormBuilderService/_captureVersionSnapshot] Error: $e');
+    }
+  }
+
   /// Save the entire template structure (metadata + sections + fields + options).
   /// Upserts current data, then deletes orphaned rows removed in the builder.
   /// After a successful save, emits notifications for added/updated/deleted fields.
@@ -396,29 +452,51 @@ class FormBuilderService {
           })
           .eq('template_id', templateId);
 
+      // Structural version of the template as it stands before this save.
+      // Read up front because the snapshot below has to describe the *old*
+      // structure, and the writes that follow overwrite it in place.
+      final templateRow = await _supabase
+          .from('form_templates')
+          .select('status, version')
+          .eq('template_id', templateId)
+          .maybeSingle();
+      final priorStatus = templateRow?['status'] as String? ?? 'draft';
+      final priorVersion = (templateRow?['version'] as num?)?.toInt() ?? 1;
+
       // Refresh child rows, then reinsert the current structure.
       final existingFields = await _supabase
           .from('form_fields')
-          .select('field_id, field_label, field_type')
+          .select(
+            'field_id, section_id, field_name, field_label, field_type, '
+            'field_order, parent_field_id, is_required',
+          )
           .eq('template_id', templateId);
+
+      final existingFieldIdList = existingFields
+          .map((f) => f['field_id'] as String)
+          .toList();
 
       final existingOptions = await _supabase
           .from('form_field_options')
           .select('field_id, option_label')
-          .inFilter('field_id', existingFields.map((f) => f['field_id'] as String).toList());
+          .inFilter('field_id', existingFieldIdList);
+
+      // Captured before the deletes below, so a snapshot of the outgoing
+      // version can still be written after the save succeeds.
+      final priorSections = await _supabase
+          .from('form_sections')
+          .select('section_id, section_name, section_order')
+          .eq('template_id', templateId);
 
       if (existingFields.isNotEmpty) {
-        final existingIds = existingFields
-            .map((f) => f['field_id'] as String)
-            .toList();
         await _supabase
             .from('form_field_options')
             .delete()
-            .inFilter('field_id', existingIds);
+            .inFilter('field_id', existingFieldIdList);
         await _supabase
             .from('form_field_conditions')
             .delete()
-            .inFilter('field_id', existingIds);
+            .inFilter('field_id', existingFieldIdList);
       }
 
       if (sections.isNotEmpty) {
@@ -489,10 +567,12 @@ class FormBuilderService {
       // ── Emit field-level notifications ──────────────────────────────
       final existingLabels = <String, String>{};
       final existingFieldTypes = <String, String>{};
+      final existingFieldNames = <String, String>{};
       for (final f in existingFields) {
         final fid = f['field_id'] as String;
         existingLabels[fid] = (f['field_label'] as String?) ?? 'Untitled Question';
         existingFieldTypes[fid] = (f['field_type'] as String?) ?? 'text';
+        existingFieldNames[fid] = (f['field_name'] as String?) ?? '';
       }
 
       final existingOptionMap = <String, List<String>>{};
@@ -582,6 +662,53 @@ class FormBuilderService {
           changeType: 'updated',
           changeSummary: '"$formName" was updated. Tap RELOAD to see the changes.',
           details: {'scope': 'conditions_or_metadata'},
+        );
+      }
+
+      // ── Version bump ────────────────────────────────────────────────
+      // Only a live form can have submissions filled against an older
+      // structure, and only a change that moves data keys around can orphan
+      // their values. Label-only or cosmetic edits leave the version alone so
+      // staff are not shown a banner for a change that costs them nothing.
+      final isLive =
+          priorStatus == 'published' || priorStatus == 'pushed_to_mobile';
+
+      final renamedOrRetyped = newFieldIds
+          .intersection(existingFieldIds)
+          .where((fid) {
+            final incoming = fields.firstWhere(
+              (f) => f['field_id'] == fid,
+              orElse: () => {},
+            );
+            final newName = (incoming['field_name'] as String?) ?? '';
+            final newType = (incoming['field_type'] as String?) ?? 'text';
+            return newName != (existingFieldNames[fid] ?? '') ||
+                newType != (existingFieldTypes[fid] ?? 'text');
+          })
+          .toList();
+
+      final isStructuralChange =
+          addedFieldIds.isNotEmpty ||
+          deletedFieldIds.isNotEmpty ||
+          renamedOrRetyped.isNotEmpty;
+
+      if (isLive && isStructuralChange) {
+        await _captureVersionSnapshot(
+          templateId: templateId,
+          formName: formName,
+          version: priorVersion,
+          sections: priorSections,
+          fields: existingFields,
+        );
+
+        await _supabase
+            .from('form_templates')
+            .update({'version': priorVersion + 1})
+            .eq('template_id', templateId);
+
+        debugPrint(
+          '[FormBuilderService/saveTemplateStructure] Action: version '
+          '$priorVersion -> ${priorVersion + 1} for $templateId',
         );
       }
 
