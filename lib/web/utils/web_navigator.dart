@@ -7,6 +7,7 @@ import 'package:sappiire/web/screen/approvals_screen.dart';
 import 'package:sappiire/web/screen/audit_logs_screen.dart';
 import 'package:sappiire/web/screen/create_staff_screen.dart';
 import 'package:sappiire/web/screen/dashboard_screen.dart';
+import 'package:sappiire/web/screen/data_retention_screen.dart';
 import 'package:sappiire/web/screen/form_builder_screen.dart';
 import 'package:sappiire/web/screen/manage_forms_screen.dart';
 import 'package:sappiire/web/screen/manage_staff_screen.dart';
@@ -70,6 +71,14 @@ class WebNavigator {
       case 'FormBuilder':
         if (role != 'superadmin' && role != 'admin') return;
         nextScreen = FormBuilderScreen(
+          cswdId: cswdId,
+          role: role,
+          displayName: displayName,
+        );
+        break;
+      case 'DataRetention':
+        if (role != 'superadmin' && role != 'admin') return;
+        nextScreen = DataRetentionScreen(
           cswdId: cswdId,
           role: role,
           displayName: displayName,

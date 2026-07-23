@@ -13,6 +13,7 @@ import 'package:sappiire/web/utils/web_navigator.dart';
 import 'package:sappiire/web/utils/web_session.dart';
 import 'package:sappiire/web/widgets/dashboard_config_dialog.dart';
 import 'package:sappiire/web/widgets/dashboard_form_card.dart';
+import 'package:sappiire/web/widgets/dashboard_retention_summary.dart';
 import 'package:sappiire/web/widgets/web_header_button.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
 
@@ -1153,6 +1154,22 @@ class _DashboardScreenState extends State<DashboardScreen>
         // Summary metrics
         _buildSummaryMetrics(),
         const SizedBox(height: 32),
+
+        // Data-retention summary (admin-only): how many records have gone
+        // stale, with a jump into the full retention screen.
+        if (widget.role == 'admin' || widget.role == 'superadmin') ...[
+          DashboardRetentionSummary(
+            refreshToken: _refreshToken,
+            onReview: () => WebNavigator.go(
+              context,
+              'DataRetention',
+              cswdId: widget.cswdId,
+              role: widget.role,
+              displayName: widget.displayName,
+            ),
+          ),
+          const SizedBox(height: 32),
+        ],
 
         // Responsive row for charts
         LayoutBuilder(

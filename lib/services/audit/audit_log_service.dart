@@ -25,6 +25,14 @@ const kAuditQrTransmissionOtpFailed = 'qr_transmission_otp_failed';
 const kAuditSubmissionCreated = 'submission_created';
 const kAuditSubmissionEdited = 'submission_edited';
 const kAuditSubmissionDeleted = 'submission_deleted';
+
+/// Emitted when an admin flags a stale record for archival from the
+/// data-retention view, or clears that flag. Advisory only — nothing is
+/// deleted. If the live `audit_logs` table has a CHECK constraint that rejects
+/// these values, [AuditLogService.log] simply no-ops (it swallows the error),
+/// so flagging still works without the audit entry.
+const kAuditSubmissionFlaggedForArchival = 'submission_flagged_for_archival';
+const kAuditSubmissionArchivalFlagCleared = 'submission_archival_flag_cleared';
 const kAuditSubmissionDecrypted = 'submission_decrypted';
 const kAuditSubmissionPreviewDecrypted = 'submission_preview_decrypted';
 const kAuditApplicantNamesResolved = 'applicant_names_resolved';
