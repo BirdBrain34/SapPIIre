@@ -13,6 +13,7 @@ class DashboardController extends ChangeNotifier {
 
   Map<String, int> countsByFormType = {};
   int totalCount = 0;
+  int uniqueApplicantCount = 0;
   List<String> availableFormTypes = [];
   bool isLoadingCounts = true;
 
@@ -40,13 +41,17 @@ class DashboardController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final counts = await _analyticsService.fetchSubmissionsByFormType(
-        timeRange: timeRange,
-      );
+      final results = await Future.wait([
+        _analyticsService.fetchSubmissionsByFormType(timeRange: timeRange),
+        _analyticsService.fetchUniqueApplicantCount(timeRange: timeRange),
+      ]);
+      final counts = results[0] as Map<String, int>;
+      final uniqueApplicants = results[1] as int;
       final types = counts.keys.toList()..sort();
 
       countsByFormType = counts;
       totalCount = counts.values.fold(0, (a, b) => a + b);
+      uniqueApplicantCount = uniqueApplicants;
       if (availableFormTypes.isEmpty) {
         availableFormTypes = types;
       }

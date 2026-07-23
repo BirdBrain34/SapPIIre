@@ -383,25 +383,44 @@ class DashboardAnalyticsService {
   // End of Staff Submission Activity methods
   // ============================================================================
 
-  Future<int> fetchUniqueClientCount({DateTimeRange? timeRange}) async {
+  /// Counts distinct *applicants* (people), not submissions, within [timeRange].
+  ///
+  /// Identity comes from the plaintext `applicant_key` column populated by the
+  /// dedup pipeline: `user:<id>` for linked mobile accounts and
+  /// `pii:<fingerprint>` for walk-ins resolvable by name + DOB/phone (see
+  /// docs/15_Submission_Deduplication.md). A row filing several forms shares one
+  /// key, so distinct keys collapse repeat availment into a single applicant.
+  ///
+  /// A NULL key means identity could not be resolved — legacy rows from before
+  /// dedup shipped, or walk-ins too sparse to fingerprint. Those are counted
+  /// one-per-row rather than merged: docs/15 establishes that two different
+  /// sparse walk-ins can collide, so over-merging would erase real applicants.
+  /// The result is therefore always >= distinct keys and <= total submissions.
+  ///
+  /// Note: `client_submissions` has no `user_id` column — identity lives in
+  /// `applicant_key`, which is why this reads that column and not `user_id`.
+  Future<int> fetchUniqueApplicantCount({DateTimeRange? timeRange}) async {
     try {
       final rows = await _clientSubmissionsQuery(
-        select: 'user_id',
+        select: 'applicant_key',
         timeRange: timeRange,
       );
 
-      final ids = <String>{};
+      final distinctKeys = <String>{};
+      var unresolvedRows = 0;
       for (final row in List<Map<String, dynamic>>.from(rows)) {
-        final userId = row['user_id']?.toString().trim() ?? '';
-        if (userId.isNotEmpty) {
-          ids.add(userId);
+        final key = row['applicant_key']?.toString().trim() ?? '';
+        if (key.isEmpty) {
+          unresolvedRows++;
+        } else {
+          distinctKeys.add(key);
         }
       }
 
-      return ids.length;
+      return distinctKeys.length + unresolvedRows;
     } catch (e) {
       debugPrint(
-        '[DashboardAnalyticsService/fetchUniqueClientCount] Error: $e',
+        '[DashboardAnalyticsService/fetchUniqueApplicantCount] Error: $e',
       );
       return 0;
     }
@@ -1491,25 +1510,23 @@ class DashboardAnalyticsService {
       'None': 0,
     };
 
-    final membership =
-        (data['__membership'] as Map?)?.cast<String, dynamic>() ??
-        <String, dynamic>{};
+    final membership = _coerceMembershipMap(data['__membership']);
 
     var hasMembership = false;
 
-    if (membership['four_ps_member'] == true) {
+    if (_isMembershipTrue(membership['four_ps_member'])) {
       output['4Ps Member'] = 1;
       hasMembership = true;
     }
-    if (membership['pwd'] == true) {
+    if (_isMembershipTrue(membership['pwd'])) {
       output['PWD'] = 1;
       hasMembership = true;
     }
-    if (membership['solo_parent'] == true) {
+    if (_isMembershipTrue(membership['solo_parent'])) {
       output['Solo Parent'] = 1;
       hasMembership = true;
     }
-    if (membership['phic_member'] == true) {
+    if (_isMembershipTrue(membership['phic_member'])) {
       output['PHIC Member'] = 1;
       hasMembership = true;
     }
@@ -1519,6 +1536,34 @@ class DashboardAnalyticsService {
     }
 
     return output;
+  }
+
+  /// The `__membership` payload is normally a `{key: bool}` map, but the
+  /// encrypt/decrypt round-trip has historically handed values back
+  /// double-encoded (a JSON string, or bools as `"true"`/`1`). Coerce
+  /// defensively so the Program Membership chart doesn't silently read every
+  /// applicant as "None" when the shape drifts.
+  Map<String, dynamic> _coerceMembershipMap(dynamic raw) {
+    var value = raw;
+    if (value is String) {
+      try {
+        value = jsonDecode(value);
+      } catch (_) {
+        return const {};
+      }
+    }
+    if (value is Map) return value.cast<String, dynamic>();
+    return const {};
+  }
+
+  bool _isMembershipTrue(dynamic v) {
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    if (v is String) {
+      final s = v.trim().toLowerCase();
+      return s == 'true' || s == '1' || s == 'yes';
+    }
+    return false;
   }
 
   /// Normalizes a field value that may be a JSON-encoded array string,
