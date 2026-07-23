@@ -84,6 +84,26 @@ Foreign-key linkage to `form_fields(field_id)` binds values to dynamic metadata 
 5. **Decryption Access Control:** The `decrypt-submission-data` Edge Function authorizes decryption requests based on staff role (`admin`, `superadmin`).
 6. **Batch Decryption (`decrypt-submission-batch` Edge Function):** For dashboard analytics, the `decrypt-submission-batch` Edge Function (`supabase/functions/decrypt-submission-batch/index.ts`) decrypts up to 20 submissions in a single call with one key import. It validates staff role once (lines 66-78), fetches all rows in one query (lines 82-85), imports the AES key once (lines 98-101), and decrypts in parallel via `Promise.all` (lines 105-114). Handles both version 0 (plaintext) and version 1 (encrypted) records transparently (lines 107-113).
 7. This architecture provides a defense-in-depth layer protecting finalized applicant records at rest, complementing client-side field encryption in `user_field_values` and hybrid transport encryption in `form_submission`.
+8. **Duplicate-detection columns (`content_hash`, `applicant_key`) are deliberately plaintext.** Because `data` is ciphertext with a random IV, no SQL expression can compare two submissions' answers, so the `encrypt-and-save-submission` Edge Function derives both values from the plaintext before encrypting and stores them alongside. Neither is reversible to form content, but both carry privacy weight — see §2.4.1.
+
+#### 2.4.1 Duplicate-Detection Columns and Their Privacy Properties
+
+Added by `supabase/migrations/20260722_a_client_submissions_dedup_columns.sql`. Full specification: `docs/15_Submission_Deduplication.md`.
+
+| Column | Type | Contents | Privacy classification |
+|--------|------|----------|------------------------|
+| `content_hash` | `text`, nullable | `v1:<64 hex>` — SHA-256 of the canonicalized plaintext payload | **Not PII.** A one-way digest over the whole form. Not invertible, and the payload's entropy (free-text answers, signature blob) makes brute-force reconstruction impractical |
+| `applicant_key` | `text`, nullable | `user:<uuid>`, or `pii:<32-hex salted fingerprint>` of normalized last name + first name + birth date, or `NULL` | **Pseudonymous identifier.** Not directly readable, but it is a *stable cross-submission correlator* — every submission by one person carries the same value |
+
+**Three properties worth holding onto:**
+
+1. **The fingerprint salt must stay server-side.** `SEARCH_FINGERPRINT_SALT` is a source constant in the Edge Functions (`search-applicants/index.ts:25`, duplicated in `encrypt-and-save-submission/applicant_identity.ts`). Name plus birth date is low-entropy and trivially enumerable offline, so anyone holding both the salt and the column could recover identities by brute force. This is the main reason the hash has exactly one implementation, on the server, and why no hashing code ships into the Flutter **web** bundle — a web build publishes its source as readable JS.
+
+2. **`applicant_key` is a new correlation surface on a table with no RLS.** `client_submissions` is protected by Edge Functions holding the service role key rather than row-level policies (see §6), so any role that can `select *` on this table can now group an applicant's entire submission history by a single stable token — including walk-in records that were previously linkable only by decrypting `data`. Factor this in before widening read access to the table.
+
+3. **`NULL` is the safe default.** When identity cannot be derived (a walk-in with no name or birth date), `applicant_key` is left `NULL` and detection is disabled for that row rather than falling back to a weaker signal. Name-only matching is deliberately *not* used, because two unrelated applicants sharing a common name would be conflated.
+
+Pre-existing rows keep `NULL` in both columns. Backfilling is impossible without bulk-decrypting the archive, which is a far larger PII exposure than the duplicate rows it would prevent.
 
 ### 2.5 Dynamic Metadata Layer
 
@@ -228,3 +248,113 @@ The anon key shipped with the client can no longer read or write any staff table
 2. Monitor `encryption_version` distribution and missing-IV anomalies.
 3. Keep `app_rsa_keypairs` activation and rotation governance auditable through `audit_logs`.
 4. Remaining dashboard and mobile features (`dashboard_analytics_service.dart`, `supabase_service.dart`, `history_controller.dart`) still query staff tables directly with anon key — they silently return empty under RLS. Migrate these to Edge Function actions if dashboard functionality is needed.
+5. **Secure random number generation verified (v1.0.0):** All cryptographic RNG usage across the codebase was confirmed as cryptographically secure:
+   - No `java.util.Random` usage in first-party Android/Kotlin code
+   - Dart crypto layer uses `encrypt.IV.fromSecureRandom()` and `encrypt.Key.fromSecureRandom()`
+   - Edge function OTP generation uses `crypto.getRandomValues()`
+
+### 7.1 Login Filter Injection Hardening (v1.0.0 → v1.0.1)
+
+The `SupabaseService.login()` method's PostgREST `.or()` filter construction was initially hardened against filter-grammar injection by stripping syntactic characters. In v1.0.1 this was **replaced entirely** with parameterized `.ilike()` queries to eliminate the injection surface completely:
+
+```dart
+// v1.0.0: character-strip approach (still used string interpolation)
+final safeIdentifier = identifier.replaceAll(RegExp(r'[,()]'), '');
+.or('username.ilike.$safeIdentifier,email.ilike.$safeIdentifier')
+
+// v1.0.1: parameterized queries — no string interpolation at all
+Map<String, dynamic>? account = await _supabase
+    .from('user_accounts')
+    .select('user_id, username, email, phone_number, is_active')
+    .ilike('username', identifier)
+    .maybeSingle();
+
+if (account == null) {
+  account = await _supabase
+      .from('user_accounts')
+      .select('user_id, username, email, phone_number, is_active')
+      .ilike('email', identifier)
+      .maybeSingle();
+}
+```
+
+The Supabase Dart client's `.ilike()` method safely binds the user-supplied value as a query parameter rather than embedding it in a filter string, preventing PostgREST filter-grammar injection (CWE-89). This change was validated by MobSF v4.5.1 static analysis — the SQL Injection warning was downgraded from warning to resolved.
+
+### 7.2 Release-Mode Log Stripping (v1.0.1)
+
+MobSF flagged `debugPrint()` calls as a sensitive-logging risk (CWE-532). A `LogUtil` wrapper was created at `lib/services/log_util.dart` that eliminates all log output in release builds:
+
+```dart
+// lib/services/log_util.dart
+void Function(String? message, {int? wrapWidth}) logPrint = kReleaseMode
+    ? _noOp       // release: silently discards
+    : debugPrint; // debug/profile: forwards normally
+
+class LogUtil {
+  static void debugPrint(String? message, {int? wrapWidth}) {
+    logPrint(message, wrapWidth: wrapWidth);
+  }
+}
+```
+
+**Migration strategy:** All PII-handling and crypto services (`hybrid_crypto_service.dart`, `web_auth_service.dart`, `supabase_service.dart`) have been migrated from raw `debugPrint()` to `LogUtil.debugPrint()`. In `flutter build --release`, the Dart compiler eliminates these calls entirely since `kReleaseMode` is a compile-time constant. This satisfies MobSF's MSTG-STORAGE-3 requirement without losing debug visibility during development.
+
+### 7.3 Production Keystore and Minimum SDK (v1.0.1)
+
+Two high-severity MobSF findings were addressed in `android/app/build.gradle.kts`:
+
+1. **Debug Certificate → Production Keystore:** The release build type now uses `signingConfigs.getByName("release")` instead of `signingConfigs.getByName("debug")`. A production keystore (`sappiire-release.jks`, RSA 2048-bit, PKCS12 format) was generated and linked via `android/key.properties` (gitignored). The keystore has a 10,000-day validity and is protected by `.gitignore` rules (`**/*.jks`, `**/*.jks.old`).
+
+2. **Minimum SDK Bump (24 → 29):** `minSdk` was overridden from `flutter.minSdkVersion` (which resolved to 24, Android 7.0) to `29` (Android 10). This ensures the app only installs on devices that receive standard security updates, addressing the "App can be installed on a vulnerable unpatched Android version" finding.
+
+```kotlin
+defaultConfig {
+    minSdk = 29  // was flutter.minSdkVersion → 24
+    // ...
+}
+
+buildTypes {
+    getByName("release") {
+        signingConfig = signingConfigs.getByName("release")  // was debug
+        // ...
+    }
+}
+```
+
+### 7.4 Exported Broadcast Receiver Hardening (v1.0.1)
+
+The `androidx.profileinstaller.ProfileInstallReceiver` was flagged as exported (`android:exported=true`) with a permission that could be obtained by other apps. The fix in `AndroidManifest.xml` overrides the receiver with `android:exported="false"` and uses `tools:replace="android:exported"` to win the manifest merger conflict:
+
+```xml
+<receiver
+    android:name="androidx.profileinstaller.ProfileInstallReceiver"
+    android:exported="false"
+    tools:replace="android:exported"
+    tools:node="merge">
+    <intent-filter>
+        <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+    </intent-filter>
+</receiver>
+```
+
+This ensures only apps signed with the same certificate can interact with the receiver, addressing the "protection level should be checked" warning.
+
+### 7.5 MobSF v4.5.1 Post-Remediation Score
+
+After applying all fixes, a second MobSF scan was performed on the release APK:
+
+| Metric | Before (Pre-Remediation) | After (Post-Remediation) |
+|--------|--------------------------|--------------------------|
+| **Security Score** | 46/100 (Medium Risk) | **64/100 (Low Risk)** |
+| **Grade** | B | **A** |
+| **High Severity** | 2 (debug cert, minSdk) | **0** |
+| **Warning** | 4 (SQL injection, insecure RNG, temp file, external storage) | 0 (all false positives or resolved) |
+| **Info** | 2 (logging, clipboard) | 2 (logging, clipboard — both mitigated) |
+| **Exported Receivers** | 1 (ProfileInstallReceiver) | **0** |
+
+**Score improvement: +18 points.** All high-severity and warning-level findings were resolved or documented as false positives.
+
+**Remaining info-level findings:**
+- **Logging (CWE-532):** Mitigated via `LogUtil` — all logs stripped in release builds.
+- **Clipboard (MSTG-STORAGE-10):** No first-party clipboard usage found; flagged references are in Flutter engine code (`io/flutter/plugin/editing/d.java`), not application code.
+- **Shared library warnings (stack canaries, fortified functions):** Documented as not applicable to Dart/Flutter libraries per MobSF documentation. The `libdatastore_shared_counter.so` library (from a third-party plugin) lacks stack canaries but is not a first-party concern.

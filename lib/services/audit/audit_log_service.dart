@@ -6,14 +6,41 @@ const kAuditLoginFailed = 'login_failed';
 const kAuditLogout = 'logout';
 const kAuditPasswordChanged = 'password_changed';
 
+/// Emitted server-side by the `manage-user-account` Edge Function when a mobile
+/// applicant self-deletes their account (Data Privacy Act erasure).
+const kAuditUserAccountDeleted = 'user_account_deleted';
+
 const kAuditSessionStarted = 'session_started';
 const kAuditSessionCompleted = 'session_completed';
 const kAuditSessionClosed = 'session_closed';
 
+/// Emitted by the mobile client when a user completes the pre-transmission
+/// "confirm it's you" OTP challenge (see QrTransmissionOtpController).
+const kAuditQrTransmissionOtpVerified = 'qr_transmission_otp_verified';
+
+/// Emitted when a user exhausts verification attempts on the pre-transmission
+/// OTP challenge — a possible session-hijack or shared-device signal.
+const kAuditQrTransmissionOtpFailed = 'qr_transmission_otp_failed';
+
 const kAuditSubmissionCreated = 'submission_created';
 const kAuditSubmissionEdited = 'submission_edited';
 const kAuditSubmissionDeleted = 'submission_deleted';
+
+/// Emitted when an admin flags a stale record for archival from the
+/// data-retention view, or clears that flag. Advisory only — nothing is
+/// deleted. If the live `audit_logs` table has a CHECK constraint that rejects
+/// these values, [AuditLogService.log] simply no-ops (it swallows the error),
+/// so flagging still works without the audit entry.
+const kAuditSubmissionFlaggedForArchival = 'submission_flagged_for_archival';
+const kAuditSubmissionArchivalFlagCleared = 'submission_archival_flag_cleared';
 const kAuditSubmissionDecrypted = 'submission_decrypted';
+const kAuditSubmissionPreviewDecrypted = 'submission_preview_decrypted';
+const kAuditApplicantNamesResolved = 'applicant_names_resolved';
+
+/// Emitted by the `search-applicants` Edge Function. If the live `audit_logs`
+/// table has a CHECK constraint that rejects this value, the function falls
+/// back to [kAuditApplicantNamesResolved] with `details.purpose == 'search'`.
+const kAuditApplicantSearch = 'applicant_search';
 
 const kAuditStaffCreated = 'staff_created';
 const kAuditStaffApproved = 'staff_approved';

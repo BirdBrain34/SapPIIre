@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:sappiire/services/dashboard_analytics_service.dart';
+import 'package:sappiire/services/forms/applicant_search_service.dart';
 
 /// Coordinates dashboard data loading, planning insights, and client search state.
 class DashboardController extends ChangeNotifier {
@@ -12,6 +13,7 @@ class DashboardController extends ChangeNotifier {
 
   Map<String, int> countsByFormType = {};
   int totalCount = 0;
+  int uniqueApplicantCount = 0;
   List<String> availableFormTypes = [];
   bool isLoadingCounts = true;
 
@@ -39,13 +41,17 @@ class DashboardController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final counts = await _analyticsService.fetchSubmissionsByFormType(
-        timeRange: timeRange,
-      );
+      final results = await Future.wait([
+        _analyticsService.fetchSubmissionsByFormType(timeRange: timeRange),
+        _analyticsService.fetchUniqueApplicantCount(timeRange: timeRange),
+      ]);
+      final counts = results[0] as Map<String, int>;
+      final uniqueApplicants = results[1] as int;
       final types = counts.keys.toList()..sort();
 
       countsByFormType = counts;
       totalCount = counts.values.fold(0, (a, b) => a + b);
+      uniqueApplicantCount = uniqueApplicants;
       if (availableFormTypes.isEmpty) {
         availableFormTypes = types;
       }
@@ -108,8 +114,11 @@ class DashboardController extends ChangeNotifier {
 
   Future<void> searchClients() async {
     final query = clientSearchController.text.trim();
-    if (query.isEmpty) {
+    // Below the minimum, a query would scan almost everything server-side and
+    // return nothing an admin can use.
+    if (query.length < ApplicantSearchService.minQueryLength) {
       clientSearchResults = [];
+      isSearchingClients = false;
       notifyListeners();
       return;
     }

@@ -4,14 +4,17 @@ import 'package:sappiire/models/form_template_models.dart';
 import 'package:sappiire/services/dashboard_analytics_service.dart';
 import 'package:sappiire/services/dashboard_config_service.dart';
 import 'package:sappiire/services/form_template_service.dart';
+import 'package:sappiire/constants/app_text_styles.dart';
 import 'package:sappiire/web/components/intake_chart_widgets.dart';
 import 'package:sappiire/web/components/enhanced_chart_widgets.dart';
 import 'package:sappiire/web/components/staff_submission_activity.dart';
 import 'package:sappiire/web/controllers/dashboard_controller.dart';
+import 'package:sappiire/web/utils/debouncer.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
 import 'package:sappiire/web/utils/web_session.dart';
 import 'package:sappiire/web/widgets/dashboard_config_dialog.dart';
 import 'package:sappiire/web/widgets/dashboard_form_card.dart';
+import 'package:sappiire/web/widgets/dashboard_retention_summary.dart';
 import 'package:sappiire/web/widgets/web_header_button.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
 
@@ -62,6 +65,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Map<String, int> get _countsByFormType => _controller.countsByFormType;
   int get _totalCount => _controller.totalCount;
+  int get _uniqueApplicantCount => _controller.uniqueApplicantCount;
   // ignore: unused_element
   Map<String, int> get _staffWorkload => _controller.staffWorkload;
   Map<String, int> get _genderRatio => _controller.genderRatio;
@@ -69,6 +73,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   Map<String, int> get _barangayVolume => _controller.barangayVolume;
   TextEditingController get _clientSearchController =>
       _controller.clientSearchController;
+  final Debouncer _clientSearchDebouncer = Debouncer.search();
   bool get _isSearchingClients => _controller.isSearchingClients;
   bool get _isLoadingClientHistory => _controller.isLoadingClientHistory;
   List<Map<String, String>> get _clientSearchResults =>
@@ -90,6 +95,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   @override
   void dispose() {
+    _clientSearchDebouncer.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -268,9 +274,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       _analyticsService.fetchStaffAccountCount(),
       _analyticsService.fetchMonthlyTrend('All', timeRange: timeRange),
     ]);
-    await _analyticsService.fetchUniqueClientCount(
-      timeRange: timeRange,
-    );
 
     if (!mounted || token != _refreshToken) return;
 
@@ -354,14 +357,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           children: [
             Icon(icon, color: AppColors.textDark, size: 20),
             const SizedBox(width: 8),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textDark,
-              ),
-            ),
+            Text(title, style: AppTextStyles.titleLarge),
           ],
         ),
         if (subtitle != null) ...[
@@ -370,10 +366,8 @@ class _DashboardScreenState extends State<DashboardScreen>
             padding: const EdgeInsets.only(left: 28),
             child: Text(
               subtitle,
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppColors.textMuted,
-              ),
+              style: AppTextStyles.bodyMedium
+                  .copyWith(color: AppColors.textMuted),
             ),
           ),
         ],
@@ -1151,6 +1145,22 @@ class _DashboardScreenState extends State<DashboardScreen>
         _buildSummaryMetrics(),
         const SizedBox(height: 32),
 
+        // Data-retention summary (admin-only): how many records have gone
+        // stale, with a jump into the full retention screen.
+        if (widget.role == 'admin' || widget.role == 'superadmin') ...[
+          DashboardRetentionSummary(
+            refreshToken: _refreshToken,
+            onReview: () => WebNavigator.go(
+              context,
+              'DataRetention',
+              cswdId: widget.cswdId,
+              role: widget.role,
+              displayName: widget.displayName,
+            ),
+          ),
+          const SizedBox(height: 32),
+        ],
+
         // Responsive row for charts
         LayoutBuilder(
           builder: (context, constraints) {
@@ -1295,6 +1305,16 @@ class _DashboardScreenState extends State<DashboardScreen>
                 SizedBox(
                   width: itemWidth,
                   child: MetricCard(
+                    label: 'Unique Applicants',
+                    value: _uniqueApplicantCount.toString(),
+                    icon: Icons.groups,
+                    color: AppColors.buttonPurple,
+                    expand: false,
+                  ),
+                ),
+                SizedBox(
+                  width: itemWidth,
+                  child: MetricCard(
                     label: 'Active Forms',
                     value: _activeFormCount.toString(),
                     icon: Icons.description,
@@ -1384,7 +1404,16 @@ class _DashboardScreenState extends State<DashboardScreen>
                 vertical: 14,
               ),
             ),
-            onChanged: (_) => _controller.searchClients(),
+            // Debounced: client search now decrypts server-side, so one call
+            // per keystroke would mean one bulk decrypt per keystroke.
+            onChanged: (_) => _clientSearchDebouncer.run(() {
+              if (!mounted) return;
+              _controller.searchClients();
+            }),
+            onSubmitted: (_) => _clientSearchDebouncer.flush(() {
+              if (!mounted) return;
+              _controller.searchClients();
+            }),
           ),
           if (_isSearchingClients) ...[
             const SizedBox(height: 12),

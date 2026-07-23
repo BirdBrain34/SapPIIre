@@ -136,6 +136,13 @@ class SideMenu extends StatelessWidget {
                       'FormBuilder',
                       activePath,
                     ),
+                    _navItem(
+                      context,
+                      Icons.inventory_2_outlined,
+                      'Data Retention',
+                      'DataRetention',
+                      activePath,
+                    ),
                     if (role == 'superadmin') ...[
                       _navItem(
                         context,

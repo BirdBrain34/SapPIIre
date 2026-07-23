@@ -874,6 +874,21 @@ class FormBuilderScreenController extends ChangeNotifier {
       formStatus = 'draft';
       notifyListeners();
       await loadTemplateList();
+
+      // Denials are warning-level, matching login_failed — an approval that was
+      // refused is the case a reviewer needs to find later.
+      await AuditLogService().log(
+        actionType: kAuditTemplateRejected,
+        category: kCategoryTemplate,
+        severity: kSeverityWarning,
+        actorId: cswdId,
+        actorName: displayName,
+        actorRole: role,
+        targetType: 'form_template',
+        targetId: activeTemplateId,
+        targetLabel: formName,
+        details: {'reason': reason},
+      );
     }
     return success;
   }

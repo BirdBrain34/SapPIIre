@@ -290,29 +290,61 @@ class FieldValueService {
           .whereType<String>()
           .toSet();
 
+      // Build a fieldId->canonical map from DB to supplement in-memory model.
+      final fieldIdToCanonical = <String, String>{};
+      try {
+        final eligibleFieldRows = await _supabase
+            .from('form_fields')
+            .select('field_id, canonical_field_key')
+            .inFilter('field_id', eligible.map((f) => f.fieldId).toList());
+        for (final row in eligibleFieldRows) {
+          final fid = row['field_id'] as String?;
+          final canonical = _normalizeCanonicalKey(row['canonical_field_key'] as String?);
+          if (fid != null && canonical != null && canonical.isNotEmpty) {
+            fieldIdToCanonical[fid] = canonical;
+          }
+        }
+      } catch (_) {}
+
+      debugPrint('[FieldValueService/FILL] Eligible fields: ${eligible.map((f) => "${f.fieldName}=${f.fieldType}=${f.canonicalFieldKey}").join(" | ")}');
+      debugPrint('[FieldValueService/FILL] Cleared field IDs (will skip for non-table): ${clearedFieldIds.length}');
+      debugPrint('[FieldValueService/FILL] Direct keys in result: ${direct.keys.join(",")}');
+
       for (final field in eligible) {
-        if (clearedFieldIds.contains(field.fieldId)) {
-          // User explicitly cleared this field in this template.
+        if (field.fieldType != FormFieldType.memberTable &&
+            clearedFieldIds.contains(field.fieldId)) {
+          debugPrint('[FieldValueService/FILL] SKIP cleared non-table field=${field.fieldName}');
           continue;
         }
         final current = direct[field.fieldName];
-        final hasValue =
-            current != null && current.toString().trim().isNotEmpty;
-        final canonical = _semanticFieldKey(field);
-        if (hasValue) {
+        final hasValue = current != null &&
+            (current is List
+                ? current.isNotEmpty
+                : current.toString().trim().isNotEmpty);
+        // Prefer the canonical from DB (which may be set even if in-memory model is stale).
+        final canonical = fieldIdToCanonical[field.fieldId] ?? _semanticFieldKey(field);
+        debugPrint('[FieldValueService/FILL] field="${field.fieldName}" type=${field.fieldType} dbCanonical=${fieldIdToCanonical[field.fieldId] ?? "(missing)"} semanticCanonical="${_semanticFieldKey(field)}" resolved="$canonical" hasValue=$hasValue currentType=${current.runtimeType} current=$current');
+        // Always cross-fill member_table fields so they stay in sync with the source.
+        if (hasValue && field.fieldType != FormFieldType.memberTable) {
           protectedCount++;
           continue;
         }
-        if (canonical == null || canonical.isEmpty) continue;
+        if (canonical == null || canonical.isEmpty) {
+          debugPrint('[FieldValueService/FILL] SKIP no canonical for field=${field.fieldName}');
+          continue;
+        }
         missingByCanonical
             .putIfAbsent(canonical, () => <FormFieldModel>[])
             .add(field);
       }
 
-      debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Action: Direct values loaded Count: ${direct.length}');
-      debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Action: Protected fields Count: $protectedCount');
-
-      debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Action: Template=${template.formName} Direct=${direct.length} MissingKeys=${missingByCanonical.length}');
+      debugPrint('[FieldValueService/FILL] Protected count: $protectedCount');
+      debugPrint('[FieldValueService/FILL] MissingByCanonical keys: ${missingByCanonical.keys.join(",")}');
+      if (missingByCanonical.isNotEmpty) {
+        for (final k in missingByCanonical.keys) {
+          debugPrint('[FieldValueService/FILL]   Missing="$k" targets=${missingByCanonical[k]!.map((f) => f.fieldName).join(",")}');
+        }
+      }
 
       if (missingByCanonical.isEmpty) {
         return await _applySignatureFallbackIfMissing(
@@ -332,7 +364,7 @@ class FieldValueService {
           .whereType<String>()
           .toSet()
           .toList();
-      debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Action: user_field_values rows=${valueRows.length} DistinctFieldIds=${allFieldIds.length}');
+      debugPrint('[FieldValueService/FILL] ALL user_field_values rows=${valueRows.length} distinctFieldIds=${allFieldIds.length}');
       if (allFieldIds.isEmpty) {
         return await _applySignatureFallbackIfMissing(
           userId: userId,
@@ -349,12 +381,17 @@ class FieldValueService {
             )
             .inFilter('field_id', allFieldIds);
 
+        debugPrint('[FieldValueService/FILL] form_fields rows fetched: ${fieldRows.length}');
         for (final row in fieldRows) {
           final fid = row['field_id'] as String?;
+          final rawCanonical = row['canonical_field_key'] as String?;
+          final fieldName = row['field_name'] as String?;
+          final fieldLabel = row['field_label'] as String?;
           final canonical =
-              _normalizeCanonicalKey(row['canonical_field_key'] as String?) ??
-              _keyFromTextPreferAlias(row['field_name'] as String?) ??
-              _keyFromTextPreferAlias(row['field_label'] as String?);
+              _normalizeCanonicalKey(rawCanonical) ??
+              _keyFromTextPreferAlias(fieldName) ??
+              _keyFromTextPreferAlias(fieldLabel);
+          debugPrint('[FieldValueService/FILL]   field_id=$fid rawCanonical="$rawCanonical" fieldName=$fieldName → canonical="$canonical"');
           if (fid == null || canonical == null || canonical.isEmpty) continue;
           idToCanonical[fid] = canonical;
         }
@@ -362,7 +399,7 @@ class FieldValueService {
         debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Error loading form_fields: $e');
       }
 
-      debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Action: Resolved fieldId->canonical Count: ${idToCanonical.length}');
+      debugPrint('[FieldValueService/FILL] idToCanonical count: ${idToCanonical.length} keys: ${idToCanonical.values.join(",")}');
       if (idToCanonical.isEmpty) {
         return await _applySignatureFallbackIfMissing(
           userId: userId,
@@ -386,20 +423,30 @@ class FieldValueService {
             fval == null ||
             fval.trim().isEmpty ||
             fval == _clearedSentinel) {
+          if (fval == _clearedSentinel) {
+            debugPrint('[FieldValueService/FILL]   skip sentinel row field_id=$fid');
+          }
           continue;
         }
 
         final canonical = idToCanonical[fid];
-        if (canonical == null) continue;
+        if (canonical == null) {
+          debugPrint('[FieldValueService/FILL]   skip row field_id=$fid no canonical mapping');
+          continue;
+        }
 
         // Skip if we already have a value for this canonical key
-        if (canonicalBestValue.containsKey(canonical)) continue;
+        if (canonicalBestValue.containsKey(canonical)) {
+          debugPrint('[FieldValueService/FILL]   skip row field_id=$fid canonical=$canonical already have value');
+          continue;
+        }
 
         final rawVersion = row['encryption_version'];
         final version = rawVersion is int
             ? rawVersion
             : int.tryParse(rawVersion?.toString() ?? '') ?? 0;
 
+        debugPrint('[FieldValueService/FILL]   candidate row field_id=$fid canonical=$canonical version=$version fval_len=${fval.length}');
         if (version == 2) {
           final iv = row['iv'] as String? ?? '';
           if (iv.isEmpty) continue;
@@ -422,6 +469,7 @@ class FieldValueService {
           );
           for (var i = 0; i < crossFillCanonicals.length; i++) {
             final value = i < decrypted.length ? decrypted[i] : '';
+            debugPrint('[FieldValueService/FILL]   decrypted canonical=${crossFillCanonicals[i]} value_len=${value.length} value_prefix=${value.length > 20 ? value.substring(0,20) : value}');
             if (value.isNotEmpty && value != _clearedSentinel) {
               canonicalBestValue[crossFillCanonicals[i]] = value;
             }
@@ -430,7 +478,7 @@ class FieldValueService {
           debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Error decrypting batch: $e');
         }
       }
-      debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Action: Canonical values Count: ${canonicalBestValue.length}');
+      debugPrint('[FieldValueService/FILL] Canonical best values count: ${canonicalBestValue.length} keys: ${canonicalBestValue.keys.join(",")}');
 
       final unmatchedKeys =
           missingByCanonical.keys
@@ -444,8 +492,9 @@ class FieldValueService {
       if (unmatchedKeys.isNotEmpty) {
         final missingPreview = unmatchedKeys.take(12).join(', ');
         final availablePreview = canonicalBestValue.keys.take(20).join(', ');
-        debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Action: Unmatched keys Count: ${unmatchedKeys.length} Values: [$missingPreview]');
-        debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Action: Available keys sample: [$availablePreview]');
+        debugPrint('[FieldValueService/FILL] UNMATCHED keys: [$missingPreview] available: [$availablePreview]');
+      } else {
+        debugPrint('[FieldValueService/FILL] ALL missing keys have matches in canonicalBestValue');
       }
 
       final merged = <String, dynamic>{...direct};
@@ -459,7 +508,10 @@ class FieldValueService {
             break;
           }
         }
-        if (bestValue == null || bestValue.trim().isEmpty) continue;
+        if (bestValue == null || bestValue.trim().isEmpty) {
+          debugPrint('[FieldValueService/FILL] No bestValue for canonical=${entry.key}');
+          continue;
+        }
 
         for (final field in entry.value) {
           final current = merged[field.fieldName];
@@ -471,41 +523,21 @@ class FieldValueService {
           } else {
             isEmpty = current.toString().trim().isEmpty;
           }
+          debugPrint('[FieldValueService/FILL]   Apply field=${field.fieldName} type=${field.fieldType} currentIsEmpty=$isEmpty bestValue_prefix=${bestValue.length > 30 ? bestValue.substring(0,30) : bestValue}');
           
-          if (isEmpty) {
+          // Always overwrite member_table fields so they stay in sync with source.
+          if (field.fieldType == FormFieldType.memberTable || isEmpty) {
             if (field.fieldType == FormFieldType.memberTable) {
               try {
-                final sourceRows = (jsonDecode(bestValue) as List)
-                    .map((e) => Map<String, dynamic>.from(e as Map))
-                    .toList();
-
-                final targetAliases = <String, String>{};
-                for (final col in field.columns) {
-                  final alias = _keyFromTextPreferAlias(col.fieldName) ?? col.fieldName;
-                  targetAliases[alias] = col.fieldName;
-                }
-
-                final mappedRows = <Map<String, dynamic>>[];
-                for (final sourceRow in sourceRows) {
-                  final mappedRow = <String, dynamic>{};
-                  
-                  for (final sourceEntry in sourceRow.entries) {
-                    final sourceAlias = _keyFromTextPreferAlias(sourceEntry.key) ?? sourceEntry.key;
-                    
-                    if (targetAliases.containsKey(sourceAlias)) {
-                      mappedRow[targetAliases[sourceAlias]!] = sourceEntry.value;
-                    } else if (field.columns.any((c) => c.fieldName == sourceEntry.key)) {
-                      mappedRow[sourceEntry.key] = sourceEntry.value;
-                    }
-                  }
-                  
-                  if (mappedRow.isNotEmpty) {
-                    mappedRows.add(mappedRow);
-                  }
-                }
-                
-                merged[field.fieldName] = mappedRows;
-              } catch (_) {
+                final decodedSourceRows = jsonDecode(bestValue) as List;
+                debugPrint('[FieldValueService/FILL]   decoded ${decodedSourceRows.length} source rows, dest has ${field.columns.length} columns');
+                merged[field.fieldName] = mergeTablePayloads(
+                  sourceRows: decodedSourceRows,
+                  destinationColumns: field.columns,
+                );
+                debugPrint('[FieldValueService/FILL]   merged result has ${(merged[field.fieldName] as List).length} rows');
+              } catch (e) {
+                debugPrint('[FieldValueService/FILL]   FAILED to merge: $e');
                 merged[field.fieldName] = <Map<String, dynamic>>[];
               }
             } else {
@@ -515,7 +547,7 @@ class FieldValueService {
           }
         }
       }
-      debugPrint('[FieldValueService/loadUserFieldValuesWithCrossFormFill] Action: Cross-filled Count: $filledCount');
+      debugPrint('[FieldValueService/FILL] Cross-filled count: $filledCount');
 
       final withSignature = await _applySignatureFallbackIfMissing(
         userId: userId,
@@ -523,6 +555,7 @@ class FieldValueService {
       );
 
       if (filledCount == 0 && missingByCanonical.isNotEmpty) {
+        debugPrint('[FieldValueService/FILL] TRYING LEGACY FALLBACK PATH');
         try {
           final legacy = await loadUserFieldValuesWithCanonicalFallback(
             userId: userId,
@@ -626,8 +659,10 @@ class FieldValueService {
       final missingByCanonical = <String, List<FormFieldModel>>{};
       for (final field in eligible) {
         final current = direct[field.fieldName];
-        final hasValue =
-            current != null && current.toString().trim().isNotEmpty;
+        final hasValue = current != null &&
+            (current is List
+                ? current.isNotEmpty
+                : current.toString().trim().isNotEmpty);
         final canonical = _normalizeCanonicalKey(field.canonicalFieldKey);
         if (hasValue || canonical == null || canonical.isEmpty) continue;
         missingByCanonical
@@ -682,8 +717,23 @@ class FieldValueService {
         if (targets == null || targets.isEmpty) continue;
 
         for (final target in targets) {
-          if (merged[target.fieldName] == null ||
-              merged[target.fieldName].toString().trim().isEmpty) {
+          final current = merged[target.fieldName];
+          final isEmpty = current == null
+              ? true
+              : (current is List ? current.isEmpty : current.toString().trim().isEmpty);
+          if (!isEmpty) continue;
+
+          if (target.fieldType == FormFieldType.memberTable) {
+            try {
+              final decodedSourceRows = jsonDecode(value) as List;
+              merged[target.fieldName] = mergeTablePayloads(
+                sourceRows: decodedSourceRows,
+                destinationColumns: target.columns,
+              );
+            } catch (_) {
+              merged[target.fieldName] = <Map<String, dynamic>>[];
+            }
+          } else {
             merged[target.fieldName] = value;
           }
         }
@@ -741,7 +791,7 @@ class FieldValueService {
     return rows;
   }
 
-  String? _normalizeCanonicalKey(String? raw) {
+  static String? _normalizeCanonicalKey(String? raw) {
     if (raw == null) return null;
     final lowered = raw.trim().toLowerCase();
     if (lowered.isEmpty) return null;
@@ -750,6 +800,73 @@ class FieldValueService {
         .replaceAll(RegExp(r'_+'), '_')
         .replaceAll(RegExp(r'^_+|_+$'), '');
     return normalized.isEmpty ? null : normalized;
+  }
+
+  /// Merges source member_table rows into the destination column schema using
+  /// tiered matching (canonical key, semantic alias, exact name), dropping
+  /// unmapped columns and empty rows.
+  @visibleForTesting
+  static List<Map<String, dynamic>> mergeTablePayloads({
+    required List<dynamic> sourceRows,
+    required List<FormFieldModel> destinationColumns,
+    Map<String, String>? sourceColumnCanonicalKeys,
+  }) {
+    if (destinationColumns.isEmpty) return const [];
+
+    final destByCanonical = <String, String>{};
+    for (final col in destinationColumns) {
+      final key = _normalizeCanonicalKey(col.canonicalFieldKey);
+      if (key != null && key.isNotEmpty) {
+        destByCanonical.putIfAbsent(key, () => col.fieldName);
+      }
+    }
+
+    final destByAlias = <String, String>{};
+    for (final col in destinationColumns) {
+      final alias = _keyFromTextPreferAlias(col.fieldName);
+      if (alias != null && alias.isNotEmpty) {
+        destByAlias.putIfAbsent(alias, () => col.fieldName);
+      }
+    }
+
+    final destFieldNames = destinationColumns.map((c) => c.fieldName).toSet();
+    final mergedRows = <Map<String, dynamic>>[];
+
+    for (final rawRow in sourceRows) {
+      if (rawRow is! Map) continue;
+      final sourceRow = Map<String, dynamic>.from(rawRow);
+      final mappedRow = <String, dynamic>{};
+
+      for (final sourceEntry in sourceRow.entries) {
+        final sourceKey = sourceEntry.key;
+        final value = sourceEntry.value;
+
+        final sourceCanonical =
+            _normalizeCanonicalKey(sourceColumnCanonicalKeys?[sourceKey]);
+        if (sourceCanonical != null &&
+            destByCanonical.containsKey(sourceCanonical)) {
+          mappedRow[destByCanonical[sourceCanonical]!] = value;
+          continue;
+        }
+
+        final sourceAlias = _keyFromTextPreferAlias(sourceKey);
+        if (sourceAlias != null && destByAlias.containsKey(sourceAlias)) {
+          mappedRow[destByAlias[sourceAlias]!] = value;
+          continue;
+        }
+
+        if (destFieldNames.contains(sourceKey)) {
+          mappedRow[sourceKey] = value;
+          continue;
+        }
+      }
+
+      if (mappedRow.isNotEmpty) {
+        mergedRows.add(mappedRow);
+      }
+    }
+
+    return mergedRows;
   }
 
   String? _semanticFieldKey(FormFieldModel field) {
@@ -766,13 +883,13 @@ class FieldValueService {
   }
 
 
-  String? _keyFromTextPreferAlias(String? raw) {
+  static String? _keyFromTextPreferAlias(String? raw) {
     final alias = _semanticAliasFromText(raw);
     if (alias != null) return alias;
     return _normalizeCanonicalKey(raw);
   }
 
-  String? _semanticAliasFromText(String? raw) {
+  static String? _semanticAliasFromText(String? raw) {
     final t = _normalizeCanonicalKey(raw);
     if (t == null) return null;
 

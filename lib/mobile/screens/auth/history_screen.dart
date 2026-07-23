@@ -25,6 +25,33 @@ class _HistoryScreenState extends State<HistoryScreen> {
     _controller = HistoryController(userId: widget.userId);
     _controller.addListener(() => setState(() {}));
     _controller.loadHistory();
+    _controller.startListening();
+
+    // Show a toast when a review decision is detected
+    _controller.onReviewDecision = (status, formType) {
+      if (!mounted) return;
+      final msg = status == 'approved'
+          ? '$formType — Approved!'
+          : '$formType — Denied';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg, style: const TextStyle(fontWeight: FontWeight.w600)),
+          backgroundColor: status == 'approved'
+              ? const Color(0xFF10B981)
+              : const Color(0xFFEF4444),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'View',
+            textColor: Colors.white,
+            onPressed: () {
+              // Scroll to the top where the change just appeared
+              // The list is already refreshed by loadHistory()
+            },
+          ),
+        ),
+      );
+    };
   }
 
   @override

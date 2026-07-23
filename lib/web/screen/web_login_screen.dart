@@ -406,11 +406,9 @@ class _WorkerLoginScreenState extends State<WorkerLoginScreen> {
             hintText: 'Enter your password',
             hintStyle: const TextStyle(color: Color(0xFF4A6499), fontSize: 14),
             prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF6EA8FE), size: 20),
-            suffixIcon: GestureDetector(
-              onTapDown: (_) => setState(() => _obscurePassword = false),
-              onTapUp: (_) => setState(() => _obscurePassword = true),
-              onTapCancel: () => setState(() => _obscurePassword = true),
-              child: Icon(
+            suffixIcon: IconButton(
+              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+              icon: Icon(
                 _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
                 color: const Color(0xFF6EA8FE),
                 size: 20,

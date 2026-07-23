@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:sappiire/services/forms/applicant_search_service.dart';
 import 'package:sappiire/services/forms/submission_service.dart';
 
 class SlaComplianceSummary {
@@ -49,6 +50,7 @@ class DashboardAnalyticsService {
 
   final SupabaseClient _supabase = Supabase.instance.client;
   final SubmissionService _submissionService = SubmissionService();
+  final ApplicantSearchService _applicantSearch = ApplicantSearchService();
   final Map<String, List<Map<String, dynamic>>> _decryptedCache = {};
   final Map<String, DateTime> _cacheTimestamps = {};
   static const Duration _cacheTTL = Duration(minutes: 5);
@@ -381,25 +383,44 @@ class DashboardAnalyticsService {
   // End of Staff Submission Activity methods
   // ============================================================================
 
-  Future<int> fetchUniqueClientCount({DateTimeRange? timeRange}) async {
+  /// Counts distinct *applicants* (people), not submissions, within [timeRange].
+  ///
+  /// Identity comes from the plaintext `applicant_key` column populated by the
+  /// dedup pipeline: `user:<id>` for linked mobile accounts and
+  /// `pii:<fingerprint>` for walk-ins resolvable by name + DOB/phone (see
+  /// docs/15_Submission_Deduplication.md). A row filing several forms shares one
+  /// key, so distinct keys collapse repeat availment into a single applicant.
+  ///
+  /// A NULL key means identity could not be resolved — legacy rows from before
+  /// dedup shipped, or walk-ins too sparse to fingerprint. Those are counted
+  /// one-per-row rather than merged: docs/15 establishes that two different
+  /// sparse walk-ins can collide, so over-merging would erase real applicants.
+  /// The result is therefore always >= distinct keys and <= total submissions.
+  ///
+  /// Note: `client_submissions` has no `user_id` column — identity lives in
+  /// `applicant_key`, which is why this reads that column and not `user_id`.
+  Future<int> fetchUniqueApplicantCount({DateTimeRange? timeRange}) async {
     try {
       final rows = await _clientSubmissionsQuery(
-        select: 'user_id',
+        select: 'applicant_key',
         timeRange: timeRange,
       );
 
-      final ids = <String>{};
+      final distinctKeys = <String>{};
+      var unresolvedRows = 0;
       for (final row in List<Map<String, dynamic>>.from(rows)) {
-        final userId = row['user_id']?.toString().trim() ?? '';
-        if (userId.isNotEmpty) {
-          ids.add(userId);
+        final key = row['applicant_key']?.toString().trim() ?? '';
+        if (key.isEmpty) {
+          unresolvedRows++;
+        } else {
+          distinctKeys.add(key);
         }
       }
 
-      return ids.length;
+      return distinctKeys.length + unresolvedRows;
     } catch (e) {
       debugPrint(
-        '[DashboardAnalyticsService/fetchUniqueClientCount] Error: $e',
+        '[DashboardAnalyticsService/fetchUniqueApplicantCount] Error: $e',
       );
       return 0;
     }
@@ -920,37 +941,51 @@ class DashboardAnalyticsService {
     }
   }
 
+  /// Client 360 name lookup.
+  ///
+  /// Routed through the `search-applicants` Edge Function rather than the
+  /// `search_users_by_name_canonical` RPC: `user_field_values.field_value` is
+  /// AES-GCM ciphertext for `encryption_version = 2`, so SQL `LIKE` inside
+  /// that RPC could only ever match legacy plaintext rows.
+  ///
+  /// Restricted to applicants with a linked mobile account, which is correct
+  /// here — both consumers ([fetchClientHistory] and
+  /// [fetchEligibilityFrequencyFlags]) key off `user_id`, and a walk-in has no
+  /// 360 view to show.
   Future<List<Map<String, String>>> searchClientsByName(String query) async {
     final text = query.trim();
-    if (text.isEmpty) {
+    if (text.length < ApplicantSearchService.minQueryLength) {
+      return [];
+    }
+
+    // Same guard as the other server-side calls on this service (see
+    // fetchClientHistory, _fetchSubmissionDataRows): the Edge Function
+    // requires an authenticated staff id and rejects the call without one.
+    final staffId = _staffId;
+    if (staffId == null || staffId.isEmpty) {
+      debugPrint(
+        '[DashboardAnalyticsService/searchClientsByName] '
+        'Missing staffId — call setStaffId() before searching.',
+      );
       return [];
     }
 
     try {
-      final rpcResult =
-          await _supabase.rpc(
-                'search_users_by_name_canonical',
-                params: {'p_search': text, 'p_limit': 12},
-              )
-              as List<dynamic>;
+      final result = await _applicantSearch.search(
+        staffId: staffId,
+        query: text,
+        filters: const ApplicantSearchFilters(
+          accountLink: AccountLinkFilter.linked,
+        ),
+        limit: 12,
+      );
 
-      return rpcResult
-          .cast<Map<String, dynamic>>()
-          .map((row) {
-            final uid = row['user_id']?.toString() ?? '';
-            final last = (row['last_name'] as String?)?.trim() ?? '';
-            final first = (row['first_name'] as String?)?.trim() ?? '';
-            final middle = (row['middle_name'] as String?)?.trim() ?? '';
-            final full =
-                '$last, $first${middle.isNotEmpty ? ' ${middle[0]}.' : ''}'
-                    .trim();
+      // Superseded by a newer in-flight search, or the call failed.
+      if (result == null || result.isError) return [];
 
-            return {
-              'user_id': uid,
-              'name': full.isEmpty ? 'Unknown Client' : full,
-            };
-          })
-          .where((row) => (row['user_id'] ?? '').isNotEmpty)
+      return result.applicants
+          .where((a) => a.userId != null && a.userId!.isNotEmpty)
+          .map((a) => {'user_id': a.userId!, 'name': a.displayName})
           .toList();
     } catch (e) {
       debugPrint('[DashboardAnalyticsService/searchClientsByName] Error: $e');
@@ -1475,25 +1510,23 @@ class DashboardAnalyticsService {
       'None': 0,
     };
 
-    final membership =
-        (data['__membership'] as Map?)?.cast<String, dynamic>() ??
-        <String, dynamic>{};
+    final membership = _coerceMembershipMap(data['__membership']);
 
     var hasMembership = false;
 
-    if (membership['four_ps_member'] == true) {
+    if (_isMembershipTrue(membership['four_ps_member'])) {
       output['4Ps Member'] = 1;
       hasMembership = true;
     }
-    if (membership['pwd'] == true) {
+    if (_isMembershipTrue(membership['pwd'])) {
       output['PWD'] = 1;
       hasMembership = true;
     }
-    if (membership['solo_parent'] == true) {
+    if (_isMembershipTrue(membership['solo_parent'])) {
       output['Solo Parent'] = 1;
       hasMembership = true;
     }
-    if (membership['phic_member'] == true) {
+    if (_isMembershipTrue(membership['phic_member'])) {
       output['PHIC Member'] = 1;
       hasMembership = true;
     }
@@ -1503,6 +1536,34 @@ class DashboardAnalyticsService {
     }
 
     return output;
+  }
+
+  /// The `__membership` payload is normally a `{key: bool}` map, but the
+  /// encrypt/decrypt round-trip has historically handed values back
+  /// double-encoded (a JSON string, or bools as `"true"`/`1`). Coerce
+  /// defensively so the Program Membership chart doesn't silently read every
+  /// applicant as "None" when the shape drifts.
+  Map<String, dynamic> _coerceMembershipMap(dynamic raw) {
+    var value = raw;
+    if (value is String) {
+      try {
+        value = jsonDecode(value);
+      } catch (_) {
+        return const {};
+      }
+    }
+    if (value is Map) return value.cast<String, dynamic>();
+    return const {};
+  }
+
+  bool _isMembershipTrue(dynamic v) {
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    if (v is String) {
+      final s = v.trim().toLowerCase();
+      return s == 'true' || s == '1' || s == 'yes';
+    }
+    return false;
   }
 
   /// Normalizes a field value that may be a JSON-encoded array string,

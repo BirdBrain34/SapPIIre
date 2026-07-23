@@ -41,10 +41,8 @@ Deno.serve(async (req: Request) => {
     const serverAesKey   = Deno.env.get('SERVER_AES_KEY')!;
 
     const body = await req.json().catch(() => ({}));
-    const { submissionIds, staffId } = body as {
-      submissionIds: number[];
-      staffId?: string;
-    };
+    const { submissionIds } = body as { submissionIds: number[] };
+    const staffId = typeof body?.staffId === 'string' ? body.staffId.trim() : '';
 
     console.log(`[decrypt-submission-batch] Received request with ${submissionIds?.length || 0} IDs, staffId=${staffId || 'none'}`);
 
@@ -56,27 +54,57 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // staffId is unconditionally required. This previously sat behind an
+    // `if (staffId)` guard, so omitting it skipped authorization entirely.
+    if (!staffId) {
+      console.log('[decrypt-submission-batch] Missing staffId');
+      return new Response(
+        JSON.stringify({ error: 'Missing required field: staffId' }),
+        { status: 400, headers: corsHeaders },
+      );
+    }
+
     // Hard cap: never decrypt more than 20 records per call
     const ids = submissionIds.slice(0, 20);
     console.log(`[decrypt-submission-batch] Processing ${ids.length} submissions (capped at 20)`);
 
-    // Validate staff role once — not per record
+    // Validate staff once — not per record. Account state is checked as well
+    // as role, matching resolve-applicant-names: a deactivated or pending
+    // account must not be able to decrypt records.
     const supabase = createClient(supabaseUrl, serviceRoleKey);
-    if (staffId) {
-      const { data: staff } = await supabase
-        .from('staff_accounts')
-        .select('role')
-        .eq('cswd_id', staffId)
-        .single();
-      if (!staff || staff.role === 'viewer') {
-        console.log(`[decrypt-submission-batch] Insufficient permissions for staffId=${staffId}`);
-        return new Response(
-          JSON.stringify({ error: 'Insufficient permissions' }),
-          { status: 403, headers: corsHeaders },
-        );
-      }
-      console.log(`[decrypt-submission-batch] Staff validated: ${staffId}, role=${staff.role}`);
+
+    const { data: staff } = await supabase
+      .from('staff_accounts')
+      .select('role, is_active, account_status')
+      .eq('cswd_id', staffId)
+      .single();
+
+    if (!staff) {
+      console.log(`[decrypt-submission-batch] Staff not found: staffId=${staffId}`);
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 403, headers: corsHeaders },
+      );
     }
+
+    if (staff.is_active === false || staff.account_status !== 'active') {
+      console.log(`[decrypt-submission-batch] Inactive staff: staffId=${staffId}`);
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 403, headers: corsHeaders },
+      );
+    }
+
+    if (staff.role === 'viewer') {
+      console.log(`[decrypt-submission-batch] Insufficient permissions for staffId=${staffId}`);
+      return new Response(
+        JSON.stringify({ error: 'Insufficient permissions' }),
+        { status: 403, headers: corsHeaders },
+      );
+    }
+
+    const actorRole: string | null = staff.role;
+    console.log(`[decrypt-submission-batch] Staff validated: ${staffId}, role=${staff.role}`);
 
     // Fetch all rows in ONE query — no loop network calls
     const { data: rows, error } = await supabase
@@ -116,6 +144,28 @@ Deno.serve(async (req: Request) => {
 
     const decryptedCount = results.filter(r => r.decrypted).length;
     console.log(`[decrypt-submission-batch] Decrypted ${decryptedCount}/${rows.length} records in ${elapsed}ms`);
+
+    // Audit: ONE aggregated critical event per batch call (not per record) so
+    // routine list rendering doesn't flood the log. UI groups bursts further.
+    if (decryptedCount > 0) {
+      try {
+        await supabase.from('audit_logs').insert({
+          action_type: 'submission_decrypted',
+          category: 'submission',
+          severity: 'critical',
+          actor_id: staffId,
+          actor_role: actorRole,
+          target_type: 'client_submission',
+          details: {
+            count: decryptedCount,
+            ids: results.filter(r => r.decrypted).map(r => r.id),
+            purpose: 'list_view',
+          },
+        });
+      } catch (e) {
+        console.error('[decrypt-submission-batch] Audit log insert failed:', e);
+      }
+    }
 
     return new Response(JSON.stringify({ results }), {
       status: 200,

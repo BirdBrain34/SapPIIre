@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/services/audit/audit_log_service.dart';
 import 'package:sappiire/web/widgets/web_shell.dart';
+import 'package:sappiire/web/widgets/filter_controls.dart';
 import 'package:sappiire/web/utils/web_session.dart';
+import 'package:sappiire/web/utils/debouncer.dart';
 import 'package:sappiire/web/utils/web_navigator.dart';
 
 class AuditLogsScreen extends StatefulWidget {
@@ -25,6 +27,7 @@ class AuditLogsScreen extends StatefulWidget {
 class _AuditLogsScreenState extends State<AuditLogsScreen> {
   final _service = AuditLogService();
   final _searchController = TextEditingController();
+  final _searchDebouncer = Debouncer(const Duration(milliseconds: 400));
 
   List<Map<String, dynamic>> _logs = [];
   List<Map<String, dynamic>> _displayLogs = [];
@@ -60,8 +63,11 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     '',
     kAuditLogin, kAuditLoginFailed, kAuditLogout, kAuditPasswordChanged,
     kAuditSubmissionCreated, kAuditSubmissionEdited, kAuditSubmissionDeleted, kAuditSubmissionDecrypted,
+    kAuditSubmissionPreviewDecrypted, kAuditApplicantNamesResolved,
+    kAuditApplicantSearch,
     kAuditStaffCreated, kAuditStaffApproved, kAuditStaffRejected, kAuditRoleChanged,
     kAuditTemplateCreated, kAuditTemplatePublished, kAuditTemplatePushed, kAuditTemplateArchived, kAuditTemplateDeleted,
+    kAuditTemplateSubmittedForApproval, kAuditTemplateApproved, kAuditTemplateRejected,
     kAuditSessionStarted, kAuditSessionCompleted, kAuditSessionClosed,
     kAuditCanonicalKeyCreated, kAuditCanonicalKeyDeactivated,
   ];
@@ -81,6 +87,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
 
   @override
   void dispose() {
+    _searchDebouncer.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -284,55 +291,288 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     }
   }
 
+  // ==========================================================================
+  // Plain-language wording
+  //
+  // This screen is read by caseworkers and senior officials, not engineers.
+  // Everything shown here is written in everyday office language: "form"
+  // rather than "template", "opened" rather than "decrypted", and no database
+  // or cryptography terms anywhere on screen.
+  // ==========================================================================
+
   String _actionLabel(String? action) {
     switch (action) {
       case kAuditLogin:
-        return 'Login';
+        return 'Signed in';
       case kAuditLoginFailed:
-        return 'Login Failed';
+        return 'Failed sign-in attempt';
       case kAuditLogout:
-        return 'Logout';
+        return 'Signed out';
       case kAuditPasswordChanged:
-        return 'Password Changed';
+        return 'Password changed';
+      case kAuditUserAccountDeleted:
+        return 'Applicant account deleted';
       case kAuditSessionStarted:
-        return 'Session Started';
+        return 'Intake session started';
       case kAuditSessionCompleted:
-        return 'Session Completed';
+        return 'Intake session completed';
       case kAuditSessionClosed:
-        return 'Session Closed';
+        return 'Intake session closed';
       case kAuditSubmissionCreated:
-        return 'Submission Created';
+        return 'Applicant record saved';
       case kAuditSubmissionEdited:
-        return 'Submission Edited';
+        return 'Applicant record edited';
       case kAuditSubmissionDeleted:
-        return 'Submission Deleted';
+        return 'Applicant record deleted';
       case kAuditSubmissionDecrypted:
-        return 'Submission Decrypted';
+        return 'Applicant record opened';
+      case kAuditSubmissionPreviewDecrypted:
+        return 'Submitted form reviewed';
+      case kAuditApplicantNamesResolved:
+        return 'Applicant names displayed';
+      case kAuditApplicantSearch:
+        return 'Applicant search';
       case kAuditStaffCreated:
-        return 'Staff Created';
+        return 'Staff account created';
       case kAuditStaffApproved:
-        return 'Staff Approved';
+        return 'Staff account approved';
       case kAuditStaffRejected:
-        return 'Staff Rejected';
+        return 'Staff account rejected';
       case kAuditRoleChanged:
-        return 'Role Changed';
+        return 'Staff role changed';
       case kAuditTemplateCreated:
-        return 'Template Created';
+        return 'Form created';
       case kAuditTemplatePublished:
-        return 'Template Published';
+        return 'Form published';
       case kAuditTemplatePushed:
-        return 'Pushed to Mobile';
+        return 'Form sent to mobile app';
       case kAuditTemplateArchived:
-        return 'Template Archived';
+        return 'Form archived';
       case kAuditTemplateDeleted:
-        return 'Template Deleted';
+        return 'Form deleted';
+      case kAuditTemplateSubmittedForApproval:
+        return 'Form sent for approval';
+      case kAuditTemplateApproved:
+        return 'Form approved';
+      case kAuditTemplateRejected:
+        return 'Form rejected';
       case kAuditCanonicalKeyCreated:
-        return 'Canonical Key Created';
+        return 'Shared field added';
       case kAuditCanonicalKeyDeactivated:
-        return 'Canonical Key Deactivated';
+        return 'Shared field removed';
       default:
-        return action ?? 'Unknown';
+        return action ?? 'Unknown activity';
     }
+  }
+
+  /// One sentence saying what actually happened, shown when a staff member
+  /// opens an entry. The label alone cannot carry why an entry matters.
+  String _actionDescription(String? action) {
+    switch (action) {
+      case kAuditLogin:
+        return 'A staff member signed in to the system.';
+      case kAuditLoginFailed:
+        return 'Someone tried to sign in but the details were incorrect. '
+            'Repeated attempts in a short time may mean someone is trying to '
+            'guess a password.';
+      case kAuditLogout:
+        return 'A staff member signed out.';
+      case kAuditPasswordChanged:
+        return 'A staff member changed their password.';
+      case kAuditUserAccountDeleted:
+        return 'A mobile applicant permanently deleted their own account and '
+            'personal information. Records they had already submitted to the '
+            'office are kept as official records.';
+      case kAuditSessionStarted:
+        return 'A staff member started an intake session for a client.';
+      case kAuditSessionCompleted:
+        return 'An intake session was finished and the record was saved.';
+      case kAuditSessionClosed:
+        return 'An intake session was closed without being completed.';
+      case kAuditSubmissionCreated:
+        return 'A new applicant record was saved.';
+      case kAuditSubmissionEdited:
+        return 'An existing applicant record was changed.';
+      case kAuditSubmissionDeleted:
+        return 'An applicant record was deleted.';
+      case kAuditSubmissionDecrypted:
+        return 'An applicant\'s protected personal information was opened and '
+            'viewed. Personal details are kept locked in storage, so every '
+            'time someone views them it is recorded here.';
+      case kAuditSubmissionPreviewDecrypted:
+        return 'A form sent in from the mobile app was opened for checking '
+            'before it was saved.';
+      case kAuditApplicantNamesResolved:
+        return 'Applicant names were unlocked so they could be shown in a list '
+            'on screen. Only the names were shown, not the full records.';
+      case kAuditApplicantSearch:
+        return 'A staff member searched the applicant records. The search '
+            'wording itself is never stored here, only that a search happened.';
+      case kAuditStaffCreated:
+        return 'A new staff account was created.';
+      case kAuditStaffApproved:
+        return 'A staff account was approved and can now be used.';
+      case kAuditStaffRejected:
+        return 'A staff account request was refused.';
+      case kAuditRoleChanged:
+        return 'A staff member\'s level of access was changed.';
+      case kAuditTemplateCreated:
+        return 'A new form was created.';
+      case kAuditTemplatePublished:
+        return 'A form was published and is now available to staff.';
+      case kAuditTemplatePushed:
+        return 'A form was sent to the mobile app for clients to fill in.';
+      case kAuditTemplateArchived:
+        return 'A form was archived and is no longer offered for new intakes.';
+      case kAuditTemplateDeleted:
+        return 'A form was deleted.';
+      case kAuditTemplateSubmittedForApproval:
+        return 'A form was sent to a Super Administrator for approval. It is '
+            'not available to staff until it is approved.';
+      case kAuditTemplateApproved:
+        return 'A form was approved and published.';
+      case kAuditTemplateRejected:
+        return 'A form was refused during approval and sent back as a draft. '
+            'The reason given is shown below.';
+      case kAuditCanonicalKeyCreated:
+        return 'A shared field was added, so the same question can be matched '
+            'across different forms.';
+      case kAuditCanonicalKeyDeactivated:
+        return 'A shared field was removed from matching.';
+      default:
+        return 'Activity recorded by the system.';
+    }
+  }
+
+  String _categoryLabel(String? category) {
+    switch (category) {
+      case kCategoryAuth:
+        return 'Sign-in';
+      case kCategorySession:
+        return 'Intake sessions';
+      case kCategorySubmission:
+        return 'Applicant records';
+      case kCategoryStaff:
+        return 'Staff accounts';
+      case kCategoryTemplate:
+        return 'Forms';
+      default:
+        return category == null || category.isEmpty ? 'Other' : category;
+    }
+  }
+
+  /// Severity in words a caseworker can act on. "Sensitive" is the level used
+  /// whenever protected personal information was opened.
+  String _severityLabel(String? severity) {
+    switch (severity) {
+      case kSeverityCritical:
+        return 'Sensitive';
+      case kSeverityWarning:
+        return 'Notice';
+      default:
+        return 'Routine';
+    }
+  }
+
+  String _roleLabel(String? role) {
+    switch (role) {
+      case 'superadmin':
+        return 'Super Administrator';
+      case 'admin':
+        return 'Administrator';
+      case 'applicant':
+        return 'Applicant';
+      default:
+        return role == null || role.isEmpty ? '-' : role;
+    }
+  }
+
+  String _targetTypeLabel(String? type) {
+    switch (type) {
+      case 'client_submission':
+      case 'client_submissions':
+        return 'Applicant record';
+      case 'form_template':
+        return 'Form';
+      case 'form_submission':
+        return 'Intake session';
+      case 'staff_account':
+        return 'Staff account';
+      case 'user_field_values':
+        return 'Applicant details';
+      default:
+        return type == null || type.isEmpty ? '-' : type;
+    }
+  }
+
+  /// Technical bookkeeping that means nothing to a caseworker. Kept out of the
+  /// detail panel rather than shown as unexplained numbers.
+  static const _hiddenDetailKeys = {
+    'ids',
+    'query_hash',
+    'query_length',
+    'token_count',
+    'filters',
+    'intended_action',
+    'transmission_version',
+    'account_link',
+    'scope',
+  };
+
+  String _detailKeyLabel(String key) {
+    switch (key) {
+      case 'purpose':
+        return 'Reason';
+      case 'reason':
+        return 'Reason given';
+      case 'count':
+        return 'Records opened';
+      case 'resolved':
+        return 'Names shown';
+      case 'requested':
+        return 'Names requested';
+      case 'candidate_rows':
+        return 'Records searched';
+      case 'decrypted_blobs':
+        return 'Records opened';
+      case 'users_resolved':
+        return 'Names shown';
+      case 'applicants_returned':
+        return 'Applicants found';
+      case 'truncated':
+        return 'Results incomplete';
+      case 'elapsed_ms':
+        return 'Time taken';
+      default:
+        // last_edited_by -> "Last edited by"
+        final spaced = key.replaceAll('_', ' ').trim();
+        if (spaced.isEmpty) return key;
+        return spaced[0].toUpperCase() + spaced.substring(1);
+    }
+  }
+
+  String _detailValueLabel(String key, Object? value) {
+    if (value == null) return '-';
+    if (key == 'purpose') {
+      switch (value.toString()) {
+        case 'applicant_record_view':
+          return 'Opening a single applicant record';
+        case 'list_view':
+          return 'Showing the applicant list';
+        case 'search':
+          return 'Searching for an applicant';
+      }
+    }
+    if (key == 'elapsed_ms') {
+      final ms = int.tryParse(value.toString());
+      if (ms != null) {
+        return ms < 1000 ? '$ms milliseconds' : '${(ms / 1000).toStringAsFixed(1)} seconds';
+      }
+    }
+    if (value is bool) return value ? 'Yes' : 'No';
+    if (value.toString() == 'true') return 'Yes';
+    if (value.toString() == 'false') return 'No';
+    return value.toString();
   }
 
   String _formatDate(String? iso) {
@@ -362,16 +602,31 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     }
   }
 
+  /// Action types emitted in bursts, which are collapsed into a single display
+  /// row per actor per 5-minute window.
+  ///
+  /// Applicant search is here because a debounced search box still emits one
+  /// event per settled query — ten minutes of an admin looking someone up
+  /// would otherwise bury every other event on the page. The names-resolved
+  /// action is included because it is what `search-applicants` falls back to
+  /// when the live table rejects `applicant_search`.
+  static const _collapsibleActions = {
+    kAuditSubmissionDecrypted,
+    kAuditApplicantSearch,
+    kAuditApplicantNamesResolved,
+  };
+
   List<Map<String, dynamic>> _groupDecryptionLogs(List<Map<String, dynamic>> logs) {
     final result = <Map<String, dynamic>>[];
     for (final log in logs) {
-      if (log['action_type'] != kAuditSubmissionDecrypted) {
+      final actionType = log['action_type'];
+      if (!_collapsibleActions.contains(actionType)) {
         result.add(log);
         continue;
       }
       if (result.isNotEmpty) {
         final last = result.last;
-        if (last['action_type'] == kAuditSubmissionDecrypted &&
+        if (last['action_type'] == actionType &&
             last['actor_id'] == log['actor_id']) {
           final groupStart = DateTime.tryParse(last['created_at'] as String? ?? '');
           final thisTime = DateTime.tryParse(log['created_at'] as String? ?? '');
@@ -442,16 +697,16 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _summaryCard(
-                label: 'Total Events',
+                label: 'Total activity',
                 value: _totalCount.toString(),
                 color: AppColors.primaryBlue,
                 icon: Icons.history,
               ),
               const SizedBox(width: 12),
               _summaryCard(
-                label: 'Critical',
+                label: 'Sensitive',
                 value: _logs
-                    .where((l) => l['severity'] == 'critical')
+                    .where((l) => l['severity'] == kSeverityCritical)
                     .length
                     .toString(),
                 color: const Color(0xFFE63946),
@@ -462,7 +717,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
                 (cat) => Padding(
                   padding: const EdgeInsets.only(right: 12),
                   child: _summaryCard(
-                    label: cat[0].toUpperCase() + cat.substring(1),
+                    label: _categoryLabel(cat),
                     value: _logs
                         .where((l) => l['category'] == cat)
                         .length
@@ -538,46 +793,31 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         children: [
           Expanded(
             flex: 3,
-            child: TextField(
+            child: WebSearchField(
               controller: _searchController,
-              onSubmitted: (_) {
+              hintText: 'Search by actor name...',
+              // Search on typing rather than only on Enter, but debounced so a
+              // burst of keystrokes is one query.
+              onChanged: (_) => _searchDebouncer.run(() {
+                if (!mounted) return;
                 _resetPaging();
                 _loadLogs();
-              },
-              decoration: InputDecoration(
-                hintText: 'Search by actor name...',
-                hintStyle: const TextStyle(
-                  fontSize: 13,
-                  color: AppColors.textMuted,
-                ),
-                prefixIcon: const Icon(
-                  Icons.search,
-                  size: 18,
-                  color: AppColors.textMuted,
-                ),
-                filled: true,
-                fillColor: AppColors.pageBg,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide.none,
-                ),
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(vertical: 10),
-              ),
+              }),
+              onSubmitted: (_) => _searchDebouncer.flush(() {
+                if (!mounted) return;
+                _resetPaging();
+                _loadLogs();
+              }),
             ),
           ),
           const SizedBox(width: 12),
           _buildDropdownFilter(
             value: _categoryFilter,
-            hint: 'All Categories',
+            hint: 'All activity',
             items: _categories,
             labels: {
-              '': 'All Categories',
-              'auth': 'Auth',
-              'session': 'Sessions',
-              'submission': 'Submissions',
-              'staff': 'Staff',
-              'template': 'Templates',
+              for (final c in _categories)
+                c: c.isEmpty ? 'All activity' : _categoryLabel(c),
             },
             onChanged: (v) {
               setState(() {
@@ -609,10 +849,8 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
             hint: 'All Severities',
             items: _severities,
             labels: {
-              '': 'All Severities',
-              'info': 'Info',
-              'warning': 'Warning',
-              'critical': 'Critical',
+              for (final s in _severities)
+                s: s.isEmpty ? 'All importance levels' : _severityLabel(s),
             },
             onChanged: (v) {
               setState(() {
@@ -649,6 +887,9 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     );
   }
 
+  // Chrome now lives in web/widgets/filter_controls.dart so the applicants
+  // filter bar renders identically. These thin wrappers keep the call sites
+  // in _buildFilterBar unchanged.
   Widget _buildDropdownFilter({
     required String value,
     required String hint,
@@ -656,35 +897,12 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     required Map<String, String> labels,
     required ValueChanged<String?> onChanged,
   }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: AppColors.pageBg,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.cardBorder),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: value,
-          hint: Text(
-            hint,
-            style: const TextStyle(fontSize: 13, color: AppColors.textMuted),
-          ),
-          isDense: true,
-          items: items
-              .map(
-                (item) => DropdownMenuItem(
-                  value: item,
-                  child: Text(
-                    labels[item] ?? item,
-                    style: const TextStyle(fontSize: 13),
-                  ),
-                ),
-              )
-              .toList(),
-          onChanged: onChanged,
-        ),
-      ),
+    return WebDropdownFilter(
+      value: value,
+      hint: hint,
+      items: items,
+      labels: labels,
+      onChanged: onChanged,
     );
   }
 
@@ -693,28 +911,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     required VoidCallback onTap,
     required bool isSet,
   }) {
-    return OutlinedButton.icon(
-      onPressed: onTap,
-      icon: Icon(
-        Icons.calendar_today,
-        size: 14,
-        color: isSet ? AppColors.highlight : AppColors.textMuted,
-      ),
-      label: Text(
-        label,
-        style: TextStyle(
-          fontSize: 12,
-          color: isSet ? AppColors.highlight : AppColors.textMuted,
-        ),
-      ),
-      style: OutlinedButton.styleFrom(
-        side: BorderSide(
-          color: isSet ? AppColors.highlight : AppColors.cardBorder,
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
+    return WebDateFilterButton(label: label, onTap: onTap, isSet: isSet);
   }
 
   Widget _buildLogsTable() {
@@ -847,7 +1044,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
                     const SizedBox(width: 4),
                     Flexible(
                       child: Text(
-                        category,
+                        _categoryLabel(category),
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
@@ -956,7 +1153,7 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  severity.toUpperCase(),
+                  _severityLabel(severity).toUpperCase(),
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
@@ -984,6 +1181,11 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
         : rawDetails is Map
         ? Map<String, dynamic>.from(rawDetails)
         : <String, dynamic>{};
+
+    final visibleDetails = <String, dynamic>{
+      for (final e in details.entries)
+        if (!_hiddenDetailKeys.contains(e.key)) e.key: e.value,
+    };
 
     showDialog(
       context: context,
@@ -1018,32 +1220,56 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Text(
+                  _actionDescription(log['action_type']?.toString()),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    height: 1.45,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 14),
                 _detailRow(
-                  'Timestamp',
+                  'When',
                   _formatDate(log['created_at']?.toString()),
                 ),
-                _detailRow('Category', log['category']?.toString() ?? '-'),
-                _detailRow('Severity', log['severity']?.toString() ?? '-'),
-                _detailRow('Actor', log['actor_name']?.toString() ?? '-'),
-                _detailRow('Actor Role', log['actor_role']?.toString() ?? '-'),
-                _detailRow('Actor ID', log['actor_id']?.toString() ?? '-'),
+                _detailRow('Performed by', log['actor_name']?.toString() ?? '-'),
+                _detailRow('Role', _roleLabel(log['actor_role']?.toString())),
+                _detailRow('Activity', _categoryLabel(log['category']?.toString())),
                 _detailRow(
-                  'Target Type',
-                  log['target_type']?.toString() ?? '-',
+                  'Importance',
+                  _severityLabel(log['severity']?.toString()),
                 ),
-                _detailRow('Target', log['target_label']?.toString() ?? '-'),
-                _detailRow('Target ID', log['target_id']?.toString() ?? '-'),
-                if (details.isNotEmpty) ...[
+                _detailRow(
+                  'Item type',
+                  _targetTypeLabel(log['target_type']?.toString()),
+                ),
+                _detailRow('Item', log['target_label']?.toString() ?? '-'),
+                if (visibleDetails.isNotEmpty) ...[
                   const Divider(),
                   const Text(
-                    'Details',
+                    'More information',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                   ),
                   const SizedBox(height: 8),
-                  ...details.entries.map(
-                    (e) => _detailRow(e.key, e.value?.toString() ?? '-'),
+                  ...visibleDetails.entries.map(
+                    (e) => _detailRow(
+                      _detailKeyLabel(e.key),
+                      _detailValueLabel(e.key, e.value),
+                    ),
                   ),
                 ],
+                const Divider(),
+                // Kept for investigations, but out of the way and clearly
+                // marked as reference numbers rather than anything meaningful.
+                _detailRow(
+                  'Reference (staff)',
+                  log['actor_id']?.toString() ?? '-',
+                ),
+                _detailRow(
+                  'Reference (item)',
+                  log['target_id']?.toString() ?? '-',
+                ),
               ],
             ),
           ),
@@ -1101,18 +1327,29 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _detailRow('Category', log['category']?.toString() ?? '-'),
-              _detailRow('Severity', log['severity']?.toString() ?? '-'),
-              _detailRow('Actor', log['actor_name']?.toString() ?? '-'),
-              _detailRow('Actor Role', log['actor_role']?.toString() ?? '-'),
-              _detailRow('Actor ID', log['actor_id']?.toString() ?? '-'),
+              Text(
+                _actionDescription(log['action_type']?.toString()),
+                style: const TextStyle(
+                  fontSize: 13,
+                  height: 1.45,
+                  color: AppColors.textMuted,
+                ),
+              ),
+              const SizedBox(height: 14),
+              _detailRow('Performed by', log['actor_name']?.toString() ?? '-'),
+              _detailRow('Role', _roleLabel(log['actor_role']?.toString())),
+              _detailRow('Activity', _categoryLabel(log['category']?.toString())),
               _detailRow(
-                'Time Range',
-                '${_formatDate(earliest)}  →  ${_formatDate(latest)}',
+                'Importance',
+                _severityLabel(log['severity']?.toString()),
+              ),
+              _detailRow(
+                'Between',
+                '${_formatDate(earliest)}  and  ${_formatDate(latest)}',
               ),
               const Divider(),
               Text(
-                '$count submissions decrypted',
+                '$count times in this period',
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 13,

@@ -48,6 +48,11 @@ class FormTemplateNotificationService {
   /// Only rows with created_at strictly after this time are emitted.
   DateTime _cutoffTime = DateTime(1970);
 
+  /// Tracks IDs that have already been emitted so Supabase Realtime
+  /// duplicates (e.g. overlapping initial snapshot + incremental event)
+  /// are silently dropped.
+  final Set<String> _processedIds = {};
+
   final StreamController<TemplateNotification> _notificationController =
       StreamController<TemplateNotification>.broadcast();
 
@@ -58,6 +63,9 @@ class FormTemplateNotificationService {
   /// Call this when ManageInfoScreen is mounted.
   Future<void> startListening() async {
     await stopListening();
+    // Clear processed IDs so previously-seen rows from a prior lifecycle
+    // won't be skipped when the new subscription starts.
+    _processedIds.clear();
 
     try {
       // Query the most recent notification timestamp.
@@ -82,15 +90,20 @@ class FormTemplateNotificationService {
           .listen((List<Map<String, dynamic>> data) {
             if (data.isEmpty) return;
 
-            // Collect rows that are strictly newer than our cutoff.
+            // Collect rows that are strictly newer than our cutoff
+            // AND have not been emitted before (deduplicate by ID).
             final newRows = <Map<String, dynamic>>[];
             DateTime? maxEmittedTime;
             for (final row in data) {
+              final id = row['id']?.toString() ?? '';
+              if (id.isEmpty || _processedIds.contains(id)) continue;
+
               final createdAt = DateTime.tryParse(
                 row['created_at']?.toString() ?? '',
               );
               if (createdAt == null) continue;
               if (createdAt.isAfter(_cutoffTime)) {
+                _processedIds.add(id);
                 newRows.add(row);
                 if (maxEmittedTime == null ||
                     createdAt.isAfter(maxEmittedTime)) {
@@ -100,6 +113,8 @@ class FormTemplateNotificationService {
             }
 
             if (newRows.isEmpty) return;
+
+            debugPrint('[FormTemplateNotificationService] Dedup check: received=${data.length} new=${newRows.length} processed=${_processedIds.length}');
 
             // Emit in chronological order (oldest first) so the UI shows
             // notifications in the order they happened.

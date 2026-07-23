@@ -345,6 +345,9 @@ class FormTemplate {
   final String referenceFormat;
   final bool requiresReference;
   final String status; // draft, pending_approval, published, pushed_to_mobile, archived
+  /// Structural version of the live template. Bumped when a published or
+  /// pushed template is saved with a change that moves data keys around.
+  final int version;
   final List<FormSection> sections;
 
   const FormTemplate({
@@ -357,6 +360,7 @@ class FormTemplate {
     this.referenceFormat = '{FORMCODE}-{YYYY}-{MM}-{####}',
     this.requiresReference = true,
     this.status = 'draft',
+    this.version = 1,
     this.sections = const [],
   });
 
@@ -450,6 +454,7 @@ class FormTemplate {
           : '{FORMCODE}-{YYYY}-{MM}-{####}',
       requiresReference: coerceDbBool(m['requires_reference'], true),
       status: m['status'] as String? ?? 'draft',
+      version: (m['version'] as num?)?.toInt() ?? 1,
       sections: sections,
     );
   }

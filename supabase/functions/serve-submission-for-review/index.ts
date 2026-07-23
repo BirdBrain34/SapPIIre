@@ -202,7 +202,7 @@ Deno.serve(async (req: Request) => {
       await supabase.from('audit_logs').insert({
         action_type: 'submission_preview_decrypted',
         category: 'session',
-        severity: 'info',
+        severity: 'warning',
         actor_id: staffId,
         target_type: 'form_submission',
         target_id: sessionId,

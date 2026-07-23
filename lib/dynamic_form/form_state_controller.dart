@@ -444,7 +444,12 @@ class FormStateController extends ChangeNotifier {
     clearAll(notify: false);
 
     data.forEach((key, value) {
-      if (key == '__membership' && value is Map) {
+      if (key == '__archived__') {
+        // Values whose field was removed from the template. Surfaced by
+        // SubmissionMigrationService in a read-only panel, never rendered as
+        // a form field — a label match here would bind them to the wrong one.
+        return;
+      } else if (key == '__membership' && value is Map) {
         membershipData = {
           'solo_parent': (value['solo_parent'] as bool?) ?? false,
           'pwd': (value['pwd'] as bool?) ?? false,
@@ -1172,12 +1177,64 @@ class FormStateController extends ChangeNotifier {
     for (final m in regex.allMatches(formula)) {
       final tableKey = m.group(1)!;
       final columnKey = m.group(2)!;
-      final label = _resolvedSumColumnLabel(tableKey, columnKey);
-      if (label != null) refs.add(label);
+      final fieldName = _resolvedSumColumnFieldName(tableKey, columnKey);
+      if (fieldName != null) refs.add(fieldName);
     }
     return refs.toList();
   }
 
+  /// Resolve a SUM_COLUMN(tableKey, columnKey) reference to the column's
+  /// **fieldName** (the internal data key). This is used for building the
+  /// dependency graph, where keys must be fieldNames, not display labels.
+  String? _resolvedSumColumnFieldName(String tableKey, String columnKey) {
+    if (tableKey == '__family_composition') {
+      for (final f in template.allFields) {
+        if (f.fieldType == FormFieldType.familyTable) {
+          for (final col in f.columns) {
+            final mapKey = (col.validationRules?['db_map_key'] ?? '').toString().trim();
+            final name = col.fieldName.trim();
+            if ((mapKey == columnKey || name == columnKey) && name.isNotEmpty) {
+              return name;
+            }
+          }
+        }
+      }
+      return null;
+    }
+
+    if (tableKey == '__supporting_family') {
+      for (final f in template.allFields) {
+        if (f.fieldType == FormFieldType.supportingFamilyTable) {
+          final name = f.columns.firstWhereOrNull((c) {
+            final key = (c.validationRules?['db_map_key'] ?? '').toString().trim();
+            return key == columnKey || c.fieldName.trim() == columnKey;
+          })?.fieldName.trim();
+          if (name != null && name.isNotEmpty) return name;
+        }
+      }
+      return null;
+    }
+
+    final normalized = tableKey.startsWith('__') ? tableKey.replaceFirst(RegExp(r'^__+'), '') : tableKey;
+    for (final f in template.allFields) {
+      if (f.fieldType == FormFieldType.memberTable && f.fieldName == normalized) {
+        for (final col in f.columns) {
+          final mapKey = (col.validationRules?['db_map_key'] ?? '').toString().trim();
+          final name = col.fieldName.trim();
+          if ((mapKey == columnKey || name == columnKey) && name.isNotEmpty) {
+            return name;
+          }
+        }
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+  /// Resolve a SUM_COLUMN(tableKey, columnKey) reference to a human-readable
+  /// display **label** for the column. This is used by _shortFormulaDescription
+  /// to produce the amber "visual indicator" text shown next to field labels.
   String? _resolvedSumColumnLabel(String tableKey, String columnKey) {
     if (tableKey == '__family_composition') {
       for (final f in template.allFields) {

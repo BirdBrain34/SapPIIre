@@ -46,6 +46,10 @@ The InfoScanner module operationalizes ID-assisted onboarding through:
 
 This feature reduces manual encoding effort and improves intake throughput while keeping the user in control of final submitted values.
 
+**Security hardening (v1.0.0):** After OCR text is extracted from the captured ID photo, the temporary image file is immediately deleted from the app cache via a best-effort cleanup in `finally` block. This prevents PII-containing images (name, DOB, address) from lingering on disk.
+
+**Release-mode log stripping (v1.0.1):** All `debugPrint()` calls in PII-handling services (`supabase_service.dart`, `hybrid_crypto_service.dart`) were migrated to `LogUtil.debugPrint()`. In release builds (`flutter build --release`), the `kReleaseMode` compile-time constant eliminates these calls entirely, ensuring no sensitive data is written to device logs in production. See [docs/02_Database_Security_and_PII_Mapping.md#72-release-mode-log-stripping-v101](docs/02_Database_Security_and_PII_Mapping.md#72-release-mode-log-stripping-v101) for details.
+
 ### 2.5 QR Session Transmission and Secure Autofill Trigger
 
 The mobile app performs session-targeted data transmission by:
@@ -62,7 +66,21 @@ The mobile app performs session-targeted data transmission by:
 
 If the session is already expired, the mobile QR controller treats the transmission result as `expired`, shows an expired-session UI state, and prompts the user to scan again.
 
-This is the client-side entry point of the hybrid cryptosystem handshake, now including a pre-transmission template guard to prevent cross-template data corruption.
+This is the client-side entry point of the hybrid cryptosystem handshake, now including a pre-transmission template guard to prevent cross-template data corruption and a pre-transmission OTP identity verification gate.
+
+#### 2.5.1 Pre-Transmission OTP Gate
+
+After QR template validation passes but before any payload encryption or transmission, the mobile client challenges the signed-in user with a "confirm it's you" OTP dialog (`lib/mobile/widgets/qr_transmission_otp_dialog.dart`):
+
+1. The controller (`lib/mobile/controllers/qr_transmission_otp_controller.dart`) resolves the user's registered contact channels from `user_accounts` — email or phone.
+2. The destination address is **always resolved server-side** — never accepted from the UI.
+3. The displayed address is **masked** (e.g. `j***@email.com` or `****1234`) for privacy.
+4. The user has **5 attempts** to enter the 6-digit code, with a **60-second resend cooldown**.
+5. Email OTPs use Supabase Auth's `signInWithOtp`/`verifyOTP` via `PasswordResetService`.
+6. Phone OTPs use the `send-phone-otp`/`verify-phone-otp` Edge Functions, with the verify call going directly to the Edge Function for full rate limiting (10 attempts/15 min).
+7. Both success and failure are logged to `audit_logs` with action types `qr_transmission_otp_verified` and `qr_transmission_otp_failed`.
+
+If the user cancels or verification fails, the scanner re-activates and no data is transmitted. Unauthenticated users (null `userId`) are also blocked from transmission.
 
 ### 2.6 Unsaved Changes Detection and Discard Workflow
 
@@ -85,11 +103,29 @@ Mobile clients subscribe to real-time `form_template_notifications` table broadc
 
 Each notification includes a `change_type`, `changeSummary`, and `templateName`. On the mobile client:
 
-- Notifications are classified by change category and rendered as floating SnackBars.
+#### 2.7.1 Deduplication and Debounce Batching
+
+The notification system applies **four layers of defense** to prevent duplicate toasts and badge increments, which was a critical issue when editing large templates (e.g. GIS with dozens of fields):
+
+1. **Service-level ID deduplication** (`FormTemplateNotificationService`): A `_processedIds` set tracks every notification ID already emitted. When Supabase Realtime delivers the same row in consecutive callbacks (initial snapshot + INSERT event), the duplicate ID is silently dropped. On `startListening()`, the set is cleared so a fresh subscription does not skip newly arrived rows.
+
+2. **UI-level ID deduplication** (`_uiProcessedNotifIds` in `manage_info_screen.dart`): A second `Set<String>` at the UI listener provides an additional filter. Even if the service layer emits the same ID twice (due to stream controller timing), the UI skips it on second arrival.
+
+3. **Debounce batching** (1.2s window): All notifications that arrive within a 1.2-second window are accumulated into a batch. When the timer fires, a single aggregated SnackBar is shown — e.g. *"3 form change(s) detected for 'Test Form'. Tap RELOAD."* — instead of N individual toasts. This prevents the toast overflow that would occur when a single save operation generates multiple field-level notification rows.
+
+4. **Toast cooldown guard** (3s): After a SnackBar is shown, no new toast can appear for 3 seconds. This is the final backstop against any delayed duplicates that slip past the earlier layers.
+
+#### 2.7.2 Notification Rendering
+
+When the batch timer fires, notifications are classified by change category and rendered as a single floating SnackBar:
 - Field-level changes display with a pencil icon (indicating field edits).
 - New template arrivals display with a star-burst icon.
 - Template removal displays with a minus-circle icon.
-- Each notification includes a RELOAD action, allowing the user to refresh the form manifest immediately.
+- The aggregated toast includes a RELOAD action, allowing the user to refresh the form manifest immediately.
+
+#### 2.7.3 Bell Badge
+
+The unread notification badge in the AppBar refreshes from the server (`_loadUnreadCount()`) after each batch is processed, rather than incrementing a local counter (`_unreadNotifCount++`). This ensures the badge always reflects the true unread count from `user_notification_reads`, regardless of how many notifications arrived in the batch.
 
 ### 2.8 Mobile Notification Center
 
@@ -129,7 +165,91 @@ The mobile interface includes:
 
 These functions improve user transparency regarding what has been submitted and what profile state remains active.
 
-### 2.10 Read-Only and Computed Field Visual Cues
+### 2.10 Submission Status Workflow (Real-Time Review Visibility)
+
+The mobile client provides real-time visibility into the lifecycle of finalized submissions once they have been transmitted and saved by CSWD staff. This bridges the gap between the initial QR scanning workflow and the eventual review decision (approve or deny).
+
+#### 2.10.1 Status Lifecycle
+
+Each submission in the citizen's history screen passes through the following status progression:
+
+1. **Pending** (default) — The submission has been transmitted and saved by staff, but no review decision has been made. Displayed as an **amber** badge.
+2. **Approved** — The application has been approved by CSWD staff. Displayed as a **green** badge.
+3. **Denied** — The application has been denied, with an optional review note explaining the reason. Displayed as a **red** badge.
+
+The `review_status` column on `client_submissions` is the authoritative source for the review state. Staff modify this column through the web applicant review workflow, and changes are propagated to the mobile client through three complementary mechanisms.
+
+#### 2.10.2 Three-Layer Notification Architecture
+
+The `HistoryController` (`lib/mobile/controllers/history_controller.dart`) implements a redundant delivery approach to ensure citizens are notified of review decisions even if one channel fails:
+
+**Layer 1 — Realtime Subscription (Instant)**
+- Subscribes to `user_notification_service.streamNotifications(userId)`, which listens to the `user_submission_notifications` table via Supabase Realtime.
+- DB triggers automatically insert a notification row when `client_submissions.review_status` changes — e.g. "Your application has been approved!" or "Your application has been denied. Reason: [notes]".
+- When a notification with `status = 'approved'` or `status = 'denied'` arrives, the controller immediately reloads the full history and fires the `onReviewDecision` callback.
+
+**Layer 2 — Periodic Polling (Fallback, 20s interval)**
+- As a fallback for when Realtime is not fully configured, a `Timer.periodic` polls every 20 seconds.
+- The lightweight query `SELECT id, review_status, form_type FROM client_submissions WHERE session_id IN (...)` fetches only the status columns — avoiding the larger `data` blobs.
+- Tracks `_lastReviewStatuses` in a map; when a status changes from `pending` to `approved`/`denied`, it triggers the same reload and callback as Layer 1.
+
+**Layer 3 — Toast Notification (User-Facing Feedback)**
+- The `onReviewDecision` callback is wired in `HistoryScreen.initState()`.
+- A floating **SnackBar** slides in at the bottom of the screen:
+  - **Green** background for approved: `"[Form Type] — Approved!"`
+  - **Red** background for denied: `"[Form Type] — Denied"`
+- The SnackBar includes a "View" action button and auto-dismisses after 4 seconds.
+- The HistoryScreen also pushes a refresh indicator via the `RefreshIndicator` widget for manual pull-to-refresh.
+
+#### 2.10.3 History Card Status Badge
+
+Each `HistoryCard` (`lib/mobile/widgets/history_card.dart`) now renders a **StatusBadgeWidget** that replaces the former static "Submitted" label:
+
+- **Pending** — Amber chip (`Color(0xFFF59E0B)`)
+- **Approved** — Green chip (`Color(0xFF10B981)`)
+- **Denied** — Red chip (`Color(0xFFEF4444)`)
+
+The badge reads the `review_status` field from the submission item. If no `review_status` is set, it defaults to `pending`.
+
+#### 2.10.4 History Detail Timeline
+
+The **HistoryDetailDialog** (`lib/mobile/widgets/history_detail_dialog.dart`) uses the **ReviewTimelineWidget** to render a visual timeline of the submission lifecycle:
+
+1. **QR Scanned** — When the mobile user scanned the staff's QR code (from `form_submission.scanned_at`).
+2. **Form Saved** — When staff finalized the submission into `client_submissions` (from `client_submissions.created_at`).
+3. **Under Review** — Shown while `review_status` is `pending`.
+4. **Approved / Denied** — Final status with timestamp (`reviewed_at`) and notes (`review_notes`) if denied.
+
+The timeline uses a vertical column of dots connected by lines, with status-appropriate colors: blue for scanned/saved, amber for pending, green for approved, red for denied.
+
+#### 2.10.5 Notification Center — "My Submissions" Tab
+
+The `NotificationScreen` (`lib/mobile/screens/auth/notification_screen.dart`) adds a second tab labeled **"My Submissions"** alongside the existing template change notifications tab:
+
+- Calls `UserNotificationService.streamNotifications(userId)` for real-time updates.
+- Each notification row displays:
+  - **Status Badge** — colored chip matching the notification status
+  - **Form Type** — e.g. "PWD Application"
+  - **Message** — e.g. "Your application has been approved!"
+  - **Intake Reference** — e.g. "CSWD-2026-00042"
+  - **Timestamp** — relative (e.g. "2 hours ago")
+- Tapping a notification marks it as read via `markRead(notificationId)`.
+- An unread badge count appears on the tab label.
+
+#### 2.10.6 Database Artifacts
+
+The supporting database infrastructure includes:
+
+- `client_submissions.review_status` column (`text`): values `pending`, `approved`, `denied`.
+- `user_submission_notifications` table: auto-populated by DB triggers when `form_submission.status` or `client_submissions.review_status` changes. Includes `status`, `message`, `intake_reference`, `form_type`, `is_read`.
+- DB Trigger 1: On `form_submission.status` change → inserts notification (e.g. "Your QR code has been scanned", "Your form has been saved").
+- DB Trigger 2: On `client_submissions.review_status` change → inserts notification (e.g. "Your application has been approved!", "Your application has been denied. Reason: ...").
+
+#### 2.10.7 Edge Function Integration
+
+The `search-applicants` Edge Function (`supabase/functions/search-applicants/index.ts`) was updated to include `review_status` in its metadata query and response. When staff search for applicants by name on the web applicants screen, the returned records now include each applicant's current review status, enabling staff to see the approval state directly in search results without requiring an extra database query.
+
+### 2.11 Read-Only and Computed Field Visual Cues
 
 Dynamic form rendering now distinguishes immutable or computed values from editable fields:
 
@@ -200,6 +320,11 @@ The mobile tier contributes the following controls:
 4. At-rest protected field persistence model using `derive-field-key` Edge Function for key derivation.
 5. Timestamped session handoff boundaries through `form_submission` lifecycle states.
 6. Key derivation keys cached only in volatile memory, cleared on sign-out.
+7. **Android platform hardening (v1.0.0):**
+   - Data backup disabled (`android:allowBackup="false"`) to prevent PII from being included in Android auto-backup.
+   - External storage permissions (`READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`) explicitly removed from merged manifest — the app only uses the app-sandboxed camera cache.
+   - Release build configured for production signing via `key.properties` with a generated RSA 2048-bit keystore (`app/sappiire-release.jks`); no longer signs with the well-known debug certificate (resolves MobSF high-severity finding).
+   - **Minimum SDK raised to 29 (v1.0.1):** `minSdk` set to 29 (Android 10), ensuring the app only installs on devices receiving standard security updates (resolves MobSF high-severity finding).
 
 ## 5. Manuscript Alignment and Added Capabilities
 

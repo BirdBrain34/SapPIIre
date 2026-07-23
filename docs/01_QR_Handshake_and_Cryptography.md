@@ -82,27 +82,62 @@ The QR code displayed on the web dashboard no longer contains a raw session UUID
 
 This structure enables the mobile client to validate that the scanned QR corresponds to the same form template the mobile user has selected before any data transmission occurs. Legacy QR codes containing only a plain-text UUID continue to be accepted for backward compatibility.
 
-### 3.3 Form Template Validation (Pre-Transmission Guard)
+### 3.3 Pre-Transmission OTP Identity Verification Gate
+
+After the QR code passes template validation but **before** any payload encryption or transmission occurs, the mobile client challenges the signed-in user with a "confirm it's you" OTP dialog. This mirrors the e-wallet transaction-OTP pattern and provides an additional identity verification layer beyond the initial login session.
+
+#### 3.3.1 OTP Flow
+
+1. The QR scanner screen (`lib/mobile/screens/auth/qr_scanner_screen.dart`) calls `QrTransmissionOtpDialog.show()` after template validation passes (lines 128-151).
+2. The dialog (`lib/mobile/widgets/qr_transmission_otp_dialog.dart`) presents a modal that cannot be dismissed by tapping outside — the user must either verify or explicitly cancel.
+3. The controller (`lib/mobile/controllers/qr_transmission_otp_controller.dart`) resolves the user's registered contact channels from `user_accounts`:
+   - **Email channel**: Uses Supabase Auth `signInWithOtp` / `verifyOTP` via the existing `PasswordResetService` — the same OTP rails already proven by the change-password flow.
+   - **Phone channel**: Uses the `send-phone-otp` / `verify-phone-otp` Edge Functions. The verify call goes directly to the Edge Function (bypassing `SupabaseService.verifyPhoneOtp`) to enforce the full 10-attempts/15-minute rate limit.
+4. The destination address is **always resolved server-side** from the caller's own `user_accounts` row — it is never accepted from the UI, preventing address manipulation.
+5. The displayed destination is **masked** (e.g. `j***@email.com` or `****1234`) so the user can confirm the correct channel without exposing the full address on screen.
+6. The user has **5 attempts** to enter the correct code. After 5 failures, the dialog shows "Too many incorrect attempts. Request a new code."
+7. A **60-second resend cooldown** prevents OTP spam.
+8. Both successful verification and failed attempts are logged to `audit_logs` with action types `qr_transmission_otp_verified` and `qr_transmission_otp_failed`.
+
+#### 3.3.2 Security Properties
+
+- **Reuses existing OTP infrastructure**: No new tables, Edge Functions, or secrets are introduced. The OTP gate leverages the same Supabase Auth and phone-OTP Edge Functions already proven by the signup, password-reset, and staff-setup flows.
+- **No plaintext address in UI**: The masked destination display prevents shoulder-surfing of the user's email or phone number.
+- **Rate-limited**: 5 verify attempts per code, 60-second resend cooldown, and the phone channel has a 10-attempts/15-minute rate limit via the Edge Function.
+- **Audit trail**: Every verification attempt (success or failure) is recorded with actor ID, session ID, and channel type.
+- **Hard stop for unauthenticated users**: If `userId` is null (unauthenticated session), the OTP gate is skipped but transmission is also blocked — the scanner returns to scan-ready state without proceeding.
+
+#### 3.3.3 Integration Point
+
+The OTP gate sits between template validation and payload encryption in the transmission pipeline:
+
+```
+QR Scanned → Template Match Check → OTP Challenge → Payload Encryption → Envelope Persistence
+```
+
+If the user cancels the OTP dialog or verification fails, the scanner re-activates and no data is transmitted. This ensures that even if a device is left unattended with an active session, a fresh OTP is required before any PII is sent.
+
+### 3.4 Form Template Validation (Pre-Transmission Guard)
 
 Before any data transmission occurs, the mobile client performs a template match check:
 
 1. Parse the scanned QR content as JSON.
 2. Extract the `sessionId` and `templateId` values.
 3. Compare the scanned `templateId` against the mobile user's currently selected form template.
-4. **If templates match**: proceed with payload encryption and transmission.
+4. **If templates match**: proceed with OTP challenge, payload encryption, and transmission.
 5. **If templates mismatch**:
    - Display a warning dialog: *"Form Template Mismatch — This QR code belongs to a different form template than what you currently have selected. Please inform the CSWD staff to switch to the correct form template, then scan again."*
    - Block all data transmission.
    - Re-activate the camera for re-scanning.
 6. **Legacy fallback**: If the QR content is not valid JSON (plain-text UUID), the validation passes by default, preserving compatibility with pre-existing QR codes.
 
-This guard prevents the scenario where a mobile user with Form Template A scans a QR generated for Form Template B, which would otherwise result in incorrect field mapping and data corruption in the autofill.
+This guard prevents the scenario where a mobile user with Form Template A scans a QR generated for Form Template B, which would otherwise result in incorrect field mapping and data corruption in the autofill. The OTP gate runs immediately after this check passes (see 3.3).
 
-### 3.4 Mobile Payload Packaging
+### 3.5 Mobile Payload Packaging
 
 The mobile app assembles user-selected PII payload entries from dynamic form state and canonical mappings, then serializes into JSON.
 
-### 3.5 Envelope Generation
+### 3.6 Envelope Generation
 
 For each transmission event:
 
@@ -117,7 +152,7 @@ The resulting QR transport envelope semantics are represented by:
 2. `payload_iv`
 3. `encrypted_aes_key`
 
-### 3.6 Envelope Persistence in `form_submission`
+### 3.7 Envelope Persistence in `form_submission`
 
 The mobile client sends the encrypted envelope to the `decrypt-qr-payload` Edge Function, which:
 
@@ -138,7 +173,7 @@ The mobile client sends the encrypted envelope to the `decrypt-qr-payload` Edge 
 
 The function does NOT decrypt the payload — decryption is deferred to `serve-submission-for-review` when staff open the session for review.
 
-### 3.7 Zero-Knowledge Staging: On-Demand Edge Decryption
+### 3.8 Zero-Knowledge Staging: On-Demand Edge Decryption
 
 The system implements "Zero-Knowledge Staging" where decryption occurs strictly in-memory during the request lifecycle. The `serve-submission-for-review` Edge Function executes the following sequence:
 
@@ -157,7 +192,7 @@ If the session has expired, the function returns HTTP 410 with `reason = 'sessio
 
 Critical security guarantee: Plaintext is never written back to the database. The encrypted envelope remains the authoritative storage form.
 
-### 3.8 Web Autofill Activation
+### 3.9 Web Autofill Activation
 
 The dashboard controller (`ManageFormsController`) invokes on-demand decryption when a session with `status='scanned'` and `transmission_version=1` is detected (indicating an encrypted envelope). The `serve-submission-for-review` Edge Function returns decrypted payload in-memory, which the dashboard hydrates directly into dynamic form controllers, enabling CSWD staff-assisted review and completion. This ephemeral delivery model ensures no plaintext persistence in the database.
 

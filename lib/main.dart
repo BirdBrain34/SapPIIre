@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:sappiire/constants/app_text_styles.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sappiire/mobile/screens/auth/login_screen.dart';
 import 'package:sappiire/services/auth/web_auth_service.dart';
@@ -76,6 +77,9 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primaryColor: const Color(0xFF1A237E),
         visualDensity: VisualDensity.adaptivePlatformDensity,
+        fontFamily: AppTextStyles.fontFamily,
+        fontFamilyFallback: AppTextStyles.fontFamilyFallback,
+        textTheme: AppTextStyles.textTheme,
       ),
       onGenerateRoute: (settings) {
         final uri = Uri.parse(settings.name ?? '/');

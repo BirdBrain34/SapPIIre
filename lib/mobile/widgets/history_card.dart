@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/mobile/utils/date_utils.dart';
+import 'package:sappiire/mobile/widgets/status_badge_widget.dart';
 
 class HistoryCard extends StatelessWidget {
   final Map<String, dynamic> item;
@@ -19,6 +20,19 @@ class HistoryCard extends StatelessWidget {
     final scannedAt = item['scanned_at'] as String?;
     final processedAt = item['last_edited_at'] as String?;
     final workerName = item['last_edited_by']?.toString().trim() ?? '';
+    final reviewStatus = item['review_status'] as String? ?? 'pending';
+    final sessionStatus = item['_session_status'] as String?;
+
+    // Determine which status to display:
+    // - Active session (not completed yet): show session status
+    // - Completed session + reviewed: show review_status
+    // - Completed session + not reviewed: show "Saved"
+    final String displayStatus;
+    if (sessionStatus != null && sessionStatus != 'completed') {
+      displayStatus = sessionStatus; // 'active', 'scanned'
+    } else {
+      displayStatus = reviewStatus; // 'pending', 'approved', 'denied'
+    }
 
     return GestureDetector(
       onTap: onTap,
@@ -54,13 +68,9 @@ class HistoryCard extends StatelessWidget {
                         Expanded(
                           child: Text(formType, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.black87)),
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: Colors.green.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Text('Submitted', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.green)),
+                        StatusBadgeWidget(
+                          status: displayStatus,
+                          compact: true,
                         ),
                       ],
                     ),

@@ -34,6 +34,8 @@ This document now serves as the executive summary of implemented capabilities. I
 9. **Mobile notification center**: Dedicated NotificationScreen for real-time form template change awareness.
 10. **Enhanced dashboard analytics**: Worker drill-down, client search, configurable chart elevation, time-frame filtering, and streamlined chart types.
 11. **Read-only field styling**: lock icons and distinct colors now identify immutable or computed fields in dynamic forms.
+12. **Submission status workflow**: Real-time Pending/Approved/Denied status propagation from web review to mobile history screen via DB triggers, Realtime notifications, and polling fallback. Status badges, review timeline, and SnackBar toasts on mobile.
+13. **Pre-transmission OTP verification gate**: "Confirm it's you" OTP challenge before each QR handshake transmission, reusing existing Supabase Auth and phone-OTP Edge Functions. 5-attempt rate limit, 60s resend cooldown, masked destination display, and audit logging.
 
 ## 5. Detailed Documentation Map
 
@@ -47,8 +49,28 @@ The detailed breakdown is distributed as follows:
 6. [docs/07_Mobile_Feature_Traceability_Matrix.md](docs/07_Mobile_Feature_Traceability_Matrix.md)
 7. [docs/08_Web_Feature_Traceability_Matrix.md](docs/08_Web_Feature_Traceability_Matrix.md)
 8. [docs/HYBRID_CRYPTO_TEST_DRIVE_GUIDE.md](docs/HYBRID_CRYPTO_TEST_DRIVE_GUIDE.md)
+9. [docs/11_MobSF_Remediation_Summary.md](docs/11_MobSF_Remediation_Summary.md)
 
-## 6. Evaluation Guidance
+## 6. Security Hardening Milestone (v1.0.1)
+
+A MobSF v4.5.1 static analysis was performed on the release APK, followed by remediation of all actionable findings:
+
+| Finding | Severity | Remediation | Status |
+|---------|----------|-------------|--------|
+| Debug certificate | High | Production keystore (`sappiire-release.jks`) + release signing config | ✅ Resolved |
+| minSdk = 24 (Android 7.0) | High | Bumped to minSdk = 29 (Android 10) | ✅ Resolved |
+| SQL injection via `.or()` filter | Warning | Replaced with parameterized `.ilike()` queries | ✅ Resolved |
+| Sensitive logging | Info | `LogUtil` wrapper strips all logs in release builds | ✅ Mitigated |
+| Exported ProfileInstallReceiver | Warning | Overridden with `android:exported="false"` + `tools:replace` | ✅ Resolved |
+| Insecure RNG | Warning | Already using `Random.secure()` / `fromSecureRandom()` — false positive | ✅ Verified |
+| External storage | Warning | Permissions already removed from manifest — false positive | ✅ Verified |
+| Temp file creation | Warning | No first-party temp file usage — false positive | ✅ Verified |
+| Clipboard exposure | Info | No first-party clipboard usage — false positive | ✅ Verified |
+| Shared library stack canaries | High/Info | Not applicable to Dart/Flutter libraries per MobSF docs | ✅ Documented |
+
+**Post-remediation score:** **64/100 (Low Risk, Grade A)** — all high-severity and warning-level findings resolved. Score improved by +18 points. Remaining info-level findings are either mitigated (logging) or documented false positives (clipboard, shared libraries).
+
+## 7. Evaluation Guidance
 
 For panel defense or manuscript validation, use this summary as an index page, then cite 07 and 08 for evidence-grade feature mapping by target audience.
 
