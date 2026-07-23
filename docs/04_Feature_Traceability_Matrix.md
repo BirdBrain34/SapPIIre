@@ -34,6 +34,7 @@ This document now serves as the executive summary of implemented capabilities. I
 9. **Mobile notification center**: Dedicated NotificationScreen for real-time form template change awareness.
 10. **Enhanced dashboard analytics**: Worker drill-down, client search, configurable chart elevation, time-frame filtering, and streamlined chart types.
 11. **Read-only field styling**: lock icons and distinct colors now identify immutable or computed fields in dynamic forms.
+12. **Submission status workflow**: Real-time Pending/Approved/Denied status propagation from web review to mobile history screen via DB triggers, Realtime notifications, and polling fallback. Status badges, review timeline, and SnackBar toasts on mobile.
 
 ## 5. Detailed Documentation Map
 

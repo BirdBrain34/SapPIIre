@@ -149,7 +149,39 @@ Finalized applicant records written to `client_submissions` are encrypted server
 
 This provides a server-side encryption layer protecting finalized applicant records at rest, complementing the client-side encryption for user PII in `user_field_values` and the hybrid transport encryption in `form_submission`.
 
-### 2.11 Audit and Administrative Forensics
+### 2.11 Applicant Review Workflow (Approve / Deny)
+
+The web platform provides staff with the ability to review finalized applicant submissions and issue a decision (approve or deny), which is then reflected in real-time on the citizen's mobile history screen.
+
+#### 2.11.1 Review Lifecycle
+
+Each finalized submission in `client_submissions` carries a `review_status` column with three possible values:
+
+1. **`pending`** (default) — The submission has been finalized but not yet reviewed.
+2. **`approved`** — The application has been approved by staff.
+3. **`denied`** — The application has been denied, with an optional `review_notes` field explaining the reason.
+
+Staff can change the review status through the applicant detail view in the Applicants screen. When a decision is made:
+
+- The `review_status` column is updated on the `client_submissions` row.
+- The `reviewed_by` column records the staff member's identifier.
+- The `reviewed_at` column records the timestamp of the decision.
+- The `review_notes` column stores the denial reason (if denied).
+
+#### 2.11.2 Database Triggers for Notification Propagation
+
+Two database triggers automatically populate the `user_submission_notifications` table, which the mobile client consumes:
+
+- **Trigger 1 (form_submission.status change):** When `form_submission.status` transitions (e.g. `active` → `scanned` → `completed`), a notification is inserted with messages like "Your QR code has been scanned" or "Your form has been saved".
+- **Trigger 2 (client_submissions.review_status change):** When `review_status` changes from `pending` to `approved` or `denied`, a notification is inserted with messages like "Your application has been approved!" or "Your application has been denied. Reason: [notes]".
+
+These triggers ensure that the mobile client receives status updates without requiring polling from the web side.
+
+#### 2.11.3 Search-Applicants Edge Function Integration
+
+The `search-applicants` Edge Function (`supabase/functions/search-applicants/index.ts`) was updated to include `review_status` in its metadata query and response. When staff search for applicants by name, the returned records now include each applicant's current review status, enabling staff to see the approval state directly in search results without requiring an extra database query.
+
+### 2.12 Audit and Administrative Forensics
 
 Audit log views provide privileged inspection of high-impact events (auth, staff, template, session, submission categories), strengthening accountability and incident traceability.
 

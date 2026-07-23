@@ -997,7 +997,7 @@ class SupabaseService {
       if (sessionIds.isEmpty) return [];
 
       const fields =
-          'id, form_type, intake_reference, created_at, session_id, data, created_by, last_edited_by, last_edited_at';
+          'id, form_type, intake_reference, created_at, session_id, data, created_by, last_edited_by, last_edited_at, review_status, reviewed_at, review_notes';
 
       // Match client_submissions by session_id.
       final byColumn = await _supabase

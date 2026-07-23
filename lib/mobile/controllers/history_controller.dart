@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sappiire/services/supabase_service.dart';
 import 'package:sappiire/services/forms/submission_service.dart';
+import 'package:sappiire/services/forms/user_notification_service.dart';
 import 'package:sappiire/mobile/utils/date_utils.dart';
 
 enum SortField { date, formType }
@@ -16,6 +17,7 @@ enum SortOrder { asc, desc }
 class HistoryController extends ChangeNotifier {
   final SupabaseService _supabaseService = SupabaseService();
   final SubmissionService _submissionService = SubmissionService();
+  final UserNotificationService _notifService = UserNotificationService();
   final _supabase = Supabase.instance.client;
   final String userId;
 
@@ -31,7 +33,15 @@ class HistoryController extends ChangeNotifier {
 
   // Realtime subscriptions
   StreamSubscription? _sessionSub;
-  StreamSubscription? _notificationSub;
+  StreamSubscription? _notifSub;
+  Timer? _pollTimer;
+
+  // Track last known review_status values for change detection
+  final Map<dynamic, String> _lastReviewStatuses = {};
+
+  // Callback fired when a review decision (approved/denied) is detected.
+  // The HistoryScreen can use this to show a SnackBar.
+  void Function(String status, String formType)? onReviewDecision;
 
   HistoryController({required this.userId});
 
@@ -59,22 +69,93 @@ class HistoryController extends ChangeNotifier {
       }
     });
 
-    // Subscribe to submission notifications for real-time badge
-    _notificationSub = _supabase
-        .from('user_submission_notifications')
-        .stream(primaryKey: ['id'])
-        .eq('user_id', userId)
-        .limit(1)
-        .listen((_) {
-      // Reload to pick up new notifications
-      loadHistory();
+    // Subscribe to submission notifications — reloads history on approve/deny
+    _notifSub = _notifService
+        .streamNotifications(userId)
+        .listen((rows) {
+      final decision = rows.cast<Map<String, dynamic>?>().firstWhere(
+        (n) {
+          final status = n?['status']?.toString() ?? '';
+          return status == 'approved' || status == 'denied';
+        },
+        orElse: () => null,
+      );
+      if (decision != null) {
+        _handleReviewDecision(
+          status: decision['status']?.toString() ?? '',
+          formType: decision['form_type']?.toString() ?? '',
+          message: decision['message']?.toString() ?? '',
+        );
+      }
     });
+
+    // Fallback: poll for review_status changes every 20 seconds.
+    // This ensures the screen updates even if Realtime is not fully enabled.
+    _pollTimer = Timer.periodic(const Duration(seconds: 20), (_) => _pollReviewStatus());
+  }
+
+  /// Check for review_status changes using a lightweight query.
+  Future<void> _pollReviewStatus() async {
+    if (submissions.isEmpty) return;
+
+    try {
+      // Get current session IDs
+      final sessionIds = submissions
+          .map((s) => s['session_id']?.toString())
+          .whereType<String>()
+          .toList();
+
+      if (sessionIds.isEmpty) return;
+
+      // Lightweight: only fetch review_status for monitored sessions
+      final fresh = await _supabase
+          .from('client_submissions')
+          .select('id, review_status, form_type')
+          .inFilter('session_id', sessionIds);
+
+      if (fresh == null) return;
+
+      for (final row in fresh as List) {
+        final id = row['id'];
+        final newStatus = row['review_status']?.toString() ?? 'pending';
+        final prevStatus = _lastReviewStatuses[id] ?? 'pending';
+
+        if (prevStatus != newStatus && (newStatus == 'approved' || newStatus == 'denied')) {
+          _lastReviewStatuses[id] = newStatus;
+          final formType = row['form_type']?.toString() ?? '';
+          _handleReviewDecision(
+            status: newStatus,
+            formType: formType,
+            message: null,
+          );
+          return; // one decision per poll cycle
+        }
+        _lastReviewStatuses[id] = newStatus;
+      }
+    } catch (_) {
+      // Silently ignore poll errors
+    }
+  }
+
+  /// Called when a review decision is detected — reloads history and
+  /// fires the callback so the screen can show a toast.
+  void _handleReviewDecision({
+    required String status,
+    required String formType,
+    String? message,
+  }) {
+    // Reload history immediately
+    loadHistory();
+
+    // Fire the callback for a SnackBar toast
+    onReviewDecision?.call(status, formType);
   }
 
   @override
   void dispose() {
     _sessionSub?.cancel();
-    _notificationSub?.cancel();
+    _notifSub?.cancel();
+    _pollTimer?.cancel();
     super.dispose();
   }
 
@@ -104,24 +185,20 @@ class HistoryController extends ChangeNotifier {
 
     try {
       username = await _supabaseService.getUsername(userId) ?? '';
-      final rawSubmissions = await _supabaseService.fetchClientSubmissionHistoryByUser(userId);
+      final fresh = await _supabaseService.fetchClientSubmissionHistoryByUser(userId);
 
-      // Enrich with review_status from client_submissions
-      for (final item in rawSubmissions) {
-        final submissionId = item['id'];
-        if (submissionId != null) {
-          final reviewData = await _submissionService.fetchReviewStatus(submissionId);
-          if (reviewData != null) {
-            item['review_status'] = reviewData['review_status'] ?? 'pending';
-            item['reviewed_at'] = reviewData['reviewed_at'];
-            item['review_notes'] = reviewData['review_notes'];
-          } else {
-            item['review_status'] = 'pending';
-          }
+      // Track review_status for change detection next poll cycle
+      for (final item in fresh) {
+        final id = item['id'];
+        final status = item['review_status']?.toString() ?? 'pending';
+        _lastReviewStatuses[id] = status;
+
+        if (item['review_status'] == null || item['review_status'].toString().isEmpty) {
+          item['review_status'] = 'pending';
         }
       }
 
-      submissions = await _resolveAssistedBy(rawSubmissions);
+      submissions = await _resolveAssistedBy(fresh);
       _applyActiveStatuses();
       _applySort();
     } catch (e) {

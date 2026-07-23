@@ -387,6 +387,7 @@ interface CandidateRow {
   intakeReference: string | null;
   encryptionVersion: number;
   userId: string | null;
+  reviewStatus: string;
   projection: NameProjection;
   identityKey: string;
   identitySource: IdentitySource;
@@ -511,7 +512,7 @@ Deno.serve(async (req: Request) => {
     const accountLink = typeof filters.accountLink === 'string' ? filters.accountLink : 'all';
 
     const METADATA_COLUMNS =
-      'id, session_id, form_type, created_at, intake_reference, data_encryption_version';
+      'id, session_id, form_type, created_at, intake_reference, data_encryption_version, review_status';
 
     const applyCommonFilters = (q: any) => {
       if (formType) q = q.eq('form_type', formType);
@@ -605,6 +606,7 @@ Deno.serve(async (req: Request) => {
         intakeReference: row.intake_reference ? row.intake_reference.toString() : null,
         encryptionVersion: Number(row.data_encryption_version ?? 0),
         userId,
+        reviewStatus: (row.review_status ?? 'pending').toString(),
         projection: emptyProjection(),
         identityKey: '',
         identitySource: 'unlinked_submission',
@@ -984,6 +986,7 @@ Deno.serve(async (req: Request) => {
           formType: r.formType,
           createdAt: r.createdAt,
           intakeReference: r.intakeReference,
+          reviewStatus: r.reviewStatus ?? 'pending',
         })),
         sortName: `${normalizeToken(last)}${normalizeToken(first)}`,
       });
