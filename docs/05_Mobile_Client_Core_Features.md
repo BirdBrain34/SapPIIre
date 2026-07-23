@@ -66,7 +66,21 @@ The mobile app performs session-targeted data transmission by:
 
 If the session is already expired, the mobile QR controller treats the transmission result as `expired`, shows an expired-session UI state, and prompts the user to scan again.
 
-This is the client-side entry point of the hybrid cryptosystem handshake, now including a pre-transmission template guard to prevent cross-template data corruption.
+This is the client-side entry point of the hybrid cryptosystem handshake, now including a pre-transmission template guard to prevent cross-template data corruption and a pre-transmission OTP identity verification gate.
+
+#### 2.5.1 Pre-Transmission OTP Gate
+
+After QR template validation passes but before any payload encryption or transmission, the mobile client challenges the signed-in user with a "confirm it's you" OTP dialog (`lib/mobile/widgets/qr_transmission_otp_dialog.dart`):
+
+1. The controller (`lib/mobile/controllers/qr_transmission_otp_controller.dart`) resolves the user's registered contact channels from `user_accounts` — email or phone.
+2. The destination address is **always resolved server-side** — never accepted from the UI.
+3. The displayed address is **masked** (e.g. `j***@email.com` or `****1234`) for privacy.
+4. The user has **5 attempts** to enter the 6-digit code, with a **60-second resend cooldown**.
+5. Email OTPs use Supabase Auth's `signInWithOtp`/`verifyOTP` via `PasswordResetService`.
+6. Phone OTPs use the `send-phone-otp`/`verify-phone-otp` Edge Functions, with the verify call going directly to the Edge Function for full rate limiting (10 attempts/15 min).
+7. Both success and failure are logged to `audit_logs` with action types `qr_transmission_otp_verified` and `qr_transmission_otp_failed`.
+
+If the user cancels or verification fails, the scanner re-activates and no data is transmitted. Unauthenticated users (null `userId`) are also blocked from transmission.
 
 ### 2.6 Unsaved Changes Detection and Discard Workflow
 

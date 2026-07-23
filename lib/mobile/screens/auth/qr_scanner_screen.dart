@@ -4,6 +4,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:sappiire/services/supabase_service.dart';
 import 'package:sappiire/constants/app_colors.dart';
 import 'package:sappiire/mobile/controllers/qr_scanner_controller.dart';
+import 'package:sappiire/mobile/widgets/qr_transmission_otp_dialog.dart';
 
 class QrScannerScreen extends StatefulWidget {
   final Map<String, dynamic>? transmitData;
@@ -124,6 +125,29 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
         }
       }
     }
+    // --- Pre-transmission OTP gate: confirm identity before sending ---
+    if (widget.userId != null) {
+      final verified = await QrTransmissionOtpDialog.show(
+        context: context,
+        userId: widget.userId!,
+        sessionId: sessionId,
+      );
+      if (!verified || !mounted) {
+        // Mirror the existing template-mismatch UX: return scanner to a
+        // scan-ready state instead of proceeding.
+        _controller.isPopping = false;
+        await _scannerController.start();
+        return;
+      }
+    } else {
+      // Unauthenticated user — hard stop, never silently skip the OTP gate.
+      if (mounted) {
+        _controller.isPopping = false;
+        await _scannerController.start();
+      }
+      return;
+    }
+    // --- OTP gate passed, proceed with existing transmission pipeline ---
     await _controller.performTransmission(sessionId);
   }
 

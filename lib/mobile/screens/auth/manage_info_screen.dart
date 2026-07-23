@@ -58,6 +58,10 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
   //Track user if they read the notif
   int _unreadNotifCount = 0;
 
+  // Periodically refreshes the bell badge so the user sees new submission
+  // notifications without having to navigate away and back.
+  Timer? _badgeTimer;
+
   // Track which required fields are still empty so they can be highlighted.
   Set<String> _highlightedMissingFields = {};
 
@@ -68,6 +72,12 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
     _loadAll();
     _loadUnreadCount();
     _startTemplateNotifications();
+
+    // Refresh the bell badge every 30 seconds so submission status changes
+    // are reflected without needing to navigate away and back.
+    _badgeTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _loadUnreadCount();
+    });
 
     // Show T&C acceptance dialog once the screen is fully rendered,
     // but only for users who just completed sign-up.
@@ -84,6 +94,7 @@ class _ManageInfoScreenState extends State<ManageInfoScreen> {
 
   @override
   void dispose() {
+    _badgeTimer?.cancel();
     if (_listenedFormController != null && _formControllerListener != null) {
       _listenedFormController!.removeListener(_formControllerListener!);
     }

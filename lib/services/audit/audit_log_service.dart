@@ -14,6 +14,14 @@ const kAuditSessionStarted = 'session_started';
 const kAuditSessionCompleted = 'session_completed';
 const kAuditSessionClosed = 'session_closed';
 
+/// Emitted by the mobile client when a user completes the pre-transmission
+/// "confirm it's you" OTP challenge (see QrTransmissionOtpController).
+const kAuditQrTransmissionOtpVerified = 'qr_transmission_otp_verified';
+
+/// Emitted when a user exhausts verification attempts on the pre-transmission
+/// OTP challenge — a possible session-hijack or shared-device signal.
+const kAuditQrTransmissionOtpFailed = 'qr_transmission_otp_failed';
+
 const kAuditSubmissionCreated = 'submission_created';
 const kAuditSubmissionEdited = 'submission_edited';
 const kAuditSubmissionDeleted = 'submission_deleted';

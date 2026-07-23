@@ -112,6 +112,18 @@ class _NotificationScreenState extends State<NotificationScreen>
     }
   }
 
+  /// Combined "Mark all as read" — marks both template notifications and
+  /// submission notifications as read in a single tap.
+  Future<void> _markAllReadCombined() async {
+    await Future.wait([
+      _markAllRead(),
+      _markAllSubsRead(),
+    ]);
+  }
+
+  /// Returns the total unread count across both tabs.
+  int get _totalUnread => _unreadCount + _unreadSubCount;
+
   Future<void> _markOneRead(String id) async {
     if (_readIds.contains(id)) return;
     await _supabaseService.markNotificationsRead(
@@ -265,6 +277,42 @@ class _NotificationScreenState extends State<NotificationScreen>
       appBar: _buildAppBar(),
       body: Column(
         children: [
+          // ── Combined "Mark all as read" banner ──────────────
+          if (_totalUnread > 0)
+            GestureDetector(
+              onTap: _markAllReadCombined,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                color: AppColors.primaryBlue.withValues(alpha: 0.06),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryBlue.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(Icons.done_all_rounded,
+                          color: AppColors.primaryBlue, size: 16),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Mark all as read ($_totalUnread)',
+                      style: const TextStyle(
+                        color: AppColors.primaryBlue,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const Spacer(),
+                    Icon(Icons.chevron_right,
+                        color: AppColors.primaryBlue.withValues(alpha: 0.5),
+                        size: 18),
+                  ],
+                ),
+              ),
+            ),
           // Tab bar
           Container(
             color: Colors.white,

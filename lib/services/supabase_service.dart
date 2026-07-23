@@ -129,34 +129,53 @@ class SupabaseService {
   }
  
   /// Returns the count of unread notifications for the bell badge.
+  /// Counts unread template notifications (form_template_notifications) plus
+  /// unread submission notifications (user_submission_notifications).
   Future<int> fetchUnreadNotificationCount(String userId) async {
     try {
-      // Total notifications (same 100-window as fetchAppNotifications)
+      // ── Template notification unreads ──
       final allRows = await _supabase
           .from('form_template_notifications')
           .select('id')
           .order('created_at', ascending: false)
           .limit(100);
- 
+
       final allIds = (allRows as List)
           .map((r) => r['id']?.toString() ?? '')
           .where((id) => id.isNotEmpty)
           .toSet();
- 
-      if (allIds.isEmpty) return 0;
- 
-      // Read notifications for this user
-      final readRows = await _supabase
-          .from('user_notification_reads')
-          .select('notification_id')
-          .eq('user_id', userId);
- 
-      final readIds = (readRows as List)
-          .map((r) => r['notification_id']?.toString() ?? '')
-          .where((id) => id.isNotEmpty)
-          .toSet();
- 
-      return allIds.difference(readIds).length;
+
+      int templateUnread = 0;
+      if (allIds.isNotEmpty) {
+        final readRows = await _supabase
+            .from('user_notification_reads')
+            .select('notification_id')
+            .eq('user_id', userId);
+
+        final readIds = (readRows as List)
+            .map((r) => r['notification_id']?.toString() ?? '')
+            .where((id) => id.isNotEmpty)
+            .toSet();
+
+        templateUnread = allIds.difference(readIds).length;
+      }
+
+      // ── Submission notification unreads ──
+      int submissionUnread = 0;
+      try {
+        final subRows = await _supabase
+            .from('user_submission_notifications')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('is_read', false)
+            .limit(100);
+
+        submissionUnread = (subRows as List).length;
+      } catch (_) {
+        // user_submission_notifications may not exist yet; treat as 0.
+      }
+
+      return templateUnread + submissionUnread;
     } catch (e) {
       LogUtil.debugPrint('[SupabaseService/fetchUnreadNotificationCount] Error: $e');
       return 0;

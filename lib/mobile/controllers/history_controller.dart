@@ -39,6 +39,11 @@ class HistoryController extends ChangeNotifier {
   // Track last known review_status values for change detection
   final Map<dynamic, String> _lastReviewStatuses = {};
 
+  // Skips the initial snapshot from the notification stream.
+  // The first emission delivers ALL existing rows — we only want
+  // newly inserted notifications after subscription start.
+  bool _initialNotifSnapshotReceived = false;
+
   // Callback fired when a review decision (approved/denied) is detected.
   // The HistoryScreen can use this to show a SnackBar.
   void Function(String status, String formType)? onReviewDecision;
@@ -69,10 +74,21 @@ class HistoryController extends ChangeNotifier {
       }
     });
 
-    // Subscribe to submission notifications — reloads history on approve/deny
+    // Subscribe to submission notifications — reloads history on approve/deny.
+    // Skips the initial snapshot (which contains all existing rows) and
+    // only processes real-time INSERT events after subscription is live.
+    _initialNotifSnapshotReceived = false;
     _notifSub = _notifService
         .streamNotifications(userId)
         .listen((rows) {
+      // Ignore the very first emission — it's the initial snapshot of
+      // all existing notifications, which would trigger false toasts
+      // for old review decisions.
+      if (!_initialNotifSnapshotReceived) {
+        _initialNotifSnapshotReceived = true;
+        return;
+      }
+
       final decision = rows.cast<Map<String, dynamic>?>().firstWhere(
         (n) {
           final status = n?['status']?.toString() ?? '';
@@ -89,9 +105,9 @@ class HistoryController extends ChangeNotifier {
       }
     });
 
-    // Fallback: poll for review_status changes every 20 seconds.
+    // Fallback: poll for review_status changes every 10 seconds.
     // This ensures the screen updates even if Realtime is not fully enabled.
-    _pollTimer = Timer.periodic(const Duration(seconds: 20), (_) => _pollReviewStatus());
+    _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) => _pollReviewStatus());
   }
 
   /// Check for review_status changes using a lightweight query.
