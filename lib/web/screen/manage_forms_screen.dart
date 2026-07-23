@@ -591,73 +591,43 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
       await _embedApplicantName(formData);
       formData['__session_id'] = _currentSessionId;
 
-      // Idempotent save keyed by session_id — encrypted via Edge Function.
-      // Idempotent save keyed by session_id so repeated submits update one row.
-      final created = await _submissionService.upsertClientSubmissionSecure(
-        sessionId: _currentSessionId,
-        templateId: _selectedTemplate!.templateId,
-        formCode: _selectedTemplate!.formCode,
-        formType: _selectedTemplate!.formName,
-        data: formData,
-        createdBy: widget.cswdId,
-      );
+      // The Edge Function flags a payload identical to one this applicant
+      // already submitted, without writing anything. That is a warning, not a
+      // rejection — staff decide whether it is a genuine resubmission.
+      try {
+        await _saveFinalizedEntry(formData);
+      } on DuplicateSubmissionException catch (e) {
+        debugPrint('[ManageFormsScreen/_finalizeEntry] Identical submission: $e');
 
-      final intakeReference = (created['intake_reference'] as String?) ?? '';
+        final proceed = await _confirmIdenticalSubmission(e);
+        if (!proceed) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Not saved — no changes from the previous submission',
+                ),
+                backgroundColor: Colors.orange,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+          // Clear the guards so the button works again — leaving them set
+          // would disable finalize permanently with no recovery short of a
+          // reload. The session is deliberately left open and NOT marked
+          // completed, so staff can correct a field and resubmit.
+          _setStatePreserveScroll(() {
+            _isFinalizing = false;
+            _isSubmitting = false;
+          });
+          return;
+        }
 
-      await AuditLogService().log(
-        actionType: kAuditSubmissionCreated,
-        category: kCategorySubmission,
-        severity: kSeverityInfo,
-        actorId: widget.cswdId,
-        actorName: widget.displayName,
-        actorRole: widget.role,
-        targetType: 'client_submission',
-        targetId: created['id']?.toString() ?? _currentSessionId,
-        targetLabel: _selectedTemplate?.formName,
-        details: {
-          'form_type': _selectedTemplate?.formName,
-          'session_id': _currentSessionId,
-          'intake_reference': intakeReference,
-          'encryption': 'server_aes_256_gcm',
-        },
-      );
-
-      // Close the session
-      await _submissionService.updateSessionStatus(
-        _currentSessionId,
-        'completed',
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              intakeReference.isNotEmpty
-                  ? 'Entry saved Reference: $intakeReference'
-                  : 'Entry saved to Applicants',
-            ),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        // Retry with the SAME payload. Rebuilding it would re-run
+        // _embedApplicantName, whose network calls can resolve differently
+        // between attempts — the saved row must be what staff just confirmed.
+        await _saveFinalizedEntry(formData, acknowledged: e);
       }
-
-      // Reset for next client
-      _stopCountdown();
-      _setStatePreserveScroll(() {
-        _sessionStarted = false;
-        _currentSessionId = 'WAITING-FOR-SESSION';
-        _isFinalizing = false;
-        _isSubmitting = false;
-        _lastSavedReference = intakeReference;
-      });
-
-      // Ensure next QR scan (new session) re-hydrates.
-      _hydratedSessionId = null;
-      _formSubscription?.cancel();
-
-      // Return the customer display to standby after finalizing.
-      await _displayService.resetStation(_stationId);
     } catch (e) {
       debugPrint('[ManageFormsScreen/_finalizeEntry] Error: $e');
       if (mounted) {
@@ -673,6 +643,149 @@ class _ManageFormsScreenState extends State<ManageFormsScreen> {
         _isFinalizing = false;
         _isSubmitting = false;
       });
+    }
+  }
+
+  /// Writes the finalized entry, then closes the session and resets the station
+  /// for the next client.
+  ///
+  /// Split out of [_finalizeEntry] so the identical-submission path can retry
+  /// with the exact same [formData] after staff confirm. [acknowledged] is
+  /// non-null only on that retry, and carries the submission that was matched.
+  Future<void> _saveFinalizedEntry(
+    Map<String, dynamic> formData, {
+    DuplicateSubmissionException? acknowledged,
+  }) async {
+    // Idempotent save keyed by session_id so repeated submits update one row.
+    final created = await _submissionService.upsertClientSubmissionSecure(
+      sessionId: _currentSessionId,
+      templateId: _selectedTemplate!.templateId,
+      formCode: _selectedTemplate!.formCode,
+      formType: _selectedTemplate!.formName,
+      data: formData,
+      createdBy: widget.cswdId,
+      acknowledgeDuplicate: acknowledged != null,
+    );
+
+    final intakeReference = (created['intake_reference'] as String?) ?? '';
+
+    await AuditLogService().log(
+      actionType: kAuditSubmissionCreated,
+      category: kCategorySubmission,
+      severity: kSeverityInfo,
+      actorId: widget.cswdId,
+      actorName: widget.displayName,
+      actorRole: widget.role,
+      targetType: 'client_submission',
+      targetId: created['id']?.toString() ?? _currentSessionId,
+      targetLabel: _selectedTemplate?.formName,
+      details: {
+        'form_type': _selectedTemplate?.formName,
+        'session_id': _currentSessionId,
+        'intake_reference': intakeReference,
+        'encryption': 'server_aes_256_gcm',
+        // Records that staff were warned this duplicated an earlier submission
+        // and chose to save it anyway. Reuses kAuditSubmissionCreated rather
+        // than a new action type: audit_logs.action_type carries a live CHECK
+        // constraint, so an unknown value risks a rejected row.
+        if (acknowledged != null) 'outcome': 'duplicate_acknowledged',
+        if (acknowledged != null)
+          'duplicate_of_submission_id': acknowledged.existingId?.toString(),
+        if (acknowledged != null)
+          'duplicate_of_intake_reference': acknowledged.intakeReference,
+        if (acknowledged != null)
+          'duplicate_of_created_at': acknowledged.createdAt,
+      },
+    );
+
+    // Close the session
+    await _submissionService.updateSessionStatus(_currentSessionId, 'completed');
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            intakeReference.isNotEmpty
+                ? 'Entry saved Reference: $intakeReference'
+                : 'Entry saved to Applicants',
+          ),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+
+    // Reset for next client
+    _stopCountdown();
+    _setStatePreserveScroll(() {
+      _sessionStarted = false;
+      _currentSessionId = 'WAITING-FOR-SESSION';
+      _isFinalizing = false;
+      _isSubmitting = false;
+      _lastSavedReference = intakeReference;
+    });
+
+    // Ensure next QR scan (new session) re-hydrates.
+    _hydratedSessionId = null;
+    _formSubscription?.cancel();
+
+    // Return the customer display to standby after finalizing.
+    await _displayService.resetStation(_stationId);
+  }
+
+  /// Asks whether to save an entry whose answers exactly match one the same
+  /// applicant already submitted. Returns false when staff cancel or the
+  /// widget is gone, so the caller writes nothing.
+  Future<bool> _confirmIdenticalSubmission(
+    DuplicateSubmissionException duplicate,
+  ) async {
+    if (!mounted) return false;
+
+    final reference = duplicate.intakeReference ?? '';
+    final when = _formatSubmissionDate(duplicate.createdAt);
+
+    final buffer = StringBuffer(
+      'This form is exactly the same as the entry submitted on $when',
+    );
+    if (reference.isNotEmpty) buffer.write(' ($reference)');
+    buffer.write('. Nothing has changed.\n\nSave it to Applicants anyway?');
+
+    return showConfirmDialog(
+      context,
+      title: 'Identical submission',
+      message: buffer.toString(),
+      confirmLabel: 'Save anyway',
+      cancelLabel: 'Cancel',
+      confirmColor: Colors.orange,
+    );
+  }
+
+  /// Formats a submission timestamp for the identical-submission dialog.
+  /// Mirrors the hand-rolled formatter in audit_logs_screen.dart — the project
+  /// carries no intl dependency.
+  String _formatSubmissionDate(String? iso) {
+    if (iso == null || iso.isEmpty) return 'an earlier date';
+    try {
+      final dt = DateTime.parse(iso).toLocal();
+      const months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
+      final h = dt.hour.toString().padLeft(2, '0');
+      final m = dt.minute.toString().padLeft(2, '0');
+      return '${months[dt.month - 1]} ${dt.day}, ${dt.year} at $h:$m';
+    } catch (_) {
+      return 'an earlier date';
     }
   }
 

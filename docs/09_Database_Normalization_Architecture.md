@@ -247,7 +247,26 @@ Legacy records are handled transparently. New submissions always use version 1. 
 
 ### 5.3 Repository Separation
 
-`supabase/migrations/` is empty. The following artifacts exist directly on the live database tier (Supabase SQL Editor) rather than in the application repository:
+`supabase/migrations/` was empty until the submission-deduplication work. It now holds the first version-controlled DDL in the repository:
+
+| Migration | Purpose | Applied |
+|-----------|---------|---------|
+| `20260722_a_client_submissions_dedup_columns.sql` | Adds `client_submissions.content_hash` and `applicant_key` | ✅ |
+| `20260722_b_client_submissions_dedup_lookup_index.sql` | Partial **non-unique** lookup index on `applicant_key`; defensively drops the unique index an earlier revision proposed | ✅ |
+
+These are still applied by hand — there is no CI step that runs them — but they are now reviewable and reproducible. See `docs/15_Submission_Deduplication.md`. Treat this as the template for migrating the artifacts below into the repository.
+
+There is **no** `UNIQUE (applicant_key, content_hash)` constraint, and adding one would be a regression: staff can override the duplicate warning, and a unique index would reject the acknowledged insert with SQLSTATE 23505. The migration file carries the same warning.
+
+Applying migrations does not require the SQL Editor or a database password. The CLI runs them through the Management API:
+
+```
+supabase db query --linked -f supabase/migrations/<file>.sql
+```
+
+Note the filenames use a `YYYYMMDD_<letter>_` prefix rather than the Supabase CLI's expected 14-digit `YYYYMMDDHHMMSS_` format, so `supabase db push` and `supabase migration up` will not pick them up. That is intentional for now — this project has no migration history table, and the columns above were applied before the files existed. Adopt the 14-digit format if the migration history is ever initialized.
+
+The following artifacts still exist only on the live database tier (Supabase SQL Editor) rather than in the application repository:
 
 | Artifact | Purpose |
 |----------|---------|

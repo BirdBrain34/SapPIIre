@@ -104,6 +104,20 @@ Each entry's detail dialog now opens with a sentence stating what occurred and w
 
 Internal diagnostic keys that carry no meaning for an operator (`query_hash`, `token_count`, `query_length`, `filters`, `ids`, `transmission_version`) are suppressed from display via `_hiddenDetailKeys` (line 510). The underlying `details` payload is unchanged in the database; only rendering is filtered. Actor and target identifiers are retained for investigation but relocated to the foot of the dialog and labelled as reference numbers.
 
+### 5.4 Acknowledged Duplicate Submissions
+
+A `submission_created` entry may carry `details.outcome = "duplicate_acknowledged"`, meaning staff were warned the form exactly matched an earlier submission by the same applicant and chose **Save anyway**. Accompanying keys: `duplicate_of_submission_id`, `duplicate_of_intake_reference`, `duplicate_of_created_at`.
+
+This deliberately reuses the existing `submission_created` action type rather than introducing a new one. `audit_logs.action_type` is governed by a live CHECK constraint, and an unrecognized value causes the audit row to be **rejected outright** — losing the record of the very action being audited. Discriminating within `details` keeps the entry writable while remaining queryable:
+
+```sql
+select * from audit_logs
+where action_type = 'submission_created'
+  and details->>'outcome' = 'duplicate_acknowledged';
+```
+
+Only acknowledged saves are logged. A cancelled duplicate writes nothing at all — no submission row and no audit row — since nothing happened. See `docs/15_Submission_Deduplication.md`.
+
 Presentation helpers: `_actionLabel` (303), `_actionDescription` (370), `_categoryLabel` (447), `_severityLabel` (466), `_roleLabel` (477), `_targetTypeLabel` (490), `_detailKeyLabel` (522), `_detailValueLabel` (554).
 
 ## 6. Files Changed

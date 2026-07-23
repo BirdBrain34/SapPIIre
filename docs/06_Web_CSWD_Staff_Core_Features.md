@@ -149,6 +149,32 @@ Finalized applicant records written to `client_submissions` are encrypted server
 
 This provides a server-side encryption layer protecting finalized applicant records at rest, complementing the client-side encryption for user PII in `user_field_values` and the hybrid transport encryption in `form_submission`.
 
+### 2.10.1 Duplicate Submission Warning
+
+Before encrypting, the same Edge Function checks whether the payload is identical to an earlier submission by that applicant, so redundant entries stop piling up on the Applicants screen.
+
+**What staff see.** On pressing **Save to Applicants**:
+
+- **No match** — saves silently, exactly as before. No extra dialog, no added click.
+- **Match** — a confirm dialog naming the date and intake reference of the most recent identical submission:
+
+  > **Identical submission**
+  > This form is exactly the same as the entry submitted on Jul 22, 2026 at 14:31 (AICS-20260722-000045). Nothing has changed.
+  >
+  > Save it to Applicants anyway?
+
+  **Save anyway** writes the row and records `outcome = duplicate_acknowledged` in the audit log. **Cancel** writes nothing and leaves the session open, so staff can correct a field and retry.
+
+**How the comparison works.** `client_submissions.data` is ciphertext with a random IV, so identical answers produce different bytes and nothing in SQL can compare two submissions. The Edge Function instead hashes the plaintext before encrypting it (CSH-1) into a plaintext `content_hash` column, and derives an `applicant_key` identity token from the linked account or a salted name+birth-date fingerprint. Detection compares those two columns.
+
+**Three behaviours that look like faults but are intentional:**
+
+1. **Detection is advisory, with no database constraint.** Staff can always override, which rules out a `UNIQUE` index — it would reject the acknowledged insert outright. The consequence is that two simultaneous identical submissions from *different* sessions can both land.
+2. **Walk-ins with no name or birth date are never flagged.** Identity cannot be derived, and matching on content alone would wrongly tell staff that two different people are the same applicant.
+3. **A re-signed form is not a duplicate.** The signature is part of the hash, so re-signing counts as a genuine change.
+
+Submissions predating the deployment hold `NULL` in both columns and can never match; backfilling would require bulk-decrypting the archive. Full specification: `docs/15_Submission_Deduplication.md`.
+
 ### 2.11 Applicant Review Workflow (Approve / Deny)
 
 The web platform provides staff with the ability to review finalized applicant submissions and issue a decision (approve or deny), which is then reflected in real-time on the citizen's mobile history screen.

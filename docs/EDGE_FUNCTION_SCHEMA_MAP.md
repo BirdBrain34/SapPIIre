@@ -11,21 +11,62 @@
 ---
 
 ### `encrypt-and-save-submission`
-**File:** `supabase/functions/encrypt-and-save-submission/index.ts`  
-**Purpose:** Server-side AES-256-GCM encryption of finalized applicant records. Called on staff finalization.
+**Files:** `supabase/functions/encrypt-and-save-submission/index.ts`, `canonical_hash.ts`, `applicant_identity.ts`  
+**Purpose:** Server-side AES-256-GCM encryption of finalized applicant records, plus duplicate-submission detection. Called on staff finalization.
 
 | Table | Column | Operation | Lines |
 |-------|--------|-----------|-------|
-| `client_submissions` | session_id | UPSERT (onConflict: session_id) | 90-100 |
-| `client_submissions` | template_id, form_code, form_type | UPSERT | 92-94 |
-| `client_submissions` | data (base64 ciphertext) | INSERT | 95 |
-| `client_submissions` | data_iv | INSERT | 96 |
-| `client_submissions` | data_encryption_version (= 1) | INSERT | 97 |
-| `client_submissions` | created_by | INSERT | 98 |
-| `client_submissions` | intake_reference | INSERT | 99 |
-| RPC: `next_client_submission_ref()` | — | Sequence counter | 75 |
+| `form_submission` | user_id | SELECT by session_id (identity resolution) | `applicant_identity.ts` `deriveApplicantKey` |
+| `form_fields` | field_id, field_name, canonical_field_key | SELECT (10-min cached; maps payload labels to name/DOB) | `applicant_identity.ts` `loadFieldMap` |
+| `client_submissions` | id, intake_reference, created_at | SELECT (duplicate lookup, newest match) | 25-46, 123 |
+| `client_submissions` | session_id | UPSERT (onConflict: session_id) | 175-190 |
+| `client_submissions` | template_id, form_code, form_type | UPSERT | 178-180 |
+| `client_submissions` | data (base64 ciphertext) | INSERT | 181 |
+| `client_submissions` | data_iv | INSERT | 182 |
+| `client_submissions` | data_encryption_version (= 1) | INSERT | 183 |
+| `client_submissions` | created_by | INSERT | 184 |
+| `client_submissions` | intake_reference | INSERT | 185 |
+| `client_submissions` | **content_hash** (CSH-1 of plaintext) | INSERT | 186 |
+| `client_submissions` | **applicant_key** (identity token) | INSERT | 187 |
+| RPC: `next_client_submission_ref()` | — | Sequence counter | 161 |
 
 **Environment:** `SERVER_AES_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+
+#### Request body
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `sessionId` | yes | `form_submission.id`; upsert conflict key |
+| `formType` | yes | |
+| `data` | yes | **Plaintext** payload object; encrypted server-side |
+| `templateId`, `formCode`, `createdBy` | no | |
+| `intakeReference` | no | Generated from the sequence when omitted |
+| `acknowledgeDuplicate` | no | `true` skips the duplicate check entirely. Set by the client after staff answer "Save anyway" |
+
+#### Responses
+
+| Status | Body | Meaning |
+|--------|------|---------|
+| 200 | `{id, intake_reference}` | Saved |
+| **409** | `{duplicate: true, reason: "identical_submission", existing: {id, intake_reference, created_at}}` | Payload matches an earlier submission by the same applicant. **Nothing was written.** Returned before the sequence RPC runs, so a cancelled save never leaves a gap in the intake reference series |
+| 400 | `{error}` | Missing `sessionId` / `formType` / `data` |
+| 500 | `{error, details}` | Config, encryption, or insert failure |
+
+#### Duplicate detection
+
+The function is the only place plaintext and the database meet — `data` is stored as AES-GCM
+ciphertext with a random IV, so no SQL expression can compare two submissions' answers. It
+therefore hashes the plaintext (CSH-1, `canonical_hash.ts`) into the plaintext `content_hash`
+column, and derives `applicant_key` (`user:<uuid>`, else a salted `pii:` fingerprint of
+last+first+DOB, else `NULL`).
+
+Detection is **advisory** — there is deliberately no `UNIQUE` constraint, because staff can
+override the warning. Full specification, including the identity rules and why a `NULL`
+`applicant_key` disables the check: `docs/15_Submission_Deduplication.md`.
+
+`applicant_identity.ts` duplicates helpers from `search-applicants/index.ts` (fingerprinting,
+normalization, `projectFromBlob`, `loadFieldMap`) because Supabase deploys each function
+directory independently and cross-directory imports are fragile. Keep the two in sync by hand.
 
 ---
 
@@ -215,11 +256,11 @@ Expired sessions return HTTP 410 `session_expired` (line 125).
 | `staff_profiles` | `manage-staff-account` | `WebAuthService`, `StaffAdminService`, `SupabaseService` | ✅ |
 | `form_templates` | — | `FormTemplateService`, `FormBuilderService`, `SupabaseService`, `FieldValueService`, `DashboardConfigService` | ✅ |
 | `form_sections` | — | `FormTemplateService`, `FormBuilderService` | ✅ |
-| `form_fields` | `resolve-applicant-names` | `FormTemplateService`, `FormBuilderService`, `FieldValueService`, `SupabaseService`, `FormStateController` | ✅ |
+| `form_fields` | `resolve-applicant-names`, `encrypt-and-save-submission` | `FormTemplateService`, `FormBuilderService`, `FieldValueService`, `SupabaseService`, `FormStateController` | ✅ |
 | `form_field_options` | — | `FormTemplateService`, `FormBuilderService` | ✅ |
 | `form_field_conditions` | — | `FormTemplateService`, `FormBuilderService` | ✅ |
 | `user_field_values` | `resolve-applicant-names` | `FieldValueService`, `SupabaseService`, `FormBuilderService` | ✅ |
-| `form_submission` | `serve-submission-for-review`, `decrypt-qr-payload` | `SubmissionService`, `SupabaseService`, `DisplaySessionService`, `FormBuilderService`, `DashboardAnalyticsService` | ✅ |
+| `form_submission` | `serve-submission-for-review`, `decrypt-qr-payload`, `encrypt-and-save-submission` | `SubmissionService`, `SupabaseService`, `DisplaySessionService`, `FormBuilderService`, `DashboardAnalyticsService` | ✅ |
 | `client_submissions` | `encrypt-and-save-submission`, `decrypt-submission-data`, `decrypt-submission-batch` | `SubmissionService`, `FormBuilderService`, `SupabaseService`, `DashboardAnalyticsService`, `IntakeAnalyticsService` | ✅ |
 | `audit_logs` | `decrypt-submission-data`, `serve-submission-for-review` | `AuditLogService`, `WebAuthService`, `DashboardAnalyticsService` | ✅ |
 | `phone_otp` | `send-phone-otp`, `verify-phone-otp` | `SupabaseService` | ✅ |
@@ -239,9 +280,15 @@ Expired sessions return HTTP 410 `session_expired` (line 125).
 
 | Metric | Count |
 |--------|-------|
-| Edge Functions | 10 |
-| Edge Functions with direct schema access | 9 (derive-field-key is pure computation) |
+| Edge Functions deployed | 13 |
+| Edge Functions documented above | 10 |
+| Edge Functions with direct schema access | 9 of those documented (derive-field-key is pure computation) |
 | Schema tables | 19 |
 | Tables with Edge Function access | 13 |
 | Tables with only Dart service access | 5 (form_templates, form_sections, form_field_options, form_field_conditions, display_sessions) |
 | Tables with no application code references | 1 (dashboard_card_settings) |
+
+**Known documentation gap.** `supabase/functions/` contains 13 function directories, but only 10
+have sections in §1. Undocumented: `search-applicants`, `manage-user-account`, `send-staff-email`.
+`search-applicants` is the largest of the three and is described in
+`docs/14_Applicant_Search_and_Identity_Resolution.md`; it just has no table-level entry here.

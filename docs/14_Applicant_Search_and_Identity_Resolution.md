@@ -178,9 +178,24 @@ Because no schema change was permitted, the live `audit_logs` table may carry a 
 
 4. **Estimated scale ceiling.** Comfortable to approximately 5,000 submissions; degrading between 10,000 and 20,000; unusable beyond roughly 25,000. The limiting factor is truncation-induced incorrectness rather than latency.
 
-5. **Migration path.** Should the ceiling be reached, the conventional remedy is a persisted blind index: a `text` column on `client_submissions` populated at write time by `encrypt-and-save-submission` with the fingerprint defined in §4.4, plus one backfill pass. **The fingerprint algorithm specified here is precisely what would be persisted**, so this work is not superseded by that migration. It would also enable the manual merge described in limitation 1. Both require the schema change excluded from the present scope.
+5. **Migration path — now partially realized, but not by this function.** The conventional remedy for the ceiling is a persisted blind index: a `text` column on `client_submissions` populated at write time with the fingerprint defined in §4.4.
 
-6. **Deterministic-fingerprint disclosure.** Fingerprints are computed in memory and never leave the request, so no equality leakage is introduced at rest. Persisting them, as limitation 5 proposes, would introduce it and requires separate assessment.
+   **That column now exists.** `client_submissions.applicant_key` is written by `encrypt-and-save-submission` for duplicate detection (`docs/15_Submission_Deduplication.md`), using this document's fingerprint algorithm — the helpers are copied verbatim into `encrypt-and-save-submission/applicant_identity.ts`.
+
+   Three qualifications before treating the ceiling as lifted:
+   - **`search-applicants` does not read it.** Search still recomputes identity in memory on every request. Wiring it to the column is unstarted work.
+   - **There is no backfill**, and one is impractical — deriving the key for a historical row requires decrypting it. Rows predating the deployment hold `NULL`.
+   - **The stored key omits the name-only tier.** Dedup deliberately stops at last+first+DOB and last+first+phone, because a low-confidence key that merely groups on screen is tolerable while one that blocks a submission is not. A search implementation reading the column would lose the low-confidence tier it currently computes.
+
+   Manual merging (limitation 1) remains unavailable: `applicant_key` is derived, not operator-editable.
+
+6. **Deterministic-fingerprint disclosure — now applies at rest.** This previously read that fingerprints are computed in memory and never leave the request. **That is no longer true.** `client_submissions.applicant_key` persists a salted fingerprint in plaintext, so equality leakage now exists at rest: any reader of that column can group an applicant's entire submission history by a stable token, without decrypting anything.
+
+   Two mitigations, both load-bearing:
+   - `SEARCH_FINGERPRINT_SALT` must remain server-side. Name plus birth date is low-entropy and enumerable offline, so salt plus column would together permit brute-force re-identification. In particular, no fingerprinting code may ship into the Flutter **web** bundle, which publishes its source as readable JS.
+   - `client_submissions` carries no RLS and is gated only by Edge Functions holding the service role key, so widening read access to the table now discloses more than it did before.
+
+   Assessed in `docs/02_Database_Security_and_PII_Mapping.md` §2.4.1.
 
 7. **Plaintext PII resides briefly in function memory.** The projection cache holds decrypted names for up to five minutes across warm invocations to avoid re-decryption. Bounded by TTL and no broader in exposure than the response payloads already in transit, but recorded here explicitly rather than left implicit.
 

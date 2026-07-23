@@ -6,6 +6,42 @@ import 'dart:convert';
 
 import 'package:sappiire/services/crypto/hybrid_crypto_service.dart';
 
+/// Thrown when a submission carries answers identical to one the same applicant
+/// already has on file.
+///
+/// This is a *warning*, not a rejection. The caller is expected to ask the staff
+/// member whether to continue, and retry with `acknowledgeDuplicate: true` if
+/// they say yes.
+///
+/// Modelled as an exception rather than a sentinel return value so the caller's
+/// success path is skipped by construction — nothing was written, so the audit
+/// log, the "Entry saved" snackbar, and the session reset must not run.
+///
+/// See docs/15_Submission_Deduplication.md.
+class DuplicateSubmissionException implements Exception {
+  DuplicateSubmissionException({
+    this.existingId,
+    this.intakeReference,
+    this.createdAt,
+  });
+
+  /// `client_submissions.id` of the matching submission already on file.
+  final Object? existingId;
+
+  /// Intake reference of that submission, so the message can name it.
+  final String? intakeReference;
+
+  /// ISO-8601 timestamp of that submission. The most recent match wins when
+  /// several past submissions carry the same answers, so this is the date the
+  /// confirm dialog shows the staff member.
+  final String? createdAt;
+
+  @override
+  String toString() =>
+      'DuplicateSubmissionException(existingId: $existingId, '
+      'intakeReference: $intakeReference, createdAt: $createdAt)';
+}
+
 class SubmissionService {
   SubmissionService({SupabaseClient? supabaseClient})
     : _supabase = supabaseClient ?? Supabase.instance.client;
@@ -126,6 +162,7 @@ class SubmissionService {
     required Map<String, dynamic> data,
     required String createdBy,
     String? intakeReference,
+    bool acknowledgeDuplicate = false,
   }) async {
     const supabaseUrl = 'https://tgbfxepldpdswxehhlkx.supabase.co';
     const anonKey =
@@ -150,8 +187,32 @@ class SubmissionService {
         'data': data,
         'intakeReference': intakeReference,
         'createdBy': createdBy,
+        'acknowledgeDuplicate': acknowledgeDuplicate,
       }),
     );
+
+    // The Edge Function flags a submission identical to one this applicant
+    // already has on file, without writing anything. Translate that into a
+    // typed exception before the generic non-200 throw below, so the UI can
+    // ask the staff member whether to save it anyway rather than surfacing a
+    // raw error body.
+    if (response.statusCode == 409) {
+      Map<String, dynamic>? body;
+      try {
+        body = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {
+        body = null;
+      }
+      if (body?['duplicate'] == true) {
+        final existing = body?['existing'];
+        final existingMap = existing is Map ? existing : const {};
+        throw DuplicateSubmissionException(
+          existingId: existingMap['id'],
+          intakeReference: existingMap['intake_reference']?.toString(),
+          createdAt: existingMap['created_at']?.toString(),
+        );
+      }
+    }
 
     if (response.statusCode != 200) {
       throw Exception(response.body);

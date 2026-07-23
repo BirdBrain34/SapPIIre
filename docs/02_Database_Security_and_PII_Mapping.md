@@ -84,6 +84,26 @@ Foreign-key linkage to `form_fields(field_id)` binds values to dynamic metadata 
 5. **Decryption Access Control:** The `decrypt-submission-data` Edge Function authorizes decryption requests based on staff role (`admin`, `superadmin`).
 6. **Batch Decryption (`decrypt-submission-batch` Edge Function):** For dashboard analytics, the `decrypt-submission-batch` Edge Function (`supabase/functions/decrypt-submission-batch/index.ts`) decrypts up to 20 submissions in a single call with one key import. It validates staff role once (lines 66-78), fetches all rows in one query (lines 82-85), imports the AES key once (lines 98-101), and decrypts in parallel via `Promise.all` (lines 105-114). Handles both version 0 (plaintext) and version 1 (encrypted) records transparently (lines 107-113).
 7. This architecture provides a defense-in-depth layer protecting finalized applicant records at rest, complementing client-side field encryption in `user_field_values` and hybrid transport encryption in `form_submission`.
+8. **Duplicate-detection columns (`content_hash`, `applicant_key`) are deliberately plaintext.** Because `data` is ciphertext with a random IV, no SQL expression can compare two submissions' answers, so the `encrypt-and-save-submission` Edge Function derives both values from the plaintext before encrypting and stores them alongside. Neither is reversible to form content, but both carry privacy weight — see §2.4.1.
+
+#### 2.4.1 Duplicate-Detection Columns and Their Privacy Properties
+
+Added by `supabase/migrations/20260722_a_client_submissions_dedup_columns.sql`. Full specification: `docs/15_Submission_Deduplication.md`.
+
+| Column | Type | Contents | Privacy classification |
+|--------|------|----------|------------------------|
+| `content_hash` | `text`, nullable | `v1:<64 hex>` — SHA-256 of the canonicalized plaintext payload | **Not PII.** A one-way digest over the whole form. Not invertible, and the payload's entropy (free-text answers, signature blob) makes brute-force reconstruction impractical |
+| `applicant_key` | `text`, nullable | `user:<uuid>`, or `pii:<32-hex salted fingerprint>` of normalized last name + first name + birth date, or `NULL` | **Pseudonymous identifier.** Not directly readable, but it is a *stable cross-submission correlator* — every submission by one person carries the same value |
+
+**Three properties worth holding onto:**
+
+1. **The fingerprint salt must stay server-side.** `SEARCH_FINGERPRINT_SALT` is a source constant in the Edge Functions (`search-applicants/index.ts:25`, duplicated in `encrypt-and-save-submission/applicant_identity.ts`). Name plus birth date is low-entropy and trivially enumerable offline, so anyone holding both the salt and the column could recover identities by brute force. This is the main reason the hash has exactly one implementation, on the server, and why no hashing code ships into the Flutter **web** bundle — a web build publishes its source as readable JS.
+
+2. **`applicant_key` is a new correlation surface on a table with no RLS.** `client_submissions` is protected by Edge Functions holding the service role key rather than row-level policies (see §6), so any role that can `select *` on this table can now group an applicant's entire submission history by a single stable token — including walk-in records that were previously linkable only by decrypting `data`. Factor this in before widening read access to the table.
+
+3. **`NULL` is the safe default.** When identity cannot be derived (a walk-in with no name or birth date), `applicant_key` is left `NULL` and detection is disabled for that row rather than falling back to a weaker signal. Name-only matching is deliberately *not* used, because two unrelated applicants sharing a common name would be conflated.
+
+Pre-existing rows keep `NULL` in both columns. Backfilling is impossible without bulk-decrypting the archive, which is a far larger PII exposure than the duplicate rows it would prevent.
 
 ### 2.5 Dynamic Metadata Layer
 

@@ -1,0 +1,658 @@
+{
+  "spec": "CSH-1",
+  "specDoc": "docs/15_Submission_Deduplication.md",
+  "note": "Generated fixture and normative contract. Changing any vector is a spec change and requires bumping HASH_VERSION in canonical_hash.ts.",
+  "vectors": [
+    {
+      "name": "key_order_a",
+      "input": {
+        "b": "two",
+        "a": "one",
+        "c": "three"
+      },
+      "canonical": "{\"a\":\"one\",\"b\":\"two\",\"c\":\"three\"}",
+      "hash": "v1:0d9959b5fa9151d2a97ac0a12865dc2ab77a7fe816c8567ea89480d6d6538136"
+    },
+    {
+      "name": "key_order_b",
+      "input": {
+        "c": "three",
+        "a": "one",
+        "b": "two"
+      },
+      "canonical": "{\"a\":\"one\",\"b\":\"two\",\"c\":\"three\"}",
+      "hash": "v1:0d9959b5fa9151d2a97ac0a12865dc2ab77a7fe816c8567ea89480d6d6538136"
+    },
+    {
+      "name": "nested_order_a",
+      "input": {
+        "outer": {
+          "z": "1",
+          "a": "2"
+        },
+        "top": "x"
+      },
+      "canonical": "{\"outer\":{\"a\":\"2\",\"z\":\"1\"},\"top\":\"x\"}",
+      "hash": "v1:623cf2c813ffd44d53bfedfd744a950074527500d85c5c6c99d1de4252a42d1a"
+    },
+    {
+      "name": "nested_order_b",
+      "input": {
+        "top": "x",
+        "outer": {
+          "a": "2",
+          "z": "1"
+        }
+      },
+      "canonical": "{\"outer\":{\"a\":\"2\",\"z\":\"1\"},\"top\":\"x\"}",
+      "hash": "v1:623cf2c813ffd44d53bfedfd744a950074527500d85c5c6c99d1de4252a42d1a"
+    },
+    {
+      "name": "empty_absent",
+      "input": {
+        "kept": "value"
+      },
+      "canonical": "{\"kept\":\"value\"}",
+      "hash": "v1:dc7ca6152d99efb6781b27663bab66d2aad5e262ab87d9e8aa231ce5ec54499f"
+    },
+    {
+      "name": "empty_null",
+      "input": {
+        "kept": "value",
+        "gone": null
+      },
+      "canonical": "{\"kept\":\"value\"}",
+      "hash": "v1:dc7ca6152d99efb6781b27663bab66d2aad5e262ab87d9e8aa231ce5ec54499f"
+    },
+    {
+      "name": "empty_string",
+      "input": {
+        "kept": "value",
+        "gone": ""
+      },
+      "canonical": "{\"kept\":\"value\"}",
+      "hash": "v1:dc7ca6152d99efb6781b27663bab66d2aad5e262ab87d9e8aa231ce5ec54499f"
+    },
+    {
+      "name": "empty_whitespace",
+      "input": {
+        "kept": "value",
+        "gone": "   "
+      },
+      "canonical": "{\"kept\":\"value\"}",
+      "hash": "v1:dc7ca6152d99efb6781b27663bab66d2aad5e262ab87d9e8aa231ce5ec54499f"
+    },
+    {
+      "name": "container_empty_map",
+      "input": {
+        "kept": "value",
+        "gone": {}
+      },
+      "canonical": "{\"kept\":\"value\"}",
+      "hash": "v1:dc7ca6152d99efb6781b27663bab66d2aad5e262ab87d9e8aa231ce5ec54499f"
+    },
+    {
+      "name": "container_empty_list",
+      "input": {
+        "kept": "value",
+        "gone": []
+      },
+      "canonical": "{\"kept\":\"value\"}",
+      "hash": "v1:dc7ca6152d99efb6781b27663bab66d2aad5e262ab87d9e8aa231ce5ec54499f"
+    },
+    {
+      "name": "container_nested_all_empty",
+      "input": {
+        "kept": "value",
+        "gone": {
+          "a": "",
+          "b": null,
+          "c": []
+        }
+      },
+      "canonical": "{\"kept\":\"value\"}",
+      "hash": "v1:dc7ca6152d99efb6781b27663bab66d2aad5e262ab87d9e8aa231ce5ec54499f"
+    },
+    {
+      "name": "array_with_hole",
+      "input": {
+        "rows": [
+          "first",
+          "",
+          "second",
+          null,
+          "third"
+        ]
+      },
+      "canonical": "{\"rows\":[\"first\",\"second\",\"third\"]}",
+      "hash": "v1:45d3ff53fa2ccf3acffe5e727621540acb74cdb9b8a0d5df47efd87f6a7a09ab"
+    },
+    {
+      "name": "array_compacted",
+      "input": {
+        "rows": [
+          "first",
+          "second",
+          "third"
+        ]
+      },
+      "canonical": "{\"rows\":[\"first\",\"second\",\"third\"]}",
+      "hash": "v1:45d3ff53fa2ccf3acffe5e727621540acb74cdb9b8a0d5df47efd87f6a7a09ab"
+    },
+    {
+      "name": "array_order_matters_a",
+      "input": {
+        "rows": [
+          "first",
+          "second"
+        ]
+      },
+      "canonical": "{\"rows\":[\"first\",\"second\"]}",
+      "hash": "v1:85a6dba8ed74582ca60a2513f094ccf429af54e04dd13fd6d720f4504275e9b1"
+    },
+    {
+      "name": "array_order_matters_b",
+      "input": {
+        "rows": [
+          "second",
+          "first"
+        ]
+      },
+      "canonical": "{\"rows\":[\"second\",\"first\"]}",
+      "hash": "v1:2638868102e82cc0f1eb0b01a6174373f4e103a2f2b0eb77f4bc643cc2d9495a"
+    },
+    {
+      "name": "number_int",
+      "input": {
+        "n": 1
+      },
+      "canonical": "{\"n\":\"1\"}",
+      "hash": "v1:1a2613ec93fa82b8b76d7decf6f493cff9bdf9999208caa30deb11440c1f8b43"
+    },
+    {
+      "name": "number_float_trailing_zero",
+      "input": {
+        "n": 1
+      },
+      "canonical": "{\"n\":\"1\"}",
+      "hash": "v1:1a2613ec93fa82b8b76d7decf6f493cff9bdf9999208caa30deb11440c1f8b43"
+    },
+    {
+      "name": "number_string_one",
+      "input": {
+        "n": "1"
+      },
+      "canonical": "{\"n\":\"1\"}",
+      "hash": "v1:1a2613ec93fa82b8b76d7decf6f493cff9bdf9999208caa30deb11440c1f8b43"
+    },
+    {
+      "name": "number_1_50",
+      "input": {
+        "n": 1.5
+      },
+      "canonical": "{\"n\":\"1.5\"}",
+      "hash": "v1:8a01fa063a366e99ab70556449dab1489ec35bd2bf9646d3e3f579255cbfafd7"
+    },
+    {
+      "name": "number_negative_zero",
+      "input": {
+        "n": 0
+      },
+      "canonical": "{\"n\":\"0\"}",
+      "hash": "v1:891677b8f67b634c012212da50b8badc72f8f914b928c01763befc3e93ae326e"
+    },
+    {
+      "name": "number_positive_zero",
+      "input": {
+        "n": 0
+      },
+      "canonical": "{\"n\":\"0\"}",
+      "hash": "v1:891677b8f67b634c012212da50b8badc72f8f914b928c01763befc3e93ae326e"
+    },
+    {
+      "name": "number_exponential_large",
+      "input": {
+        "n": 1e+21
+      },
+      "canonical": "{\"n\":\"1000000000000000000000\"}",
+      "hash": "v1:b8312427ac55333b902a392b8c50a8a885e2ab1cc9e9f8aeae5f11bb393d7c08"
+    },
+    {
+      "name": "number_exponential_small",
+      "input": {
+        "n": 1e-7
+      },
+      "canonical": "{\"n\":\"0.0000001\"}",
+      "hash": "v1:4a91c04837f29ccce8541e489efce371aa9d87d09624e62b8e3d409cc92508c3"
+    },
+    {
+      "name": "bool_true",
+      "input": {
+        "flag": true
+      },
+      "canonical": "{\"flag\":\"true\"}",
+      "hash": "v1:29027e2b073b23263953200ce8aa87180bee7fc0b3059b876c44f1a113dfe8ef"
+    },
+    {
+      "name": "string_true",
+      "input": {
+        "flag": "true"
+      },
+      "canonical": "{\"flag\":\"true\"}",
+      "hash": "v1:29027e2b073b23263953200ce8aa87180bee7fc0b3059b876c44f1a113dfe8ef"
+    },
+    {
+      "name": "bool_false",
+      "input": {
+        "flag": false
+      },
+      "canonical": "{\"flag\":\"false\"}",
+      "hash": "v1:5e42cdba25286ae2ce978bd741cc301d72964d62cfb79c7bb889a6a8c0f09672"
+    },
+    {
+      "name": "unicode_composed",
+      "input": {
+        "name": "José"
+      },
+      "canonical": "{\"name\":\"José\"}",
+      "hash": "v1:0264c9b67e4687fb6eb775c9517fa029a75fa2b3e041da81bd8703885d13647b"
+    },
+    {
+      "name": "unicode_decomposed",
+      "input": {
+        "name": "José"
+      },
+      "canonical": "{\"name\":\"José\"}",
+      "hash": "v1:27a04959f607caec21f2ce50e58b597a1ecf66755c5f755365e0c1292e850122"
+    },
+    {
+      "name": "control_newline",
+      "input": {
+        "note": "line1\nline2"
+      },
+      "canonical": "{\"note\":\"line1\\u000aline2\"}",
+      "hash": "v1:df48a1ab7de1401bd772499a140335521793676ed3df1e929d6e76ccebaebafb"
+    },
+    {
+      "name": "control_soh",
+      "input": {
+        "note": "a\u0001b"
+      },
+      "canonical": "{\"note\":\"a\\u0001b\"}",
+      "hash": "v1:d6acd35d4956c944a6dbf34db76a5d67c19dc4143a4196b51ea09790412a5b16"
+    },
+    {
+      "name": "escape_quote_backslash",
+      "input": {
+        "note": "say \"hi\" \\ bye"
+      },
+      "canonical": "{\"note\":\"say \\\"hi\\\" \\\\ bye\"}",
+      "hash": "v1:10a607b2c446ffad5326734994ad1207e508f658a8d9a37a1bcf7ca27a167d69"
+    },
+    {
+      "name": "session_id_a",
+      "input": {
+        "answer": "x",
+        "__session_id": "session-aaaa"
+      },
+      "canonical": "{\"answer\":\"x\"}",
+      "hash": "v1:f566aa50ea180a53ac2458054b62df80053c594bfa50637b5d280e906e73fd8b"
+    },
+    {
+      "name": "session_id_b",
+      "input": {
+        "answer": "x",
+        "__session_id": "session-bbbb"
+      },
+      "canonical": "{\"answer\":\"x\"}",
+      "hash": "v1:f566aa50ea180a53ac2458054b62df80053c594bfa50637b5d280e906e73fd8b"
+    },
+    {
+      "name": "session_id_absent",
+      "input": {
+        "answer": "x"
+      },
+      "canonical": "{\"answer\":\"x\"}",
+      "hash": "v1:f566aa50ea180a53ac2458054b62df80053c594bfa50637b5d280e906e73fd8b"
+    },
+    {
+      "name": "applicant_name_present",
+      "input": {
+        "answer": "x",
+        "__applicant_name": {
+          "last": "Santos",
+          "first": "Maria",
+          "middle": "R"
+        }
+      },
+      "canonical": "{\"answer\":\"x\"}",
+      "hash": "v1:f566aa50ea180a53ac2458054b62df80053c594bfa50637b5d280e906e73fd8b"
+    },
+    {
+      "name": "applicant_name_other",
+      "input": {
+        "answer": "x",
+        "__applicant_name": {
+          "last": "DIFFERENT",
+          "first": "ENTIRELY",
+          "middle": ""
+        }
+      },
+      "canonical": "{\"answer\":\"x\"}",
+      "hash": "v1:f566aa50ea180a53ac2458054b62df80053c594bfa50637b5d280e906e73fd8b"
+    },
+    {
+      "name": "applicant_name_absent",
+      "input": {
+        "answer": "x"
+      },
+      "canonical": "{\"answer\":\"x\"}",
+      "hash": "v1:f566aa50ea180a53ac2458054b62df80053c594bfa50637b5d280e906e73fd8b"
+    },
+    {
+      "name": "signature_a",
+      "input": {
+        "answer": "x",
+        "__signature": "iVBORw0KGgoAAAA-SIGNATURE-A"
+      },
+      "canonical": "{\"__signature\":\"iVBORw0KGgoAAAA-SIGNATURE-A\",\"answer\":\"x\"}",
+      "hash": "v1:4b2f60642e18148c7c970c40659078023112e2683c4336140a409b59f5464b42"
+    },
+    {
+      "name": "signature_b",
+      "input": {
+        "answer": "x",
+        "__signature": "iVBORw0KGgoAAAA-SIGNATURE-B"
+      },
+      "canonical": "{\"__signature\":\"iVBORw0KGgoAAAA-SIGNATURE-B\",\"answer\":\"x\"}",
+      "hash": "v1:f55739be0229b7d926156d6a11318d06ea9329e58a12ba57b6bda052af757818"
+    },
+    {
+      "name": "signature_absent",
+      "input": {
+        "answer": "x"
+      },
+      "canonical": "{\"answer\":\"x\"}",
+      "hash": "v1:f566aa50ea180a53ac2458054b62df80053c594bfa50637b5d280e906e73fd8b"
+    },
+    {
+      "name": "degenerate_empty_object",
+      "input": {},
+      "canonical": "{}",
+      "hash": "v1:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    {
+      "name": "degenerate_all_excluded",
+      "input": {
+        "__session_id": "s1",
+        "__applicant_name": {
+          "last": "X",
+          "first": "Y"
+        }
+      },
+      "canonical": "{}",
+      "hash": "v1:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    {
+      "name": "degenerate_all_empty_values",
+      "input": {
+        "a": "",
+        "b": null,
+        "c": "   "
+      },
+      "canonical": "{}",
+      "hash": "v1:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    {
+      "name": "realistic_aics_payload",
+      "input": {
+        "Last Name": "Santos",
+        "First Name": "Maria",
+        "Middle Name": "Reyes",
+        "Date of Birth": "1985-03-14",
+        "Contact Number": "09171234567",
+        "Barangay": "San Isidro",
+        "Purok/Sitio": "Purok 3",
+        "Monthly Income": 8500,
+        "Number of Dependents": 3,
+        "Is 4Ps Member": true,
+        "Remarks": "",
+        "__membership": {
+          "fourps": true,
+          "senior": false
+        },
+        "__family_composition": [
+          {
+            "Name": "Juan Santos",
+            "Age": "12",
+            "Relationship": "Son"
+          },
+          {
+            "Name": "Ana Santos",
+            "Age": "9",
+            "Relationship": "Daughter"
+          }
+        ],
+        "__supporting_family": [],
+        "__has_support": false,
+        "__housing_status": "Renting",
+        "__signature": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+        "__session_id": "b3f1c2d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+        "__applicant_name": {
+          "last": "Santos",
+          "first": "Maria",
+          "middle": "Reyes"
+        }
+      },
+      "canonical": "{\"Barangay\":\"San Isidro\",\"Contact Number\":\"09171234567\",\"Date of Birth\":\"1985-03-14\",\"First Name\":\"Maria\",\"Is 4Ps Member\":\"true\",\"Last Name\":\"Santos\",\"Middle Name\":\"Reyes\",\"Monthly Income\":\"8500\",\"Number of Dependents\":\"3\",\"Purok/Sitio\":\"Purok 3\",\"__family_composition\":[{\"Age\":\"12\",\"Name\":\"Juan Santos\",\"Relationship\":\"Son\"},{\"Age\":\"9\",\"Name\":\"Ana Santos\",\"Relationship\":\"Daughter\"}],\"__has_support\":\"false\",\"__housing_status\":\"Renting\",\"__membership\":{\"fourps\":\"true\",\"senior\":\"false\"},\"__signature\":\"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==\"}",
+      "hash": "v1:94d25d9d84036f8052090256f4c62b3204a1932c886c1e1433ad601b5976e922"
+    },
+    {
+      "name": "realistic_aics_payload_one_field_changed",
+      "input": {
+        "Last Name": "Santos",
+        "First Name": "Maria",
+        "Middle Name": "Reyes",
+        "Date of Birth": "1985-03-14",
+        "Contact Number": "09171234567",
+        "Barangay": "San Isidr0",
+        "Purok/Sitio": "Purok 3",
+        "Monthly Income": 8500,
+        "Number of Dependents": 3,
+        "Is 4Ps Member": true,
+        "Remarks": "",
+        "__membership": {
+          "fourps": true,
+          "senior": false
+        },
+        "__family_composition": [
+          {
+            "Name": "Juan Santos",
+            "Age": "12",
+            "Relationship": "Son"
+          },
+          {
+            "Name": "Ana Santos",
+            "Age": "9",
+            "Relationship": "Daughter"
+          }
+        ],
+        "__supporting_family": [],
+        "__has_support": false,
+        "__housing_status": "Renting",
+        "__signature": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+        "__session_id": "b3f1c2d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+        "__applicant_name": {
+          "last": "Santos",
+          "first": "Maria",
+          "middle": "Reyes"
+        }
+      },
+      "canonical": "{\"Barangay\":\"San Isidr0\",\"Contact Number\":\"09171234567\",\"Date of Birth\":\"1985-03-14\",\"First Name\":\"Maria\",\"Is 4Ps Member\":\"true\",\"Last Name\":\"Santos\",\"Middle Name\":\"Reyes\",\"Monthly Income\":\"8500\",\"Number of Dependents\":\"3\",\"Purok/Sitio\":\"Purok 3\",\"__family_composition\":[{\"Age\":\"12\",\"Name\":\"Juan Santos\",\"Relationship\":\"Son\"},{\"Age\":\"9\",\"Name\":\"Ana Santos\",\"Relationship\":\"Daughter\"}],\"__has_support\":\"false\",\"__housing_status\":\"Renting\",\"__membership\":{\"fourps\":\"true\",\"senior\":\"false\"},\"__signature\":\"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==\"}",
+      "hash": "v1:2aec0b807fbd867a86077e6d958e2a33d4e02860fa1d679713bc8693413c700a"
+    },
+    {
+      "name": "realistic_aics_payload_replayed_new_session",
+      "input": {
+        "Purok/Sitio": "Purok 3",
+        "Barangay": "San Isidro",
+        "Last Name": "Santos",
+        "First Name": "Maria",
+        "Middle Name": "Reyes",
+        "Date of Birth": "1985-03-14",
+        "Contact Number": "09171234567",
+        "Monthly Income": 8500,
+        "Number of Dependents": 3,
+        "Is 4Ps Member": true,
+        "__membership": {
+          "senior": false,
+          "fourps": true
+        },
+        "__family_composition": [
+          {
+            "Relationship": "Son",
+            "Name": "Juan Santos",
+            "Age": "12"
+          },
+          {
+            "Age": "9",
+            "Relationship": "Daughter",
+            "Name": "Ana Santos"
+          }
+        ],
+        "__has_support": false,
+        "__housing_status": "Renting",
+        "__signature": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+        "__session_id": "ffffffff-0000-1111-2222-333333333333"
+      },
+      "canonical": "{\"Barangay\":\"San Isidro\",\"Contact Number\":\"09171234567\",\"Date of Birth\":\"1985-03-14\",\"First Name\":\"Maria\",\"Is 4Ps Member\":\"true\",\"Last Name\":\"Santos\",\"Middle Name\":\"Reyes\",\"Monthly Income\":\"8500\",\"Number of Dependents\":\"3\",\"Purok/Sitio\":\"Purok 3\",\"__family_composition\":[{\"Age\":\"12\",\"Name\":\"Juan Santos\",\"Relationship\":\"Son\"},{\"Age\":\"9\",\"Name\":\"Ana Santos\",\"Relationship\":\"Daughter\"}],\"__has_support\":\"false\",\"__housing_status\":\"Renting\",\"__membership\":{\"fourps\":\"true\",\"senior\":\"false\"},\"__signature\":\"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==\"}",
+      "hash": "v1:94d25d9d84036f8052090256f4c62b3204a1932c886c1e1433ad601b5976e922"
+    }
+  ],
+  "equivalenceGroups": [
+    {
+      "name": "key order is irrelevant",
+      "members": [
+        "key_order_a",
+        "key_order_b"
+      ]
+    },
+    {
+      "name": "nested key order is irrelevant",
+      "members": [
+        "nested_order_a",
+        "nested_order_b"
+      ]
+    },
+    {
+      "name": "absent == null == empty == whitespace == empty container",
+      "members": [
+        "empty_absent",
+        "empty_null",
+        "empty_string",
+        "empty_whitespace",
+        "container_empty_map",
+        "container_empty_list",
+        "container_nested_all_empty"
+      ]
+    },
+    {
+      "name": "omitted array elements vanish, order preserved",
+      "members": [
+        "array_with_hole",
+        "array_compacted"
+      ]
+    },
+    {
+      "name": "1 == 1.0 == \"1\"",
+      "members": [
+        "number_int",
+        "number_float_trailing_zero",
+        "number_string_one"
+      ]
+    },
+    {
+      "name": "negative zero == zero",
+      "members": [
+        "number_negative_zero",
+        "number_positive_zero"
+      ]
+    },
+    {
+      "name": "true == \"true\"",
+      "members": [
+        "bool_true",
+        "string_true"
+      ]
+    },
+    {
+      "name": "__session_id is excluded",
+      "members": [
+        "session_id_a",
+        "session_id_b",
+        "session_id_absent"
+      ]
+    },
+    {
+      "name": "__applicant_name is excluded",
+      "members": [
+        "applicant_name_present",
+        "applicant_name_other",
+        "applicant_name_absent"
+      ]
+    },
+    {
+      "name": "everything-excluded and all-empty payloads collapse to {}",
+      "members": [
+        "degenerate_empty_object",
+        "degenerate_all_excluded",
+        "degenerate_all_empty_values"
+      ]
+    },
+    {
+      "name": "replay in a new session hashes identically",
+      "members": [
+        "realistic_aics_payload",
+        "realistic_aics_payload_replayed_new_session"
+      ]
+    }
+  ],
+  "distinctGroups": [
+    {
+      "name": "array order is significant",
+      "members": [
+        "array_order_matters_a",
+        "array_order_matters_b"
+      ]
+    },
+    {
+      "name": "true != false",
+      "members": [
+        "bool_true",
+        "bool_false"
+      ]
+    },
+    {
+      "name": "composed != decomposed (values are not NFC-normalized)",
+      "members": [
+        "unicode_composed",
+        "unicode_decomposed"
+      ]
+    },
+    {
+      "name": "__signature IS included in the hash",
+      "members": [
+        "signature_a",
+        "signature_b",
+        "signature_absent"
+      ]
+    },
+    {
+      "name": "one changed field yields a different hash",
+      "members": [
+        "realistic_aics_payload",
+        "realistic_aics_payload_one_field_changed"
+      ]
+    }
+  ]
+}
